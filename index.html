@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz App</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+
+  <div class="top-bar">
+    <select id="quizSelector"></select>
+
+    <div id="toggles">
+      <label><input type="checkbox" id="shuffleQuestions"> Shuffle Questions</label>
+      <label><input type="checkbox" id="shuffleAnswers"> Shuffle Answers</label>
+      <label><input type="checkbox" id="penaltyMode"> Penalty Mode</label>
+      <label><input type="checkbox" id="retryWrong"> Retry Wrong Answers</label>
+      <label><input type="checkbox" id="speedMode"> Speed Mode</label>
+    </div>
+
+    <div class="nav-buttons">
+      <button id="prevBtn">Previous</button>
+      <button id="restartBtn">Restart</button>
+      <button id="nextBtn">Next</button>
+    </div>
+
+    <div id="progressContainer">
+      <span id="progressText">0 / 0</span>
+      <div id="progressBar">
+        <div id="progressFill"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="quiz-area">
+    <div class="question-container">
+      <div id="feedback"></div>
+      <div id="questionText">Loading...</div>
+
+      <div class="options">
+        <button class="optionBtn" id="option1"></button>
+        <button class="optionBtn" id="option2"></button>
+        <button class="optionBtn" id="option3"></button>
+        <button class="optionBtn" id="option4"></button>
+      </div>
+    </div>
+
+    <div class="image-container">
+      <img id="questionImage" src="" alt="" style="display:none;">
+    </div>
+  </div>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
