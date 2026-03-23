@@ -1,26 +1,26 @@
+/* ---------------------- */
+/* Quiz App Updated CSS   */
+/* ---------------------- */
+
 body {
   font-family: Arial, sans-serif;
   margin: 0;
   padding: 20px;
-
-  background: #1e1b2e;
-
-  transform: scale(1.5);
-  transform-origin: top left;
-  width: 66.67%;
-
-  color: #e0e0ff;
+  background: #1e1b2e;  /* dark purple background */
+  color: #e0e0ff;       /* light purple text */
 }
 
+/* Container */
 .container {
   max-width: 900px;
   margin: auto;
-  background: #2a2540;
+  background: #2a2540; /* purple container */
   padding: 20px;
   border-radius: 10px;
   box-shadow: 0 0 15px rgba(0,0,0,0.6);
 }
 
+/* Top bar */
 .top-bar {
   display: flex;
   flex-wrap: wrap;
@@ -31,13 +31,13 @@ body {
 
 #toggles label {
   margin-right: 10px;
-  color: #cfcfff;
+  color: #cfcfff; /* light purple labels */
 }
 
 .nav-buttons button {
   margin-right: 5px;
   padding: 6px 12px;
-  background: #3a3360;
+  background: #3a3360; /* dark purple buttons */
   color: white;
   border: none;
   border-radius: 5px;
@@ -45,7 +45,7 @@ body {
 }
 
 .nav-buttons button:hover {
-  background: #5a4bcf;
+  background: #5a4bcf; /* lighter purple on hover */
 }
 
 #progressContainer {
@@ -65,9 +65,10 @@ body {
 #progressFill {
   height: 100%;
   width: 0%;
-  background: #7c6cff;
+  background: #7c6cff; /* purple progress bar */
 }
 
+/* Quiz area */
 .quiz-area {
   display: flex;
   gap: 20px;
@@ -81,7 +82,7 @@ body {
   font-size: 20px;
 }
 
-/* 🔥 FIXED OPTION BUTTONS */
+/* Option buttons */
 .options {
   display: flex;
   flex-direction: column;
@@ -126,9 +127,27 @@ body {
 }
 
 .correct {
-  color: #4caf50;
+  color: #4caf50; /* green */
 }
 
 .incorrect {
-  color: #ff6b6b;
+  color: #ff6b6b; /* red */
+}
+
+/* ---------------------- */
+/* Responsive for iPads / smaller screens */
+@media (max-width: 768px) {
+  .container {
+    padding: 15px;
+  }
+  #questionText {
+    font-size: 18px;
+  }
+  .optionBtn {
+    font-size: 14px;
+    padding: 10px;
+  }
+  .quiz-area {
+    flex-direction: column;
+  }
 }
