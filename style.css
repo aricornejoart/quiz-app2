@@ -2,20 +2,17 @@ body {
   font-family: Arial, sans-serif;
   margin: 0;
   padding: 20px;
-
   background: #1e1b2e; /* your original dark purple */
-
   transform: scale(1.5);
   transform-origin: top left;
   width: 66.67%;
-
   color: #e0e0ff;
 }
 
 .container {
   max-width: 900px;
   margin: auto;
-  background: #2a2540; /* your container purple */
+  background: #2a2540; /* container purple */
   padding: 20px;
   border-radius: 10px;
   box-shadow: 0 0 15px rgba(0,0,0,0.6);
@@ -81,7 +78,7 @@ body {
   font-size: 15px;
 }
 
-/* 🔥 FIXED OPTION BUTTONS WITH EXPLANATION SPACE */
+/* 🔥 MULTIPLE CHOICE OPTIONS */
 .options {
   display: flex;
   flex-direction: column;
@@ -101,9 +98,10 @@ body {
 }
 
 .optionBtn {
-  width: 500px;
+  width: 100%;
+  max-width: 400px; /* optional, keeps buttons from being too wide on large screens */
   padding: 15px;
-  background: #332b5c; /* darker purple */
+  background: #332b5c;
   border: 1px solid #5a4bcf;
   border-radius: 8px;
   cursor: pointer;
@@ -116,6 +114,46 @@ body {
 .optionBtn:hover {
   background: #5a4bcf;
   transform: scale(1.02);
+}
+
+/* 🔥 HIERARCHY TYPE STYLES */
+#hierarchyContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.hierarchy-item {
+  padding: 12px;
+  background: #332b5c;
+  color: #ffffff;
+  border: 1px solid #5a4bcf;
+  border-radius: 5px;
+  cursor: grab;
+  transition: all 0.2s ease;
+}
+
+.hierarchy-item:active {
+  cursor: grabbing;
+  background: #5a4bcf;
+  transform: scale(1.02);
+}
+
+/* Hierarchy submit button */
+#hierarchyContainer button {
+  width: 120px;
+  align-self: start;
+  padding: 8px 15px;
+  background: #3a3360;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#hierarchyContainer button:hover {
+  background: #5a4bcf;
 }
 
 /* Image */
