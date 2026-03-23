@@ -3,7 +3,7 @@ body {
   margin: 0;
   padding: 20px;
 
-  background: #1e1b2e;
+  background: #1e1b2e; /* your original dark purple */
 
   transform: scale(1.5);
   transform-origin: top left;
@@ -15,7 +15,7 @@ body {
 .container {
   max-width: 900px;
   margin: auto;
-  background: #2a2540;
+  background: #2a2540; /* your container purple */
   padding: 20px;
   border-radius: 10px;
   box-shadow: 0 0 15px rgba(0,0,0,0.6);
@@ -78,10 +78,10 @@ body {
 }
 
 #questionText {
-  font-size: 20px;
+  font-size: 15px;
 }
 
-/* 🔥 FIXED OPTION BUTTONS */
+/* 🔥 FIXED OPTION BUTTONS WITH EXPLANATION SPACE */
 .options {
   display: flex;
   flex-direction: column;
@@ -89,15 +89,27 @@ body {
   margin-top: 15px;
 }
 
+.option-block {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.explanation {
+  font-size: 12px;
+  color: #d0d0ff;
+}
+
 .optionBtn {
-  padding: 12px;
+  width: 500px;
+  padding: 15px;
   background: #332b5c; /* darker purple */
   border: 1px solid #5a4bcf;
   border-radius: 8px;
   cursor: pointer;
   text-align: left;
   color: #ffffff;
-  font-size: 16px;
+  font-size: 12px;
   transition: all 0.2s ease;
 }
 
@@ -113,7 +125,7 @@ body {
 
 .image-container img {
   max-width: 100%;
-  max-height: 300px;
+  max-height: 400px;
   border-radius: 5px;
 }
 

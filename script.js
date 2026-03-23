@@ -1,9 +1,10 @@
 const sheetId = '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E';
 
+// Map Google Sheet tabs to friendly display names
 const quizSheets = [
-    'Sheet1',
-    'Sheet2',
-    'Sheet3'
+    { sheet: 'Sheet1', name: 'Math Studies' },
+    { sheet: 'Sheet2', name: 'Science' },
+    { sheet: 'Sheet3', name: 'History' }
 ];
 
 let questions = [];
@@ -12,13 +13,14 @@ let completedCount = 0;
 let wrongQuestions = [];
 
 const quizSelector = document.getElementById('quizSelector');
-quizSheets.forEach(sheet => {
+quizSheets.forEach(sheetObj => {
     const option = document.createElement('option');
-    option.value = sheet;
-    option.innerText = sheet;
+    option.value = sheetObj.sheet;
+    option.innerText = sheetObj.name;
     quizSelector.appendChild(option);
 });
 
+// Load questions from Google Sheet
 async function loadQuestions(sheetName) {
     const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
     const text = await response.text();
@@ -27,9 +29,21 @@ async function loadQuestions(sheetName) {
 
     return rows.slice(1).map(r => ({
         question: r.c[0]?.v || '',
-        options: [r.c[1]?.v || '', r.c[2]?.v || '', r.c[3]?.v || '', r.c[4]?.v || ''].filter(opt => opt !== ''),
-        correct: r.c[5]?.v || '',
-        image: r.c[6]?.v || ''
+        type: r.c[1]?.v || 'multiple choice',
+        options: [
+            r.c[2]?.v || '',
+            r.c[3]?.v || '',
+            r.c[4]?.v || '',
+            r.c[5]?.v || ''
+        ].filter(opt => opt !== ''),
+        correct: r.c[6]?.v || '',
+        explanations: [
+            r.c[7]?.v || '',
+            r.c[8]?.v || '',
+            r.c[9]?.v || '',
+            r.c[10]?.v || ''
+        ],
+        image: r.c[11]?.v || ''
     }));
 }
 
@@ -49,24 +63,33 @@ function showQuestion() {
 
     const q = questions[currentIndex];
     let options = [...q.options];
+    let explanations = [...q.explanations];
 
-    // Shuffle only existing options
+    // Shuffle options + explanations together
     if(document.getElementById('shuffleAnswers').checked && options.length > 1) {
-        shuffleArray(options);
+        const combined = options.map((opt, idx) => ({opt, exp: explanations[idx]}));
+        shuffleArray(combined);
+        options = combined.map(c => c.opt);
+        explanations = combined.map(c => c.exp);
     }
 
     document.getElementById('questionText').innerText = q.question;
 
-    // Show/hide options dynamically
+    // Display options but hide explanations initially
     for (let i = 0; i < 4; i++) {
         const btn = document.getElementById(`option${i+1}`);
+        const expDiv = document.getElementById(`explanation${i+1}`);
+
         if(options[i]) {
             btn.style.display = 'block';
             btn.innerText = options[i];
-            btn.onclick = () => checkAnswer(options[i]);
-            btn.style.background = ""; // reset to CSS
+            btn.style.background = ""; // reset CSS
+            expDiv.innerText = '';    // hide explanation initially
+
+            btn.onclick = () => checkAnswer(options[i], explanations);
         } else {
             btn.style.display = 'none';
+            expDiv.innerText = '';
         }
     }
 
@@ -81,7 +104,8 @@ function showQuestion() {
     updateProgress();
 }
 
-function checkAnswer(selectedText) {
+// Check answer and reveal explanations after submission
+function checkAnswer(selectedText, explanations) {
     const q = questions[currentIndex];
     const isCorrect = selectedText === q.correct;
 
@@ -96,32 +120,36 @@ function checkAnswer(selectedText) {
         feedback.innerText = "Incorrect!";
         feedback.classList.add('incorrect');
 
-        // Retry wrong answers go to end
         if(document.getElementById('retryWrong').checked) {
             wrongQuestions.push(q);
         }
 
-        // Mark penalty flag if Penalty Mode is active
         if(document.getElementById('penaltyMode').checked) {
             q.penalty = true;
         }
     }
 
-    // Speed mode: auto-advance
+    // Show explanations **after answering** (skip in speed mode)
+    if(!document.getElementById('speedMode').checked) {
+        for (let i = 0; i < 4; i++) {
+            const expDiv = document.getElementById(`explanation${i+1}`);
+            expDiv.innerText = explanations[i] || '';
+        }
+    }
+
+    // Auto-advance in speed mode
     if(document.getElementById('speedMode').checked) {
         setTimeout(nextQuestion, 300);
     }
 }
 
 function nextQuestion() {
-    // Clear feedback immediately
     const feedback = document.getElementById('feedback');
     feedback.innerText = "";
     feedback.classList.remove('correct', 'incorrect');
 
     const currentQ = questions[currentIndex];
 
-    // Apply penalty first
     if(currentQ && currentQ.penalty) {
         currentIndex = Math.max(currentIndex - 3, 0);
         delete currentQ.penalty;
@@ -129,7 +157,6 @@ function nextQuestion() {
         currentIndex++;
     }
 
-    // Append retry wrong questions if at the end
     if(currentIndex >= questions.length && wrongQuestions.length > 0) {
         questions = questions.concat(wrongQuestions);
         wrongQuestions = [];
@@ -158,9 +185,9 @@ function restartQuiz() {
 }
 
 function updateProgress() {
-    const totalRemaining = questions.length - currentIndex + wrongQuestions.length;
-    document.getElementById('progressText').innerText = `${completedCount} / ${totalRemaining}`;
-    document.getElementById('progressFill').style.width = `${(completedCount / totalRemaining) * 100}%`;
+    const remaining = questions.length - currentIndex + wrongQuestions.length;
+    document.getElementById('progressText').innerText = `${remaining} left`;
+    document.getElementById('progressFill').style.width = `${(completedCount / (completedCount + remaining)) * 100}%`;
 }
 
 // Event listeners
@@ -168,7 +195,7 @@ document.getElementById('nextBtn').addEventListener('click', nextQuestion);
 document.getElementById('prevBtn').addEventListener('click', prevQuestion);
 document.getElementById('restartBtn').addEventListener('click', restartQuiz);
 
-document.getElementById('quizSelector').addEventListener('change', async (e) => {
+quizSelector.addEventListener('change', async (e) => {
     questions = await loadQuestions(e.target.value);
 
     if(document.getElementById('shuffleQuestions').checked) shuffleArray(questions);
