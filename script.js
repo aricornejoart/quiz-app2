@@ -1,24 +1,44 @@
 const sheetId = '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E';
 
-// Map Google Sheet tabs to friendly display names
-const quizSheets = [
-    { sheet: 'Sheet1', name: 'Math Studies' },
-    { sheet: 'Sheet2', name: 'Science' },
-    { sheet: 'Sheet3', name: 'History' }
-];
-
 let questions = [];
 let currentIndex = 0;
 let completedCount = 0;
 let wrongQuestions = [];
 
 const quizSelector = document.getElementById('quizSelector');
-quizSheets.forEach(sheetObj => {
-    const option = document.createElement('option');
-    option.value = sheetObj.sheet;
-    option.innerText = sheetObj.name;
-    quizSelector.appendChild(option);
-});
+
+
+// 🔥 NEW: Load quiz list from Config sheet
+async function loadQuizList() {
+    const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=Config`);
+    const text = await response.text();
+    const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
+    const rows = json.table.rows;
+
+    // Skip header row
+    return rows.slice(1).map(r => ({
+        sheet: r.c[0]?.v || '',
+        name: r.c[1]?.v || ''
+    })).filter(q => q.sheet && q.name);
+}
+
+
+// 🔥 Populate dropdown dynamically
+async function populateQuizDropdown() {
+    const quizSheets = await loadQuizList();
+
+    quizSelector.innerHTML = '';
+
+    quizSheets.forEach(sheetObj => {
+        const option = document.createElement('option');
+        option.value = sheetObj.sheet;
+        option.innerText = sheetObj.name;
+        quizSelector.appendChild(option);
+    });
+
+    return quizSheets;
+}
+
 
 // Load questions from Google Sheet
 async function loadQuestions(sheetName) {
@@ -47,6 +67,7 @@ async function loadQuestions(sheetName) {
     }));
 }
 
+
 // Shuffle helper
 function shuffleArray(array) {
     for (let i = array.length -1; i > 0; i--) {
@@ -54,6 +75,7 @@ function shuffleArray(array) {
         [array[i], array[j]] = [array[j], array[i]];
     }
 }
+
 
 function showQuestion() {
     if(currentIndex >= questions.length) {
@@ -65,7 +87,6 @@ function showQuestion() {
     let options = [...q.options];
     let explanations = [...q.explanations];
 
-    // Shuffle options + explanations together
     if(document.getElementById('shuffleAnswers').checked && options.length > 1) {
         const combined = options.map((opt, idx) => ({opt, exp: explanations[idx]}));
         shuffleArray(combined);
@@ -75,7 +96,6 @@ function showQuestion() {
 
     document.getElementById('questionText').innerText = q.question;
 
-    // Display options but hide explanations initially
     for (let i = 0; i < 4; i++) {
         const btn = document.getElementById(`option${i+1}`);
         const expDiv = document.getElementById(`explanation${i+1}`);
@@ -83,8 +103,8 @@ function showQuestion() {
         if(options[i]) {
             btn.style.display = 'block';
             btn.innerText = options[i];
-            btn.style.background = ""; // reset CSS
-            expDiv.innerText = '';    // hide explanation initially
+            btn.style.background = "";
+            expDiv.innerText = '';
 
             btn.onclick = () => checkAnswer(options[i], explanations);
         } else {
@@ -104,7 +124,7 @@ function showQuestion() {
     updateProgress();
 }
 
-// Check answer and reveal explanations after submission
+
 function checkAnswer(selectedText, explanations) {
     const q = questions[currentIndex];
     const isCorrect = selectedText === q.correct;
@@ -129,7 +149,6 @@ function checkAnswer(selectedText, explanations) {
         }
     }
 
-    // Show explanations **after answering** (skip in speed mode)
     if(!document.getElementById('speedMode').checked) {
         for (let i = 0; i < 4; i++) {
             const expDiv = document.getElementById(`explanation${i+1}`);
@@ -137,11 +156,11 @@ function checkAnswer(selectedText, explanations) {
         }
     }
 
-    // Auto-advance in speed mode
     if(document.getElementById('speedMode').checked) {
         setTimeout(nextQuestion, 300);
     }
 }
+
 
 function nextQuestion() {
     const feedback = document.getElementById('feedback');
@@ -166,15 +185,18 @@ function nextQuestion() {
     showQuestion();
 }
 
+
 function prevQuestion() {
     if(currentIndex > 0) currentIndex--;
     showQuestion();
 }
 
+
 function restartQuiz() {
     currentIndex = 0;
     completedCount = 0;
     wrongQuestions = [];
+
     const feedback = document.getElementById('feedback');
     feedback.innerText = "";
     feedback.classList.remove('correct', 'incorrect');
@@ -184,16 +206,20 @@ function restartQuiz() {
     showQuestion();
 }
 
+
 function updateProgress() {
     const remaining = questions.length - currentIndex + wrongQuestions.length;
     document.getElementById('progressText').innerText = `${remaining} left`;
-    document.getElementById('progressFill').style.width = `${(completedCount / (completedCount + remaining)) * 100}%`;
+    document.getElementById('progressFill').style.width =
+        `${(completedCount / (completedCount + remaining)) * 100}%`;
 }
+
 
 // Event listeners
 document.getElementById('nextBtn').addEventListener('click', nextQuestion);
 document.getElementById('prevBtn').addEventListener('click', prevQuestion);
 document.getElementById('restartBtn').addEventListener('click', restartQuiz);
+
 
 quizSelector.addEventListener('change', async (e) => {
     questions = await loadQuestions(e.target.value);
@@ -207,9 +233,13 @@ quizSelector.addEventListener('change', async (e) => {
     showQuestion();
 });
 
-// Initial load
+
+// 🔥 NEW INITIAL LOAD FLOW
 (async function(){
-    const sheetName = document.getElementById('quizSelector').value;
+    await populateQuizDropdown();
+
+    const sheetName = quizSelector.value;
+
     questions = await loadQuestions(sheetName);
 
     if(document.getElementById('shuffleQuestions').checked) shuffleArray(questions);
