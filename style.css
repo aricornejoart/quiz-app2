@@ -181,7 +181,15 @@ body {
   border-radius: 5px;
   cursor: pointer;
 }
+/* Allow dragging even if the arrows are present */
+#hierarchyContainer .hierarchy-item {
+    touch-action: none; /* prevent touch interference on mobile */
+}
 
+/* Optional: ignore pointer events for the arrows themselves for drag purposes */
+#hierarchyContainer .hierarchy-arrow {
+    pointer-events: auto; /* keep buttons clickable */
+}
 #hierarchyContainer button:not(.hierarchy-arrow):hover {
   background: #5a4bcf;
 }

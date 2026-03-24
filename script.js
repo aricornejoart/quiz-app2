@@ -34,7 +34,7 @@ async function populateQuizDropdown() {
     return quizSheets;
 }
 
-// Load MC
+// Load Multiple Choice
 async function loadMultipleChoiceQuestions(sheetName) {
     const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
     const text = await response.text();
@@ -54,7 +54,7 @@ async function loadMultipleChoiceQuestions(sheetName) {
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
 
-// Load hierarchy
+// Load Hierarchy
 async function loadHierarchyQuestions(sheetName) {
     const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
     const text = await response.text();
@@ -177,7 +177,7 @@ function checkAnswer(selectedText){
     }
 }
 
-// 🔥 Hierarchy UI (with arrows)
+// 🔥 Hierarchy UI (with arrows + drag)
 function showHierarchyQuestion(q){
     const container=document.createElement('div');
     container.id='hierarchyContainer';
@@ -191,6 +191,7 @@ function showHierarchyQuestion(q){
         row.style.alignItems='center';
         row.style.gap='10px';
 
+        // Arrow buttons container
         const arrows=document.createElement('div');
         arrows.style.display='flex';
         arrows.style.flexDirection='column';
@@ -216,9 +217,11 @@ function showHierarchyQuestion(q){
         arrows.appendChild(upBtn);
         arrows.appendChild(downBtn);
 
+        // Draggable item
         const item=document.createElement('div');
         item.className='hierarchy-item';
         item.draggable=true;
+        item.style.touchAction='none'; // touch support
         item.innerText=opt;
         item.style.flex='1';
 
@@ -232,6 +235,29 @@ function showHierarchyQuestion(q){
     });
 
     document.querySelector('.question-container').appendChild(container);
+
+    // Drag-and-drop logic
+    let dragSrc = null;
+    container.querySelectorAll('.hierarchy-item').forEach(item => {
+        item.addEventListener('dragstart', e => { dragSrc = item; });
+        item.addEventListener('dragover', e => e.preventDefault());
+        item.addEventListener('drop', e => {
+            e.preventDefault();
+            if (!dragSrc) return;
+
+            const rows = [...container.children];
+            const srcRow = dragSrc.parentElement;
+            const targetRow = item.parentElement;
+
+            if (srcRow !== targetRow) {
+                const srcIndex = rows.indexOf(srcRow);
+                const tgtIndex = rows.indexOf(targetRow);
+                if (srcIndex < tgtIndex) container.insertBefore(srcRow, targetRow.nextSibling);
+                else container.insertBefore(srcRow, targetRow);
+            }
+            dragSrc = null;
+        });
+    });
 }
 
 // Navigation
