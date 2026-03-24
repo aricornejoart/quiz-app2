@@ -141,7 +141,7 @@ body {
 }
 
 /* Hierarchy submit button */
-/* Up/Down arrows next to hierarchy items */
+/* Ensure hierarchy arrows show on mobile */
 #hierarchyContainer button {
     width: 28px;
     height: 28px;
@@ -152,10 +152,20 @@ body {
     border: none;
     border-radius: 4px;
     cursor: pointer;
+    flex-shrink: 0; /* prevent shrinking */
 }
 
 #hierarchyContainer button:hover {
     background: #5a4bcf;
+}
+
+/* Optional: increase tap area for touch */
+@media (max-width: 768px) {
+    #hierarchyContainer button {
+        width: 34px;
+        height: 34px;
+        font-size: 18px;
+    }
 }
 
 /* Image */

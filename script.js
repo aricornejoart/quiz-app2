@@ -196,7 +196,9 @@ function showHierarchyQuestion(q) {
         const arrows = document.createElement('div');
         arrows.style.display = 'flex';
         arrows.style.flexDirection = 'column';
-        arrows.style.gap = '4px';
+        arrows.style.gap = '2px';
+        arrows.style.minWidth = '30px';   // ensure visible width
+        arrows.style.flexShrink = '0';    // prevent shrinking on small screens
 
         const upBtn = document.createElement('button');
         upBtn.innerText = '⬆';
