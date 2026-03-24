@@ -193,31 +193,35 @@ function showHierarchyQuestion(q) {
         row.style.gap = '10px';
 
         // Up/Down buttons container
-        const arrows = document.createElement('div');
-        arrows.style.display = 'flex';
-        arrows.style.flexDirection = 'column';
-        arrows.style.gap = '2px';
-        arrows.style.minWidth = '30px';   // ensure visible width
-        arrows.style.flexShrink = '0';    // prevent shrinking on small screens
+const arrows = document.createElement('div');
+arrows.style.display = 'flex';
+arrows.style.flexDirection = 'column';
+arrows.style.gap = '2px';
+arrows.style.minWidth = '20px';
+arrows.style.flexShrink = '0';
 
-        const upBtn = document.createElement('button');
-        upBtn.innerText = '⬆';
-        upBtn.title = 'Move Up';
-        upBtn.onclick = () => {
-            const prev = row.previousElementSibling;
-            if (prev) container.insertBefore(row, prev);
-        };
+// UP arrow
+const upBtn = document.createElement('button');
+upBtn.innerText = '^';
+upBtn.title = 'Move Up';
+upBtn.className = 'hierarchy-arrow up-arrow';
+upBtn.onclick = () => {
+    const prev = row.previousElementSibling;
+    if (prev) container.insertBefore(row, prev);
+};
 
-        const downBtn = document.createElement('button');
-        downBtn.innerText = '⬇';
-        downBtn.title = 'Move Down';
-        downBtn.onclick = () => {
-            const next = row.nextElementSibling;
-            if (next) container.insertBefore(next, row);
-        };
+// DOWN arrow (rotated ^)
+const downBtn = document.createElement('button');
+downBtn.innerText = '^';
+downBtn.title = 'Move Down';
+downBtn.className = 'hierarchy-arrow down-arrow';
+downBtn.onclick = () => {
+    const next = row.nextElementSibling;
+    if (next) container.insertBefore(next, row);
+};
 
-        arrows.appendChild(upBtn);
-        arrows.appendChild(downBtn);
+arrows.appendChild(upBtn);
+arrows.appendChild(downBtn);
 
         // The draggable item
         const item = document.createElement('div');

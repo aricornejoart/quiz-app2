@@ -1,3 +1,4 @@
+/* ===== General Styles ===== */
 body {
   font-family: Arial, sans-serif;
   margin: 0;
@@ -78,7 +79,7 @@ body {
   font-size: 15px;
 }
 
-/* 🔥 MULTIPLE CHOICE OPTIONS */
+/* ===== Multiple Choice Options ===== */
 .options {
   display: flex;
   flex-direction: column;
@@ -99,7 +100,7 @@ body {
 
 .optionBtn {
   width: 100%;
-  max-width: 400px; /* optional, keeps buttons from being too wide on large screens */
+  max-width: 400px;
   padding: 15px;
   background: #332b5c;
   border: 1px solid #5a4bcf;
@@ -116,7 +117,7 @@ body {
   transform: scale(1.02);
 }
 
-/* 🔥 HIERARCHY TYPE STYLES */
+/* ===== Hierarchy Type Styles ===== */
 #hierarchyContainer {
   display: flex;
   flex-direction: column;
@@ -140,35 +141,52 @@ body {
   transform: scale(1.02);
 }
 
+/* hierarchy feedback icons */
+.hierarchy-feedback {
+  font-weight: bold;
+  width: 30px;
+  text-align: center;
+}
+
+/* Up/Down arrows as simple white symbols */
+.hierarchy-arrow {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 16px;
+  padding: 0;
+  width: auto;
+  height: auto;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.hierarchy-arrow:hover {
+  color: #7c6cff; /* optional hover highlight */
+}
+
+/* rotate down arrow */
+.down-arrow {
+  transform: rotate(180deg);
+}
+
 /* Hierarchy submit button */
-/* Ensure hierarchy arrows show on mobile */
-#hierarchyContainer button {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    font-size: 16px;
-    background: #3a3360;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    flex-shrink: 0; /* prevent shrinking */
+#hierarchyContainer button:not(.hierarchy-arrow) {
+  width: 120px;
+  align-self: start;
+  padding: 8px 15px;
+  background: #3a3360;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
-#hierarchyContainer button:hover {
-    background: #5a4bcf;
+#hierarchyContainer button:not(.hierarchy-arrow):hover {
+  background: #5a4bcf;
 }
 
-/* Optional: increase tap area for touch */
-@media (max-width: 768px) {
-    #hierarchyContainer button {
-        width: 34px;
-        height: 34px;
-        font-size: 18px;
-    }
-}
-
-/* Image */
+/* ===== Image ===== */
 .image-container {
   flex: 1;
 }
@@ -179,7 +197,7 @@ body {
   border-radius: 5px;
 }
 
-/* Feedback */
+/* ===== Feedback ===== */
 #feedback {
   font-size: 18px;
   font-weight: bold;
