@@ -178,32 +178,60 @@ function checkAnswer(selectedText, explanations){
     }
 }
 
-// 🔥 NEW HIERARCHY UI
-function showHierarchyQuestion(q){
-    const container=document.createElement('div');
-    container.id='hierarchyContainer';
+// 🔥 UPDATED HIERARCHY UI WITH UP/DOWN BUTTONS
+function showHierarchyQuestion(q) {
+    const container = document.createElement('div');
+    container.id = 'hierarchyContainer';
 
-    let options=[...q.options];
-    if(document.getElementById('shuffleAnswers').checked) shuffleArray(options);
+    let options = [...q.options];
+    if (document.getElementById('shuffleAnswers').checked) shuffleArray(options);
 
-    options.forEach(opt=>{
-        const row=document.createElement('div');
-        row.style.display='flex';
-        row.style.alignItems='center';
-        row.style.gap='10px';
+    options.forEach(opt => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '10px';
 
-        const item=document.createElement('div');
-        item.className='hierarchy-item';
-        item.draggable=true;
-        item.innerText=opt;
-        item.style.flex='1';
+        // Up/Down buttons container
+        const arrows = document.createElement('div');
+        arrows.style.display = 'flex';
+        arrows.style.flexDirection = 'column';
+        arrows.style.gap = '4px';
 
-        const feedback=document.createElement('div');
-        feedback.className='hierarchy-feedback';
-        feedback.style.width='30px';
-        feedback.style.textAlign='center';
-        feedback.style.fontWeight='bold';
+        const upBtn = document.createElement('button');
+        upBtn.innerText = '⬆';
+        upBtn.title = 'Move Up';
+        upBtn.onclick = () => {
+            const prev = row.previousElementSibling;
+            if (prev) container.insertBefore(row, prev);
+        };
 
+        const downBtn = document.createElement('button');
+        downBtn.innerText = '⬇';
+        downBtn.title = 'Move Down';
+        downBtn.onclick = () => {
+            const next = row.nextElementSibling;
+            if (next) container.insertBefore(next, row);
+        };
+
+        arrows.appendChild(upBtn);
+        arrows.appendChild(downBtn);
+
+        // The draggable item
+        const item = document.createElement('div');
+        item.className = 'hierarchy-item';
+        item.draggable = true;
+        item.innerText = opt;
+        item.style.flex = '1';
+
+        // Feedback icon
+        const feedback = document.createElement('div');
+        feedback.className = 'hierarchy-feedback';
+        feedback.style.width = '30px';
+        feedback.style.textAlign = 'center';
+        feedback.style.fontWeight = 'bold';
+
+        row.appendChild(arrows);
         row.appendChild(item);
         row.appendChild(feedback);
         container.appendChild(row);
@@ -211,65 +239,66 @@ function showHierarchyQuestion(q){
 
     document.querySelector('.question-container').appendChild(container);
 
-    // drag logic
-    let dragSrc=null;
-    container.querySelectorAll('.hierarchy-item').forEach(item=>{
-        item.addEventListener('dragstart', e=>{dragSrc=item;});
-        item.addEventListener('dragover', e=>e.preventDefault());
-        item.addEventListener('drop', e=>{
+    // drag logic (existing for desktop)
+    let dragSrc = null;
+    container.querySelectorAll('.hierarchy-item').forEach(item => {
+        item.addEventListener('dragstart', e => { dragSrc = item; });
+        item.addEventListener('dragover', e => e.preventDefault());
+        item.addEventListener('drop', e => {
             e.preventDefault();
-            const rows=[...container.children];
-            const srcRow=dragSrc.parentElement;
-            const targetRow=item.parentElement;
-
-            if(srcRow!==targetRow){
-                const srcIndex=rows.indexOf(srcRow);
-                const tgtIndex=rows.indexOf(targetRow);
-                if(srcIndex<tgtIndex) container.insertBefore(srcRow,targetRow.nextSibling);
-                else container.insertBefore(srcRow,targetRow);
+            if (!dragSrc) return;
+            const rows = [...container.children];
+            const srcRow = dragSrc.parentElement;
+            const targetRow = item.parentElement;
+            if (srcRow !== targetRow) {
+                const srcIndex = rows.indexOf(srcRow);
+                const tgtIndex = rows.indexOf(targetRow);
+                if (srcIndex < tgtIndex) container.insertBefore(srcRow, targetRow.nextSibling);
+                else container.insertBefore(srcRow, targetRow);
             }
+            dragSrc = null;
         });
     });
 
-    const submitBtn=document.createElement('button');
-    submitBtn.innerText='Submit';
+    // Submit button
+    const submitBtn = document.createElement('button');
+    submitBtn.innerText = 'Submit';
+    submitBtn.onclick = () => {
+        const rows = [...container.children].filter(r => r.querySelector('.hierarchy-item'));
+        let isCorrect = true;
 
-    submitBtn.onclick=()=>{
-        const rows=[...container.children].filter(r=>r.querySelector('.hierarchy-item'));
-        let isCorrect=true;
+        rows.forEach((row, idx) => {
+            const item = row.querySelector('.hierarchy-item');
+            const feedback = row.querySelector('.hierarchy-feedback');
 
-        rows.forEach((row,idx)=>{
-            const item=row.querySelector('.hierarchy-item');
-            const feedback=row.querySelector('.hierarchy-feedback');
+            const correctIdx = q.correctOrder[idx] - 1;
 
-            const correctIdx=q.correctOrder[idx]-1;
-
-            if(q.options.indexOf(item.innerText)===correctIdx){
-                feedback.innerText='✔';
-                feedback.style.color='#4caf50';
+            if (q.options.indexOf(item.innerText) === correctIdx) {
+                feedback.innerText = '✔';
+                feedback.style.color = '#4caf50';
             } else {
-                feedback.innerText='✖';
-                feedback.style.color='#ff6b6b';
-                isCorrect=false;
+                feedback.innerText = '✖';
+                feedback.style.color = '#ff6b6b';
+                isCorrect = false;
             }
         });
 
-        const fb=document.getElementById('feedback');
-        fb.classList.remove('correct','incorrect');
+        const fb = document.getElementById('feedback');
+        fb.classList.remove('correct', 'incorrect');
 
-        if(isCorrect){
+        if (isCorrect) {
             completedCount++;
-            fb.innerText='Correct!';
+            fb.innerText = 'Correct!';
             fb.classList.add('correct');
         } else {
-            fb.innerText='Incorrect!';
+            fb.innerText = 'Incorrect!';
             fb.classList.add('incorrect');
         }
 
-        submitBtn.disabled=true;
+        submitBtn.disabled = true;
 
-        if(document.getElementById('speedMode').checked){
-            setTimeout(nextQuestion,600);
+        if (document.getElementById('speedMode').checked) {
+            setTimeout(nextQuestion, 600);
         }
     };
 

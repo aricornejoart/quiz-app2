@@ -141,19 +141,21 @@ body {
 }
 
 /* Hierarchy submit button */
+/* Up/Down arrows next to hierarchy items */
 #hierarchyContainer button {
-  width: 120px;
-  align-self: start;
-  padding: 8px 15px;
-  background: #3a3360;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 16px;
+    background: #3a3360;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
 }
 
 #hierarchyContainer button:hover {
-  background: #5a4bcf;
+    background: #5a4bcf;
 }
 
 /* Image */
