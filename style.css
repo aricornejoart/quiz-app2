@@ -205,6 +205,32 @@ body {
   border-radius: 5px;
 }
 
+/* Normal image styling already exists */
+#questionImage {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 5px;
+  cursor: pointer; /* indicate clickable */
+  transition: all 0.3s ease;
+  z-index: 1;
+}
+
+/* Zoomed state */
+#questionImage.zoomed {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  max-width: 90%;
+  max-height: 90%;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  background: rgba(0,0,0,0.8);
+  border-radius: 5px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.8);
+}
+
 /* ===== Feedback ===== */
 #feedback {
   font-size: 18px;

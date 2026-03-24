@@ -6,7 +6,7 @@ let completedCount = 0;
 
 const quizSelector = document.getElementById('quizSelector');
 
-// Load quiz list
+// ------------------- Load Quiz List -------------------
 async function loadQuizList() {
     const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=Config`);
     const text = await response.text();
@@ -34,7 +34,7 @@ async function populateQuizDropdown() {
     return quizSheets;
 }
 
-// Load Multiple Choice
+// ------------------- Load Questions -------------------
 async function loadMultipleChoiceQuestions(sheetName) {
     const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
     const text = await response.text();
@@ -54,7 +54,6 @@ async function loadMultipleChoiceQuestions(sheetName) {
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
 
-// Load Hierarchy
 async function loadHierarchyQuestions(sheetName) {
     const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
     const text = await response.text();
@@ -79,7 +78,6 @@ async function loadHierarchyQuestions(sheetName) {
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
 
-// Unified loader
 async function loadQuestions(sheetName) {
     const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
     const text = await response.text();
@@ -91,7 +89,7 @@ async function loadQuestions(sheetName) {
     return loadMultipleChoiceQuestions(sheetName);
 }
 
-// Shuffle
+// ------------------- Utility -------------------
 function shuffleArray(array) {
     for (let i = array.length -1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i+1));
@@ -99,7 +97,7 @@ function shuffleArray(array) {
     }
 }
 
-// Show question
+// ------------------- Show Questions -------------------
 function showQuestion() {
     if(currentIndex >= questions.length){
         document.getElementById('feedback').innerText="Quiz Finished!";
@@ -155,7 +153,7 @@ function showQuestion() {
     updateProgress();
 }
 
-// Multiple choice
+// ------------------- Multiple Choice -------------------
 function checkAnswer(selectedText){
     const q=questions[currentIndex];
     const isCorrect=selectedText===q.correct;
@@ -173,11 +171,11 @@ function checkAnswer(selectedText){
     }
 
     if(document.getElementById('speedMode').checked){
-        setTimeout(nextQuestion, 350);
+        setTimeout(nextQuestion, 600);
     }
 }
 
-// 🔥 Hierarchy UI (drag + arrows + submit + feedback)
+// ------------------- Hierarchy -------------------
 function showHierarchyQuestion(q){
     const container=document.createElement('div');
     container.id='hierarchyContainer';
@@ -209,6 +207,7 @@ function showHierarchyQuestion(q){
         const downBtn=document.createElement('button');
         downBtn.innerText='^';
         downBtn.className='hierarchy-arrow down-arrow';
+        downBtn.style.transform = "rotate(180deg)";
         downBtn.onclick=()=> {
             const next=row.nextElementSibling;
             if(next) container.insertBefore(next,row);
@@ -279,7 +278,6 @@ function showHierarchyQuestion(q){
     };
 
     container.appendChild(submitBtn);
-
     document.querySelector('.question-container').appendChild(container);
 
     // Drag logic
@@ -307,7 +305,7 @@ function showHierarchyQuestion(q){
     });
 }
 
-// Navigation
+// ------------------- Navigation -------------------
 function nextQuestion(){
     document.getElementById('feedback').innerText='';
     currentIndex++;
@@ -319,19 +317,17 @@ function prevQuestion(){
     showQuestion();
 }
 
-function restartQuiz() {
+function restartQuiz(){
     currentIndex = 0;
     completedCount = 0;
 
-    // Shuffle questions if enabled
     if (document.getElementById('shuffleQuestions').checked) shuffleArray(questions);
 
-    // Clear global feedback
+    // Clear feedback
     const fb = document.getElementById('feedback');
     fb.innerText = '';
-    fb.classList.remove('correct', 'incorrect');
+    fb.classList.remove('correct','incorrect');
 
-    // Clear hierarchy item feedbacks
     const hierarchyContainer = document.getElementById('hierarchyContainer');
     if (hierarchyContainer) {
         hierarchyContainer.querySelectorAll('.hierarchy-feedback').forEach(f => f.innerText = '');
@@ -342,7 +338,7 @@ function restartQuiz() {
     showQuestion();
 }
 
-// Progress
+// ------------------- Progress -------------------
 function updateProgress(){
     const progressText=document.getElementById('progressText');
     const progressFill=document.getElementById('progressFill');
@@ -353,7 +349,7 @@ function updateProgress(){
     progressFill.style.width=`${percent}%`;
 }
 
-// Events
+// ------------------- Events -------------------
 document.getElementById('nextBtn').onclick=nextQuestion;
 document.getElementById('prevBtn').onclick=prevQuestion;
 document.getElementById('restartBtn').onclick=restartQuiz;
@@ -365,7 +361,7 @@ quizSelector.addEventListener('change', async e=>{
     showQuestion();
 });
 
-// Init
+// ------------------- Init -------------------
 (async function(){
     const quizSheets=await populateQuizDropdown();
     quizSelector.value=quizSheets[0].sheet;
@@ -373,3 +369,9 @@ quizSelector.addEventListener('change', async e=>{
     if(document.getElementById('shuffleQuestions').checked) shuffleArray(questions);
     showQuestion();
 })();
+
+// ------------------- Click-to-Zoom for Images -------------------
+const questionImage = document.getElementById('questionImage');
+questionImage.addEventListener('click', () => {
+    questionImage.classList.toggle('zoomed');
+});
