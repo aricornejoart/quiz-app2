@@ -287,7 +287,13 @@ function prevQuestion(){ if(currentIndex>0) currentIndex--; showQuestion(); }
 function restartQuiz(){ currentIndex=0; completedCount=0; showQuestion(); }
 
 function updateProgress(){
-    document.getElementById('progressText').innerText=`${questions.length-currentIndex} left`;
+    const progressText = document.getElementById('progressText');
+    const progressFill = document.getElementById('progressFill');
+
+    const progressPercent = ((currentIndex) / questions.length) * 100;
+
+    progressText.innerText = `${questions.length - currentIndex} left`;
+    progressFill.style.width = `${progressPercent}%`;
 }
 
 // Events
