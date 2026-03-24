@@ -173,7 +173,7 @@ function checkAnswer(selectedText){
     }
 
     if(document.getElementById('speedMode').checked){
-        setTimeout(nextQuestion, 600);
+        setTimeout(nextQuestion, 350);
     }
 }
 
