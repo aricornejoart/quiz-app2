@@ -2,18 +2,23 @@
 const sheetId = '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E';
 
 // ================= SETTINGS =================
-let SPEED_DELAY = 300;
+let SPEED_DELAY = 500;
 
 // ================= GLOBAL STATE =================
 let questions = [];
 let questionQueue = [];
 let currentIndex = 0;
+let questionIdCounter = 0;
+
+// penalty mode state
 let pendingPenaltyJump = false;
 let pendingPenaltyCorrect = false;
 let penaltyAnswerLocked = false;
 let penaltyFinished = false;
 let penaltySolvedIds = new Set();
-let questionIdCounter = 0;
+
+// normal mode state
+let normalFinished = false;
 
 const quizSelector = document.getElementById('quizSelector');
 
@@ -28,6 +33,10 @@ function isRetryMode() {
 
 function isSpeedMode() {
     return document.getElementById('speedMode').checked;
+}
+
+function isNormalMode() {
+    return !isPenaltyMode() && !isRetryMode();
 }
 
 // ================= LOAD QUIZ LIST =================
@@ -146,11 +155,11 @@ function updateProgress() {
     let remaining = 0;
 
     if (isPenaltyMode()) {
-        remaining = questionQueue.length - currentIndex;
+        remaining = penaltyFinished ? 0 : (questionQueue.length - currentIndex);
     } else if (isRetryMode()) {
         remaining = questionQueue.length;
     } else {
-        remaining = total - currentIndex;
+        remaining = normalFinished ? 0 : (questionQueue.length - currentIndex);
     }
 
     if (remaining < 0) remaining = 0;
@@ -165,10 +174,9 @@ function updateProgress() {
 
 // ================= FINISH CHECK =================
 function isQuizFinished() {
-    if (isPenaltyMode()) {
-        return penaltyFinished;
-    }
-    return questionQueue.length === 0;
+    if (isPenaltyMode()) return penaltyFinished;
+    if (isRetryMode()) return questionQueue.length === 0;
+    return normalFinished;
 }
 
 // ================= SHOW QUESTION =================
@@ -269,13 +277,15 @@ function handleWrongAnswer() {
         if (insertIndex > questionQueue.length) {
             insertIndex = questionQueue.length;
         }
+
         questionQueue.splice(insertIndex, 0, wrongQuestion);
 
+        // so clicking Next lands on the first question in between
         currentIndex = Math.max(-1, currentIndex - 1);
         return;
     }
 
-    // normal mode: wrong question stays visible until user moves on
+    // normal mode: do not remove or move the question on answer click
 }
 
 // ================= CORRECT ANSWER LOGIC =================
@@ -290,17 +300,21 @@ function handleCorrectAnswer() {
         return;
     }
 
-    questionQueue.splice(currentIndex, 1);
+    if (isRetryMode()) {
+        questionQueue.splice(currentIndex, 1);
 
-    if (currentIndex >= questionQueue.length && questionQueue.length > 0) {
-        currentIndex = questionQueue.length - 1;
+        if (currentIndex >= questionQueue.length && questionQueue.length > 0) {
+            currentIndex = questionQueue.length - 1;
+        }
+
+        if (questionQueue.length === 0) {
+            currentIndex = 0;
+        }
+
+        return;
     }
 
-    if (questionQueue.length === 0) {
-        currentIndex = 0;
-    }
-
-    pendingPenaltyJump = false;
+    // normal mode: do not remove on answer click
 }
 
 // ================= ANSWER =================
@@ -325,7 +339,8 @@ function checkAnswer(selected, explanations) {
         handleWrongAnswer();
     }
 
-    if (!isPenaltyMode()) {
+    // retry mode updates immediately because queue actually changes there
+    if (isRetryMode()) {
         updateProgress();
     }
 
@@ -427,7 +442,7 @@ function showHierarchy(q) {
             handleWrongAnswer();
         }
 
-        if (!isPenaltyMode()) {
+        if (isRetryMode()) {
             updateProgress();
         }
 
@@ -474,6 +489,8 @@ function nextQuestion() {
 
         if (currentIndex < questionQueue.length - 1) {
             currentIndex++;
+        } else if (penaltySolvedIds.size === questionQueue.length) {
+            penaltyFinished = true;
         }
 
         penaltyAnswerLocked = false;
@@ -481,8 +498,25 @@ function nextQuestion() {
         return;
     }
 
+    if (isRetryMode()) {
+        if (questionQueue.length === 0) {
+            showQuestion();
+            return;
+        }
+
+        if (currentIndex < questionQueue.length - 1) {
+            currentIndex++;
+        }
+
+        showQuestion();
+        return;
+    }
+
+    // normal mode
     if (currentIndex < questionQueue.length - 1) {
         currentIndex++;
+    } else {
+        normalFinished = true;
     }
 
     showQuestion();
@@ -496,6 +530,37 @@ function prevQuestion() {
         pendingPenaltyJump = false;
         pendingPenaltyCorrect = false;
         penaltyAnswerLocked = false;
+
+        if (penaltyFinished) {
+            penaltyFinished = false;
+            currentIndex = Math.max(0, questionQueue.length - 1);
+            showQuestion();
+            return;
+        }
+
+        if (currentIndex > 0) {
+            currentIndex--;
+        }
+
+        showQuestion();
+        return;
+    }
+
+    if (isRetryMode()) {
+        if (currentIndex > 0) {
+            currentIndex--;
+        }
+
+        showQuestion();
+        return;
+    }
+
+    // normal mode
+    if (normalFinished) {
+        normalFinished = false;
+        currentIndex = Math.max(0, questionQueue.length - 1);
+        showQuestion();
+        return;
     }
 
     if (currentIndex > 0) {
@@ -505,14 +570,22 @@ function prevQuestion() {
     showQuestion();
 }
 
-// ================= RESTART =================
-function restartQuiz() {
+// ================= RESET STATE =================
+function resetModeState() {
     currentIndex = 0;
+
     pendingPenaltyJump = false;
     pendingPenaltyCorrect = false;
     penaltyAnswerLocked = false;
     penaltyFinished = false;
     penaltySolvedIds = new Set();
+
+    normalFinished = false;
+}
+
+// ================= RESTART =================
+function restartQuiz() {
+    resetModeState();
     questionQueue = [...questions];
 
     if (document.getElementById('shuffleQuestions').checked) {
@@ -544,19 +617,13 @@ document.getElementById('retryWrong').onchange = e => {
 // ================= QUIZ CHANGE =================
 quizSelector.addEventListener('change', async e => {
     questions = await loadQuestions(e.target.value);
+    questionQueue = [...questions];
 
     if (document.getElementById('shuffleQuestions').checked) {
-        shuffleArray(questions);
+        shuffleArray(questionQueue);
     }
 
-    questionQueue = [...questions];
-    currentIndex = 0;
-    pendingPenaltyJump = false;
-    pendingPenaltyCorrect = false;
-    penaltyAnswerLocked = false;
-    penaltyFinished = false;
-    penaltySolvedIds = new Set();
-
+    resetModeState();
     showQuestion();
 });
 
@@ -567,13 +634,12 @@ quizSelector.addEventListener('change', async e => {
 
     questions = await loadQuestions(list[0].sheet);
     questionQueue = [...questions];
-    currentIndex = 0;
-    pendingPenaltyJump = false;
-    pendingPenaltyCorrect = false;
-    penaltyAnswerLocked = false;
-    penaltyFinished = false;
-    penaltySolvedIds = new Set();
 
+    if (document.getElementById('shuffleQuestions').checked) {
+        shuffleArray(questionQueue);
+    }
+
+    resetModeState();
     showQuestion();
 })();
 
