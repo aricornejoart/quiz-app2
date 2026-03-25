@@ -3,7 +3,7 @@ body {
   font-family: Arial, sans-serif;
   margin: 0;
   padding: 20px;
-  background: #1e1b2e; /* your original dark purple */
+  background: #1e1b2e;
   transform: scale(1.5);
   transform-origin: top left;
   width: 66.67%;
@@ -13,7 +13,7 @@ body {
 .container {
   max-width: 900px;
   margin: auto;
-  background: #2a2540; /* container purple */
+  background: #2a2540;
   padding: 20px;
   border-radius: 10px;
   box-shadow: 0 0 15px rgba(0,0,0,0.6);
@@ -27,9 +27,18 @@ body {
   align-items: center;
 }
 
+#quizSelector {
+  padding: 6px 10px;
+  background: #3a3360;
+  color: #ffffff;
+  border: 1px solid #5a4bcf;
+  border-radius: 5px;
+}
+
 #toggles label {
   margin-right: 10px;
   color: #cfcfff;
+  font-size: 13px;
 }
 
 .nav-buttons button {
@@ -51,6 +60,11 @@ body {
   max-width: 200px;
 }
 
+#progressText {
+  font-size: 13px;
+  color: #e0e0ff;
+}
+
 #progressBar {
   width: 100%;
   background: #444;
@@ -64,6 +78,7 @@ body {
   height: 100%;
   width: 0%;
   background: #7c6cff;
+  transition: width 0.2s ease;
 }
 
 .quiz-area {
@@ -77,6 +92,7 @@ body {
 
 #questionText {
   font-size: 15px;
+  line-height: 1.4;
 }
 
 /* ===== Multiple Choice Options ===== */
@@ -96,6 +112,7 @@ body {
 .explanation {
   font-size: 12px;
   color: #d0d0ff;
+  min-height: 14px;
 }
 
 .optionBtn {
@@ -141,14 +158,12 @@ body {
   transform: scale(1.02);
 }
 
-/* hierarchy feedback icons */
 .hierarchy-feedback {
   font-weight: bold;
   width: 30px;
   text-align: center;
 }
 
-/* Up/Down arrows as simple white symbols */
 .hierarchy-arrow {
   background: transparent;
   border: none;
@@ -162,18 +177,25 @@ body {
 }
 
 .hierarchy-arrow:hover {
-  color: #7c6cff; /* optional hover highlight */
+  color: #7c6cff;
 }
 
-/* rotate down arrow */
 .down-arrow {
   transform: rotate(180deg);
 }
 
-/* Hierarchy submit button */
-#hierarchyContainer button:not(.hierarchy-arrow) {
+#hierarchyContainer .hierarchy-item {
+  touch-action: none;
+}
+
+#hierarchyContainer .hierarchy-arrow {
+  pointer-events: auto;
+}
+
+#hierarchySubmit {
   width: 120px;
   align-self: start;
+  margin-top: 12px;
   padding: 8px 15px;
   background: #3a3360;
   color: white;
@@ -181,16 +203,8 @@ body {
   border-radius: 5px;
   cursor: pointer;
 }
-/* Allow dragging even if the arrows are present */
-#hierarchyContainer .hierarchy-item {
-    touch-action: none; /* prevent touch interference on mobile */
-}
 
-/* Optional: ignore pointer events for the arrows themselves for drag purposes */
-#hierarchyContainer .hierarchy-arrow {
-    pointer-events: auto; /* keep buttons clickable */
-}
-#hierarchyContainer button:not(.hierarchy-arrow):hover {
+#hierarchySubmit:hover {
   background: #5a4bcf;
 }
 
@@ -205,17 +219,15 @@ body {
   border-radius: 5px;
 }
 
-/* Normal image styling already exists */
 #questionImage {
   max-width: 100%;
   max-height: 400px;
   border-radius: 5px;
-  cursor: pointer; /* indicate clickable */
+  cursor: pointer;
   transition: all 0.3s ease;
   z-index: 1;
 }
 
-/* Zoomed state */
 #questionImage.zoomed {
   position: fixed;
   top: 50%;
@@ -236,7 +248,7 @@ body {
   font-size: 18px;
   font-weight: bold;
   margin-bottom: 10px;
-  height: 24px;
+  min-height: 24px;
 }
 
 .correct {

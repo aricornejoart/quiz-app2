@@ -1,52 +1,94 @@
+// ================= CONFIG =================
 const sheetId = '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E';
 
+// ================= SETTINGS =================
+let SPEED_DELAY = 300;
+
+// ================= GLOBAL STATE =================
 let questions = [];
+let questionQueue = [];
 let currentIndex = 0;
-let completedCount = 0;
+let pendingPenaltyJump = false;
+let pendingPenaltyCorrect = false;
+let penaltyAnswerLocked = false;
+let penaltyFinished = false;
+let penaltySolvedIds = new Set();
+let questionIdCounter = 0;
 
 const quizSelector = document.getElementById('quizSelector');
 
-// ------------------- Load Quiz List -------------------
-async function loadQuizList() {
-    const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=Config`);
-    const text = await response.text();
-    const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
-    const rows = json.table.rows;
+// ================= MODE HELPERS =================
+function isPenaltyMode() {
+    return document.getElementById('penaltyMode').checked;
+}
 
-    return rows.slice(1).map(r => ({
+function isRetryMode() {
+    return document.getElementById('retryWrong').checked;
+}
+
+function isSpeedMode() {
+    return document.getElementById('speedMode').checked;
+}
+
+// ================= LOAD QUIZ LIST =================
+async function loadQuizList() {
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=Config`);
+    const text = await res.text();
+    const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
+
+    return json.table.rows.slice(1).map(r => ({
         sheet: r.c[0]?.v || '',
         name: r.c[1]?.v || ''
     })).filter(q => q.sheet && q.name);
 }
 
-// Populate dropdown
+// ================= DROPDOWN =================
 async function populateQuizDropdown() {
-    const quizSheets = await loadQuizList();
+    const list = await loadQuizList();
     quizSelector.innerHTML = '';
 
-    quizSheets.forEach(sheetObj => {
-        const option = document.createElement('option');
-        option.value = sheetObj.sheet;
-        option.innerText = sheetObj.name;
-        quizSelector.appendChild(option);
+    list.forEach(q => {
+        const opt = document.createElement('option');
+        opt.value = q.sheet;
+        opt.innerText = q.name;
+        quizSelector.appendChild(opt);
     });
 
-    return quizSheets;
+    return list;
 }
 
-// ------------------- Load Questions -------------------
-async function loadMultipleChoiceQuestions(sheetName) {
-    const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
-    const text = await response.text();
+// ================= LOAD QUESTIONS =================
+async function loadQuestions(sheetName) {
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
+    const text = await res.text();
     const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
     const rows = json.table.rows;
+
+    const type = rows[0].c[1]?.v?.toString().toLowerCase() || '';
+
+    if (type === 'hierarchy') {
+        return rows.map(r => {
+            const c = r.c || [];
+            return {
+                id: `q_${questionIdCounter++}`,
+                question: c[0]?.v || '',
+                type: 'hierarchy',
+                options: [c[2]?.v, c[3]?.v, c[4]?.v, c[5]?.v, c[6]?.v, c[7]?.v, c[8]?.v, c[9]?.v, c[10]?.v, c[11]?.v].filter(Boolean),
+                correctOrder: [c[12]?.v, c[13]?.v, c[14]?.v, c[15]?.v, c[16]?.v, c[17]?.v, c[18]?.v, c[19]?.v, c[20]?.v, c[21]?.v]
+                    .map(n => n ? Number(n) : null)
+                    .filter(n => n !== null),
+                image: c[22]?.v || ''
+            };
+        }).filter(q => q.question && q.question.toLowerCase() !== 'question');
+    }
 
     return rows.map(r => {
         const c = r.c || [];
         return {
+            id: `q_${questionIdCounter++}`,
             question: c[0]?.v || '',
             type: 'multiple choice',
-            options: [c[2]?.v, c[3]?.v, c[4]?.v, c[5]?.v].filter(opt => opt),
+            options: [c[2]?.v, c[3]?.v, c[4]?.v, c[5]?.v].filter(Boolean),
             correct: c[6]?.v || '',
             explanations: [c[7]?.v, c[8]?.v, c[9]?.v, c[10]?.v],
             image: c[11]?.v || ''
@@ -54,324 +96,488 @@ async function loadMultipleChoiceQuestions(sheetName) {
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
 
-async function loadHierarchyQuestions(sheetName) {
-    const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
-    const text = await response.text();
-    const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
-    const rows = json.table.rows;
-
-    return rows.map(r => {
-        const c = r.c || [];
-        return {
-            question: c[0]?.v || '',
-            type: 'hierarchy',
-            options: [
-                c[2]?.v, c[3]?.v, c[4]?.v, c[5]?.v, c[6]?.v,
-                c[7]?.v, c[8]?.v, c[9]?.v, c[10]?.v, c[11]?.v
-            ].filter(opt => opt),
-            correctOrder: [
-                c[12]?.v, c[13]?.v, c[14]?.v, c[15]?.v, c[16]?.v,
-                c[17]?.v, c[18]?.v, c[19]?.v, c[20]?.v, c[21]?.v
-            ].map(n => n ? Number(n) : null).filter(n => n !== null),
-            image: c[22]?.v || ''
-        };
-    }).filter(q => q.question && q.question.toLowerCase() !== 'question');
-}
-
-async function loadQuestions(sheetName) {
-    const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
-    const text = await response.text();
-    const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
-    const rows = json.table.rows;
-
-    const firstTypeCell = rows[0].c[1]?.v?.toString().trim().toLowerCase() || '';
-    if(firstTypeCell === 'hierarchy') return loadHierarchyQuestions(sheetName);
-    return loadMultipleChoiceQuestions(sheetName);
-}
-
-// ------------------- Utility -------------------
-function shuffleArray(array) {
-    for (let i = array.length -1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i+1));
-        [array[i], array[j]] = [array[j], array[i]];
+// ================= SHUFFLE =================
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
     }
 }
 
-// ------------------- Show Questions -------------------
+// ================= UI RESET HELPERS =================
+function clearFeedback() {
+    const fb = document.getElementById('feedback');
+    fb.innerText = '';
+    fb.classList.remove('correct', 'incorrect');
+}
+
+function clearExplanations() {
+    for (let i = 1; i <= 4; i++) {
+        const exp = document.getElementById(`explanation${i}`);
+        if (exp) exp.innerText = '';
+    }
+}
+
+function removeHierarchyUI() {
+    const oldHierarchy = document.getElementById('hierarchyContainer');
+    if (oldHierarchy) oldHierarchy.remove();
+
+    const oldSubmit = document.getElementById('hierarchySubmit');
+    if (oldSubmit) oldSubmit.remove();
+}
+
+function clearQuestionUI() {
+    clearFeedback();
+    clearExplanations();
+    removeHierarchyUI();
+}
+
+// ================= FEEDBACK HELPER =================
+function setFeedback(text, isCorrect) {
+    const fb = document.getElementById('feedback');
+    fb.innerText = text;
+    fb.classList.remove('correct', 'incorrect');
+    fb.classList.add(isCorrect ? 'correct' : 'incorrect');
+}
+
+// ================= PROGRESS =================
+function updateProgress() {
+    const total = questions.length;
+    let remaining = 0;
+
+    if (isPenaltyMode()) {
+        remaining = questionQueue.length - currentIndex;
+    } else if (isRetryMode()) {
+        remaining = questionQueue.length;
+    } else {
+        remaining = total - currentIndex;
+    }
+
+    if (remaining < 0) remaining = 0;
+    if (remaining > total) remaining = total;
+
+    const completed = total - remaining;
+    const percent = total > 0 ? (completed / total) * 100 : 0;
+
+    document.getElementById('progressText').innerText = `${remaining} remaining`;
+    document.getElementById('progressFill').style.width = `${percent}%`;
+}
+
+// ================= FINISH CHECK =================
+function isQuizFinished() {
+    if (isPenaltyMode()) {
+        return penaltyFinished;
+    }
+    return questionQueue.length === 0;
+}
+
+// ================= SHOW QUESTION =================
 function showQuestion() {
-    if(currentIndex >= questions.length){
-        document.getElementById('feedback').innerText="Quiz Finished!";
+    clearQuestionUI();
+
+    if (isPenaltyMode()) {
+        penaltyAnswerLocked = false;
+    }
+
+    if (isQuizFinished()) {
+        document.getElementById('questionText').innerText = 'Quiz Finished!';
+        document.querySelector('.options').style.display = 'none';
+
+        const img = document.getElementById('questionImage');
+        img.style.display = 'none';
+        img.src = '';
+
+        updateProgress();
         return;
     }
 
-    const q = questions[currentIndex];
-    document.getElementById('questionText').innerText=q.question;
+    if (currentIndex < 0) currentIndex = 0;
+    if (currentIndex >= questionQueue.length) currentIndex = questionQueue.length - 1;
 
-    const img=document.getElementById('questionImage');
-    img.style.display=q.image?'block':'none';
-    img.src=q.image||'';
+    const q = questionQueue[currentIndex];
+    document.getElementById('questionText').innerText = q.question;
 
-    const mcContainer=document.querySelector('.options');
-    const oldHierarchy=document.getElementById('hierarchyContainer');
+    const img = document.getElementById('questionImage');
+    img.style.display = q.image ? 'block' : 'none';
+    img.src = q.image || '';
 
-    mcContainer.style.display='none';
-    if(oldHierarchy) oldHierarchy.remove();
+    document.querySelector('.options').style.display = 'none';
 
-    if(q.type==='multiple choice'){
-        mcContainer.style.display='flex';
-
-        let options=[...q.options];
-        let explanations=[...q.explanations];
-
-        if(document.getElementById('shuffleAnswers').checked && options.length>1){
-            const combined=options.map((opt,idx)=>({opt,exp:explanations[idx]}));
-            shuffleArray(combined);
-            options=combined.map(c=>c.opt);
-            explanations=combined.map(c=>c.exp);
-        }
-
-        for(let i=0;i<4;i++){
-            const btn=document.getElementById(`option${i+1}`);
-            const expDiv=document.getElementById(`explanation${i+1}`);
-
-            if(options[i]){
-                btn.style.display='block';
-                btn.innerText=options[i];
-                btn.style.background="";
-                expDiv.innerText='';
-                btn.onclick=()=>checkAnswer(options[i]);
-            } else {
-                btn.style.display='none';
-                expDiv.innerText='';
-            }
-        }
-
+    if (q.type === 'multiple choice') {
+        showMC(q);
     } else {
-        showHierarchyQuestion(q);
+        showHierarchy(q);
     }
 
     updateProgress();
 }
 
-// ------------------- Multiple Choice -------------------
-function checkAnswer(selectedText){
-    const q=questions[currentIndex];
-    const isCorrect=selectedText===q.correct;
+// ================= MULTIPLE CHOICE =================
+function showMC(q) {
+    const container = document.querySelector('.options');
+    container.style.display = 'flex';
 
-    const feedback=document.getElementById('feedback');
-    feedback.classList.remove('correct','incorrect');
+    let options = [...q.options];
+    let explanations = [...(q.explanations || [])];
 
-    if(isCorrect){
-        completedCount++;
-        feedback.innerText="Correct!";
-        feedback.classList.add('correct');
-    } else {
-        feedback.innerText="Incorrect!";
-        feedback.classList.add('incorrect');
+    if (document.getElementById('shuffleAnswers').checked) {
+        const combo = options.map((o, i) => ({
+            o,
+            e: explanations[i]
+        }));
+        shuffleArray(combo);
+        options = combo.map(x => x.o);
+        explanations = combo.map(x => x.e);
     }
 
-    if(document.getElementById('speedMode').checked){
-        setTimeout(nextQuestion, 600);
+    for (let i = 0; i < 4; i++) {
+        const btn = document.getElementById(`option${i + 1}`);
+        const exp = document.getElementById(`explanation${i + 1}`);
+
+        if (options[i]) {
+            btn.style.display = 'block';
+            btn.innerText = options[i];
+            btn.onclick = () => checkAnswer(options[i], explanations);
+            exp.innerText = '';
+        } else {
+            btn.style.display = 'none';
+            btn.innerText = '';
+            btn.onclick = null;
+            exp.innerText = '';
+        }
     }
 }
 
-// ------------------- Hierarchy -------------------
-function showHierarchyQuestion(q){
-    const container=document.createElement('div');
-    container.id='hierarchyContainer';
+// ================= WRONG ANSWER LOGIC =================
+function handleWrongAnswer() {
+    const q = questionQueue[currentIndex];
 
-    let options=[...q.options];
-    if(document.getElementById('shuffleAnswers').checked) shuffleArray(options);
+    if (isPenaltyMode()) {
+        penaltySolvedIds.delete(q.id);
+        pendingPenaltyJump = true;
+        pendingPenaltyCorrect = false;
+        penaltyAnswerLocked = true;
+        return;
+    }
 
-    options.forEach(opt=>{
-        const row=document.createElement('div');
-        row.style.display='flex';
-        row.style.alignItems='center';
-        row.style.gap='10px';
+    if (isRetryMode()) {
+        const wrongQuestion = q;
 
-        // Arrow buttons
-        const arrows=document.createElement('div');
-        arrows.style.display='flex';
-        arrows.style.flexDirection='column';
-        arrows.style.gap='2px';
-        arrows.style.minWidth='20px';
+        questionQueue.splice(currentIndex, 1);
 
-        const upBtn=document.createElement('button');
-        upBtn.innerText='^';
-        upBtn.className='hierarchy-arrow';
-        upBtn.onclick=()=> {
-            const prev=row.previousElementSibling;
-            if(prev) container.insertBefore(row,prev);
+        let insertIndex = currentIndex + 3;
+        if (insertIndex > questionQueue.length) {
+            insertIndex = questionQueue.length;
+        }
+        questionQueue.splice(insertIndex, 0, wrongQuestion);
+
+        currentIndex = Math.max(-1, currentIndex - 1);
+        return;
+    }
+
+    // normal mode: wrong question stays visible until user moves on
+}
+
+// ================= CORRECT ANSWER LOGIC =================
+function handleCorrectAnswer() {
+    const q = questionQueue[currentIndex];
+
+    if (isPenaltyMode()) {
+        penaltySolvedIds.add(q.id);
+        pendingPenaltyCorrect = true;
+        pendingPenaltyJump = false;
+        penaltyAnswerLocked = true;
+        return;
+    }
+
+    questionQueue.splice(currentIndex, 1);
+
+    if (currentIndex >= questionQueue.length && questionQueue.length > 0) {
+        currentIndex = questionQueue.length - 1;
+    }
+
+    if (questionQueue.length === 0) {
+        currentIndex = 0;
+    }
+
+    pendingPenaltyJump = false;
+}
+
+// ================= ANSWER =================
+function checkAnswer(selected, explanations) {
+    if (isQuizFinished()) return;
+    if (isPenaltyMode() && penaltyAnswerLocked) return;
+
+    const q = questionQueue[currentIndex];
+    const isCorrect = selected === q.correct;
+
+    document.querySelectorAll('.optionBtn').forEach((btn, i) => {
+        if (explanations[i]) {
+            document.getElementById(`explanation${i + 1}`).innerText = explanations[i];
+        }
+    });
+
+    if (isCorrect) {
+        setFeedback('Correct!', true);
+        handleCorrectAnswer();
+    } else {
+        setFeedback('Incorrect!', false);
+        handleWrongAnswer();
+    }
+
+    if (!isPenaltyMode()) {
+        updateProgress();
+    }
+
+    if (isSpeedMode()) {
+        setTimeout(nextQuestion, SPEED_DELAY);
+    }
+}
+
+// ================= HIERARCHY =================
+function showHierarchy(q) {
+    const container = document.createElement('div');
+    container.id = 'hierarchyContainer';
+
+    let options = [...q.options];
+    if (document.getElementById('shuffleAnswers').checked) {
+        shuffleArray(options);
+    }
+
+    options.forEach(opt => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '10px';
+
+        const arrows = document.createElement('div');
+        arrows.style.display = 'flex';
+        arrows.style.flexDirection = 'column';
+        arrows.style.alignItems = 'center';
+
+        const up = document.createElement('button');
+        up.innerText = '^';
+        up.className = 'hierarchy-arrow';
+        up.onclick = () => {
+            const prev = row.previousElementSibling;
+            if (prev && prev.querySelector('.hierarchy-item')) {
+                container.insertBefore(row, prev);
+            }
         };
 
-        const downBtn=document.createElement('button');
-        downBtn.innerText='^';
-        downBtn.className='hierarchy-arrow down-arrow';
-        downBtn.style.transform = "rotate(180deg)";
-        downBtn.onclick=()=> {
-            const next=row.nextElementSibling;
-            if(next) container.insertBefore(next,row);
+        const down = document.createElement('button');
+        down.innerText = '^';
+        down.className = 'hierarchy-arrow down-arrow';
+        down.onclick = () => {
+            const next = row.nextElementSibling;
+            if (next && next.querySelector('.hierarchy-item')) {
+                container.insertBefore(next, row);
+            }
         };
 
-        arrows.appendChild(upBtn);
-        arrows.appendChild(downBtn);
+        arrows.appendChild(up);
+        arrows.appendChild(down);
 
-        // Draggable item
-        const item=document.createElement('div');
-        item.className='hierarchy-item';
-        item.draggable=true;
-        item.style.touchAction='none';
-        item.innerText=opt;
-        item.style.flex='1';
+        const item = document.createElement('div');
+        item.className = 'hierarchy-item';
+        item.innerText = opt;
+        item.style.flex = '1';
 
-        // Feedback to right
-        const feedback=document.createElement('div');
-        feedback.className='hierarchy-feedback';
-        feedback.style.width='30px';
-        feedback.style.textAlign='center';
-        feedback.style.fontWeight='bold';
+        const fb = document.createElement('div');
+        fb.className = 'hierarchy-feedback';
 
         row.appendChild(arrows);
         row.appendChild(item);
-        row.appendChild(feedback);
+        row.appendChild(fb);
+
         container.appendChild(row);
     });
 
-    // Submit button
-    const submitBtn = document.createElement('button');
-    submitBtn.innerText = 'Submit';
-    submitBtn.onclick = () => {
-        const rows = [...container.children].filter(r => r.querySelector('.hierarchy-item'));
+    document.querySelector('.question-container').appendChild(container);
+
+    const submit = document.createElement('button');
+    submit.id = 'hierarchySubmit';
+    submit.innerText = 'Submit';
+
+    submit.onclick = () => {
+        if (isPenaltyMode() && penaltyAnswerLocked) return;
+
+        const rows = [...container.children];
         let allCorrect = true;
 
-        rows.forEach((row, idx) => {
-            const item = row.querySelector('.hierarchy-item');
-            const feedback = row.querySelector('.hierarchy-feedback');
-            const correctIdx = q.correctOrder[idx]-1;
+        rows.forEach((r, i) => {
+            const text = r.querySelector('.hierarchy-item').innerText;
+            const fb = r.querySelector('.hierarchy-feedback');
 
-            if(q.options.indexOf(item.innerText) === correctIdx){
-                feedback.innerText='✔';
-                feedback.style.color='#4caf50';
+            if (q.options.indexOf(text) === q.correctOrder[i] - 1) {
+                fb.innerText = '✔';
+                fb.style.color = '#4caf50';
             } else {
-                feedback.innerText='✖';
-                feedback.style.color='#ff6b6b';
+                fb.innerText = '✖';
+                fb.style.color = '#ff6b6b';
                 allCorrect = false;
             }
         });
 
-        const fb = document.getElementById('feedback');
-        fb.classList.remove('correct','incorrect');
-        if(allCorrect){
-            completedCount++;
-            fb.innerText='Correct!';
-            fb.classList.add('correct');
+        if (allCorrect) {
+            setFeedback('Correct!', true);
+            handleCorrectAnswer();
         } else {
-            fb.innerText='Incorrect!';
-            fb.classList.add('incorrect');
+            setFeedback('Incorrect!', false);
+            handleWrongAnswer();
         }
 
-        submitBtn.disabled = true;
+        if (!isPenaltyMode()) {
+            updateProgress();
+        }
 
-        if(document.getElementById('speedMode').checked){
-            setTimeout(nextQuestion,600);
+        if (isSpeedMode()) {
+            setTimeout(nextQuestion, SPEED_DELAY);
         }
     };
 
-    container.appendChild(submitBtn);
-    document.querySelector('.question-container').appendChild(container);
+    document.querySelector('.question-container').appendChild(submit);
+}
 
-    // Drag logic
-    let dragSrc = null;
-    container.querySelectorAll('.hierarchy-item').forEach(item => {
-        item.addEventListener('dragstart', e => { dragSrc = item; });
-        item.addEventListener('dragover', e => e.preventDefault());
-        item.addEventListener('drop', e => {
-            e.preventDefault();
-            if (!dragSrc) return;
+// ================= NAV =================
+function nextQuestion() {
+    clearFeedback();
+    clearExplanations();
 
-            const rows = [...container.children].filter(r => r.querySelector('.hierarchy-item'));
-            const srcRow = dragSrc.parentElement;
-            const tgtRow = item.parentElement;
+    if (isQuizFinished()) {
+        showQuestion();
+        return;
+    }
 
-            if(srcRow!==tgtRow){
-                const srcIdx = rows.indexOf(srcRow);
-                const tgtIdx = rows.indexOf(tgtRow);
-                if(srcIdx<tgtIdx) container.insertBefore(srcRow, tgtRow.nextSibling);
-                else container.insertBefore(srcRow, tgtRow);
+    if (isPenaltyMode()) {
+        if (pendingPenaltyJump) {
+            currentIndex = Math.max(0, currentIndex - 3);
+            pendingPenaltyJump = false;
+            pendingPenaltyCorrect = false;
+            penaltyAnswerLocked = false;
+            showQuestion();
+            return;
+        }
+
+        if (pendingPenaltyCorrect) {
+            if (currentIndex < questionQueue.length - 1) {
+                currentIndex++;
+            } else if (penaltySolvedIds.size === questionQueue.length) {
+                penaltyFinished = true;
             }
 
-            dragSrc = null;
-        });
-    });
-}
+            pendingPenaltyCorrect = false;
+            penaltyAnswerLocked = false;
+            showQuestion();
+            return;
+        }
 
-// ------------------- Navigation -------------------
-function nextQuestion(){
-    document.getElementById('feedback').innerText='';
-    currentIndex++;
-    showQuestion();
-}
+        if (currentIndex < questionQueue.length - 1) {
+            currentIndex++;
+        }
 
-function prevQuestion(){
-    if(currentIndex>0) currentIndex--;
-    showQuestion();
-}
+        penaltyAnswerLocked = false;
+        showQuestion();
+        return;
+    }
 
-function restartQuiz(){
-    currentIndex = 0;
-    completedCount = 0;
-
-    if (document.getElementById('shuffleQuestions').checked) shuffleArray(questions);
-
-    // Clear feedback
-    const fb = document.getElementById('feedback');
-    fb.innerText = '';
-    fb.classList.remove('correct','incorrect');
-
-    const hierarchyContainer = document.getElementById('hierarchyContainer');
-    if (hierarchyContainer) {
-        hierarchyContainer.querySelectorAll('.hierarchy-feedback').forEach(f => f.innerText = '');
-        const submitBtn = hierarchyContainer.querySelector('button');
-        if (submitBtn) submitBtn.disabled = false;
+    if (currentIndex < questionQueue.length - 1) {
+        currentIndex++;
     }
 
     showQuestion();
 }
 
-// ------------------- Progress -------------------
-function updateProgress(){
-    const progressText=document.getElementById('progressText');
-    const progressFill=document.getElementById('progressFill');
+function prevQuestion() {
+    clearFeedback();
+    clearExplanations();
 
-    if(!questions.length) return;
-    const percent = (currentIndex/questions.length)*100;
-    progressText.innerText=`${questions.length - currentIndex} left`;
-    progressFill.style.width=`${percent}%`;
+    if (isPenaltyMode()) {
+        pendingPenaltyJump = false;
+        pendingPenaltyCorrect = false;
+        penaltyAnswerLocked = false;
+    }
+
+    if (currentIndex > 0) {
+        currentIndex--;
+    }
+
+    showQuestion();
 }
 
-// ------------------- Events -------------------
-document.getElementById('nextBtn').onclick=nextQuestion;
-document.getElementById('prevBtn').onclick=prevQuestion;
-document.getElementById('restartBtn').onclick=restartQuiz;
+// ================= RESTART =================
+function restartQuiz() {
+    currentIndex = 0;
+    pendingPenaltyJump = false;
+    pendingPenaltyCorrect = false;
+    penaltyAnswerLocked = false;
+    penaltyFinished = false;
+    penaltySolvedIds = new Set();
+    questionQueue = [...questions];
 
-quizSelector.addEventListener('change', async e=>{
-    questions=await loadQuestions(e.target.value);
-    if(document.getElementById('shuffleQuestions').checked) shuffleArray(questions);
-    currentIndex=0;
+    if (document.getElementById('shuffleQuestions').checked) {
+        shuffleArray(questionQueue);
+    }
+
+    showQuestion();
+}
+
+// ================= EVENTS =================
+document.getElementById('nextBtn').onclick = nextQuestion;
+document.getElementById('prevBtn').onclick = prevQuestion;
+document.getElementById('restartBtn').onclick = restartQuiz;
+
+document.getElementById('penaltyMode').onchange = e => {
+    if (e.target.checked) {
+        document.getElementById('retryWrong').checked = false;
+    }
+    restartQuiz();
+};
+
+document.getElementById('retryWrong').onchange = e => {
+    if (e.target.checked) {
+        document.getElementById('penaltyMode').checked = false;
+    }
+    restartQuiz();
+};
+
+// ================= QUIZ CHANGE =================
+quizSelector.addEventListener('change', async e => {
+    questions = await loadQuestions(e.target.value);
+
+    if (document.getElementById('shuffleQuestions').checked) {
+        shuffleArray(questions);
+    }
+
+    questionQueue = [...questions];
+    currentIndex = 0;
+    pendingPenaltyJump = false;
+    pendingPenaltyCorrect = false;
+    penaltyAnswerLocked = false;
+    penaltyFinished = false;
+    penaltySolvedIds = new Set();
+
     showQuestion();
 });
 
-// ------------------- Init -------------------
-(async function(){
-    const quizSheets=await populateQuizDropdown();
-    quizSelector.value=quizSheets[0].sheet;
-    questions=await loadQuestions(quizSelector.value);
-    if(document.getElementById('shuffleQuestions').checked) shuffleArray(questions);
+// ================= INIT =================
+(async function () {
+    const list = await populateQuizDropdown();
+    quizSelector.value = list[0].sheet;
+
+    questions = await loadQuestions(list[0].sheet);
+    questionQueue = [...questions];
+    currentIndex = 0;
+    pendingPenaltyJump = false;
+    pendingPenaltyCorrect = false;
+    penaltyAnswerLocked = false;
+    penaltyFinished = false;
+    penaltySolvedIds = new Set();
+
     showQuestion();
 })();
 
-// ------------------- Click-to-Zoom for Images -------------------
-const questionImage = document.getElementById('questionImage');
-questionImage.addEventListener('click', () => {
-    questionImage.classList.toggle('zoomed');
-});
+// ================= IMAGE ZOOM =================
+document.getElementById('questionImage').onclick = function () {
+    this.classList.toggle('zoomed');
+};
