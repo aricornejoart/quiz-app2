@@ -16,7 +16,7 @@ body {
   background: #2a2540;
   padding: 20px;
   border-radius: 10px;
-  box-shadow: 0 0 15px rgba(0,0,0,0.6);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
 }
 
 .top-bar {
@@ -49,10 +49,15 @@ body {
   border: none;
   border-radius: 5px;
   cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
 }
 
 .nav-buttons button:hover {
   background: #5a4bcf;
+}
+
+.nav-buttons button:active {
+  transform: scale(0.98);
 }
 
 #progressContainer {
@@ -88,11 +93,13 @@ body {
 
 .question-container {
   flex: 2;
+  min-width: 0;
 }
 
 #questionText {
   font-size: 15px;
   line-height: 1.4;
+  word-wrap: break-word;
 }
 
 /* ===== Multiple Choice Options ===== */
@@ -134,12 +141,30 @@ body {
   transform: scale(1.02);
 }
 
+.optionBtn:disabled {
+  cursor: default;
+  transform: none;
+}
+
 /* ===== Hierarchy Type Styles ===== */
 #hierarchyContainer {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin-top: 15px;
+  position: relative;
+}
+
+.hierarchy-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hierarchy-row:hover {
+  background: rgba(124, 108, 255, 0.06);
 }
 
 .hierarchy-item {
@@ -147,21 +172,32 @@ body {
   background: #332b5c;
   color: #ffffff;
   border: 1px solid #5a4bcf;
-  border-radius: 5px;
+  border-radius: 8px;
   cursor: grab;
   transition: all 0.2s ease;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  box-sizing: border-box;
+}
+
+.hierarchy-item:hover {
+  background: #40356f;
+  border-color: #7c6cff;
 }
 
 .hierarchy-item:active {
   cursor: grabbing;
   background: #5a4bcf;
-  transform: scale(1.02);
+  transform: scale(1.01);
 }
 
 .hierarchy-feedback {
   font-weight: bold;
   width: 30px;
   text-align: center;
+  flex-shrink: 0;
+  font-size: 18px;
 }
 
 .hierarchy-arrow {
@@ -174,24 +210,35 @@ body {
   height: auto;
   cursor: pointer;
   flex-shrink: 0;
+  line-height: 1;
+  transition: color 0.15s ease, transform 0.15s ease;
 }
 
 .hierarchy-arrow:hover {
   color: #7c6cff;
+  transform: scale(1.08);
+}
+
+.hierarchy-arrow:disabled {
+  cursor: default;
+  transform: none;
 }
 
 .down-arrow {
   transform: rotate(180deg);
 }
 
-#hierarchyContainer .hierarchy-item {
-  touch-action: none;
+.down-arrow:hover {
+  transform: rotate(180deg) scale(1.08);
 }
 
-#hierarchyContainer .hierarchy-arrow {
-  pointer-events: auto;
+.hierarchy-placeholder {
+  border-radius: 8px;
+  min-height: 48px;
+  transition: background 0.12s ease, border 0.12s ease;
 }
 
+/* ===== Hierarchy Submit Button ===== */
 #hierarchySubmit {
   width: 120px;
   align-self: start;
@@ -202,10 +249,20 @@ body {
   border: none;
   border-radius: 5px;
   cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
 #hierarchySubmit:hover {
   background: #5a4bcf;
+}
+
+#hierarchySubmit:active {
+  transform: scale(0.98);
+}
+
+#hierarchySubmit:disabled {
+  cursor: default;
+  transform: none;
 }
 
 /* ===== Image ===== */
@@ -238,9 +295,9 @@ body {
   height: auto;
   transform: translate(-50%, -50%);
   z-index: 9999;
-  background: rgba(0,0,0,0.8);
+  background: rgba(0, 0, 0, 0.8);
   border-radius: 5px;
-  box-shadow: 0 0 20px rgba(0,0,0,0.8);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
 }
 
 /* ===== Feedback ===== */

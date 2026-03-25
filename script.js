@@ -20,6 +20,9 @@ let penaltySolvedIds = new Set();
 // normal mode state
 let normalFinished = false;
 
+// answer lock state
+let questionAnswered = false;
+
 const quizSelector = document.getElementById('quizSelector');
 
 // ================= MODE HELPERS =================
@@ -113,6 +116,36 @@ function shuffleArray(arr) {
     }
 }
 
+// ================= ANSWER LOCK HELPERS =================
+function setOptionButtonsEnabled(enabled) {
+    document.querySelectorAll('.optionBtn').forEach(btn => {
+        btn.disabled = !enabled;
+        btn.style.pointerEvents = enabled ? 'auto' : 'none';
+        btn.style.opacity = enabled ? '1' : '0.65';
+    });
+}
+
+function setHierarchyInteractionEnabled(enabled) {
+    const submit = document.getElementById('hierarchySubmit');
+    if (submit) {
+        submit.disabled = !enabled;
+        submit.style.pointerEvents = enabled ? 'auto' : 'none';
+        submit.style.opacity = enabled ? '1' : '0.65';
+    }
+
+    document.querySelectorAll('.hierarchy-arrow').forEach(btn => {
+        btn.disabled = !enabled;
+        btn.style.pointerEvents = enabled ? 'auto' : 'none';
+        btn.style.opacity = enabled ? '1' : '0.65';
+    });
+
+    document.querySelectorAll('.hierarchy-item').forEach(item => {
+        item.dataset.dragDisabled = enabled ? 'false' : 'true';
+        item.style.cursor = enabled ? 'grab' : 'default';
+        item.style.opacity = enabled ? '1' : '0.8';
+    });
+}
+
 // ================= UI RESET HELPERS =================
 function clearFeedback() {
     const fb = document.getElementById('feedback');
@@ -182,6 +215,7 @@ function isQuizFinished() {
 // ================= SHOW QUESTION =================
 function showQuestion() {
     clearQuestionUI();
+    questionAnswered = false;
 
     if (isPenaltyMode()) {
         penaltyAnswerLocked = false;
@@ -245,6 +279,9 @@ function showMC(q) {
         if (options[i]) {
             btn.style.display = 'block';
             btn.innerText = options[i];
+            btn.disabled = false;
+            btn.style.pointerEvents = 'auto';
+            btn.style.opacity = '1';
             btn.onclick = () => checkAnswer(options[i], explanations);
             exp.innerText = '';
         } else {
@@ -280,12 +317,11 @@ function handleWrongAnswer() {
 
         questionQueue.splice(insertIndex, 0, wrongQuestion);
 
-        // so clicking Next lands on the first question in between
         currentIndex = Math.max(-1, currentIndex - 1);
         return;
     }
 
-    // normal mode: do not remove or move the question on answer click
+    // normal mode: do not remove or move on answer click
 }
 
 // ================= CORRECT ANSWER LOGIC =================
@@ -320,7 +356,11 @@ function handleCorrectAnswer() {
 // ================= ANSWER =================
 function checkAnswer(selected, explanations) {
     if (isQuizFinished()) return;
+    if (questionAnswered) return;
     if (isPenaltyMode() && penaltyAnswerLocked) return;
+
+    questionAnswered = true;
+    setOptionButtonsEnabled(false);
 
     const q = questionQueue[currentIndex];
     const isCorrect = selected === q.correct;
@@ -339,7 +379,6 @@ function checkAnswer(selected, explanations) {
         handleWrongAnswer();
     }
 
-    // retry mode updates immediately because queue actually changes there
     if (isRetryMode()) {
         updateProgress();
     }
@@ -347,6 +386,151 @@ function checkAnswer(selected, explanations) {
     if (isSpeedMode()) {
         setTimeout(nextQuestion, SPEED_DELAY);
     }
+}
+
+// ================= HIERARCHY DRAG =================
+function enableHierarchyDrag(container) {
+    let draggedRow = null;
+    let placeholder = null;
+    let dragOffsetY = 0;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragging = false;
+
+    function clearDropIndicators() {
+        Array.from(container.children).forEach(row => {
+            row.style.borderTop = '';
+            row.style.borderBottom = '';
+        });
+        if (placeholder) {
+            placeholder.style.background = 'rgba(124,108,255,0.18)';
+            placeholder.style.border = '2px dashed #7c6cff';
+        }
+    }
+
+    function finishDrag() {
+        if (!draggedRow) return;
+
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+
+        clearDropIndicators();
+
+        if (placeholder && placeholder.parentNode === container) {
+            container.replaceChild(draggedRow, placeholder);
+        }
+
+        draggedRow.style.position = '';
+        draggedRow.style.left = '';
+        draggedRow.style.top = '';
+        draggedRow.style.width = '';
+        draggedRow.style.zIndex = '';
+        draggedRow.style.pointerEvents = '';
+        draggedRow.style.opacity = '';
+        draggedRow.style.transform = '';
+        draggedRow.style.boxShadow = '';
+        draggedRow.style.cursor = 'default';
+
+        draggedRow = null;
+        placeholder = null;
+        dragging = false;
+    }
+
+    function onPointerMove(e) {
+        if (!draggedRow) return;
+
+        if (!dragging) {
+            const movedEnough = Math.abs(e.clientY - dragStartY) > 4 || Math.abs(e.clientX - dragStartX) > 4;
+            if (!movedEnough) return;
+            dragging = true;
+        }
+
+        e.preventDefault();
+
+        draggedRow.style.top = `${e.clientY - dragOffsetY}px`;
+        draggedRow.style.left = `${container.getBoundingClientRect().left}px`;
+
+        clearDropIndicators();
+
+        const rows = Array.from(container.children).filter(row => row !== placeholder);
+
+        if (rows.length === 0) {
+            container.appendChild(placeholder);
+            return;
+        }
+
+        let placed = false;
+
+        for (const row of rows) {
+            const rect = row.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+
+            if (e.clientY < midpoint) {
+                row.style.borderTop = '3px solid #7c6cff';
+                container.insertBefore(placeholder, row);
+                placed = true;
+                break;
+            }
+        }
+
+        if (!placed) {
+            const lastRow = rows[rows.length - 1];
+            lastRow.style.borderBottom = '3px solid #7c6cff';
+            container.appendChild(placeholder);
+        }
+    }
+
+    function onPointerUp() {
+        finishDrag();
+    }
+
+    container.querySelectorAll('.hierarchy-item').forEach(item => {
+        item.addEventListener('pointerdown', e => {
+            if (item.dataset.dragDisabled === 'true') return;
+            if (questionAnswered) return;
+            if (e.button !== undefined && e.button !== 0) return;
+
+            const row = item.closest('.hierarchy-row');
+            if (!row) return;
+
+            e.preventDefault();
+
+            draggedRow = row;
+            dragging = false;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+
+            const rowRect = row.getBoundingClientRect();
+            dragOffsetY = e.clientY - rowRect.top;
+
+            placeholder = document.createElement('div');
+            placeholder.className = 'hierarchy-placeholder';
+            placeholder.style.height = `${rowRect.height}px`;
+            placeholder.style.border = '2px dashed #7c6cff';
+            placeholder.style.borderRadius = '8px';
+            placeholder.style.background = 'rgba(124,108,255,0.18)';
+            placeholder.style.boxSizing = 'border-box';
+
+            container.replaceChild(placeholder, row);
+            container.appendChild(row);
+
+            draggedRow.style.position = 'fixed';
+            draggedRow.style.left = `${rowRect.left}px`;
+            draggedRow.style.top = `${rowRect.top}px`;
+            draggedRow.style.width = `${rowRect.width}px`;
+            draggedRow.style.zIndex = '9999';
+            draggedRow.style.pointerEvents = 'none';
+            draggedRow.style.opacity = '0.92';
+            draggedRow.style.transform = 'scale(1.01)';
+            draggedRow.style.boxShadow = '0 8px 20px rgba(0,0,0,0.35)';
+            draggedRow.style.cursor = 'grabbing';
+
+            window.addEventListener('pointermove', onPointerMove, { passive: false });
+            window.addEventListener('pointerup', onPointerUp);
+            window.addEventListener('pointercancel', onPointerUp);
+        });
+    });
 }
 
 // ================= HIERARCHY =================
@@ -361,19 +545,27 @@ function showHierarchy(q) {
 
     options.forEach(opt => {
         const row = document.createElement('div');
+        row.className = 'hierarchy-row';
         row.style.display = 'flex';
         row.style.alignItems = 'center';
         row.style.gap = '10px';
+        row.style.borderRadius = '8px';
+        row.style.transition = 'border 0.12s ease, background 0.12s ease';
 
         const arrows = document.createElement('div');
         arrows.style.display = 'flex';
         arrows.style.flexDirection = 'column';
         arrows.style.alignItems = 'center';
+        arrows.style.gap = '4px';
 
         const up = document.createElement('button');
+        up.type = 'button';
         up.innerText = '^';
         up.className = 'hierarchy-arrow';
-        up.onclick = () => {
+        up.onclick = e => {
+            e.stopPropagation();
+            if (questionAnswered) return;
+
             const prev = row.previousElementSibling;
             if (prev && prev.querySelector('.hierarchy-item')) {
                 container.insertBefore(row, prev);
@@ -381,9 +573,13 @@ function showHierarchy(q) {
         };
 
         const down = document.createElement('button');
+        down.type = 'button';
         down.innerText = '^';
         down.className = 'hierarchy-arrow down-arrow';
-        down.onclick = () => {
+        down.onclick = e => {
+            e.stopPropagation();
+            if (questionAnswered) return;
+
             const next = row.nextElementSibling;
             if (next && next.querySelector('.hierarchy-item')) {
                 container.insertBefore(next, row);
@@ -397,6 +593,11 @@ function showHierarchy(q) {
         item.className = 'hierarchy-item';
         item.innerText = opt;
         item.style.flex = '1';
+        item.style.touchAction = 'none';
+        item.style.userSelect = 'none';
+        item.style.webkitUserSelect = 'none';
+        item.style.cursor = 'grab';
+        item.dataset.dragDisabled = 'false';
 
         const fb = document.createElement('div');
         fb.className = 'hierarchy-feedback';
@@ -415,7 +616,11 @@ function showHierarchy(q) {
     submit.innerText = 'Submit';
 
     submit.onclick = () => {
+        if (questionAnswered) return;
         if (isPenaltyMode() && penaltyAnswerLocked) return;
+
+        questionAnswered = true;
+        setHierarchyInteractionEnabled(false);
 
         const rows = [...container.children];
         let allCorrect = true;
@@ -452,6 +657,9 @@ function showHierarchy(q) {
     };
 
     document.querySelector('.question-container').appendChild(submit);
+
+    enableHierarchyDrag(container);
+    setHierarchyInteractionEnabled(true);
 }
 
 // ================= NAV =================
@@ -581,6 +789,7 @@ function resetModeState() {
     penaltySolvedIds = new Set();
 
     normalFinished = false;
+    questionAnswered = false;
 }
 
 // ================= RESTART =================
