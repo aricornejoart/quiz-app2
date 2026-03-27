@@ -160,6 +160,16 @@ function clearExplanations() {
     }
 }
 
+function clearOptionFeedback() {
+    for (let i = 1; i <= 4; i++) {
+        const fb = document.getElementById(`optionFeedback${i}`);
+        if (fb) {
+            fb.innerText = '';
+            fb.style.color = '';
+        }
+    }
+}
+
 function removeHierarchyUI() {
     const oldHierarchy = document.getElementById('hierarchyContainer');
     if (oldHierarchy) oldHierarchy.remove();
@@ -171,6 +181,7 @@ function removeHierarchyUI() {
 function clearQuestionUI() {
     clearFeedback();
     clearExplanations();
+    clearOptionFeedback();
     removeHierarchyUI();
 }
 
@@ -275,6 +286,7 @@ function showMC(q) {
     for (let i = 0; i < 4; i++) {
         const btn = document.getElementById(`option${i + 1}`);
         const exp = document.getElementById(`explanation${i + 1}`);
+        const fb = document.getElementById(`optionFeedback${i + 1}`);
 
         if (options[i]) {
             btn.style.display = 'block';
@@ -284,11 +296,19 @@ function showMC(q) {
             btn.style.opacity = '1';
             btn.onclick = () => checkAnswer(options[i], explanations);
             exp.innerText = '';
+            if (fb) {
+                fb.innerText = '';
+                fb.style.color = '';
+            }
         } else {
             btn.style.display = 'none';
             btn.innerText = '';
             btn.onclick = null;
             exp.innerText = '';
+            if (fb) {
+                fb.innerText = '';
+                fb.style.color = '';
+            }
         }
     }
 }
@@ -366,8 +386,23 @@ function checkAnswer(selected, explanations) {
     const isCorrect = selected === q.correct;
 
     document.querySelectorAll('.optionBtn').forEach((btn, i) => {
+        const feedbackEl = document.getElementById(`optionFeedback${i + 1}`);
+
         if (explanations[i]) {
             document.getElementById(`explanation${i + 1}`).innerText = explanations[i];
+        }
+
+        if (feedbackEl) {
+            if (btn.innerText === q.correct) {
+                feedbackEl.innerText = '✔';
+                feedbackEl.style.color = '#4caf50';
+            } else if (btn.innerText === selected && !isCorrect) {
+                feedbackEl.innerText = '✖';
+                feedbackEl.style.color = '#ff6b6b';
+            } else {
+                feedbackEl.innerText = '';
+                feedbackEl.style.color = '';
+            }
         }
     });
 
