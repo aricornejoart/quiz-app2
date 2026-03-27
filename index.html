@@ -13,7 +13,7 @@
   <div class="top-bar">
     <div class="top-row">
       <div class="left-controls">
-        <div class="quiz-select-group">
+        <div class="quiz-select-group" id="quizControls">
           <select id="quizSelector"></select>
 
           <div class="combine-group">
@@ -44,12 +44,21 @@
         </div>
       </div>
 
-      <div id="toggles">
-        <label><input type="checkbox" id="shuffleQuestions"> Shuffle Questions</label>
-        <label><input type="checkbox" id="shuffleAnswers"> Shuffle Answers</label>
-        <label><input type="checkbox" id="penaltyMode"> Penalty Mode</label>
-        <label><input type="checkbox" id="masteryMode"> Mastery</label>
-        <label><input type="checkbox" id="rapidMode"> Rapid</label>
+      <div class="utility-controls">
+        <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
+        <button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Fullscreen" title="Fullscreen">⛶</button>
+
+        <div id="settingsPopup" class="settings-popup hidden">
+          <button id="closeSettingsBtn" class="close-settings-btn" type="button" aria-label="Close settings">✕</button>
+
+          <div class="settings-popup-content">
+            <label><input type="checkbox" id="shuffleQuestions"> Shuffle Questions</label>
+            <label><input type="checkbox" id="shuffleAnswers"> Shuffle Answers</label>
+            <label><input type="checkbox" id="penaltyMode"> Penalty Mode</label>
+            <label><input type="checkbox" id="masteryMode"> Mastery</label>
+            <label><input type="checkbox" id="rapidMode"> Rapid</label>
+          </div>
+        </div>
       </div>
     </div>
   </div>

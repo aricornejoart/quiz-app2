@@ -29,8 +29,8 @@ body {
 .top-row {
   display: flex;
   align-items: flex-start;
-  justify-content: flex-start;
-  gap: 18px;
+  justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -39,6 +39,7 @@ body {
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  flex: 1;
 }
 
 .quiz-select-group {
@@ -146,8 +147,8 @@ body {
 }
 
 #progressContainer {
-  width: 220px;
-  min-width: 220px;
+  width: 110px;
+  min-width: 110px;
 }
 
 #progressText {
@@ -171,18 +172,85 @@ body {
   transition: width 0.2s ease;
 }
 
-#toggles {
+/* ===== Utility Controls ===== */
+.utility-controls {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  align-content: flex-start;
-  gap: 8px 12px;
-  min-width: 250px;
-  max-width: 360px;
+  align-items: flex-start;
+  gap: 8px;
 }
 
-#toggles label {
-  margin-right: 0;
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  background: #3a3360;
+  color: #ffffff;
+  border: 1px solid #5a4bcf;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+}
+
+.icon-btn:hover {
+  background: #5a4bcf;
+}
+
+.icon-btn:active {
+  transform: scale(0.98);
+}
+
+.icon-btn.active {
+  border-color: #7c6cff;
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+}
+
+.settings-popup {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 210px;
+  background: #2f2950;
+  border: 1px solid #5a4bcf;
+  border-radius: 10px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+  padding: 14px 14px 12px 14px;
+  z-index: 2000;
+}
+
+.settings-popup.hidden {
+  display: none;
+}
+
+.close-settings-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.close-settings-btn:hover {
+  color: #ffb3b3;
+}
+
+.settings-popup-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.settings-popup-content label {
   color: #cfcfff;
   font-size: 13px;
   white-space: nowrap;
@@ -419,9 +487,9 @@ body {
 
 /* ===== Feedback ===== */
 #feedback {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: bold;
-  margin-bottom: 10px;
+  margin-bottom: 5px;
   min-height: 24px;
 }
 
@@ -431,4 +499,40 @@ body {
 
 .incorrect {
   color: #ff6b6b;
+}
+
+/* ===== Fullscreen App Mode ===== */
+body.fullscreen-mode .quiz-select-group {
+  display: none;
+}
+
+body.fullscreen-mode .container {
+  max-width: 1100px;
+}
+
+body.fullscreen-mode .top-bar {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+body.fullscreen-mode .left-controls {
+  gap: 6px;
+}
+
+body.fullscreen-mode .quiz-area {
+  gap: 28px;
+}
+
+body.fullscreen-mode #questionText {
+  font-size: 17px;
+}
+
+body.fullscreen-mode .optionBtn {
+  max-width: 520px;
+  font-size: 13px;
+}
+
+body.fullscreen-mode .image-container img,
+body.fullscreen-mode #questionImage {
+  max-height: 500px;
 }

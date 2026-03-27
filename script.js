@@ -10,6 +10,7 @@ let questionQueue = [];
 let currentIndex = 0;
 let questionIdCounter = 0;
 let quizListCache = [];
+let isAppFullscreen = false;
 
 // penalty mode state
 let pendingPenaltyJump = false;
@@ -27,6 +28,10 @@ let questionAnswered = false;
 const quizSelector = document.getElementById('quizSelector');
 const combineInput = document.getElementById('combineInput');
 const combineGoBtn = document.getElementById('combineGoBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const settingsPopup = document.getElementById('settingsPopup');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
 // ================= SHEETS PARSER =================
 function parseGoogleSheetResponse(text) {
@@ -36,6 +41,29 @@ function parseGoogleSheetResponse(text) {
         throw new Error('Could not parse Google Sheets response');
     }
     return JSON.parse(text.substring(start, end + 1));
+}
+
+// ================= SHEETS CELL HELPERS =================
+function normalizeSheetText(value) {
+    return String(value ?? '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\u00A0/g, ' ')
+        .trim();
+}
+
+function getCellValue(cell) {
+    if (!cell) return '';
+
+    if (cell.v !== null && cell.v !== undefined) {
+        return normalizeSheetText(cell.v);
+    }
+
+    if (cell.f !== null && cell.f !== undefined) {
+        return normalizeSheetText(cell.f);
+    }
+
+    return '';
 }
 
 // ================= MODE HELPERS =================
@@ -53,6 +81,47 @@ function isSpeedMode() {
 
 function isNormalMode() {
     return !isPenaltyMode() && !isRetryMode();
+}
+
+// ================= SETTINGS / FULLSCREEN UI =================
+function openSettingsPopup() {
+    settingsPopup.classList.remove('hidden');
+    settingsBtn.classList.add('active');
+}
+
+function closeSettingsPopup() {
+    settingsPopup.classList.add('hidden');
+    settingsBtn.classList.remove('active');
+}
+
+function toggleSettingsPopup() {
+    if (settingsPopup.classList.contains('hidden')) {
+        openSettingsPopup();
+    } else {
+        closeSettingsPopup();
+    }
+}
+
+function enterFullscreenMode() {
+    isAppFullscreen = true;
+    document.body.classList.add('fullscreen-mode');
+    fullscreenBtn.classList.add('active');
+    fullscreenBtn.setAttribute('title', 'Exit Fullscreen');
+}
+
+function exitFullscreenMode() {
+    isAppFullscreen = false;
+    document.body.classList.remove('fullscreen-mode');
+    fullscreenBtn.classList.remove('active');
+    fullscreenBtn.setAttribute('title', 'Fullscreen');
+}
+
+function toggleFullscreenMode() {
+    if (isAppFullscreen) {
+        exitFullscreenMode();
+    } else {
+        enterFullscreenMode();
+    }
 }
 
 // ================= COMBINE HELPERS =================
@@ -169,9 +238,9 @@ async function loadQuizList() {
     const json = parseGoogleSheetResponse(text);
 
     return json.table.rows.map(r => ({
-        sheet: r.c[0]?.v || '',
-        name: r.c[1]?.v || '',
-        rangeNumber: r.c[2]?.v ?? ''
+        sheet: getCellValue(r.c?.[0]),
+        name: getCellValue(r.c?.[1]),
+        rangeNumber: getCellValue(r.c?.[2])
     })).filter(q => q.sheet && q.name);
 }
 
@@ -197,20 +266,42 @@ async function loadQuestions(sheetName) {
     const json = parseGoogleSheetResponse(text);
     const rows = json.table.rows;
 
-    const type = rows[0]?.c?.[1]?.v?.toString().toLowerCase() || '';
+    const type = getCellValue(rows[0]?.c?.[1]).toLowerCase();
 
     if (type === 'hierarchy') {
         return rows.map(r => {
             const c = r.c || [];
             return {
                 id: `q_${questionIdCounter++}`,
-                question: c[0]?.v || '',
+                question: getCellValue(c[0]),
                 type: 'hierarchy',
-                options: [c[2]?.v, c[3]?.v, c[4]?.v, c[5]?.v, c[6]?.v, c[7]?.v, c[8]?.v, c[9]?.v, c[10]?.v, c[11]?.v].filter(Boolean),
-                correctOrder: [c[12]?.v, c[13]?.v, c[14]?.v, c[15]?.v, c[16]?.v, c[17]?.v, c[18]?.v, c[19]?.v, c[20]?.v, c[21]?.v]
+                options: [
+                    getCellValue(c[2]),
+                    getCellValue(c[3]),
+                    getCellValue(c[4]),
+                    getCellValue(c[5]),
+                    getCellValue(c[6]),
+                    getCellValue(c[7]),
+                    getCellValue(c[8]),
+                    getCellValue(c[9]),
+                    getCellValue(c[10]),
+                    getCellValue(c[11])
+                ].filter(Boolean),
+                correctOrder: [
+                    getCellValue(c[12]),
+                    getCellValue(c[13]),
+                    getCellValue(c[14]),
+                    getCellValue(c[15]),
+                    getCellValue(c[16]),
+                    getCellValue(c[17]),
+                    getCellValue(c[18]),
+                    getCellValue(c[19]),
+                    getCellValue(c[20]),
+                    getCellValue(c[21])
+                ]
                     .map(n => n ? Number(n) : null)
                     .filter(n => n !== null),
-                image: c[22]?.v || ''
+                image: getCellValue(c[22])
             };
         }).filter(q => q.question && q.question.toLowerCase() !== 'question');
     }
@@ -219,12 +310,22 @@ async function loadQuestions(sheetName) {
         const c = r.c || [];
         return {
             id: `q_${questionIdCounter++}`,
-            question: c[0]?.v || '',
+            question: getCellValue(c[0]),
             type: 'multiple choice',
-            options: [c[2]?.v, c[3]?.v, c[4]?.v, c[5]?.v].filter(Boolean),
-            correct: c[6]?.v || '',
-            explanations: [c[7]?.v, c[8]?.v, c[9]?.v, c[10]?.v],
-            image: c[11]?.v || ''
+            options: [
+                getCellValue(c[2]),
+                getCellValue(c[3]),
+                getCellValue(c[4]),
+                getCellValue(c[5])
+            ].filter(Boolean),
+            correct: getCellValue(c[6]),
+            explanations: [
+                getCellValue(c[7]),
+                getCellValue(c[8]),
+                getCellValue(c[9]),
+                getCellValue(c[10])
+            ],
+            image: getCellValue(c[11])
         };
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
@@ -461,8 +562,6 @@ function handleWrongAnswer() {
         currentIndex = Math.max(-1, currentIndex - 1);
         return;
     }
-
-    // normal mode: do not remove or move on answer click
 }
 
 // ================= CORRECT ANSWER LOGIC =================
@@ -490,8 +589,6 @@ function handleCorrectAnswer() {
 
         return;
     }
-
-    // normal mode: do not remove on answer click
 }
 
 // ================= ANSWER =================
@@ -1011,7 +1108,6 @@ combineGoBtn.addEventListener('click', async () => {
     }
 });
 
-// ================= QUIZ CHANGE =================
 quizSelector.addEventListener('change', async e => {
     if (combineInput.value.trim()) {
         return;
@@ -1028,6 +1124,39 @@ quizSelector.addEventListener('change', async e => {
 
     resetModeState();
     showQuestion();
+});
+
+settingsBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    toggleSettingsPopup();
+});
+
+closeSettingsBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    closeSettingsPopup();
+});
+
+settingsPopup.addEventListener('click', e => {
+    e.stopPropagation();
+});
+
+fullscreenBtn.addEventListener('click', () => {
+    toggleFullscreenMode();
+});
+
+document.addEventListener('click', e => {
+    if (!settingsPopup.classList.contains('hidden') && !settingsPopup.contains(e.target) && e.target !== settingsBtn) {
+        closeSettingsPopup();
+    }
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        if (isAppFullscreen) {
+            exitFullscreenMode();
+        }
+        closeSettingsPopup();
+    }
 });
 
 // ================= INIT =================
