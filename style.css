@@ -21,10 +21,31 @@ body {
 
 .top-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 20px;
+}
+
+.top-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.left-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.quiz-select-group {
+  display: flex;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 #quizSelector {
@@ -33,16 +54,80 @@ body {
   color: #ffffff;
   border: 1px solid #5a4bcf;
   border-radius: 5px;
+  width: 170px;
+  min-width: 170px;
+  max-width: 170px;
 }
 
-#toggles label {
-  margin-right: 10px;
-  color: #cfcfff;
-  font-size: 13px;
+.combine-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#combineInput {
+  width: 105px;
+  padding: 6px 10px;
+  background: #3a3360;
+  color: #ffffff;
+  border: 1px solid #5a4bcf;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+#combineInput::placeholder {
+  color: #d6d2ff;
+}
+
+#combineInput:focus {
+  border-color: #7c6cff;
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+}
+
+#combineInput.invalid {
+  border-color: #ff6b6b;
+  color: #ff8f8f;
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.12);
+}
+
+#combineInput.invalid::placeholder {
+  color: #ff8f8f;
+}
+
+#combineGoBtn {
+  padding: 6px 10px;
+  background: #3a3360;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+#combineGoBtn:hover {
+  background: #5a4bcf;
+}
+
+#combineGoBtn:active {
+  transform: scale(0.98);
+}
+
+.bottom-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.nav-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .nav-buttons button {
-  margin-right: 5px;
+  margin-right: 0;
   padding: 6px 12px;
   background: #3a3360;
   color: white;
@@ -61,8 +146,8 @@ body {
 }
 
 #progressContainer {
-  flex-grow: 1;
-  max-width: 200px;
+  width: 220px;
+  min-width: 220px;
 }
 
 #progressText {
@@ -86,6 +171,24 @@ body {
   transition: width 0.2s ease;
 }
 
+#toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  gap: 8px 12px;
+  min-width: 250px;
+  max-width: 360px;
+}
+
+#toggles label {
+  margin-right: 0;
+  color: #cfcfff;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ===== Quiz Area ===== */
 .quiz-area {
   display: flex;
   gap: 20px;

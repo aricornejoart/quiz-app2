@@ -9,6 +9,7 @@ let questions = [];
 let questionQueue = [];
 let currentIndex = 0;
 let questionIdCounter = 0;
+let quizListCache = [];
 
 // penalty mode state
 let pendingPenaltyJump = false;
@@ -24,6 +25,18 @@ let normalFinished = false;
 let questionAnswered = false;
 
 const quizSelector = document.getElementById('quizSelector');
+const combineInput = document.getElementById('combineInput');
+const combineGoBtn = document.getElementById('combineGoBtn');
+
+// ================= SHEETS PARSER =================
+function parseGoogleSheetResponse(text) {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1) {
+        throw new Error('Could not parse Google Sheets response');
+    }
+    return JSON.parse(text.substring(start, end + 1));
+}
 
 // ================= MODE HELPERS =================
 function isPenaltyMode() {
@@ -31,52 +44,160 @@ function isPenaltyMode() {
 }
 
 function isRetryMode() {
-    return document.getElementById('retryWrong').checked;
+    return document.getElementById('masteryMode').checked;
 }
 
 function isSpeedMode() {
-    return document.getElementById('speedMode').checked;
+    return document.getElementById('rapidMode').checked;
 }
 
 function isNormalMode() {
     return !isPenaltyMode() && !isRetryMode();
 }
 
+// ================= COMBINE HELPERS =================
+function setCombineValidState(isValid) {
+    combineInput.classList.toggle('invalid', !isValid);
+}
+
+function normalizeCombineInput(value) {
+    return value.replace(/\s+/g, '');
+}
+
+function parseCombineRange(rawValue) {
+    const cleaned = normalizeCombineInput(rawValue);
+
+    if (!cleaned) {
+        return { valid: false, numbers: [] };
+    }
+
+    const parts = cleaned.split(',');
+    const numbers = [];
+    const seen = new Set();
+
+    for (const part of parts) {
+        if (!part) {
+            return { valid: false, numbers: [] };
+        }
+
+        if (/^\d+$/.test(part)) {
+            const num = Number(part);
+            if (num <= 0) return { valid: false, numbers: [] };
+            if (!seen.has(num)) {
+                seen.add(num);
+                numbers.push(num);
+            }
+            continue;
+        }
+
+        if (/^\d+-\d+$/.test(part)) {
+            const [startRaw, endRaw] = part.split('-');
+            const start = Number(startRaw);
+            const end = Number(endRaw);
+
+            if (start <= 0 || end <= 0 || start > end) {
+                return { valid: false, numbers: [] };
+            }
+
+            for (let n = start; n <= end; n++) {
+                if (!seen.has(n)) {
+                    seen.add(n);
+                    numbers.push(n);
+                }
+            }
+            continue;
+        }
+
+        return { valid: false, numbers: [] };
+    }
+
+    return { valid: true, numbers };
+}
+
+function getQuizMapByRangeNumber() {
+    const map = new Map();
+
+    quizListCache.forEach(q => {
+        if (q.rangeNumber !== null && q.rangeNumber !== undefined && q.rangeNumber !== '') {
+            map.set(Number(q.rangeNumber), q);
+        }
+    });
+
+    return map;
+}
+
+async function loadCombinedQuestionsFromInput(rawValue) {
+    const parsed = parseCombineRange(rawValue);
+    if (!parsed.valid || parsed.numbers.length === 0) {
+        throw new Error('Invalid combine input');
+    }
+
+    const quizMap = getQuizMapByRangeNumber();
+    const selectedQuizzes = [];
+
+    for (const num of parsed.numbers) {
+        const match = quizMap.get(num);
+        if (!match) {
+            throw new Error(`Range number ${num} not found`);
+        }
+        selectedQuizzes.push(match);
+    }
+
+    const results = await Promise.all(
+        selectedQuizzes.map(q => loadQuestions(q.sheet))
+    );
+
+    return results.flat();
+}
+
+async function applyLoadedQuestions(newQuestions) {
+    questions = newQuestions;
+    questionQueue = [...questions];
+
+    if (document.getElementById('shuffleQuestions').checked) {
+        shuffleArray(questionQueue);
+    }
+
+    resetModeState();
+    showQuestion();
+}
+
 // ================= LOAD QUIZ LIST =================
 async function loadQuizList() {
     const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=Config`);
     const text = await res.text();
-    const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
+    const json = parseGoogleSheetResponse(text);
 
-    return json.table.rows.slice(1).map(r => ({
+    return json.table.rows.map(r => ({
         sheet: r.c[0]?.v || '',
-        name: r.c[1]?.v || ''
+        name: r.c[1]?.v || '',
+        rangeNumber: r.c[2]?.v ?? ''
     })).filter(q => q.sheet && q.name);
 }
 
 // ================= DROPDOWN =================
 async function populateQuizDropdown() {
-    const list = await loadQuizList();
+    quizListCache = await loadQuizList();
     quizSelector.innerHTML = '';
 
-    list.forEach(q => {
+    quizListCache.forEach(q => {
         const opt = document.createElement('option');
         opt.value = q.sheet;
         opt.innerText = q.name;
         quizSelector.appendChild(opt);
     });
 
-    return list;
+    return quizListCache;
 }
 
 // ================= LOAD QUESTIONS =================
 async function loadQuestions(sheetName) {
-    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}`);
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}`);
     const text = await res.text();
-    const json = JSON.parse(text.match(/(?<=\().*(?=\);)/s)[0]);
+    const json = parseGoogleSheetResponse(text);
     const rows = json.table.rows;
 
-    const type = rows[0].c[1]?.v?.toString().toLowerCase() || '';
+    const type = rows[0]?.c?.[1]?.v?.toString().toLowerCase() || '';
 
     if (type === 'hierarchy') {
         return rows.map(r => {
@@ -755,7 +876,6 @@ function nextQuestion() {
         return;
     }
 
-    // normal mode
     if (currentIndex < questionQueue.length - 1) {
         currentIndex++;
     } else {
@@ -798,7 +918,6 @@ function prevQuestion() {
         return;
     }
 
-    // normal mode
     if (normalFinished) {
         normalFinished = false;
         currentIndex = Math.max(0, questionQueue.length - 1);
@@ -846,20 +965,60 @@ document.getElementById('restartBtn').onclick = restartQuiz;
 
 document.getElementById('penaltyMode').onchange = e => {
     if (e.target.checked) {
-        document.getElementById('retryWrong').checked = false;
+        document.getElementById('masteryMode').checked = false;
     }
     restartQuiz();
 };
 
-document.getElementById('retryWrong').onchange = e => {
+document.getElementById('masteryMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('penaltyMode').checked = false;
     }
     restartQuiz();
 };
 
+combineInput.addEventListener('input', () => {
+    setCombineValidState(true);
+});
+
+combineInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        combineGoBtn.click();
+    }
+});
+
+combineGoBtn.addEventListener('click', async () => {
+    const rawValue = combineInput.value.trim();
+
+    if (!rawValue) {
+        setCombineValidState(true);
+        return;
+    }
+
+    try {
+        const combinedQuestions = await loadCombinedQuestionsFromInput(rawValue);
+
+        if (!combinedQuestions.length) {
+            throw new Error('No questions found');
+        }
+
+        setCombineValidState(true);
+        await applyLoadedQuestions(combinedQuestions);
+    } catch (err) {
+        console.error(err);
+        setCombineValidState(false);
+    }
+});
+
 // ================= QUIZ CHANGE =================
 quizSelector.addEventListener('change', async e => {
+    if (combineInput.value.trim()) {
+        return;
+    }
+
+    setCombineValidState(true);
+
     questions = await loadQuestions(e.target.value);
     questionQueue = [...questions];
 
@@ -873,18 +1032,29 @@ quizSelector.addEventListener('change', async e => {
 
 // ================= INIT =================
 (async function () {
-    const list = await populateQuizDropdown();
-    quizSelector.value = list[0].sheet;
+    try {
+        const list = await populateQuizDropdown();
 
-    questions = await loadQuestions(list[0].sheet);
-    questionQueue = [...questions];
+        if (!list.length) {
+            document.getElementById('questionText').innerText = 'No quizzes found.';
+            return;
+        }
 
-    if (document.getElementById('shuffleQuestions').checked) {
-        shuffleArray(questionQueue);
+        quizSelector.value = list[0].sheet;
+
+        questions = await loadQuestions(list[0].sheet);
+        questionQueue = [...questions];
+
+        if (document.getElementById('shuffleQuestions').checked) {
+            shuffleArray(questionQueue);
+        }
+
+        resetModeState();
+        showQuestion();
+    } catch (err) {
+        console.error(err);
+        document.getElementById('questionText').innerText = 'Failed to load quiz.';
     }
-
-    resetModeState();
-    showQuestion();
 })();
 
 // ================= IMAGE ZOOM =================
