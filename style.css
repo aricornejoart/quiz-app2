@@ -1,5 +1,8 @@
 /* ===== General Styles ===== */
 body {
+  --content-width: 400px;
+  --content-width-fullscreen: 520px;
+
   font-family: Arial, sans-serif;
   margin: 0;
   padding: 20px;
@@ -272,6 +275,7 @@ body.fullscreen-mode .bottom-controls {
 }
 
 #questionText {
+  max-width: var(--content-width);
   font-size: 15px;
   line-height: 1.4;
   word-wrap: break-word;
@@ -298,15 +302,17 @@ body.fullscreen-mode .bottom-controls {
 }
 
 .explanation {
+  max-width: var(--content-width);
   font-size: 12px;
   color: #d0d0ff;
-  min-height: 14px;
+  min-height: 15px;
   padding-left: 2px;
+  word-wrap: break-word;
 }
 
 .optionBtn {
   width: 100%;
-  max-width: 400px;
+  max-width: var(--content-width);
   padding: 15px;
   background: #332b5c;
   border: 1px solid #5a4bcf;
@@ -314,7 +320,7 @@ body.fullscreen-mode .bottom-controls {
   cursor: pointer;
   text-align: left;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 15px;
   transition: all 0.2s ease;
 }
 
@@ -550,12 +556,17 @@ body.fullscreen-mode .quiz-area {
 }
 
 body.fullscreen-mode #questionText {
+  max-width: var(--content-width-fullscreen);
   font-size: 17px;
 }
 
+body.fullscreen-mode .explanation {
+  max-width: var(--content-width-fullscreen);
+}
+
 body.fullscreen-mode .optionBtn {
-  max-width: 520px;
-  font-size: 13px;
+  max-width: var(--content-width-fullscreen);
+  font-size: 15px;
 }
 
 body.fullscreen-mode .image-container img,
