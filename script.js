@@ -19,6 +19,9 @@ let penaltyAnswerLocked = false;
 let penaltyFinished = false;
 let penaltySolvedIds = new Set();
 
+// mastery mode state
+let pendingMasteryAdvance = false;
+
 // normal mode state
 let normalFinished = false;
 
@@ -371,8 +374,10 @@ function setHierarchyInteractionEnabled(enabled) {
 // ================= UI RESET HELPERS =================
 function clearFeedback() {
     const fb = document.getElementById('feedback');
-    fb.innerText = '';
-    fb.classList.remove('correct', 'incorrect');
+    if (fb) {
+        fb.innerText = '';
+        fb.classList.remove('correct', 'incorrect');
+    }
 }
 
 function clearExplanations() {
@@ -410,6 +415,8 @@ function clearQuestionUI() {
 // ================= FEEDBACK HELPER =================
 function setFeedback(text, isCorrect) {
     const fb = document.getElementById('feedback');
+    if (!fb) return;
+
     fb.innerText = text;
     fb.classList.remove('correct', 'incorrect');
     fb.classList.add(isCorrect ? 'correct' : 'incorrect');
@@ -550,8 +557,10 @@ function handleWrongAnswer() {
     if (isRetryMode()) {
         const wrongQuestion = q;
 
+        // Remove current question from its current spot
         questionQueue.splice(currentIndex, 1);
 
+        // Send it 3 questions ahead in the remaining active queue
         let insertIndex = currentIndex + 3;
         if (insertIndex > questionQueue.length) {
             insertIndex = questionQueue.length;
@@ -559,9 +568,12 @@ function handleWrongAnswer() {
 
         questionQueue.splice(insertIndex, 0, wrongQuestion);
 
-        currentIndex = Math.max(-1, currentIndex - 1);
+        // Mark that next render in Mastery should show the shifted queue result
+        pendingMasteryAdvance = true;
         return;
     }
+
+    // normal mode: no immediate removal/movement
 }
 
 // ================= CORRECT ANSWER LOGIC =================
@@ -579,16 +591,15 @@ function handleCorrectAnswer() {
     if (isRetryMode()) {
         questionQueue.splice(currentIndex, 1);
 
-        if (currentIndex >= questionQueue.length && questionQueue.length > 0) {
-            currentIndex = questionQueue.length - 1;
-        }
-
         if (questionQueue.length === 0) {
             currentIndex = 0;
         }
 
+        pendingMasteryAdvance = true;
         return;
     }
+
+    // normal mode: no immediate removal
 }
 
 // ================= ANSWER =================
@@ -965,6 +976,20 @@ function nextQuestion() {
             return;
         }
 
+        // After answering in Mastery, the queue has already changed.
+        // So the next visible question is now at the current index.
+        if (pendingMasteryAdvance) {
+            pendingMasteryAdvance = false;
+
+            if (currentIndex >= questionQueue.length) {
+                currentIndex = Math.max(0, questionQueue.length - 1);
+            }
+
+            showQuestion();
+            return;
+        }
+
+        // Unanswered manual navigation
         if (currentIndex < questionQueue.length - 1) {
             currentIndex++;
         }
@@ -973,6 +998,7 @@ function nextQuestion() {
         return;
     }
 
+    // normal mode
     if (currentIndex < questionQueue.length - 1) {
         currentIndex++;
     } else {
@@ -1007,6 +1033,10 @@ function prevQuestion() {
     }
 
     if (isRetryMode()) {
+        if (pendingMasteryAdvance) {
+            pendingMasteryAdvance = false;
+        }
+
         if (currentIndex > 0) {
             currentIndex--;
         }
@@ -1015,6 +1045,7 @@ function prevQuestion() {
         return;
     }
 
+    // normal mode
     if (normalFinished) {
         normalFinished = false;
         currentIndex = Math.max(0, questionQueue.length - 1);
@@ -1038,6 +1069,8 @@ function resetModeState() {
     penaltyAnswerLocked = false;
     penaltyFinished = false;
     penaltySolvedIds = new Set();
+
+    pendingMasteryAdvance = false;
 
     normalFinished = false;
     questionAnswered = false;
