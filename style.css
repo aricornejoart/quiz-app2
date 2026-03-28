@@ -154,8 +154,41 @@ body.fullscreen-mode .bottom-controls {
 }
 
 #progressContainer {
-  width: 110px;
-  min-width: 110px;
+  width: 150px;
+  min-width: 150px;
+}
+
+.progress-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#progressBar {
+  width: 300%;
+  background: #444;
+  border-radius: 5px;
+  overflow: hidden;
+  height: 10px;
+  margin-top: 5px;
+}
+
+#progressSideFeedback {
+  width: 60px;
+  margin-left: 12px;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+#feedback {
+  display: none;
 }
 
 #progressText {

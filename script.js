@@ -2,7 +2,7 @@
 const sheetId = '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E';
 
 // ================= SETTINGS =================
-let SPEED_DELAY = 500;
+let SPEED_DELAY = 300;
 
 // ================= GLOBAL STATE =================
 let questions = [];
@@ -373,7 +373,7 @@ function setHierarchyInteractionEnabled(enabled) {
 
 // ================= UI RESET HELPERS =================
 function clearFeedback() {
-    const fb = document.getElementById('feedback');
+    const fb = document.getElementById('progressSideFeedback');
     if (fb) {
         fb.innerText = '';
         fb.classList.remove('correct', 'incorrect');
@@ -414,7 +414,7 @@ function clearQuestionUI() {
 
 // ================= FEEDBACK HELPER =================
 function setFeedback(text, isCorrect) {
-    const fb = document.getElementById('feedback');
+    const fb = document.getElementById('progressSideFeedback');
     if (!fb) return;
 
     fb.innerText = text;
