@@ -278,13 +278,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 15px;
+  margin-top: 8px;
 }
 
 .option-block {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .option-row {
@@ -294,9 +294,10 @@ body {
 }
 
 .explanation {
-  font-size: 14px;
+  font-size: 12px;
   color: #d0d0ff;
   min-height: 14px;
+  padding-left: 2px;
 }
 
 .optionBtn {
@@ -326,9 +327,26 @@ body {
 .option-feedback {
   width: 30px;
   text-align: center;
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 20px;
+  font-weight: 900;
   flex-shrink: 0;
+  opacity: 1;
+  line-height: 1;
+  min-height: 20px;
+}
+
+.option-feedback.correct-mark,
+.hierarchy-feedback.correct-mark {
+  color: #4caf50;
+  -webkit-text-fill-color: #4caf50;
+  opacity: 1;
+}
+
+.option-feedback.incorrect-mark,
+.hierarchy-feedback.incorrect-mark {
+  color: #ff4d4f;
+  -webkit-text-fill-color: #ff4d4f;
+  opacity: 1;
 }
 
 /* ===== Hierarchy Type Styles ===== */
@@ -378,11 +396,14 @@ body {
 }
 
 .hierarchy-feedback {
-  font-weight: bold;
+  font-weight: 900;
   width: 30px;
   text-align: center;
   flex-shrink: 0;
-  font-size: 18px;
+  font-size: 20px;
+  line-height: 1;
+  min-height: 20px;
+  opacity: 1;
 }
 
 .hierarchy-arrow {
@@ -489,7 +510,8 @@ body {
 #feedback {
   font-size: 18px;
   font-weight: bold;
-  margin-bottom: 5px;
+  margin-top: -15px;
+  margin-bottom: 2px;
   min-height: 24px;
 }
 

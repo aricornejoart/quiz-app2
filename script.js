@@ -392,7 +392,7 @@ function clearOptionFeedback() {
         const fb = document.getElementById(`optionFeedback${i}`);
         if (fb) {
             fb.innerText = '';
-            fb.style.color = '';
+            fb.classList.remove('correct-mark', 'incorrect-mark');
         }
     }
 }
@@ -527,7 +527,7 @@ function showMC(q) {
             exp.innerText = '';
             if (fb) {
                 fb.innerText = '';
-                fb.style.color = '';
+                fb.classList.remove('correct-mark', 'incorrect-mark');
             }
         } else {
             btn.style.display = 'none';
@@ -536,7 +536,7 @@ function showMC(q) {
             exp.innerText = '';
             if (fb) {
                 fb.innerText = '';
-                fb.style.color = '';
+                fb.classList.remove('correct-mark', 'incorrect-mark');
             }
         }
     }
@@ -557,23 +557,17 @@ function handleWrongAnswer() {
     if (isRetryMode()) {
         const wrongQuestion = q;
 
-        // Remove current question from its current spot
         questionQueue.splice(currentIndex, 1);
 
-        // Send it 3 questions ahead in the remaining active queue
         let insertIndex = currentIndex + 3;
         if (insertIndex > questionQueue.length) {
             insertIndex = questionQueue.length;
         }
 
         questionQueue.splice(insertIndex, 0, wrongQuestion);
-
-        // Mark that next render in Mastery should show the shifted queue result
         pendingMasteryAdvance = true;
         return;
     }
-
-    // normal mode: no immediate removal/movement
 }
 
 // ================= CORRECT ANSWER LOGIC =================
@@ -598,8 +592,6 @@ function handleCorrectAnswer() {
         pendingMasteryAdvance = true;
         return;
     }
-
-    // normal mode: no immediate removal
 }
 
 // ================= ANSWER =================
@@ -622,15 +614,16 @@ function checkAnswer(selected, explanations) {
         }
 
         if (feedbackEl) {
+            feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
+
             if (btn.innerText === q.correct) {
                 feedbackEl.innerText = '✔';
-                feedbackEl.style.color = '#4caf50';
+                feedbackEl.classList.add('correct-mark');
             } else if (btn.innerText === selected && !isCorrect) {
                 feedbackEl.innerText = '✖';
-                feedbackEl.style.color = '#ff6b6b';
+                feedbackEl.classList.add('incorrect-mark');
             } else {
                 feedbackEl.innerText = '';
-                feedbackEl.style.color = '';
             }
         }
     });
@@ -893,12 +886,14 @@ function showHierarchy(q) {
             const text = r.querySelector('.hierarchy-item').innerText;
             const fb = r.querySelector('.hierarchy-feedback');
 
+            fb.classList.remove('correct-mark', 'incorrect-mark');
+
             if (q.options.indexOf(text) === q.correctOrder[i] - 1) {
                 fb.innerText = '✔';
-                fb.style.color = '#4caf50';
+                fb.classList.add('correct-mark');
             } else {
                 fb.innerText = '✖';
-                fb.style.color = '#ff6b6b';
+                fb.classList.add('incorrect-mark');
                 allCorrect = false;
             }
         });
@@ -976,8 +971,6 @@ function nextQuestion() {
             return;
         }
 
-        // After answering in Mastery, the queue has already changed.
-        // So the next visible question is now at the current index.
         if (pendingMasteryAdvance) {
             pendingMasteryAdvance = false;
 
@@ -989,7 +982,6 @@ function nextQuestion() {
             return;
         }
 
-        // Unanswered manual navigation
         if (currentIndex < questionQueue.length - 1) {
             currentIndex++;
         }
@@ -998,7 +990,6 @@ function nextQuestion() {
         return;
     }
 
-    // normal mode
     if (currentIndex < questionQueue.length - 1) {
         currentIndex++;
     } else {
@@ -1045,7 +1036,6 @@ function prevQuestion() {
         return;
     }
 
-    // normal mode
     if (normalFinished) {
         normalFinished = false;
         currentIndex = Math.max(0, questionQueue.length - 1);
