@@ -61,6 +61,7 @@
             <label><input type="checkbox" id="penaltyMode"> Penalty Mode</label>
             <label><input type="checkbox" id="masteryMode"> Mastery</label>
             <label><input type="checkbox" id="rapidMode"> Rapid</label>
+            <label id="hintsModeLabel"><input type="checkbox" id="hintsMode"> Hints</label>
           </div>
         </div>
       </div>
@@ -112,6 +113,23 @@
     </div>
   </div>
 
+</div>
+
+<div id="hintOverlay" class="hint-overlay hidden" aria-hidden="true">
+  <div class="hint-modal">
+    <button id="closeHintBtn" class="close-hint-btn" type="button" aria-label="Close hint">✕</button>
+    <div class="hint-title">Mastering it.</div>
+
+    <div id="hintBody" class="hint-body text-only">
+      <div id="hintTextPanel" class="hint-text-panel">
+        <div id="hintContent" class="hint-content"></div>
+      </div>
+
+      <div id="hintImagePanel" class="hint-image-panel hidden">
+        <img id="hintImage" src="" alt="Hint image">
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="script.js"></script>

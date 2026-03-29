@@ -13,6 +13,14 @@ body {
   color: #e0e0ff;
 }
 
+body.hint-open {
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
 .container {
   max-width: 900px;
   margin: auto;
@@ -158,6 +166,11 @@ body.fullscreen-mode .bottom-controls {
   min-width: 150px;
 }
 
+#progressText {
+  font-size: 13px;
+  color: #e0e0ff;
+}
+
 .progress-bar-row {
   display: flex;
   align-items: center;
@@ -165,39 +178,8 @@ body.fullscreen-mode .bottom-controls {
 }
 
 #progressBar {
-  width: 300%;
-  background: #444;
-  border-radius: 5px;
-  overflow: hidden;
-  height: 10px;
-  margin-top: 5px;
-}
-
-#progressSideFeedback {
-  width: 60px;
-  margin-left: 12px;
-  font-size: 18px;
-  font-weight: bold;
-  line-height: 1;
-  height: 14px;
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-  text-align: left;
-  flex-shrink: 0;
-}
-
-#feedback {
-  display: none;
-}
-
-#progressText {
-  font-size: 13px;
-  color: #e0e0ff;
-}
-
-#progressBar {
-  width: 100%;
+  flex: 1;
+  width: auto;
   background: #444;
   border-radius: 5px;
   overflow: hidden;
@@ -210,6 +192,24 @@ body.fullscreen-mode .bottom-controls {
   width: 0%;
   background: #7c6cff;
   transition: width 0.2s ease;
+}
+
+#progressSideFeedback {
+  width: 60px;
+  margin-left: 12px;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+#feedback {
+  display: none;
 }
 
 /* ===== Utility Controls ===== */
@@ -262,10 +262,6 @@ body.fullscreen-mode .bottom-controls {
   z-index: 2000;
 }
 
-.settings-popup.hidden {
-  display: none;
-}
-
 .close-settings-btn {
   position: absolute;
   top: 8px;
@@ -294,6 +290,15 @@ body.fullscreen-mode .bottom-controls {
   color: #cfcfff;
   font-size: 13px;
   white-space: nowrap;
+}
+
+.settings-popup-content label.disabled-setting {
+  color: #8e8aa8;
+  opacity: 0.65;
+}
+
+.settings-popup-content label.disabled-setting input {
+  cursor: not-allowed;
 }
 
 /* ===== Quiz Area ===== */
@@ -550,20 +555,162 @@ body.fullscreen-mode .bottom-controls {
 }
 
 /* ===== Feedback ===== */
-#feedback {
-  font-size: 18px;
-  font-weight: bold;
-  margin-top: -15px;
-  margin-bottom: 2px;
-  min-height: 24px;
-}
-
 .correct {
   color: #4caf50;
 }
 
 .incorrect {
   color: #ff6b6b;
+}
+
+/* ===== Hint Overlay ===== */
+.hint-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 20px 28px 20px;
+  background: rgba(30, 27, 46, 0.88);
+  overflow-y: auto;
+}
+
+.hint-modal {
+  position: relative;
+  width: min(1200px, 92vw);
+  height: min(680px, calc(100vh - 84px));
+  background: #2a2540;
+  border: 1px solid #5a4bcf;
+  border-radius: 16px;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
+  padding: 26px 26px 22px 26px;
+  display: flex;
+  flex-direction: column;
+}
+
+.close-hint-btn {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 34px;
+  height: 34px;
+  background: #3a3360;
+  color: #ffffff;
+  border: 1px solid #5a4bcf;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+}
+
+.close-hint-btn:hover {
+  background: #5a4bcf;
+}
+
+.close-hint-btn:active {
+  transform: scale(0.98);
+}
+
+.hint-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 18px;
+  padding-right: 60px;
+  padding-top: 2px;
+}
+
+.hint-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.hint-body.text-only {
+  display: block;
+}
+
+.hint-body.image-only {
+  display: block;
+}
+
+.hint-body.text-image {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  height: 100%;
+}
+
+.hint-text-panel,
+.hint-image-panel {
+  min-height: 0;
+  height: 100%;
+  background: #241f39;
+  border: 1px solid #4b4193;
+  border-radius: 12px;
+}
+
+.hint-text-panel {
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.hint-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.6;
+  font-size: 18px;
+  color: #e8e6ff;
+}
+
+.hint-body.text-only .hint-text-panel {
+  height: 100%;
+}
+
+.hint-body.image-only .hint-image-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  overflow: auto;
+}
+
+.hint-body.image-only #hintImage,
+.hint-body.text-image #hintImage {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  display: block;
+  margin: auto;
+}
+
+.hint-body.text-image .hint-image-panel {
+  padding: 18px;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .hint-overlay {
+    padding: 40px 12px 20px 12px;
+  }
+
+  .hint-modal {
+    width: min(96vw, 1200px);
+    height: min(78vh, calc(100vh - 60px));
+    padding: 22px 18px 18px 18px;
+  }
+
+  .hint-body.text-image {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 1fr) minmax(220px, 1fr);
+  }
 }
 
 /* ===== Fullscreen App Mode ===== */
@@ -605,4 +752,13 @@ body.fullscreen-mode .optionBtn {
 body.fullscreen-mode .image-container img,
 body.fullscreen-mode #questionImage {
   max-height: 500px;
+}
+
+body.fullscreen-mode .hint-overlay {
+  padding: 64px 20px 32px 20px;
+}
+
+body.fullscreen-mode .hint-modal {
+  width: min(1280px, 94vw);
+  height: min(720px, calc(100vh - 96px));
 }

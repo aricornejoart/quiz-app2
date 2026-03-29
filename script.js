@@ -28,6 +28,10 @@ let normalFinished = false;
 // answer lock state
 let questionAnswered = false;
 
+// hints state
+let pendingHint = null;
+let hintOverlayOpen = false;
+
 const quizSelector = document.getElementById('quizSelector');
 const combineInput = document.getElementById('combineInput');
 const combineGoBtn = document.getElementById('combineGoBtn');
@@ -35,6 +39,14 @@ const settingsBtn = document.getElementById('settingsBtn');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const settingsPopup = document.getElementById('settingsPopup');
 const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+
+const hintOverlay = document.getElementById('hintOverlay');
+const closeHintBtn = document.getElementById('closeHintBtn');
+const hintBody = document.getElementById('hintBody');
+const hintContent = document.getElementById('hintContent');
+const hintImage = document.getElementById('hintImage');
+const hintImagePanel = document.getElementById('hintImagePanel');
+const hintTextPanel = document.getElementById('hintTextPanel');
 
 // ================= SHEETS PARSER =================
 function parseGoogleSheetResponse(text) {
@@ -82,8 +94,30 @@ function isSpeedMode() {
     return document.getElementById('rapidMode').checked;
 }
 
+function isHintsMode() {
+    return document.getElementById('hintsMode').checked;
+}
+
 function isNormalMode() {
     return !isPenaltyMode() && !isRetryMode();
+}
+
+function canUseHints() {
+    return isHintsMode() && !isSpeedMode() && (isPenaltyMode() || isRetryMode());
+}
+
+function updateHintsAvailability() {
+    const hintsCheckbox = document.getElementById('hintsMode');
+    const hintsLabel = document.getElementById('hintsModeLabel');
+    const hintsAllowed = isPenaltyMode() || isRetryMode();
+
+    hintsCheckbox.disabled = !hintsAllowed;
+    hintsLabel.classList.toggle('disabled-setting', !hintsAllowed);
+
+    if (!hintsAllowed) {
+        hintsCheckbox.checked = false;
+        clearPendingHint();
+    }
 }
 
 // ================= SETTINGS / FULLSCREEN UI =================
@@ -125,6 +159,86 @@ function toggleFullscreenMode() {
     } else {
         enterFullscreenMode();
     }
+}
+
+// ================= HINTS UI =================
+function clearPendingHint() {
+    pendingHint = null;
+}
+
+function queueHintIfEligible(question) {
+    const text = normalizeSheetText(question?.hintText);
+    const imageUrl = normalizeSheetText(question?.hintImage);
+
+    if (!canUseHints() || (!text && !imageUrl)) {
+        pendingHint = null;
+        return;
+    }
+
+    pendingHint = {
+        text,
+        imageUrl
+    };
+}
+
+function openHintOverlay(hintData) {
+    if (!hintData) return;
+
+    const text = normalizeSheetText(hintData.text);
+    const imageUrl = normalizeSheetText(hintData.imageUrl);
+    const hasText = !!text;
+    const hasImage = !!imageUrl;
+
+    if (!hasText && !hasImage) return;
+
+    hintContent.innerText = text;
+    hintImage.src = '';
+    hintImage.alt = 'Hint image';
+    hintImagePanel.classList.add('hidden');
+
+    hintBody.classList.remove('text-only', 'image-only', 'text-image');
+
+    if (hasImage) {
+        hintImage.src = imageUrl;
+        hintImagePanel.classList.remove('hidden');
+    }
+
+    if (hasText && hasImage) {
+        hintBody.classList.add('text-image');
+        hintTextPanel.classList.remove('hidden');
+        hintImagePanel.classList.remove('hidden');
+    } else if (hasText) {
+        hintBody.classList.add('text-only');
+        hintTextPanel.classList.remove('hidden');
+        hintImagePanel.classList.add('hidden');
+    } else {
+        hintBody.classList.add('image-only');
+        hintTextPanel.classList.add('hidden');
+        hintImagePanel.classList.remove('hidden');
+    }
+
+    hintOverlay.classList.remove('hidden');
+    hintOverlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hint-open');
+    hintOverlayOpen = true;
+}
+
+function closeHintOverlay() {
+    hintOverlay.classList.add('hidden');
+    hintOverlay.setAttribute('aria-hidden', 'true');
+    hintContent.innerText = '';
+    hintImage.src = '';
+    hintTextPanel.classList.remove('hidden');
+    hintImagePanel.classList.add('hidden');
+    hintBody.classList.remove('text-only', 'image-only', 'text-image');
+    document.body.classList.remove('hint-open');
+    hintOverlayOpen = false;
+    clearPendingHint();
+}
+
+function showPendingHintIfAny() {
+    if (!pendingHint) return;
+    openHintOverlay(pendingHint);
 }
 
 // ================= COMBINE HELPERS =================
@@ -304,7 +418,9 @@ async function loadQuestions(sheetName) {
                 ]
                     .map(n => n ? Number(n) : null)
                     .filter(n => n !== null),
-                image: getCellValue(c[22])
+                image: getCellValue(c[22]),
+                hintText: getCellValue(c[23]),   // X
+                hintImage: getCellValue(c[24])   // Y
             };
         }).filter(q => q.question && q.question.toLowerCase() !== 'question');
     }
@@ -328,7 +444,9 @@ async function loadQuestions(sheetName) {
                 getCellValue(c[9]),
                 getCellValue(c[10])
             ],
-            image: getCellValue(c[11])
+            image: getCellValue(c[11]),
+            hintText: getCellValue(c[12]),      // M
+            hintImage: getCellValue(c[13])      // N
         };
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
@@ -598,6 +716,7 @@ function handleCorrectAnswer() {
 function checkAnswer(selected, explanations) {
     if (isQuizFinished()) return;
     if (questionAnswered) return;
+    if (hintOverlayOpen) return;
     if (isPenaltyMode() && penaltyAnswerLocked) return;
 
     questionAnswered = true;
@@ -629,9 +748,11 @@ function checkAnswer(selected, explanations) {
     });
 
     if (isCorrect) {
+        clearPendingHint();
         setFeedback('Correct!', true);
         handleCorrectAnswer();
     } else {
+        queueHintIfEligible(q);
         setFeedback('Incorrect!', false);
         handleWrongAnswer();
     }
@@ -744,6 +865,7 @@ function enableHierarchyDrag(container) {
 
     container.querySelectorAll('.hierarchy-item').forEach(item => {
         item.addEventListener('pointerdown', e => {
+            if (hintOverlayOpen) return;
             if (item.dataset.dragDisabled === 'true') return;
             if (questionAnswered) return;
             if (e.button !== undefined && e.button !== 0) return;
@@ -821,6 +943,7 @@ function showHierarchy(q) {
         up.className = 'hierarchy-arrow';
         up.onclick = e => {
             e.stopPropagation();
+            if (hintOverlayOpen) return;
             if (questionAnswered) return;
 
             const prev = row.previousElementSibling;
@@ -835,6 +958,7 @@ function showHierarchy(q) {
         down.className = 'hierarchy-arrow down-arrow';
         down.onclick = e => {
             e.stopPropagation();
+            if (hintOverlayOpen) return;
             if (questionAnswered) return;
 
             const next = row.nextElementSibling;
@@ -873,6 +997,7 @@ function showHierarchy(q) {
     submit.innerText = 'Submit';
 
     submit.onclick = () => {
+        if (hintOverlayOpen) return;
         if (questionAnswered) return;
         if (isPenaltyMode() && penaltyAnswerLocked) return;
 
@@ -899,9 +1024,11 @@ function showHierarchy(q) {
         });
 
         if (allCorrect) {
+            clearPendingHint();
             setFeedback('Correct!', true);
             handleCorrectAnswer();
         } else {
+            queueHintIfEligible(q);
             setFeedback('Incorrect!', false);
             handleWrongAnswer();
         }
@@ -923,11 +1050,14 @@ function showHierarchy(q) {
 
 // ================= NAV =================
 function nextQuestion() {
+    if (hintOverlayOpen) return;
+
     clearFeedback();
     clearExplanations();
 
     if (isQuizFinished()) {
         showQuestion();
+        showPendingHintIfAny();
         return;
     }
 
@@ -938,6 +1068,7 @@ function nextQuestion() {
             pendingPenaltyCorrect = false;
             penaltyAnswerLocked = false;
             showQuestion();
+            showPendingHintIfAny();
             return;
         }
 
@@ -951,6 +1082,7 @@ function nextQuestion() {
             pendingPenaltyCorrect = false;
             penaltyAnswerLocked = false;
             showQuestion();
+            showPendingHintIfAny();
             return;
         }
 
@@ -962,12 +1094,14 @@ function nextQuestion() {
 
         penaltyAnswerLocked = false;
         showQuestion();
+        showPendingHintIfAny();
         return;
     }
 
     if (isRetryMode()) {
         if (questionQueue.length === 0) {
             showQuestion();
+            showPendingHintIfAny();
             return;
         }
 
@@ -979,6 +1113,7 @@ function nextQuestion() {
             }
 
             showQuestion();
+            showPendingHintIfAny();
             return;
         }
 
@@ -987,6 +1122,7 @@ function nextQuestion() {
         }
 
         showQuestion();
+        showPendingHintIfAny();
         return;
     }
 
@@ -997,11 +1133,15 @@ function nextQuestion() {
     }
 
     showQuestion();
+    clearPendingHint();
 }
 
 function prevQuestion() {
+    if (hintOverlayOpen) return;
+
     clearFeedback();
     clearExplanations();
+    clearPendingHint();
 
     if (isPenaltyMode()) {
         pendingPenaltyJump = false;
@@ -1064,6 +1204,9 @@ function resetModeState() {
 
     normalFinished = false;
     questionAnswered = false;
+
+    clearPendingHint();
+    closeHintOverlay();
 }
 
 // ================= RESTART =================
@@ -1075,6 +1218,7 @@ function restartQuiz() {
         shuffleArray(questionQueue);
     }
 
+    updateHintsAvailability();
     showQuestion();
 }
 
@@ -1087,6 +1231,7 @@ document.getElementById('penaltyMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('masteryMode').checked = false;
     }
+    updateHintsAvailability();
     restartQuiz();
 };
 
@@ -1094,7 +1239,22 @@ document.getElementById('masteryMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('penaltyMode').checked = false;
     }
+    updateHintsAvailability();
     restartQuiz();
+};
+
+document.getElementById('rapidMode').onchange = e => {
+    if (e.target.checked && isHintsMode()) {
+        document.getElementById('hintsMode').checked = false;
+    }
+    updateHintsAvailability();
+    restartQuiz();
+};
+
+document.getElementById('hintsMode').onchange = e => {
+    if (e.target.checked && isSpeedMode()) {
+        document.getElementById('rapidMode').checked = false;
+    }
 };
 
 combineInput.addEventListener('input', () => {
@@ -1125,6 +1285,7 @@ combineGoBtn.addEventListener('click', async () => {
 
         setCombineValidState(true);
         await applyLoadedQuestions(combinedQuestions);
+        updateHintsAvailability();
     } catch (err) {
         console.error(err);
         setCombineValidState(false);
@@ -1146,6 +1307,7 @@ quizSelector.addEventListener('change', async e => {
     }
 
     resetModeState();
+    updateHintsAvailability();
     showQuestion();
 });
 
@@ -1167,6 +1329,11 @@ fullscreenBtn.addEventListener('click', () => {
     toggleFullscreenMode();
 });
 
+closeHintBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    closeHintOverlay();
+});
+
 document.addEventListener('click', e => {
     if (!settingsPopup.classList.contains('hidden') && !settingsPopup.contains(e.target) && e.target !== settingsBtn) {
         closeSettingsPopup();
@@ -1175,6 +1342,11 @@ document.addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        if (hintOverlayOpen) {
+            closeHintOverlay();
+            return;
+        }
+
         if (isAppFullscreen) {
             exitFullscreenMode();
         }
@@ -1202,6 +1374,7 @@ document.addEventListener('keydown', e => {
         }
 
         resetModeState();
+        updateHintsAvailability();
         showQuestion();
     } catch (err) {
         console.error(err);
@@ -1211,5 +1384,6 @@ document.addEventListener('keydown', e => {
 
 // ================= IMAGE ZOOM =================
 document.getElementById('questionImage').onclick = function () {
+    if (hintOverlayOpen) return;
     this.classList.toggle('zoomed');
 };
