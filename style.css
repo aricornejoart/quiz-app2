@@ -7,9 +7,6 @@ body {
   margin: 0;
   padding: 20px;
   background: #1e1b2e;
-  transform: scale(1.5);
-  transform-origin: top left;
-  width: 66.67%;
   color: #e0e0ff;
 }
 
@@ -28,6 +25,10 @@ body.hint-open {
   padding: 20px;
   border-radius: 10px;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
+
+  transform: scale(1.5);
+  transform-origin: top center;
+  width: 66.67%;
 }
 
 .top-bar {
@@ -571,22 +572,27 @@ body.fullscreen-mode .bottom-controls {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 56px 20px 28px 20px;
+  padding-top: 56px;
+  padding-right: 20px;
+  padding-bottom: 0;
+  padding-left: 20px;
   background: rgba(30, 27, 46, 0.88);
   overflow-y: auto;
 }
 
-.hint-modal {
-  position: relative;
-  width: min(1200px, 92vw);
-  height: min(680px, calc(100vh - 84px));
-  background: #2a2540;
-  border: 1px solid #5a4bcf;
-  border-radius: 16px;
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
-  padding: 26px 26px 22px 26px;
+.hint-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 56px;
+  padding-right: 20px;
+  padding-bottom: 0;
+  padding-left: 20px;
+  background: rgba(30, 27, 46, 0.88);
+  overflow-y: auto;
 }
 
 .close-hint-btn {
@@ -628,6 +634,7 @@ body.fullscreen-mode .bottom-controls {
 .hint-body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .hint-body.text-only {
@@ -643,20 +650,25 @@ body.fullscreen-mode .bottom-controls {
   grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
   gap: 18px;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .hint-text-panel,
 .hint-image-panel {
   min-height: 0;
+  max-height: 100%;
   height: 100%;
   background: #241f39;
   border: 1px solid #4b4193;
   border-radius: 12px;
+  box-sizing: border-box;
 }
 
 .hint-text-panel {
   padding: 18px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .hint-content {
@@ -669,6 +681,7 @@ body.fullscreen-mode .bottom-controls {
 
 .hint-body.text-only .hint-text-panel {
   height: 100%;
+  max-height: 100%;
 }
 
 .hint-body.image-only .hint-image-panel {
@@ -679,21 +692,20 @@ body.fullscreen-mode .bottom-controls {
   overflow: auto;
 }
 
-.hint-body.image-only #hintImage,
-.hint-body.text-image #hintImage {
+.hint-body.text-image .hint-image-panel {
+  padding: 18px;
+  overflow: auto;
+}
+
+#hintImage {
   max-width: 100%;
-  max-height: 100%;
+  max-height: 350px;
   width: auto;
   height: auto;
   object-fit: contain;
   border-radius: 10px;
   display: block;
   margin: auto;
-}
-
-.hint-body.text-image .hint-image-panel {
-  padding: 18px;
-  overflow: auto;
 }
 
 @media (max-width: 900px) {
@@ -755,10 +767,15 @@ body.fullscreen-mode #questionImage {
 }
 
 body.fullscreen-mode .hint-overlay {
-  padding: 64px 20px 32px 20px;
+  padding-top: 64px;
+  padding-right: 20px;
+  padding-bottom: 0;
+  padding-left: 20px;
 }
 
 body.fullscreen-mode .hint-modal {
   width: min(1280px, 94vw);
-  height: min(720px, calc(100vh - 96px));
+  min-height: 720px;
+  max-height: none;
+  margin-bottom: 20px;
 }
