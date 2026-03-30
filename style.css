@@ -583,7 +583,7 @@ body.fullscreen-mode .bottom-controls {
 .hint-modal {
   position: relative;
   width: min(1800px, 96vw);
-  height: min(800px, calc(100vh - 76px));
+  height: min(750px, calc(100vh - 76px));
   background: #2a2540;
   border: 1px solid #5a4bcf;
   border-radius: 16px;
@@ -770,5 +770,5 @@ body.fullscreen-mode .hint-overlay {
 
 body.fullscreen-mode .hint-modal {
   width: min(1800px, 96vw);
-  height: min(800px, calc(100vh - 84px));
+  height: min(750px, calc(100vh - 84px));
 }
