@@ -674,13 +674,18 @@ body.fullscreen-mode .bottom-controls {
 }
 
 .hint-content {
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
   line-height: 1.6;
   font-size: 20px;
   color: #e8e6ff;
+  text-align: justify;
+  text-align-last: left;
 }
-
 .hint-body.text-only .hint-text-panel {
   display: block;
   width: 100%;
