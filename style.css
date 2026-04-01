@@ -788,11 +788,11 @@ body.fullscreen-mode .hint-modal {
   }
 
   .hint-modal {
-    height: min(650px, calc(100svh - 100px)) !important;
+    height: min(650px, calc(100svh - 110px)) !important;
   }
 
   body.fullscreen-mode .hint-modal {
-    height: min(650px, calc(100svh - 100px)) !important;
+    height: min(650px, calc(100svh - 110px)) !important;
   }
 }
 
