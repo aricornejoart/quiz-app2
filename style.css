@@ -775,16 +775,31 @@ body.fullscreen-mode .hint-modal {
 
 @media (min-width: 901px) and (max-width: 1366px) {
   .hint-modal {
-    height: min(650px, calc(100vh - 200px));
+    height: min(650px, calc(100vh - 12px));
   }
 
   body.fullscreen-mode .hint-modal {
-    height: min(650px, calc(100vh - 200px));
+    height: min(650px, calc(100vh - 120px));
   }
 }
 
 @media (max-width: 1366px) {
   .hint-modal {
     outline: 8px solid red !important;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  .hint-body.text-only,
+  .hint-body.image-only {
+    display: flex;
+  }
+
+  .hint-text-panel,
+  .hint-image-panel {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
