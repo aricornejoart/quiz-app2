@@ -773,16 +773,6 @@ body.fullscreen-mode .hint-modal {
   height: min(750px, calc(100vh - 84px));
 }
 
-@media (min-width: 901px) and (max-width: 1366px) {
-  .hint-modal {
-    height: min(650px, calc(100vh - 12px));
-  }
-
-  body.fullscreen-mode .hint-modal {
-    height: min(650px, calc(100vh - 120px));
-  }
-}
-
 @supports (-webkit-touch-callout: none) {
   .hint-body.text-only,
   .hint-body.image-only {
@@ -794,7 +784,14 @@ body.fullscreen-mode .hint-modal {
     flex: 1;
     min-height: 0;
     height: auto;
-    max-height: calc(100% - 16px);
     -webkit-overflow-scrolling: touch;
+  }
+
+  .hint-modal {
+    height: min(650px, calc(100svh - 1400px)) !important;
+  }
+
+  body.fullscreen-mode .hint-modal {
+    height: min(650px, calc(100svh - 140px)) !important;
   }
 }
