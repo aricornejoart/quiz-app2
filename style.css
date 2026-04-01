@@ -788,10 +788,18 @@ body.fullscreen-mode .hint-modal {
   }
 
   .hint-modal {
-    height: min(650px, calc(100svh - 140px)) !important;
+    height: min(650px, calc(100svh - 100px)) !important;
   }
 
   body.fullscreen-mode .hint-modal {
-    height: min(650px, calc(100svh - 140px)) !important;
+    height: min(650px, calc(100svh - 100px)) !important;
   }
+}
+
+.hint-overlay {
+  padding-top: 36px;
+}
+
+body.fullscreen-mode .hint-overlay {
+  padding-top: 44px;
 }
