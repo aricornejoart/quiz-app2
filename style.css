@@ -775,10 +775,10 @@ body.fullscreen-mode .hint-modal {
 
 @media (min-width: 901px) and (max-width: 1366px) {
   .hint-modal {
-    height: min(650px, calc(100vh - 80px));
+    height: min(650px, calc(100vh - 200px));
   }
 
   body.fullscreen-mode .hint-modal {
-    height: min(650px, calc(100vh - 80px));
+    height: min(650px, calc(100vh - 200px));
   }
 }
