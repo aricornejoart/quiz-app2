@@ -803,3 +803,30 @@ body.fullscreen-mode .hint-modal {
 body.fullscreen-mode .hint-overlay {
   padding-top: 44px;
 }
+@media (orientation: portrait) {
+  @supports (-webkit-touch-callout: none) {
+    .hint-overlay {
+      padding-top: 20px !important;
+      padding-right: 12px !important;
+      padding-bottom: 16px !important;
+      padding-left: 12px !important;
+    }
+
+    body.fullscreen-mode .hint-overlay {
+      padding-top: 24px !important;
+      padding-right: 12px !important;
+      padding-bottom: 16px !important;
+      padding-left: 12px !important;
+    }
+
+    .hint-modal {
+      width: 96vw !important;
+      height: min(780px, calc(100svh - 36px)) !important;
+    }
+
+    body.fullscreen-mode .hint-modal {
+      width: 96vw !important;
+      height: min(780px, calc(100svh - 44px)) !important;
+    }
+  }
+}
