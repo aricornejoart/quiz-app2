@@ -783,11 +783,6 @@ body.fullscreen-mode .hint-modal {
   }
 }
 
-@media (max-width: 1366px) {
-  .hint-modal {
-    outline: 8px solid red !important;
-  }
-}
 
 @supports (-webkit-touch-callout: none) {
   .hint-body.text-only,
