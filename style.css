@@ -821,12 +821,12 @@ body.fullscreen-mode .hint-overlay {
 
     .hint-modal {
       width: 96vw !important;
-      height: min(780px, calc(100svh - 36px)) !important;
+      height: min(840px, calc(100svh - 36px)) !important;
     }
 
     body.fullscreen-mode .hint-modal {
       width: 96vw !important;
-      height: min(780px, calc(100svh - 44px)) !important;
+      height: min(840px, calc(100svh - 44px)) !important;
     }
   }
 }
