@@ -782,3 +782,9 @@ body.fullscreen-mode .hint-modal {
     height: min(650px, calc(100vh - 200px));
   }
 }
+
+@media (max-width: 1366px) {
+  .hint-modal {
+    outline: 8px solid red !important;
+  }
+}
