@@ -783,7 +783,6 @@ body.fullscreen-mode .hint-modal {
   }
 }
 
-
 @supports (-webkit-touch-callout: none) {
   .hint-body.text-only,
   .hint-body.image-only {
