@@ -1251,6 +1251,11 @@ body.fullscreen-mode .bottom-controls {
   margin: 0 auto;
 }
 
+body:not(.fullscreen-mode) .flashcard-card {
+  height: min(420px, 56vh) !important;
+  min-height: 330px !important;
+}
+
 @media (max-width: 900px) {
   .hint-overlay {
     padding: 40px 12px 20px 12px;
@@ -1358,7 +1363,7 @@ body.fullscreen-mode .flashcard-grade-row {
 }
 
 body.fullscreen-mode .flashcard-card {
-  height: min(500px, 68vh);
+  height: min(470px, 63vh);
 }
 
 body.fullscreen-mode .flashcard-side-text {
