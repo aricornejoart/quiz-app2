@@ -657,8 +657,6 @@ function removeFlashcardUI() {
     const oldGradeRow = document.getElementById('flashcardGradeRow');
     if (oldGradeRow) oldGradeRow.remove();
 
-    const oldHelpText = document.getElementById('flashcardHelpText');
-    if (oldHelpText) oldHelpText.remove();
 }
 
 function clearQuestionUI() {
@@ -1166,11 +1164,6 @@ function showFlashcard(q) {
     card.appendChild(cardInner);
     container.appendChild(card);
 
-    const helpText = document.createElement('div');
-    helpText.id = 'flashcardHelpText';
-    helpText.className = 'flashcard-help-text';
-    helpText.innerText = 'Tap or click the card to flip. Use the image zoom icon to enlarge images. Swipe or drag right = Know. Swipe or drag left = Didn’t Know.';
-    questionContainer.appendChild(helpText);
 
     const gradeRow = document.createElement('div');
     gradeRow.id = 'flashcardGradeRow';

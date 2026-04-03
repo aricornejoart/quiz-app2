@@ -696,14 +696,6 @@ body.fullscreen-mode .bottom-controls {
   text-align: center;
 }
 
-.flashcard-help-text {
-  width: 100%;
-  max-width: 760px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #cfcfff;
-}
-
 .flashcard-grade-row {
   position: absolute;
   inset: 0;
@@ -1366,7 +1358,7 @@ body.fullscreen-mode .flashcard-grade-row {
 }
 
 body.fullscreen-mode .flashcard-card {
-  height: min(430px, 58vh);
+  height: min(500px, 68vh);
 }
 
 body.fullscreen-mode .flashcard-side-text {
