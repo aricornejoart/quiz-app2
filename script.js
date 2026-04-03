@@ -32,6 +32,10 @@ let questionAnswered = false;
 let pendingHint = null;
 let hintOverlayOpen = false;
 
+// flashcard state
+let flashcardFlipped = false;
+let flashcardFrontMode = 'term';
+
 const quizSelector = document.getElementById('quizSelector');
 const combineInput = document.getElementById('combineInput');
 const combineGoBtn = document.getElementById('combineGoBtn');
@@ -47,6 +51,16 @@ const hintContent = document.getElementById('hintContent');
 const hintImage = document.getElementById('hintImage');
 const hintImagePanel = document.getElementById('hintImagePanel');
 const hintTextPanel = document.getElementById('hintTextPanel');
+
+const questionTextEl = document.getElementById('questionText');
+const questionImage = document.getElementById('questionImage');
+const imageContainer = document.querySelector('.image-container');
+const optionsContainer = document.querySelector('.options');
+const questionContainer = document.querySelector('.question-container');
+
+const flashcardFrontSetting = document.getElementById('flashcardFrontSetting');
+const termFrontBtn = document.getElementById('termFrontBtn');
+const definitionFrontBtn = document.getElementById('definitionFrontBtn');
 
 // ================= SHEETS PARSER =================
 function parseGoogleSheetResponse(text) {
@@ -106,6 +120,10 @@ function canUseHints() {
     return isHintsMode() && !isSpeedMode() && (isPenaltyMode() || isRetryMode());
 }
 
+function hasFlashcardsInDeck() {
+    return questions.some(q => q.type === 'flashcard');
+}
+
 function updateHintsAvailability() {
     const hintsCheckbox = document.getElementById('hintsMode');
     const hintsLabel = document.getElementById('hintsModeLabel');
@@ -118,6 +136,41 @@ function updateHintsAvailability() {
         hintsCheckbox.checked = false;
         clearPendingHint();
     }
+}
+
+function updateShuffleAnswersAvailability() {
+    const shuffleAnswersCheckbox = document.getElementById('shuffleAnswers');
+    const shuffleAnswersLabel = document.getElementById('shuffleAnswersLabel');
+    const supportsAnswerShuffle = questions.some(q => q.type === 'multiple choice' || q.type === 'hierarchy');
+
+    shuffleAnswersCheckbox.disabled = !supportsAnswerShuffle;
+
+    if (shuffleAnswersLabel) {
+        shuffleAnswersLabel.classList.toggle('disabled-setting', !supportsAnswerShuffle);
+    }
+
+    if (!supportsAnswerShuffle) {
+        shuffleAnswersCheckbox.checked = false;
+    }
+}
+
+function updateFlashcardFrontSettingVisibility() {
+    if (!flashcardFrontSetting) return;
+    flashcardFrontSetting.classList.toggle('hidden', !hasFlashcardsInDeck());
+}
+
+function updateFlashcardFrontButtonsUI() {
+    if (!termFrontBtn || !definitionFrontBtn) return;
+
+    termFrontBtn.classList.toggle('active', flashcardFrontMode === 'term');
+    definitionFrontBtn.classList.toggle('active', flashcardFrontMode === 'definition');
+}
+
+function updateSettingsAvailability() {
+    updateHintsAvailability();
+    updateShuffleAnswersAvailability();
+    updateFlashcardFrontSettingVisibility();
+    updateFlashcardFrontButtonsUI();
 }
 
 // ================= SETTINGS / FULLSCREEN UI =================
@@ -345,6 +398,7 @@ async function applyLoadedQuestions(newQuestions) {
     }
 
     resetModeState();
+    updateSettingsAvailability();
     showQuestion();
 }
 
@@ -419,10 +473,26 @@ async function loadQuestions(sheetName) {
                     .map(n => n ? Number(n) : null)
                     .filter(n => n !== null),
                 image: getCellValue(c[22]),
-                hintText: getCellValue(c[23]),   // X
-                hintImage: getCellValue(c[24])   // Y
+                hintText: getCellValue(c[23]),
+                hintImage: getCellValue(c[24])
             };
         }).filter(q => q.question && q.question.toLowerCase() !== 'question');
+    }
+
+    if (type === 'flashcard') {
+        return rows.slice(1).map(r => {
+            const c = r.c || [];
+            return {
+                id: `q_${questionIdCounter++}`,
+                type: 'flashcard',
+                termText: getCellValue(c[0]),
+                definitionText: getCellValue(c[2]),
+                termImage: getCellValue(c[3]),
+                definitionImage: getCellValue(c[4]),
+                hintText: getCellValue(c[5]),
+                hintImage: getCellValue(c[6])
+            };
+        }).filter(q => q.termText || q.definitionText || q.termImage || q.definitionImage);
     }
 
     return rows.map(r => {
@@ -445,8 +515,8 @@ async function loadQuestions(sheetName) {
                 getCellValue(c[10])
             ],
             image: getCellValue(c[11]),
-            hintText: getCellValue(c[12]),      // M
-            hintImage: getCellValue(c[13])      // N
+            hintText: getCellValue(c[12]),
+            hintImage: getCellValue(c[13])
         };
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
@@ -489,6 +559,19 @@ function setHierarchyInteractionEnabled(enabled) {
     });
 }
 
+function setFlashcardInteractionEnabled(enabled) {
+    const card = document.getElementById('flashcardCard');
+    if (card) {
+        card.classList.toggle('disabled', !enabled);
+    }
+
+    document.querySelectorAll('.flashcard-grade-btn').forEach(btn => {
+        btn.disabled = !enabled;
+        btn.style.pointerEvents = enabled ? 'auto' : 'none';
+        btn.style.opacity = enabled ? '1' : '0.7';
+    });
+}
+
 // ================= UI RESET HELPERS =================
 function clearFeedback() {
     const fb = document.getElementById('progressSideFeedback');
@@ -523,11 +606,21 @@ function removeHierarchyUI() {
     if (oldSubmit) oldSubmit.remove();
 }
 
+function removeFlashcardUI() {
+    const oldContainer = document.getElementById('flashcardContainer');
+    if (oldContainer) oldContainer.remove();
+
+    const oldGradeRow = document.getElementById('flashcardGradeRow');
+    if (oldGradeRow) oldGradeRow.remove();
+}
+
 function clearQuestionUI() {
     clearFeedback();
     clearExplanations();
     clearOptionFeedback();
     removeHierarchyUI();
+    removeFlashcardUI();
+    questionImage.classList.remove('zoomed');
 }
 
 // ================= FEEDBACK HELPER =================
@@ -538,6 +631,22 @@ function setFeedback(text, isCorrect) {
     fb.innerText = text;
     fb.classList.remove('correct', 'incorrect');
     fb.classList.add(isCorrect ? 'correct' : 'incorrect');
+}
+
+function applyQuestionOutcome(q, isCorrect) {
+    if (isCorrect) {
+        clearPendingHint();
+        setFeedback('Correct!', true);
+        handleCorrectAnswer();
+    } else {
+        queueHintIfEligible(q);
+        setFeedback('Incorrect!', false);
+        handleWrongAnswer();
+    }
+
+    if (isRetryMode()) {
+        updateProgress();
+    }
 }
 
 // ================= PROGRESS =================
@@ -574,19 +683,19 @@ function isQuizFinished() {
 function showQuestion() {
     clearQuestionUI();
     questionAnswered = false;
+    flashcardFlipped = false;
 
     if (isPenaltyMode()) {
         penaltyAnswerLocked = false;
     }
 
     if (isQuizFinished()) {
-        document.getElementById('questionText').innerText = 'Quiz Finished!';
-        document.querySelector('.options').style.display = 'none';
-
-        const img = document.getElementById('questionImage');
-        img.style.display = 'none';
-        img.src = '';
-
+        questionTextEl.style.display = 'block';
+        questionTextEl.innerText = 'Quiz Finished!';
+        optionsContainer.style.display = 'none';
+        imageContainer.style.display = '';
+        questionImage.style.display = 'none';
+        questionImage.src = '';
         updateProgress();
         return;
     }
@@ -595,13 +704,24 @@ function showQuestion() {
     if (currentIndex >= questionQueue.length) currentIndex = questionQueue.length - 1;
 
     const q = questionQueue[currentIndex];
-    document.getElementById('questionText').innerText = q.question;
+    optionsContainer.style.display = 'none';
 
-    const img = document.getElementById('questionImage');
-    img.style.display = q.image ? 'block' : 'none';
-    img.src = q.image || '';
+    if (q.type === 'flashcard') {
+        questionTextEl.innerText = '';
+        questionTextEl.style.display = 'none';
+        imageContainer.style.display = 'none';
+        questionImage.style.display = 'none';
+        questionImage.src = '';
+        showFlashcard(q);
+        updateProgress();
+        return;
+    }
 
-    document.querySelector('.options').style.display = 'none';
+    questionTextEl.style.display = 'block';
+    questionTextEl.innerText = q.question;
+    imageContainer.style.display = '';
+    questionImage.style.display = q.image ? 'block' : 'none';
+    questionImage.src = q.image || '';
 
     if (q.type === 'multiple choice') {
         showMC(q);
@@ -614,7 +734,7 @@ function showQuestion() {
 
 // ================= MULTIPLE CHOICE =================
 function showMC(q) {
-    const container = document.querySelector('.options');
+    const container = optionsContainer;
     container.style.display = 'flex';
 
     let options = [...q.options];
@@ -747,23 +867,265 @@ function checkAnswer(selected, explanations) {
         }
     });
 
-    if (isCorrect) {
-        clearPendingHint();
-        setFeedback('Correct!', true);
-        handleCorrectAnswer();
-    } else {
-        queueHintIfEligible(q);
-        setFeedback('Incorrect!', false);
-        handleWrongAnswer();
-    }
-
-    if (isRetryMode()) {
-        updateProgress();
-    }
+    applyQuestionOutcome(q, isCorrect);
 
     if (isSpeedMode()) {
         setTimeout(nextQuestion, SPEED_DELAY);
     }
+}
+
+// ================= FLASHCARDS =================
+function getFlashcardSideData(q, side) {
+    if (side === 'definition') {
+        return {
+            sideName: 'Definition',
+            text: normalizeSheetText(q.definitionText),
+            imageUrl: normalizeSheetText(q.definitionImage)
+        };
+    }
+
+    return {
+        sideName: 'Term',
+        text: normalizeSheetText(q.termText),
+        imageUrl: normalizeSheetText(q.termImage)
+    };
+}
+
+function toggleFlashcardFlip() {
+    if (hintOverlayOpen) return;
+    if (questionAnswered) return;
+
+    flashcardFlipped = !flashcardFlipped;
+
+    const card = document.getElementById('flashcardCard');
+    if (card) {
+        card.classList.toggle('is-flipped', flashcardFlipped);
+    }
+}
+
+function buildFlashcardFace(sideData, faceClass, faceLabel) {
+    const face = document.createElement('div');
+    face.className = `flashcard-face ${faceClass}`;
+
+    const label = document.createElement('div');
+    label.className = 'flashcard-face-label';
+    label.innerText = faceLabel;
+    face.appendChild(label);
+
+    const content = document.createElement('div');
+    content.className = 'flashcard-side-content';
+
+    const hasText = !!sideData.text;
+    const hasImage = !!sideData.imageUrl;
+
+    if (hasText && hasImage) {
+        content.classList.add('split');
+    } else if (hasText) {
+        content.classList.add('text-only');
+    } else if (hasImage) {
+        content.classList.add('image-only');
+    } else {
+        content.classList.add('text-only');
+    }
+
+    if (hasText) {
+        const text = document.createElement('div');
+        text.className = 'flashcard-side-text';
+        text.innerText = sideData.text;
+        content.appendChild(text);
+    }
+
+    if (hasImage) {
+        const imageWrap = document.createElement('div');
+        imageWrap.className = 'flashcard-side-image-wrap';
+
+        const img = document.createElement('img');
+        img.className = 'flashcard-side-image';
+        img.src = sideData.imageUrl;
+        img.alt = `${sideData.sideName} image`;
+
+        imageWrap.appendChild(img);
+        content.appendChild(imageWrap);
+    }
+
+    if (!hasText && !hasImage) {
+        const empty = document.createElement('div');
+        empty.className = 'flashcard-placeholder';
+        empty.innerText = 'No content on this side.';
+        content.appendChild(empty);
+    }
+
+    face.appendChild(content);
+    return face;
+}
+
+function enableFlashcardGesture(card, onKnow, onDontKnow) {
+    let tracking = false;
+    let startX = 0;
+    let startY = 0;
+    let activePointerId = null;
+    let pointerType = 'mouse';
+
+    function resetCardPosition() {
+        card.style.transition = 'transform 0.18s ease';
+        card.style.transform = '';
+    }
+
+    function endTracking() {
+        tracking = false;
+        activePointerId = null;
+    }
+
+    function finishInteraction(e, cancelled = false) {
+        if (!tracking) return;
+        if (activePointerId !== null && e.pointerId !== activePointerId) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const isTap = Math.abs(dx) < 10 && Math.abs(dy) < 10;
+        const isTouchSwipe = pointerType === 'touch' && Math.abs(dx) >= 70 && Math.abs(dx) > Math.abs(dy) * 1.2;
+
+        try {
+            if (card.hasPointerCapture(e.pointerId)) {
+                card.releasePointerCapture(e.pointerId);
+            }
+        } catch (err) {
+            // ignore pointer capture release failures
+        }
+
+        endTracking();
+        resetCardPosition();
+
+        if (cancelled || hintOverlayOpen || questionAnswered) {
+            return;
+        }
+
+        if (isTouchSwipe) {
+            if (dx > 0) {
+                onKnow();
+            } else {
+                onDontKnow();
+            }
+            return;
+        }
+
+        if (isTap) {
+            toggleFlashcardFlip();
+        }
+    }
+
+    card.addEventListener('pointerdown', e => {
+        if (hintOverlayOpen) return;
+        if (questionAnswered) return;
+        if (e.button !== undefined && e.button !== 0) return;
+
+        tracking = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        activePointerId = e.pointerId;
+        pointerType = e.pointerType || 'mouse';
+        card.style.transition = 'none';
+
+        try {
+            card.setPointerCapture(e.pointerId);
+        } catch (err) {
+            // ignore pointer capture failures
+        }
+    });
+
+    card.addEventListener('pointermove', e => {
+        if (!tracking) return;
+        if (activePointerId !== null && e.pointerId !== activePointerId) return;
+        if (questionAnswered) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (pointerType === 'touch' && Math.abs(dx) > Math.abs(dy)) {
+            e.preventDefault();
+        }
+
+        const limitedDx = Math.max(-36, Math.min(36, dx * 0.22));
+        card.style.transform = `translateX(${limitedDx}px)`;
+    }, { passive: false });
+
+    card.addEventListener('pointerup', e => finishInteraction(e));
+    card.addEventListener('pointercancel', e => finishInteraction(e, true));
+}
+
+function gradeFlashcard(knewIt) {
+    if (isQuizFinished()) return;
+    if (questionAnswered) return;
+    if (hintOverlayOpen) return;
+    if (isPenaltyMode() && penaltyAnswerLocked) return;
+
+    const q = questionQueue[currentIndex];
+    questionAnswered = true;
+    setFlashcardInteractionEnabled(false);
+    applyQuestionOutcome(q, knewIt);
+    nextQuestion();
+}
+
+function showFlashcard(q) {
+    const frontSide = flashcardFrontMode === 'term'
+        ? getFlashcardSideData(q, 'term')
+        : getFlashcardSideData(q, 'definition');
+
+    const backSide = flashcardFrontMode === 'term'
+        ? getFlashcardSideData(q, 'definition')
+        : getFlashcardSideData(q, 'term');
+
+    const container = document.createElement('div');
+    container.id = 'flashcardContainer';
+    container.className = 'flashcard-container';
+
+    const card = document.createElement('div');
+    card.id = 'flashcardCard';
+    card.className = 'flashcard-card';
+    if (flashcardFlipped) {
+        card.classList.add('is-flipped');
+    }
+
+    const cardInner = document.createElement('div');
+    cardInner.className = 'flashcard-card-inner';
+
+    const frontFaceLabel = `Front · ${frontSide.sideName}`;
+    const backFaceLabel = `Back · ${backSide.sideName}`;
+
+    cardInner.appendChild(buildFlashcardFace(frontSide, 'front', frontFaceLabel));
+    cardInner.appendChild(buildFlashcardFace(backSide, 'back', backFaceLabel));
+    card.appendChild(cardInner);
+    container.appendChild(card);
+
+    const helpText = document.createElement('div');
+    helpText.className = 'flashcard-help-text';
+    helpText.innerText = 'Tap or click the card to flip. Swipe right = Know. Swipe left = Didn’t Know.';
+    container.appendChild(helpText);
+
+    const gradeRow = document.createElement('div');
+    gradeRow.id = 'flashcardGradeRow';
+    gradeRow.className = 'flashcard-grade-row';
+
+    const didntKnowBtn = document.createElement('button');
+    didntKnowBtn.type = 'button';
+    didntKnowBtn.className = 'flashcard-grade-btn wrong';
+    didntKnowBtn.innerText = '✖ Didn’t Know';
+    didntKnowBtn.onclick = () => gradeFlashcard(false);
+
+    const knowBtn = document.createElement('button');
+    knowBtn.type = 'button';
+    knowBtn.className = 'flashcard-grade-btn correct';
+    knowBtn.innerText = '➜ Know';
+    knowBtn.onclick = () => gradeFlashcard(true);
+
+    gradeRow.appendChild(didntKnowBtn);
+    gradeRow.appendChild(knowBtn);
+
+    questionContainer.appendChild(container);
+    questionContainer.appendChild(gradeRow);
+
+    enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
+    setFlashcardInteractionEnabled(true);
 }
 
 // ================= HIERARCHY DRAG =================
@@ -990,7 +1352,7 @@ function showHierarchy(q) {
         container.appendChild(row);
     });
 
-    document.querySelector('.question-container').appendChild(container);
+    questionContainer.appendChild(container);
 
     const submit = document.createElement('button');
     submit.id = 'hierarchySubmit';
@@ -1023,26 +1385,14 @@ function showHierarchy(q) {
             }
         });
 
-        if (allCorrect) {
-            clearPendingHint();
-            setFeedback('Correct!', true);
-            handleCorrectAnswer();
-        } else {
-            queueHintIfEligible(q);
-            setFeedback('Incorrect!', false);
-            handleWrongAnswer();
-        }
-
-        if (isRetryMode()) {
-            updateProgress();
-        }
+        applyQuestionOutcome(q, allCorrect);
 
         if (isSpeedMode()) {
             setTimeout(nextQuestion, SPEED_DELAY);
         }
     };
 
-    document.querySelector('.question-container').appendChild(submit);
+    questionContainer.appendChild(submit);
 
     enableHierarchyDrag(container);
     setHierarchyInteractionEnabled(true);
@@ -1142,6 +1492,7 @@ function prevQuestion() {
     clearFeedback();
     clearExplanations();
     clearPendingHint();
+    flashcardFlipped = false;
 
     if (isPenaltyMode()) {
         pendingPenaltyJump = false;
@@ -1204,6 +1555,7 @@ function resetModeState() {
 
     normalFinished = false;
     questionAnswered = false;
+    flashcardFlipped = false;
 
     clearPendingHint();
     closeHintOverlay();
@@ -1218,7 +1570,7 @@ function restartQuiz() {
         shuffleArray(questionQueue);
     }
 
-    updateHintsAvailability();
+    updateSettingsAvailability();
     showQuestion();
 }
 
@@ -1231,7 +1583,7 @@ document.getElementById('penaltyMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('masteryMode').checked = false;
     }
-    updateHintsAvailability();
+    updateSettingsAvailability();
     restartQuiz();
 };
 
@@ -1239,7 +1591,7 @@ document.getElementById('masteryMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('penaltyMode').checked = false;
     }
-    updateHintsAvailability();
+    updateSettingsAvailability();
     restartQuiz();
 };
 
@@ -1247,7 +1599,7 @@ document.getElementById('rapidMode').onchange = e => {
     if (e.target.checked && isHintsMode()) {
         document.getElementById('hintsMode').checked = false;
     }
-    updateHintsAvailability();
+    updateSettingsAvailability();
     restartQuiz();
 };
 
@@ -1285,7 +1637,6 @@ combineGoBtn.addEventListener('click', async () => {
 
         setCombineValidState(true);
         await applyLoadedQuestions(combinedQuestions);
-        updateHintsAvailability();
     } catch (err) {
         console.error(err);
         setCombineValidState(false);
@@ -1307,7 +1658,7 @@ quizSelector.addEventListener('change', async e => {
     }
 
     resetModeState();
-    updateHintsAvailability();
+    updateSettingsAvailability();
     showQuestion();
 });
 
@@ -1333,6 +1684,26 @@ closeHintBtn.addEventListener('click', e => {
     e.stopPropagation();
     closeHintOverlay();
 });
+
+if (termFrontBtn) {
+    termFrontBtn.addEventListener('click', () => {
+        if (flashcardFrontMode === 'term') return;
+        flashcardFrontMode = 'term';
+        flashcardFlipped = false;
+        updateFlashcardFrontButtonsUI();
+        showQuestion();
+    });
+}
+
+if (definitionFrontBtn) {
+    definitionFrontBtn.addEventListener('click', () => {
+        if (flashcardFrontMode === 'definition') return;
+        flashcardFrontMode = 'definition';
+        flashcardFlipped = false;
+        updateFlashcardFrontButtonsUI();
+        showQuestion();
+    });
+}
 
 document.addEventListener('click', e => {
     if (!settingsPopup.classList.contains('hidden') && !settingsPopup.contains(e.target) && e.target !== settingsBtn) {
@@ -1360,7 +1731,7 @@ document.addEventListener('keydown', e => {
         const list = await populateQuizDropdown();
 
         if (!list.length) {
-            document.getElementById('questionText').innerText = 'No quizzes found.';
+            questionTextEl.innerText = 'No quizzes found.';
             return;
         }
 
@@ -1374,16 +1745,16 @@ document.addEventListener('keydown', e => {
         }
 
         resetModeState();
-        updateHintsAvailability();
+        updateSettingsAvailability();
         showQuestion();
     } catch (err) {
         console.error(err);
-        document.getElementById('questionText').innerText = 'Failed to load quiz.';
+        questionTextEl.innerText = 'Failed to load quiz.';
     }
 })();
 
 // ================= IMAGE ZOOM =================
-document.getElementById('questionImage').onclick = function () {
+questionImage.onclick = function () {
     if (hintOverlayOpen) return;
     this.classList.toggle('zoomed');
 };
