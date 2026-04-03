@@ -1136,3 +1136,44 @@ body.fullscreen-mode .hint-overlay {
     }
   }
 }
+
+@media (orientation: landscape) {
+  @supports (-webkit-touch-callout: none) {
+    body.fullscreen-mode .flashcard-card {
+      height: min(380px, 44vh);
+      min-height: 240px;
+    }
+
+    body.fullscreen-mode .flashcard-container {
+      margin-top: 4px;
+    }
+
+    body.fullscreen-mode .flashcard-grade-row {
+      margin-top: 6px;
+    }
+
+    body.fullscreen-mode .flashcard-side-image {
+      max-height: 220px;
+    }
+
+    body.fullscreen-mode .flashcard-side-content.split {
+      grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+      gap: 14px;
+    }
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  .flashcard-grade-row,
+  .flashcard-grade-overlay {
+    display: none !important;
+  }
+
+  .flashcard-face {
+    padding-bottom: 20px !important;
+  }
+
+  .flashcard-help-text {
+    margin-top: 6px;
+  }
+}
