@@ -986,7 +986,7 @@ body.fullscreen-mode .flashcard-grade-row {
 }
 
 body.fullscreen-mode .flashcard-card {
-  height: min(430px, 58vh);
+  height: min(470px, 58vh);
 }
 
 body.fullscreen-mode .flashcard-side-text {
