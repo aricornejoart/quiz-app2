@@ -358,7 +358,7 @@ body.fullscreen-mode .bottom-controls {
 
 #questionText {
   max-width: var(--content-width);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.4;
   word-wrap: break-word;
 }
@@ -385,7 +385,7 @@ body.fullscreen-mode .bottom-controls {
 
 .explanation {
   max-width: var(--content-width);
-  font-size: 12px;
+  font-size: 16px;
   color: #d0d0ff;
   min-height: 15px;
   padding-left: 2px;
@@ -402,7 +402,7 @@ body.fullscreen-mode .bottom-controls {
   cursor: pointer;
   text-align: left;
   color: #ffffff;
-  font-size: 15px;
+  font-size: 16px;
   transition: all 0.2s ease;
 }
 
@@ -1226,7 +1226,7 @@ body.fullscreen-mode .bottom-controls {
   white-space: pre-wrap;
   word-wrap: break-word;
   line-height: 1.6;
-  font-size: 20px;
+  font-size: 30px;
   color: #e8e6ff;
 }
 
