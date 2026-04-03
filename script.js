@@ -656,6 +656,9 @@ function removeFlashcardUI() {
 
     const oldGradeRow = document.getElementById('flashcardGradeRow');
     if (oldGradeRow) oldGradeRow.remove();
+
+    const oldHelpText = document.getElementById('flashcardHelpText');
+    if (oldHelpText) oldHelpText.remove();
 }
 
 function clearQuestionUI() {
@@ -1031,7 +1034,6 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     let startX = 0;
     let startY = 0;
     let activePointerId = null;
-    let pointerType = 'mouse';
 
     function resetCardPosition() {
         card.style.transition = 'transform 0.18s ease';
@@ -1050,7 +1052,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         const isTap = Math.abs(dx) < 10 && Math.abs(dy) < 10;
-        const isTouchSwipe = pointerType === 'touch' && Math.abs(dx) >= 70 && Math.abs(dx) > Math.abs(dy) * 1.2;
+        const isSwipe = Math.abs(dx) >= 70 && Math.abs(dx) > Math.abs(dy) * 1.2;
 
         try {
             if (card.hasPointerCapture(e.pointerId)) {
@@ -1067,7 +1069,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
             return;
         }
 
-        if (isTouchSwipe) {
+        if (isSwipe) {
             if (dx > 0) {
                 onKnow();
             } else {
@@ -1091,7 +1093,6 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         startX = e.clientX;
         startY = e.clientY;
         activePointerId = e.pointerId;
-        pointerType = e.pointerType || 'mouse';
         card.style.transition = 'none';
 
         try {
@@ -1109,7 +1110,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
 
-        if (pointerType === 'touch' && Math.abs(dx) > Math.abs(dy)) {
+        if (Math.abs(dx) > Math.abs(dy)) {
             e.preventDefault();
         }
 
@@ -1166,9 +1167,10 @@ function showFlashcard(q) {
     container.appendChild(card);
 
     const helpText = document.createElement('div');
+    helpText.id = 'flashcardHelpText';
     helpText.className = 'flashcard-help-text';
-    helpText.innerText = 'Tap or click the card to flip. Use the image zoom icon to enlarge images. Swipe right = Know. Swipe left = Didn’t Know.';
-    container.appendChild(helpText);
+    helpText.innerText = 'Tap or click the card to flip. Use the image zoom icon to enlarge images. Swipe or drag right = Know. Swipe or drag left = Didn’t Know.';
+    questionContainer.appendChild(helpText);
 
     const gradeRow = document.createElement('div');
     gradeRow.id = 'flashcardGradeRow';
@@ -1176,21 +1178,21 @@ function showFlashcard(q) {
 
     const didntKnowBtn = document.createElement('button');
     didntKnowBtn.type = 'button';
-    didntKnowBtn.className = 'flashcard-grade-btn wrong';
-    didntKnowBtn.innerText = '✖ Didn’t Know';
+    didntKnowBtn.className = 'flashcard-grade-btn wrong flashcard-side-btn left';
+    didntKnowBtn.innerText = '✖';
     didntKnowBtn.onclick = () => gradeFlashcard(false);
 
     const knowBtn = document.createElement('button');
     knowBtn.type = 'button';
-    knowBtn.className = 'flashcard-grade-btn correct';
-    knowBtn.innerText = '➜ Know';
+    knowBtn.className = 'flashcard-grade-btn correct flashcard-side-btn right';
+    knowBtn.innerText = '✔';
     knowBtn.onclick = () => gradeFlashcard(true);
 
     gradeRow.appendChild(didntKnowBtn);
     gradeRow.appendChild(knowBtn);
+    container.appendChild(gradeRow);
 
     questionContainer.appendChild(container);
-    questionContainer.appendChild(gradeRow);
 
     enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
     setFlashcardInteractionEnabled(true);
@@ -1847,3 +1849,4 @@ questionImage.onclick = function () {
     if (hintOverlayOpen || flashcardImageZoomOpen) return;
     this.classList.toggle('zoomed');
 };
+
