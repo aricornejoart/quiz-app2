@@ -1104,3 +1104,35 @@ body.fullscreen-mode .hint-overlay {
     }
   }
 }
+
+@media (orientation: landscape) {
+  @supports (-webkit-touch-callout: none) {
+    /* your iPad landscape-only changes here */
+  }
+}
+
+@media (orientation: landscape) {
+  @supports (-webkit-touch-callout: none) {
+    .flashcard-card {
+      height: min(360px, 42vh);
+      min-height: 190px;
+    }
+
+    .flashcard-container {
+      margin-top: 4px;
+    }
+
+    .flashcard-grade-row {
+      margin-top: 6px;
+    }
+
+    .flashcard-side-content.split {
+      grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+      gap: 14px;
+    }
+
+    .flashcard-side-image {
+      max-height: 220px;
+    }
+  }
+}
