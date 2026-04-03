@@ -36,6 +36,9 @@ let hintOverlayOpen = false;
 let flashcardFlipped = false;
 let flashcardFrontMode = 'term';
 
+// flashcard image zoom state
+let flashcardImageZoomOpen = false;
+
 const quizSelector = document.getElementById('quizSelector');
 const combineInput = document.getElementById('combineInput');
 const combineGoBtn = document.getElementById('combineGoBtn');
@@ -61,6 +64,12 @@ const questionContainer = document.querySelector('.question-container');
 const flashcardFrontSetting = document.getElementById('flashcardFrontSetting');
 const termFrontBtn = document.getElementById('termFrontBtn');
 const definitionFrontBtn = document.getElementById('definitionFrontBtn');
+
+// flashcard image overlay elements from HTML
+const flashcardImageOverlay = document.getElementById('flashcardImageOverlay');
+const closeFlashcardImageBtn = document.getElementById('closeFlashcardImageBtn');
+const flashcardImageViewport = document.getElementById('flashcardImageViewport');
+const flashcardZoomImage = document.getElementById('flashcardZoomImage');
 
 // ================= SHEETS PARSER =================
 function parseGoogleSheetResponse(text) {
@@ -173,6 +182,10 @@ function updateSettingsAvailability() {
     updateFlashcardFrontButtonsUI();
 }
 
+function syncBodyScrollLock() {
+    document.body.style.overflow = (hintOverlayOpen || flashcardImageZoomOpen) ? 'hidden' : '';
+}
+
 // ================= SETTINGS / FULLSCREEN UI =================
 function openSettingsPopup() {
     settingsPopup.classList.remove('hidden');
@@ -274,6 +287,7 @@ function openHintOverlay(hintData) {
     hintOverlay.setAttribute('aria-hidden', 'false');
     document.body.classList.add('hint-open');
     hintOverlayOpen = true;
+    syncBodyScrollLock();
 }
 
 function closeHintOverlay() {
@@ -287,11 +301,41 @@ function closeHintOverlay() {
     document.body.classList.remove('hint-open');
     hintOverlayOpen = false;
     clearPendingHint();
+    syncBodyScrollLock();
 }
 
 function showPendingHintIfAny() {
     if (!pendingHint) return;
     openHintOverlay(pendingHint);
+}
+
+// ================= FLASHCARD IMAGE ZOOM UI =================
+function openFlashcardImageOverlay(src, alt = 'Flashcard image') {
+    if (!src || !flashcardImageOverlay || !flashcardZoomImage || hintOverlayOpen) return;
+
+    flashcardZoomImage.src = src;
+    flashcardZoomImage.alt = alt;
+
+    if (flashcardImageViewport) {
+        flashcardImageViewport.scrollTop = 0;
+        flashcardImageViewport.scrollLeft = 0;
+    }
+
+    flashcardImageOverlay.classList.remove('hidden');
+    flashcardImageOverlay.setAttribute('aria-hidden', 'false');
+    flashcardImageZoomOpen = true;
+    syncBodyScrollLock();
+}
+
+function closeFlashcardImageOverlay() {
+    if (!flashcardImageOverlay || !flashcardZoomImage) return;
+
+    flashcardImageOverlay.classList.add('hidden');
+    flashcardImageOverlay.setAttribute('aria-hidden', 'true');
+    flashcardZoomImage.src = '';
+    flashcardZoomImage.alt = 'Flashcard image';
+    flashcardImageZoomOpen = false;
+    syncBodyScrollLock();
 }
 
 // ================= COMBINE HELPERS =================
@@ -836,7 +880,7 @@ function handleCorrectAnswer() {
 function checkAnswer(selected, explanations) {
     if (isQuizFinished()) return;
     if (questionAnswered) return;
-    if (hintOverlayOpen) return;
+    if (hintOverlayOpen || flashcardImageZoomOpen) return;
     if (isPenaltyMode() && penaltyAnswerLocked) return;
 
     questionAnswered = true;
@@ -893,6 +937,7 @@ function getFlashcardSideData(q, side) {
 
 function toggleFlashcardFlip() {
     if (hintOverlayOpen) return;
+    if (flashcardImageZoomOpen) return;
     if (questionAnswered) return;
 
     flashcardFlipped = !flashcardFlipped;
@@ -944,7 +989,29 @@ function buildFlashcardFace(sideData, faceClass, faceLabel) {
         img.src = sideData.imageUrl;
         img.alt = `${sideData.sideName} image`;
 
+        const zoomBtn = document.createElement('button');
+        zoomBtn.type = 'button';
+        zoomBtn.className = 'flashcard-image-zoom-btn';
+        zoomBtn.setAttribute('aria-label', 'Zoom image');
+        zoomBtn.setAttribute('title', 'Zoom image');
+        zoomBtn.innerText = '⤢';
+
+        zoomBtn.addEventListener('pointerdown', e => {
+            e.stopPropagation();
+        });
+
+        zoomBtn.addEventListener('pointerup', e => {
+            e.stopPropagation();
+        });
+
+        zoomBtn.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            openFlashcardImageOverlay(sideData.imageUrl, `${sideData.sideName} image`);
+        });
+
         imageWrap.appendChild(img);
+        imageWrap.appendChild(zoomBtn);
         content.appendChild(imageWrap);
     }
 
@@ -996,7 +1063,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         endTracking();
         resetCardPosition();
 
-        if (cancelled || hintOverlayOpen || questionAnswered) {
+        if (cancelled || hintOverlayOpen || flashcardImageZoomOpen || questionAnswered) {
             return;
         }
 
@@ -1016,6 +1083,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
 
     card.addEventListener('pointerdown', e => {
         if (hintOverlayOpen) return;
+        if (flashcardImageZoomOpen) return;
         if (questionAnswered) return;
         if (e.button !== undefined && e.button !== 0) return;
 
@@ -1056,7 +1124,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
 function gradeFlashcard(knewIt) {
     if (isQuizFinished()) return;
     if (questionAnswered) return;
-    if (hintOverlayOpen) return;
+    if (hintOverlayOpen || flashcardImageZoomOpen) return;
     if (isPenaltyMode() && penaltyAnswerLocked) return;
 
     const q = questionQueue[currentIndex];
@@ -1099,7 +1167,7 @@ function showFlashcard(q) {
 
     const helpText = document.createElement('div');
     helpText.className = 'flashcard-help-text';
-    helpText.innerText = 'Tap or click the card to flip. Swipe right = Know. Swipe left = Didn’t Know.';
+    helpText.innerText = 'Tap or click the card to flip. Use the image zoom icon to enlarge images. Swipe right = Know. Swipe left = Didn’t Know.';
     container.appendChild(helpText);
 
     const gradeRow = document.createElement('div');
@@ -1227,7 +1295,7 @@ function enableHierarchyDrag(container) {
 
     container.querySelectorAll('.hierarchy-item').forEach(item => {
         item.addEventListener('pointerdown', e => {
-            if (hintOverlayOpen) return;
+            if (hintOverlayOpen || flashcardImageZoomOpen) return;
             if (item.dataset.dragDisabled === 'true') return;
             if (questionAnswered) return;
             if (e.button !== undefined && e.button !== 0) return;
@@ -1305,7 +1373,7 @@ function showHierarchy(q) {
         up.className = 'hierarchy-arrow';
         up.onclick = e => {
             e.stopPropagation();
-            if (hintOverlayOpen) return;
+            if (hintOverlayOpen || flashcardImageZoomOpen) return;
             if (questionAnswered) return;
 
             const prev = row.previousElementSibling;
@@ -1320,7 +1388,7 @@ function showHierarchy(q) {
         down.className = 'hierarchy-arrow down-arrow';
         down.onclick = e => {
             e.stopPropagation();
-            if (hintOverlayOpen) return;
+            if (hintOverlayOpen || flashcardImageZoomOpen) return;
             if (questionAnswered) return;
 
             const next = row.nextElementSibling;
@@ -1359,7 +1427,7 @@ function showHierarchy(q) {
     submit.innerText = 'Submit';
 
     submit.onclick = () => {
-        if (hintOverlayOpen) return;
+        if (hintOverlayOpen || flashcardImageZoomOpen) return;
         if (questionAnswered) return;
         if (isPenaltyMode() && penaltyAnswerLocked) return;
 
@@ -1400,7 +1468,7 @@ function showHierarchy(q) {
 
 // ================= NAV =================
 function nextQuestion() {
-    if (hintOverlayOpen) return;
+    if (hintOverlayOpen || flashcardImageZoomOpen) return;
 
     clearFeedback();
     clearExplanations();
@@ -1487,7 +1555,7 @@ function nextQuestion() {
 }
 
 function prevQuestion() {
-    if (hintOverlayOpen) return;
+    if (hintOverlayOpen || flashcardImageZoomOpen) return;
 
     clearFeedback();
     clearExplanations();
@@ -1559,6 +1627,7 @@ function resetModeState() {
 
     clearPendingHint();
     closeHintOverlay();
+    closeFlashcardImageOverlay();
 }
 
 // ================= RESTART =================
@@ -1685,6 +1754,21 @@ closeHintBtn.addEventListener('click', e => {
     closeHintOverlay();
 });
 
+if (closeFlashcardImageBtn) {
+    closeFlashcardImageBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        closeFlashcardImageOverlay();
+    });
+}
+
+if (flashcardImageOverlay) {
+    flashcardImageOverlay.addEventListener('click', e => {
+        if (e.target === flashcardImageOverlay) {
+            closeFlashcardImageOverlay();
+        }
+    });
+}
+
 if (termFrontBtn) {
     termFrontBtn.addEventListener('click', () => {
         if (flashcardFrontMode === 'term') return;
@@ -1713,6 +1797,11 @@ document.addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        if (flashcardImageZoomOpen) {
+            closeFlashcardImageOverlay();
+            return;
+        }
+
         if (hintOverlayOpen) {
             closeHintOverlay();
             return;
@@ -1755,6 +1844,6 @@ document.addEventListener('keydown', e => {
 
 // ================= IMAGE ZOOM =================
 questionImage.onclick = function () {
-    if (hintOverlayOpen) return;
+    if (hintOverlayOpen || flashcardImageZoomOpen) return;
     this.classList.toggle('zoomed');
 };
