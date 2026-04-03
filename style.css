@@ -1177,3 +1177,11 @@ body.fullscreen-mode .hint-overlay {
     margin-top: 6px;
   }
 }
+
+@media (orientation: portrait) {
+  @supports (-webkit-touch-callout: none) {
+    body.fullscreen-mode:has(#flashcardContainer) .container {
+      padding-bottom: 100px;
+    }
+  }
+}
