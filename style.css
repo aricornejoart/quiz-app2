@@ -2478,4 +2478,9 @@ input {
   body.fullscreen-mode .progress-bar-row {
     width: 350px;
   }
-}
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(80svh, 420px);
+    min-height: 300px;
+  }
+}  
