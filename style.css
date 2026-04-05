@@ -2329,3 +2329,136 @@ input {
     min-height: 280px;
   }
 }
+
+/* ===== iPhone portrait/landscape alignment + question width patch ===== */
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .top-row {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px 8px;
+  }
+
+  #quizSelector {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px;
+  }
+
+  .utility-controls {
+    width: 74px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .combine-group {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px;
+    width: 100%;
+  }
+
+  #combineInput {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px;
+  }
+
+  #combineGoBtn {
+    width: 74px;
+    min-width: 74px;
+    padding: 0 8px;
+    justify-self: start;
+  }
+
+  body.fullscreen-mode .top-row {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px 8px;
+  }
+
+  body.fullscreen-mode .utility-controls {
+    width: 74px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  #questionText {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .optionBtn,
+  .explanation {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .top-row {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    gap: 6px 8px;
+  }
+
+  #quizSelector {
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+  }
+
+  #combineInput {
+    width: 68px;
+  }
+
+  #combineGoBtn {
+    min-width: 38px;
+    padding: 0 7px;
+  }
+
+  .utility-controls {
+    width: 72px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    width: min(132px, 36vw);
+    gap: 6px;
+  }
+
+  #progressSideFeedback {
+    min-width: 52px;
+    font-size: 12px;
+  }
+
+  .flashcard-card {
+    height: min(62svh, 350px);
+    min-height: 240px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(70svh, 390px);
+    min-height: 270px;
+  }
+
+  #questionText {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
