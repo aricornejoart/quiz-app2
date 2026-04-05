@@ -1714,6 +1714,10 @@ function resetModeState() {
 
 // ================= RESTART =================
 function restartQuiz() {
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+    }
+
     resetModeState();
     questionQueue = [...questions];
 
