@@ -2469,6 +2469,6 @@ input {
 
 @media screen and (max-height: 430px) and (orientation: landscape) {
   body.fullscreen-mode .bottom-controls {
-    gap: 4px;
+    gap: -40px;
   }
 }
