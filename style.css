@@ -2468,7 +2468,10 @@ input {
 }
 
 @media screen and (max-height: 430px) and (orientation: landscape) {
-  body.fullscreen-mode .bottom-controls {
-    gap: -40px;
+  body.fullscreen-mode #progressContainer {
+    flex: 0 1 auto;
+    justify-content: flex-start;
+    gap: 6px;
+    margin-left: 6px;
   }
 }
