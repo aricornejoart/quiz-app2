@@ -2474,4 +2474,8 @@ input {
     gap: 6px;
     margin-left: 6px;
   }
+
+  body.fullscreen-mode .progress-bar-row {
+    width: 190px;
+  }
 }
