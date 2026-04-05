@@ -1521,34 +1521,3 @@ body.fullscreen-mode .hint-overlay {
     }
   }
 }
-
-@supports (-webkit-touch-callout: none) {
-  .flashcard-grade-row {
-    display: block !important;
-  }
-
-  .flashcard-grade-btn {
-    display: inline-flex !important;
-    pointer-events: auto !important;
-    width: 30px !important;
-    height: 30px !important;
-    min-width: 30px !important;
-    min-height: 30px !important;
-    padding: 0 !important;
-    font-size: 12px !important;
-    line-height: 1 !important;
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28) !important;
-  }
-
-  .flashcard-side-btn.left {
-    left: 6px !important;
-    right: auto !important;
-    transform: translateY(-50%) !important;
-  }
-
-  .flashcard-side-btn.right {
-    right: 6px !important;
-    left: auto !important;
-    transform: translateY(-50%) !important;
-  }
-}
