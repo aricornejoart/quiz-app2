@@ -2217,3 +2217,115 @@ input {
     max-height: calc(100svh - 10px);
   }
 }
+
+/* ===== iPhone control alignment + flashcard spacing patch ===== */
+.nav-buttons button,
+.icon-btn,
+#combineGoBtn {
+  -webkit-tap-highlight-color: rgba(124, 108, 255, 0.24);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .nav-buttons button:active,
+  .icon-btn:active,
+  #combineGoBtn:active {
+    background: #5a4bcf !important;
+    border-color: #7c6cff !important;
+    transform: scale(0.98) !important;
+    box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+  }
+}
+
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .container {
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .top-row {
+    gap: 6px 6px;
+  }
+
+  #quizSelector {
+    max-width: calc(100vw - 118px);
+    padding: 6px 8px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+    margin-right: 2px;
+  }
+
+  .combine-group {
+    gap: 6px;
+    width: 100%;
+  }
+
+  #combineInput {
+    width: 100%;
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  #combineGoBtn {
+    min-width: 42px;
+    padding: 0 8px;
+    margin-right: 2px;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .top-row {
+    gap: 6px 6px;
+  }
+
+  #quizSelector {
+    width: 112px;
+    min-width: 112px;
+    max-width: 112px;
+  }
+
+  #combineInput {
+    width: 66px;
+  }
+
+  #combineGoBtn {
+    min-width: 38px;
+    padding: 0 7px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+    margin-right: 2px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    width: min(128px, 30vw);
+    gap: 6px;
+  }
+
+  #progressSideFeedback {
+    min-width: 48px;
+    font-size: 12px;
+  }
+
+  .flashcard-container {
+    padding-left: 6px;
+    padding-right: 6px;
+    margin-top: 4px;
+  }
+
+  .flashcard-card {
+    height: min(68svh, 360px);
+    min-height: 250px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(74svh, 400px);
+    min-height: 280px;
+  }
+}
