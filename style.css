@@ -1350,7 +1350,7 @@ body.fullscreen-mode .hint-overlay {
 @media (orientation: landscape) {
   @supports (-webkit-touch-callout: none) {
     body.fullscreen-mode .flashcard-card {
-      height: min(400px, 46vh);
+      height: min(450px, 55vh);
       min-height: 250px;
     }
 
