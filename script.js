@@ -195,7 +195,7 @@ function syncBodyScrollLock() {
 }
 
 function isNarrowIPhoneViewport() {
-    return window.matchMedia('(max-width: 430px), (max-height: 430px) and (orientation: landscape)').matches;
+    return window.matchMedia('(max-width: 440px), (max-height: 440px) and (orientation: landscape)').matches;
 }
 
 function updateViewportClasses() {
@@ -1936,4 +1936,3 @@ questionImage.onclick = function () {
     if (hintOverlayOpen || flashcardImageZoomOpen) return;
     this.classList.toggle('zoomed');
 };
-
