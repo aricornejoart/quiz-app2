@@ -2222,7 +2222,7 @@ input {
 .nav-buttons button,
 .icon-btn,
 #combineGoBtn {
-  -webkit-tap-highlight-color: rgba(124, 108, 255, 0.24);
+  -webkit-tap-highlight-color: #7c6cff;
 }
 
 @media (hover: none) and (pointer: coarse) {
