@@ -163,7 +163,7 @@ body.fullscreen-mode .bottom-controls {
 }
 
 #progressContainer {
-  width: 500px;
+  width: 150px;
   min-width: 150px;
 }
 
@@ -1350,7 +1350,7 @@ body.fullscreen-mode .hint-overlay {
 @media (orientation: landscape) {
   @supports (-webkit-touch-callout: none) {
     body.fullscreen-mode .flashcard-card {
-      height: min(490px, 59vh);
+      height: min(400px, 46vh);
       min-height: 250px;
     }
 
@@ -1374,7 +1374,7 @@ body.fullscreen-mode .hint-overlay {
 }
 
 /* ===== Narrow iPhone Layout ===== */
-@media screen and (max-width: 440px) and (orientation: portrait) {
+@media screen and (max-width: 430px) and (orientation: portrait) {
   body {
     padding: 0;
   }
@@ -1643,7 +1643,7 @@ body.fullscreen-mode .hint-overlay {
   }
 }
 
-@media screen and (max-height: 440px) and (orientation: landscape) {
+@media screen and (max-height: 430px) and (orientation: landscape) {
   body {
     padding: 0;
   }
@@ -1941,7 +1941,7 @@ body.fullscreen-mode .hint-overlay {
 button,
 select,
 input {
-  -webkit-tap-highlight-color: #7c6cff;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .nav-buttons button,
@@ -2000,7 +2000,7 @@ input {
   }
 }
 
-@media screen and (max-width: 440px) and (orientation: portrait) {
+@media screen and (max-width: 430px) and (orientation: portrait) {
   .container {
     display: flex;
     flex-direction: column;
@@ -2116,7 +2116,7 @@ input {
   }
 }
 
-@media screen and (max-height: 440px) and (orientation: landscape) {
+@media screen and (max-height: 430px) and (orientation: landscape) {
   .container {
     display: flex;
     flex-direction: column;
@@ -2222,7 +2222,7 @@ input {
 .nav-buttons button,
 .icon-btn,
 #combineGoBtn {
-  -webkit-tap-highlight-color: #7c6cff;
+  -webkit-tap-highlight-color: rgba(124, 108, 255, 0.24);
 }
 
 @media (hover: none) and (pointer: coarse) {
@@ -2236,7 +2236,7 @@ input {
   }
 }
 
-@media screen and (max-width: 440px) and (orientation: portrait) {
+@media screen and (max-width: 430px) and (orientation: portrait) {
   .container {
     padding-right: max(12px, env(safe-area-inset-right));
     padding-left: max(10px, env(safe-area-inset-left));
@@ -2274,7 +2274,7 @@ input {
   }
 }
 
-@media screen and (max-height: 440px) and (orientation: landscape) {
+@media screen and (max-height: 430px) and (orientation: landscape) {
   .top-row {
     gap: 6px 6px;
   }
@@ -2331,7 +2331,7 @@ input {
 }
 
 /* ===== iPhone portrait/landscape alignment + question width patch ===== */
-@media screen and (max-width: 440px) and (orientation: portrait) {
+@media screen and (max-width: 430px) and (orientation: portrait) {
   .top-row {
     grid-template-columns: minmax(0, 1fr) 74px;
     gap: 8px 8px;
@@ -2402,7 +2402,7 @@ input {
   }
 }
 
-@media screen and (max-height: 440px) and (orientation: landscape) {
+@media screen and (max-height: 430px) and (orientation: landscape) {
   .top-row {
     grid-template-columns: minmax(0, 1fr) 72px;
     gap: 6px 8px;
@@ -2467,7 +2467,7 @@ input {
   }
 }
 
-@media screen and (max-height: 440px) and (orientation: landscape) {
+@media screen and (max-height: 430px) and (orientation: landscape) {
   body.fullscreen-mode #progressContainer {
     flex: 0 1 auto;
     justify-content: flex-start;
@@ -2484,208 +2484,49 @@ input {
     min-height: 300px;
   }
 }  
-
-
-/* ===== iPhone 12 Pro through 16 Pro Max support + larger controls ===== */
-@media screen and (max-width: 440px) and (orientation: portrait) {
-  .top-row {
-    grid-template-columns: minmax(0, 1fr) 86px;
-  }
-
-  body.fullscreen-mode .top-row {
-    grid-template-columns: minmax(0, 1fr) 86px;
-  }
-
-  .utility-controls {
-    width: 76px;
-    justify-self: start;
-    justify-content: flex-start;
-    gap: 8px;
-    margin-right: 10px;
-  }
-
-  body.fullscreen-mode .utility-controls {
-    width: 76px;
-    justify-self: start;
-    justify-content: flex-start;
-    gap: 8px;
-    margin-right: 10px;
-  }
-
-  .combine-group {
-    grid-template-columns: minmax(0, 1fr) 86px;
-  }
-
-  #quizSelector,
-  #combineInput {
-    height: 38px;
-    padding: 6px 10px;
-    font-size: 14px;
-  }
-
-  #combineGoBtn {
-    width: 68px;
-    min-width: 68px;
-    height: 38px;
-    padding: 0 12px;
-    font-size: 14px;
-    justify-self: start;
-    margin-right: 10px;
-  }
-
-  .nav-buttons button,
-  .icon-btn {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    min-height: 38px;
-    font-size: 19px;
-  }
-
-  #progressText {
-    font-size: 15px;
-  }
-
-  #progressBar {
-    height: 12px;
-  }
-
-  .progress-bar-row {
-    gap: 8px;
-  }
-
-  #progressSideFeedback {
-    font-size: 16px;
-  }
-}
-
-@media screen and (max-height: 440px) and (orientation: landscape) {
-  .top-row {
-    grid-template-columns: minmax(0, 1fr) 86px;
-  }
-
-  .utility-controls {
-    width: 76px;
-    justify-self: start;
-    justify-content: flex-start;
-    gap: 8px;
-    margin-right: 10px;
-  }
-
-  body.fullscreen-mode .utility-controls {
-    width: 76px;
-    justify-self: start;
-    justify-content: flex-start;
-    gap: 8px;
-    margin-right: 10px;
-  }
-
-  #quizSelector {
-    width: 132px;
-    min-width: 132px;
-    max-width: 132px;
-    height: 36px;
-    font-size: 14px;
-  }
-
-  #combineInput {
-    width: 82px;
-    height: 36px;
-    font-size: 14px;
-  }
-
-  #combineGoBtn {
-    min-width: 54px;
-    height: 36px;
-    padding: 0 10px;
-    font-size: 14px;
-    margin-right: 10px;
-  }
-
-  .nav-buttons button,
-  .icon-btn {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 36px;
-    font-size: 18px;
-  }
-
-  #progressText {
-    font-size: 14px;
-  }
-
-  #progressBar {
-    height: 10px;
-  }
-
-  .progress-bar-row {
-    gap: 8px;
-  }
-
-  body.fullscreen-mode .progress-bar-row {
-    width: min(176px, 44vw);
-  }
-
-  #progressSideFeedback {
-    font-size: 13px;
-  }
-}
-
-/* ===== Touch-device pressed feedback restore only ===== */
+/* ===== Touch-device color-state sync only ===== */
 @media (hover: none) and (pointer: coarse) {
-  button,
-  select,
-  input {
-    -webkit-tap-highlight-color: #7c6cff;
+  .nav-buttons button,
+  #combineGoBtn,
+  .icon-btn,
+  .flashcard-setting-btn,
+  #hierarchySubmit,
+  .flashcard-image-zoom-btn,
+  .close-flashcard-image-btn,
+  .close-hint-btn {
+    background: #3a3360 !important;
+    color: #ffffff !important;
+    border-color: #5a4bcf !important;
+  }
+
+  .optionBtn,
+  .hierarchy-item {
+    background: #332b5c !important;
+    color: #ffffff !important;
+    border-color: #5a4bcf !important;
   }
 
   .nav-buttons button:active,
   #combineGoBtn:active,
   .icon-btn:active,
   .flashcard-setting-btn:active,
-  .optionBtn:active,
   #hierarchySubmit:active,
-  .hierarchy-item:active,
-  .hierarchy-arrow:active,
   .flashcard-image-zoom-btn:active,
   .close-flashcard-image-btn:active,
   .close-hint-btn:active,
-  .close-settings-btn:active {
-    background: #5a4bcf !important;
-    border-color: #7c6cff !important;
-    color: #ffffff !important;
-    box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18) !important;
-  }
-
-  .nav-buttons button:active,
-  #combineGoBtn:active,
-  .icon-btn:active,
-  .flashcard-setting-btn:active,
   .optionBtn:active,
-  #hierarchySubmit:active,
-  .flashcard-image-zoom-btn:active,
-  .close-flashcard-image-btn:active,
-  .close-hint-btn:active {
-    transform: scale(0.98) !important;
+  .hierarchy-item:active {
+    background: #5a4bcf !important;
+    color: #ffffff !important;
+    border-color: #7c6cff !important;
   }
 
-  .hierarchy-item:active {
-    background: #40356f !important;
-    border-color: #7c6cff !important;
-    transform: scale(1.01) !important;
+  .hierarchy-arrow {
+    color: #ffffff !important;
   }
 
   .hierarchy-arrow:active,
   .close-settings-btn:active {
     color: #7c6cff !important;
-    transform: scale(1.08) !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-
-  .icon-btn.active {
-    border-color: #7c6cff !important;
-    box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18) !important;
   }
 }
