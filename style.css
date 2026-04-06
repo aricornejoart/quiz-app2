@@ -1941,7 +1941,7 @@ body.fullscreen-mode .hint-overlay {
 button,
 select,
 input {
-  -webkit-tap-highlight-color: rgba(124, 108, 255, 0.35);
+  -webkit-tap-highlight-color: #7c6cff;
 }
 
 .nav-buttons button,
@@ -2222,7 +2222,7 @@ input {
 .nav-buttons button,
 .icon-btn,
 #combineGoBtn {
-  -webkit-tap-highlight-color: #7c6cff;
+  -webkit-tap-highlight-color: rgba(124, 108, 255, 0.24);
 }
 
 @media (hover: none) and (pointer: coarse) {
