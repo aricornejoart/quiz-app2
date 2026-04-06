@@ -1374,7 +1374,7 @@ body.fullscreen-mode .hint-overlay {
 }
 
 /* ===== Narrow iPhone Layout ===== */
-@media screen and (max-width: 440px) and (orientation: portrait) {
+@media screen and (max-width: 430px) and (orientation: portrait) {
   body {
     padding: 0;
   }
@@ -1643,7 +1643,7 @@ body.fullscreen-mode .hint-overlay {
   }
 }
 
-@media screen and (max-height: 440px) and (orientation: landscape) {
+@media screen and (max-height: 430px) and (orientation: landscape) {
   body {
     padding: 0;
   }
@@ -1892,3 +1892,595 @@ body.fullscreen-mode .hint-overlay {
     font-size: 18px;
   }
 }
+
+
+/* ===== Final UI Tweaks ===== */
+#flashcardGradeRow,
+.flashcard-grade-row {
+  display: none !important;
+}
+
+.flashcard-swipe-feedback {
+  inset: auto;
+  top: 16px;
+  left: 50%;
+  width: auto;
+  max-width: calc(100% - 40px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(24, 20, 40, 0.82);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -6px) scale(0.96);
+  font-size: 34px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.flashcard-swipe-feedback.show {
+  transform: translate(-50%, 0) scale(1);
+}
+
+.flashcard-image-viewport {
+  align-items: center;
+  justify-content: center;
+}
+
+#flashcardZoomImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+button,
+select,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nav-buttons button,
+.icon-btn,
+#combineGoBtn,
+.flashcard-setting-btn,
+.optionBtn,
+#hierarchySubmit,
+.hierarchy-arrow,
+.flashcard-image-zoom-btn,
+.close-flashcard-image-btn,
+.close-hint-btn {
+  touch-action: manipulation;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .nav-buttons button:hover,
+  #combineGoBtn:hover,
+  .icon-btn:hover,
+  .flashcard-setting-btn:hover,
+  .optionBtn:hover,
+  .hierarchy-item:hover,
+  .hierarchy-arrow:hover,
+  .flashcard-grade-btn:hover,
+  .flashcard-image-zoom-btn:hover,
+  .close-flashcard-image-btn:hover,
+  .close-hint-btn:hover {
+    background: revert-layer;
+    transform: none;
+    color: inherit;
+    border-color: inherit;
+    box-shadow: inherit;
+  }
+
+  #combineGoBtn:hover,
+  .nav-buttons button:hover,
+  .icon-btn:hover,
+  .flashcard-setting-btn:hover,
+  #hierarchySubmit:hover {
+    background: inherit;
+  }
+
+  .optionBtn:hover {
+    background: #332b5c;
+    transform: none;
+  }
+
+  .hierarchy-item:hover {
+    background: #332b5c;
+    border-color: #5a4bcf;
+  }
+
+  .hierarchy-arrow:hover,
+  .close-settings-btn:hover {
+    color: #ffffff;
+  }
+}
+
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .top-row {
+    gap: 6px 8px;
+  }
+
+  .quiz-area {
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+  }
+
+  #quizSelector {
+    max-width: calc(100vw - 94px);
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+  }
+
+  .icon-btn,
+  .nav-buttons button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 17px;
+  }
+
+  .combine-group {
+    gap: 6px;
+  }
+
+  #combineInput {
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+
+  #combineGoBtn {
+    min-width: 46px;
+    padding: 0 10px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    gap: 6px;
+  }
+
+  #progressSideFeedback {
+    min-width: 56px;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation,
+  #hierarchyContainer,
+  #hierarchySubmit {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .flashcard-container {
+    padding-left: 8px;
+    padding-right: 8px;
+    margin-top: 4px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .flashcard-card {
+    height: min(72svh, 680px);
+    min-height: 420px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(80svh, 760px);
+    min-height: 500px;
+  }
+
+  .flashcard-swipe-feedback {
+    top: 12px;
+    max-width: calc(100% - 24px);
+    padding: 6px 12px;
+    font-size: 28px;
+  }
+
+  .flashcard-image-modal {
+    width: calc(100vw - 12px);
+    height: calc(100svh - 12px);
+    padding: 50px 8px 8px 8px;
+  }
+
+  .flashcard-image-viewport {
+    padding: 8px;
+  }
+
+  #questionImage.zoomed {
+    max-width: calc(100vw - 12px);
+    max-height: calc(100svh - 12px);
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    padding-top: max(6px, env(safe-area-inset-top));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .top-row {
+    gap: 6px 8px;
+  }
+
+  .quiz-area {
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+  }
+
+  #quizSelector {
+    width: 122px;
+    min-width: 122px;
+    max-width: 122px;
+    padding: 5px 7px;
+    font-size: 13px;
+  }
+
+  #combineInput {
+    width: 74px;
+    padding: 5px 7px;
+    font-size: 13px;
+  }
+
+  #combineGoBtn {
+    padding: 0 8px;
+    min-width: 42px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+  }
+
+  .icon-btn,
+  .nav-buttons button {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    font-size: 16px;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation,
+  #hierarchyContainer,
+  #hierarchySubmit {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .flashcard-container {
+    padding-left: 8px;
+    padding-right: 8px;
+    margin-top: 4px;
+    min-height: 0;
+  }
+
+  .flashcard-card {
+    height: min(64svh, 340px);
+    min-height: 250px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(72svh, 390px);
+    min-height: 280px;
+  }
+
+  .flashcard-swipe-feedback {
+    top: 10px;
+    max-width: calc(100% - 20px);
+    padding: 5px 10px;
+    font-size: 22px;
+  }
+
+  .flashcard-image-modal {
+    width: calc(100vw - 10px);
+    height: calc(100svh - 10px);
+    padding: 48px 8px 8px 8px;
+  }
+
+  .flashcard-image-viewport {
+    padding: 8px;
+  }
+
+  #questionImage.zoomed {
+    max-width: calc(100vw - 10px);
+    max-height: calc(100svh - 10px);
+  }
+}
+
+/* ===== iPhone control alignment + flashcard spacing patch ===== */
+.nav-buttons button,
+.icon-btn,
+#combineGoBtn {
+  -webkit-tap-highlight-color: rgba(124, 108, 255, 0.24);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .nav-buttons button:active,
+  .icon-btn:active,
+  #combineGoBtn:active {
+    background: #5a4bcf !important;
+    border-color: #7c6cff !important;
+    transform: scale(0.98) !important;
+    box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+  }
+}
+
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .container {
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .top-row {
+    gap: 6px 6px;
+  }
+
+  #quizSelector {
+    max-width: calc(100vw - 118px);
+    padding: 6px 8px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+    margin-right: 2px;
+  }
+
+  .combine-group {
+    gap: 6px;
+    width: 100%;
+  }
+
+  #combineInput {
+    width: 100%;
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  #combineGoBtn {
+    min-width: 42px;
+    padding: 0 8px;
+    margin-right: 2px;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .top-row {
+    gap: 6px 6px;
+  }
+
+  #quizSelector {
+    width: 112px;
+    min-width: 112px;
+    max-width: 112px;
+  }
+
+  #combineInput {
+    width: 66px;
+  }
+
+  #combineGoBtn {
+    min-width: 38px;
+    padding: 0 7px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+    margin-right: 2px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    width: min(128px, 30vw);
+    gap: 6px;
+  }
+
+  #progressSideFeedback {
+    min-width: 48px;
+    font-size: 12px;
+  }
+
+  .flashcard-container {
+    padding-left: 6px;
+    padding-right: 6px;
+    margin-top: 4px;
+  }
+
+  .flashcard-card {
+    height: min(68svh, 360px);
+    min-height: 250px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(74svh, 400px);
+    min-height: 280px;
+  }
+}
+
+/* ===== iPhone portrait/landscape alignment + question width patch ===== */
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .top-row {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px 8px;
+  }
+
+  #quizSelector {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px;
+  }
+
+  .utility-controls {
+    width: 74px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .combine-group {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px;
+    width: 100%;
+  }
+
+  #combineInput {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px;
+  }
+
+  #combineGoBtn {
+    width: 74px;
+    min-width: 74px;
+    padding: 0 8px;
+    justify-self: start;
+  }
+
+  body.fullscreen-mode .top-row {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px 8px;
+  }
+
+  body.fullscreen-mode .utility-controls {
+    width: 74px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  #questionText {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .optionBtn,
+  .explanation {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .top-row {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    gap: 6px 8px;
+  }
+
+  #quizSelector {
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+  }
+
+  #combineInput {
+    width: 68px;
+  }
+
+  #combineGoBtn {
+    min-width: 38px;
+    padding: 0 7px;
+  }
+
+  .utility-controls {
+    width: 72px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    width: min(132px, 36vw);
+    gap: 6px;
+  }
+
+  body.fullscreen-mode .progress-bar-row {
+  width: min(150px, 42vw);
+}
+
+  #progressSideFeedback {
+    min-width: 52px;
+    font-size: 12px;
+  }
+
+  .flashcard-card {
+    height: min(62svh, 350px);
+    min-height: 240px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(70svh, 390px);
+    min-height: 270px;
+  }
+
+  #questionText {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  body.fullscreen-mode #progressContainer {
+    flex: 0 1 auto;
+    justify-content: flex-start;
+    gap: 6px;
+    margin-left: 6px;
+  }
+
+  body.fullscreen-mode .progress-bar-row {
+    width: 350px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(80svh, 420px);
+    min-height: 300px;
+  }
+}  
