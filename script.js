@@ -38,6 +38,8 @@ let flashcardFrontMode = 'term';
 
 // flashcard image zoom state
 let flashcardImageZoomOpen = false;
+let currentQuestionType = '';
+
 
 const quizSelector = document.getElementById('quizSelector');
 const combineInput = document.getElementById('combineInput');
@@ -46,6 +48,12 @@ const settingsBtn = document.getElementById('settingsBtn');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const settingsPopup = document.getElementById('settingsPopup');
 const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+const prevBtn = document.getElementById('prevBtn');
+const restartBtn = document.getElementById('restartBtn');
+const nextBtn = document.getElementById('nextBtn');
+const progressTextEl = document.getElementById('progressText');
+const progressSideFeedbackEl = document.getElementById('progressSideFeedback');
+
 
 const hintOverlay = document.getElementById('hintOverlay');
 const closeHintBtn = document.getElementById('closeHintBtn');
@@ -186,6 +194,66 @@ function syncBodyScrollLock() {
     document.body.style.overflow = (hintOverlayOpen || flashcardImageZoomOpen) ? 'hidden' : '';
 }
 
+function isNarrowIPhoneViewport() {
+    return window.matchMedia('(max-width: 440px), (max-height: 440px) and (orientation: landscape)').matches;
+}
+
+function updateViewportClasses() {
+    document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
+    document.body.classList.toggle('active-question-flashcard', currentQuestionType === 'flashcard');
+}
+
+function applyResponsiveControlText() {
+    const useCompactIcons = isNarrowIPhoneViewport();
+
+    prevBtn.innerText = useCompactIcons ? '←' : 'Previous';
+    restartBtn.innerText = useCompactIcons ? '↻' : 'Restart';
+    nextBtn.innerText = useCompactIcons ? '→' : 'Next';
+
+    prevBtn.setAttribute('aria-label', 'Previous');
+    restartBtn.setAttribute('aria-label', 'Restart');
+    nextBtn.setAttribute('aria-label', 'Next');
+
+    prevBtn.setAttribute('title', 'Previous');
+    restartBtn.setAttribute('title', 'Restart');
+    nextBtn.setAttribute('title', 'Next');
+}
+
+function clearFlashcardSwipeFeedback() {
+    const feedback = document.getElementById('flashcardSwipeFeedback');
+    if (!feedback) return;
+
+    feedback.innerText = '';
+    feedback.classList.remove('show', 'know', 'dont-know');
+}
+
+function setFlashcardSwipeFeedback(kind) {
+    const feedback = document.getElementById('flashcardSwipeFeedback');
+    if (!feedback) return;
+
+    if (kind === 'know') {
+        feedback.innerText = 'Know';
+        feedback.classList.add('show', 'know');
+        feedback.classList.remove('dont-know');
+        return;
+    }
+
+    if (kind === 'dont-know') {
+        feedback.innerText = "Didn't know";
+        feedback.classList.add('show', 'dont-know');
+        feedback.classList.remove('know');
+        return;
+    }
+
+    clearFlashcardSwipeFeedback();
+}
+
+function handleViewportChange() {
+    updateViewportClasses();
+    applyResponsiveControlText();
+    updateProgress();
+}
+
 // ================= SETTINGS / FULLSCREEN UI =================
 function openSettingsPopup() {
     settingsPopup.classList.remove('hidden');
@@ -210,6 +278,7 @@ function enterFullscreenMode() {
     document.body.classList.add('fullscreen-mode');
     fullscreenBtn.classList.add('active');
     fullscreenBtn.setAttribute('title', 'Exit Fullscreen');
+    handleViewportChange();
 }
 
 function exitFullscreenMode() {
@@ -217,6 +286,7 @@ function exitFullscreenMode() {
     document.body.classList.remove('fullscreen-mode');
     fullscreenBtn.classList.remove('active');
     fullscreenBtn.setAttribute('title', 'Fullscreen');
+    handleViewportChange();
 }
 
 function toggleFullscreenMode() {
@@ -618,7 +688,7 @@ function setFlashcardInteractionEnabled(enabled) {
 
 // ================= UI RESET HELPERS =================
 function clearFeedback() {
-    const fb = document.getElementById('progressSideFeedback');
+    const fb = progressSideFeedbackEl;
     if (fb) {
         fb.innerText = '';
         fb.classList.remove('correct', 'incorrect');
@@ -663,6 +733,7 @@ function clearQuestionUI() {
     clearFeedback();
     clearExplanations();
     clearOptionFeedback();
+    clearFlashcardSwipeFeedback();
     removeHierarchyUI();
     removeFlashcardUI();
     questionImage.classList.remove('zoomed');
@@ -670,7 +741,7 @@ function clearQuestionUI() {
 
 // ================= FEEDBACK HELPER =================
 function setFeedback(text, isCorrect) {
-    const fb = document.getElementById('progressSideFeedback');
+    const fb = progressSideFeedbackEl;
     if (!fb) return;
 
     fb.innerText = text;
@@ -713,7 +784,7 @@ function updateProgress() {
     const completed = total - remaining;
     const percent = total > 0 ? (completed / total) * 100 : 0;
 
-    document.getElementById('progressText').innerText = `${remaining} remaining`;
+    progressTextEl.innerText = isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`;
     document.getElementById('progressFill').style.width = `${percent}%`;
 }
 
@@ -741,6 +812,8 @@ function showQuestion() {
         imageContainer.style.display = '';
         questionImage.style.display = 'none';
         questionImage.src = '';
+        currentQuestionType = '';
+        updateViewportClasses();
         updateProgress();
         return;
     }
@@ -749,6 +822,8 @@ function showQuestion() {
     if (currentIndex >= questionQueue.length) currentIndex = questionQueue.length - 1;
 
     const q = questionQueue[currentIndex];
+    currentQuestionType = q.type || '';
+    updateViewportClasses();
     optionsContainer.style.display = 'none';
 
     if (q.type === 'flashcard') {
@@ -949,14 +1024,9 @@ function toggleFlashcardFlip() {
     }
 }
 
-function buildFlashcardFace(sideData, faceClass, faceLabel) {
+function buildFlashcardFace(sideData, faceClass) {
     const face = document.createElement('div');
     face.className = `flashcard-face ${faceClass}`;
-
-    const label = document.createElement('div');
-    label.className = 'flashcard-face-label';
-    label.innerText = faceLabel;
-    face.appendChild(label);
 
     const content = document.createElement('div');
     content.className = 'flashcard-side-content';
@@ -1064,17 +1134,23 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         resetCardPosition();
 
         if (cancelled || hintOverlayOpen || flashcardImageZoomOpen || questionAnswered) {
+            clearFlashcardSwipeFeedback();
             return;
         }
 
         if (isSwipe) {
-            if (dx > 0) {
-                onKnow();
-            } else {
-                onDontKnow();
-            }
+            setFlashcardSwipeFeedback(dx > 0 ? 'know' : 'dont-know');
+            setTimeout(() => {
+                if (dx > 0) {
+                    onKnow();
+                } else {
+                    onDontKnow();
+                }
+            }, 90);
             return;
         }
+
+        clearFlashcardSwipeFeedback();
 
         if (isTap) {
             toggleFlashcardFlip();
@@ -1092,6 +1168,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         startY = e.clientY;
         activePointerId = e.pointerId;
         card.style.transition = 'none';
+        clearFlashcardSwipeFeedback();
 
         try {
             card.setPointerCapture(e.pointerId);
@@ -1112,8 +1189,14 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
             e.preventDefault();
         }
 
-        const limitedDx = Math.max(-36, Math.min(36, dx * 0.22));
+        const limitedDx = Math.max(-52, Math.min(52, dx * 0.24));
         card.style.transform = `translateX(${limitedDx}px)`;
+
+        if (Math.abs(dx) >= 18 && Math.abs(dx) > Math.abs(dy)) {
+            setFlashcardSwipeFeedback(dx > 0 ? 'know' : 'dont-know');
+        } else {
+            clearFlashcardSwipeFeedback();
+        }
     }, { passive: false });
 
     card.addEventListener('pointerup', e => finishInteraction(e));
@@ -1156,14 +1239,16 @@ function showFlashcard(q) {
     const cardInner = document.createElement('div');
     cardInner.className = 'flashcard-card-inner';
 
-    const frontFaceLabel = `Front · ${frontSide.sideName}`;
-    const backFaceLabel = `Back · ${backSide.sideName}`;
-
-    cardInner.appendChild(buildFlashcardFace(frontSide, 'front', frontFaceLabel));
-    cardInner.appendChild(buildFlashcardFace(backSide, 'back', backFaceLabel));
+    cardInner.appendChild(buildFlashcardFace(frontSide, 'front'));
+    cardInner.appendChild(buildFlashcardFace(backSide, 'back'));
     card.appendChild(cardInner);
     container.appendChild(card);
 
+
+    const swipeFeedback = document.createElement('div');
+    swipeFeedback.id = 'flashcardSwipeFeedback';
+    swipeFeedback.className = 'flashcard-swipe-feedback';
+    container.appendChild(swipeFeedback);
 
     const gradeRow = document.createElement('div');
     gradeRow.id = 'flashcardGradeRow';
@@ -1619,6 +1704,8 @@ function resetModeState() {
     normalFinished = false;
     questionAnswered = false;
     flashcardFlipped = false;
+    currentQuestionType = '';
+    updateViewportClasses();
 
     clearPendingHint();
     closeHintOverlay();
@@ -1639,9 +1726,9 @@ function restartQuiz() {
 }
 
 // ================= EVENTS =================
-document.getElementById('nextBtn').onclick = nextQuestion;
-document.getElementById('prevBtn').onclick = prevQuestion;
-document.getElementById('restartBtn').onclick = restartQuiz;
+nextBtn.onclick = nextQuestion;
+prevBtn.onclick = prevQuestion;
+restartBtn.onclick = restartQuiz;
 
 document.getElementById('penaltyMode').onchange = e => {
     if (e.target.checked) {
@@ -1809,9 +1896,15 @@ document.addEventListener('keydown', e => {
     }
 });
 
+window.addEventListener('resize', handleViewportChange);
+window.addEventListener('orientationchange', handleViewportChange);
+
 // ================= INIT =================
 (async function () {
     try {
+        applyResponsiveControlText();
+        updateViewportClasses();
+
         const list = await populateQuizDropdown();
 
         if (!list.length) {
@@ -1831,6 +1924,7 @@ document.addEventListener('keydown', e => {
         resetModeState();
         updateSettingsAvailability();
         showQuestion();
+        handleViewportChange();
     } catch (err) {
         console.error(err);
         questionTextEl.innerText = 'Failed to load quiz.';
