@@ -2530,3 +2530,156 @@ input {
     color: #7c6cff !important;
   }
 }
+
+/* ===== Final iPhone safe-area containment override ===== */
+@media screen and (max-width: 430px),
+       screen and (max-height: 430px) and (orientation: landscape) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .container,
+  .top-bar,
+  .top-row,
+  .left-controls,
+  .quiz-select-group,
+  .combine-group,
+  .bottom-controls,
+  .nav-buttons,
+  #progressContainer,
+  .progress-bar-row,
+  .quiz-area,
+  .question-container,
+  .option-row,
+  #questionText,
+  .optionBtn,
+  .explanation,
+  #hierarchyContainer,
+  #hierarchySubmit,
+  .image-container,
+  #questionImage {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding-right: max(14px, env(safe-area-inset-right)) !important;
+    padding-left: max(14px, env(safe-area-inset-left)) !important;
+    overflow-x: clip;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation,
+  #hierarchyContainer,
+  #hierarchySubmit {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .top-row,
+  body.fullscreen-mode .top-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .utility-controls,
+  body.fullscreen-mode .utility-controls {
+    width: auto !important;
+    min-width: 0;
+    justify-self: end !important;
+    justify-content: flex-end !important;
+    margin-right: 0 !important;
+  }
+
+  .combine-group {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  #quizSelector {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  #combineInput {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  #combineGoBtn {
+    width: auto !important;
+    min-width: 52px !important;
+    margin-right: 0 !important;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .top-row,
+  body.fullscreen-mode .top-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .utility-controls,
+  body.fullscreen-mode .utility-controls {
+    width: auto !important;
+    min-width: 0;
+    justify-self: end !important;
+    justify-content: flex-end !important;
+    margin-right: 0 !important;
+  }
+
+  .quiz-select-group {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  #quizSelector {
+    width: min(120px, 34vw) !important;
+    min-width: 0 !important;
+    max-width: min(120px, 34vw) !important;
+  }
+
+  #combineInput {
+    width: clamp(58px, 20vw, 84px) !important;
+    min-width: 0 !important;
+  }
+
+  #combineGoBtn {
+    min-width: 40px !important;
+    margin-right: 0 !important;
+  }
+
+  #progressContainer,
+  body.fullscreen-mode #progressContainer {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .progress-bar-row,
+  body.fullscreen-mode .progress-bar-row {
+    width: auto !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: min(42vw, 160px) !important;
+  }
+
+  #progressSideFeedback {
+    min-width: 0 !important;
+    width: auto !important;
+  }
+
+  body.fullscreen-mode .bottom-controls {
+    min-width: 0;
+    width: 100%;
+  }
+}
