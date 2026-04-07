@@ -575,7 +575,7 @@ async function loadQuizList() {
         sheet: getCellValue(r.c?.[0]),
         name: getCellValue(r.c?.[1]),
         rangeNumber: getCellValue(r.c?.[2]),
-        folder: normalizeFolderName(r.c?.[3])
+        folder: normalizeFolderName(getCellValue(r.c?.[3]))
     })).filter(q => q.sheet && q.name);
 }
 
