@@ -1,236 +1,11 @@
-
-/* ===== Desktop / Mac Base ===== */
-* , *::before, *::after {
-  box-sizing: border-box;
-}
-
+/* ===== General Styles ===== */
 body {
-  --body-pad-top: 20px;
-  --body-pad-right: 20px;
-  --body-pad-bottom: 20px;
-  --body-pad-left: 20px;
-  --edge-safe-right: 0px;
-  --top-controls-safe-right: 0px;
-  --progress-safe-right: 0px;
-  --question-safe-right: 0px;
-
-  --container-width: 66.67%;
-  --container-max-width: 900px;
-  --container-scale: 1.5;
-  --container-min-height: auto;
-  --container-pad-top: 20px;
-  --container-pad-right: 20px;
-  --container-pad-bottom: 20px;
-  --container-pad-left: 20px;
-  --container-radius: 10px;
-  --container-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
-
-  --top-bar-gap: 12px;
-  --top-bar-margin-bottom: 20px;
-  --top-row-display: flex;
-  --top-row-columns: none;
-  --top-row-align: flex-start;
-  --top-row-justify: space-between;
-  --top-row-wrap: wrap;
-  --top-row-gap-y: 12px;
-  --top-row-gap-x: 12px;
-
-  --left-controls-display: flex;
-  --left-controls-gap: 10px;
-  --quiz-select-group-display: flex;
-  --quiz-select-group-column: auto;
-  --quiz-select-group-row: auto;
-  --quiz-select-group-gap: 10px;
-  --quiz-select-group-wrap: wrap;
-
-  --quiz-selector-column: auto;
-  --quiz-selector-row: auto;
-  --quiz-selector-width: 170px;
-  --quiz-selector-min-width: 170px;
-  --quiz-selector-max-width: 170px;
-  --quiz-selector-height: auto;
-  --quiz-selector-font-size: 14px;
-  --quiz-selector-pad-y: 6px;
-  --quiz-selector-pad-x: 10px;
-
-  --combine-group-column: auto;
-  --combine-group-row: auto;
-  --combine-group-display: flex;
-  --combine-group-columns: none;
-  --combine-group-gap: 6px;
-  --combine-group-width: auto;
-  --combine-group-wrap: nowrap;
-
-  --combine-input-width: 105px;
-  --combine-input-min-width: 105px;
-  --combine-input-max-width: 105px;
-  --combine-input-height: auto;
-  --combine-input-font-size: 14px;
-  --combine-input-pad-y: 6px;
-  --combine-input-pad-x: 10px;
-
-  --combine-go-width: auto;
-  --combine-go-min-width: 0px;
-  --combine-go-height: auto;
-  --combine-go-font-size: 14px;
-  --combine-go-pad-y: 6px;
-  --combine-go-pad-x: 10px;
-
-  --bottom-controls-display: flex;
-  --bottom-controls-column: auto;
-  --bottom-controls-row: auto;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: flex-start;
-  --bottom-controls-gap: 14px;
-  --bottom-controls-wrap: wrap;
-
-  --nav-buttons-column: auto;
-  --nav-buttons-row: auto;
-  --nav-buttons-gap: 6px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: auto;
-  --nav-btn-font-size: 14px;
-  --nav-btn-pad-y: 6px;
-  --nav-btn-pad-x: 12px;
-  --nav-btn-radius: 5px;
-
-  --utility-controls-column: auto;
-  --utility-controls-row: auto;
-  --utility-controls-width: auto;
-  --utility-controls-justify-self: auto;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 8px;
-  --utility-controls-margin-right: 0px;
-  --icon-btn-size: 34px;
-  --icon-btn-font-size: 18px;
-  --icon-btn-radius: 8px;
-
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: auto;
-  --flashcard-setting-btn-font-size: 14px;
-
-  --progress-column: auto;
-  --progress-row: auto;
-  --progress-container-display: block;
-  --progress-container-width: 500px;
-  --progress-container-min-width: 150px;
-  --progress-container-flex: 0 0 auto;
-  --progress-container-justify: flex-start;
-  --progress-container-gap: 0px;
-  --progress-container-margin-left: 0px;
-  --progress-text-font-size: 13px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: auto;
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 10px;
-  --progress-bar-height: 10px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: 60px;
-  --progress-feedback-min-width: 60px;
-  --progress-feedback-font-size: 18px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 12px;
-
-  --quiz-area-direction: row;
-  --quiz-area-gap: 20px;
-  --question-container-display: block;
-  --question-container-direction: initial;
-  --question-width: auto;
-  --question-max-width: 400px;
-  --question-font-size: 16px;
-  --question-line-height: 1.4;
-  --question-align: left;
-
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 400px;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 16px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 15px;
-  --option-btn-pad-x: 15px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: auto;
-  --option-explanation-max-width: 400px;
-  --option-explanation-font-size: 16px;
-  --option-explanation-line-height: 1.4;
-
-  --hierarchy-container-width: auto;
-  --hierarchy-container-max-width: 400px;
-  --hierarchy-item-font-size: 16px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-
-  --question-image-max-height: 400px;
-  --question-image-zoom-max-width: 90%;
-  --question-image-zoom-max-height: 90%;
-
-  --flashcard-container-max-width: 760px;
-  --flashcard-container-pad-left: 40px;
-  --flashcard-container-pad-right: 40px;
-  --flashcard-margin-top: 8px;
-  --flashcard-height: min(380px, 52vh);
-  --flashcard-min-height: 300px;
-  --flashcard-text-font-size: 24px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: left;
-  --flashcard-split-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
-  --flashcard-split-gap: 18px;
-  --flashcard-image-max-height: 320px;
-  --flashcard-grade-btn-size: 56px;
-  --flashcard-grade-btn-font-size: 28px;
-  --flashcard-side-btn-left: 0px;
-  --flashcard-side-btn-right: 0px;
-  --flashcard-swipe-font-size: 28px;
-
-  --flashcard-zoom-modal-width: min(96vw, 1600px);
-  --flashcard-zoom-modal-height: min(92vh, 1000px);
-  --flashcard-zoom-modal-pad-top: 54px;
-  --flashcard-zoom-modal-pad-right: 16px;
-  --flashcard-zoom-modal-pad-bottom: 16px;
-  --flashcard-zoom-modal-pad-left: 16px;
-  --flashcard-zoom-viewport-pad: 12px;
-
-  --hint-overlay-pad-top: 56px;
-  --hint-overlay-pad-right: 20px;
-  --hint-overlay-pad-bottom: 20px;
-  --hint-overlay-pad-left: 20px;
-  --hint-modal-width: min(1800px, 96vw);
-  --hint-modal-height: min(750px, calc(100vh - 76px));
-  --hint-modal-pad-top: 26px;
-  --hint-modal-pad-right: 26px;
-  --hint-modal-pad-bottom: 22px;
-  --hint-modal-pad-left: 26px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
-  --hint-body-rows: none;
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 30px;
-  --hint-content-line-height: 1.6;
+  --content-width: 400px;
+  --content-width-fullscreen: 520px;
 
   font-family: Arial, sans-serif;
   margin: 0;
-  padding: var(--body-pad-top) var(--body-pad-right) var(--body-pad-bottom) var(--body-pad-left);
+  padding: 20px;
   background: #1e1b2e;
   color: #e0e0ff;
 }
@@ -243,102 +18,74 @@ body.hint-open {
   display: none !important;
 }
 
-button,
-select,
-input {
-  -webkit-tap-highlight-color: transparent;
-}
-
 .container {
-  max-width: var(--container-max-width);
-  width: var(--container-width);
-  min-height: var(--container-min-height);
+  max-width: 900px;
   margin: auto;
   background: #2a2540;
-  padding-top: var(--container-pad-top);
-  padding-right: calc(var(--container-pad-right) + var(--edge-safe-right));
-  padding-bottom: var(--container-pad-bottom);
-  padding-left: var(--container-pad-left);
-  border-radius: var(--container-radius);
-  box-shadow: var(--container-shadow);
-  transform: scale(var(--container-scale));
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
+
+  transform: scale(1.5);
   transform-origin: top center;
+  width: 66.67%;
 }
 
 .top-bar {
   display: flex;
   flex-direction: column;
-  gap: var(--top-bar-gap);
-  margin-bottom: var(--top-bar-margin-bottom);
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .top-row {
-  display: var(--top-row-display);
-  grid-template-columns: var(--top-row-columns);
-  align-items: var(--top-row-align);
-  justify-content: var(--top-row-justify);
-  gap: var(--top-row-gap-y) var(--top-row-gap-x);
-  flex-wrap: var(--top-row-wrap);
-  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .left-controls {
-  display: var(--left-controls-display);
+  display: flex;
   flex-direction: column;
-  gap: var(--left-controls-gap);
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
 
 .quiz-select-group {
-  display: var(--quiz-select-group-display);
-  grid-column: var(--quiz-select-group-column);
-  grid-row: var(--quiz-select-group-row);
+  display: flex;
   align-items: center;
-  gap: var(--quiz-select-group-gap);
-  flex-wrap: var(--quiz-select-group-wrap);
-  min-width: 0;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 #quizSelector {
-  grid-column: var(--quiz-selector-column);
-  grid-row: var(--quiz-selector-row);
-  width: var(--quiz-selector-width);
-  min-width: var(--quiz-selector-min-width);
-  max-width: var(--quiz-selector-max-width);
-  height: var(--quiz-selector-height);
-  padding: var(--quiz-selector-pad-y) var(--quiz-selector-pad-x);
+  padding: 6px 10px;
   background: #3a3360;
   color: #ffffff;
   border: 1px solid #5a4bcf;
   border-radius: 5px;
-  font-size: var(--quiz-selector-font-size);
+  width: 170px;
+  min-width: 170px;
+  max-width: 170px;
 }
 
 .combine-group {
-  display: var(--combine-group-display);
-  grid-column: var(--combine-group-column);
-  grid-row: var(--combine-group-row);
-  grid-template-columns: var(--combine-group-columns);
+  display: flex;
   align-items: center;
-  gap: var(--combine-group-gap);
-  width: var(--combine-group-width);
-  flex-wrap: var(--combine-group-wrap);
-  min-width: 0;
+  gap: 6px;
 }
 
 #combineInput {
-  width: var(--combine-input-width);
-  min-width: var(--combine-input-min-width);
-  max-width: var(--combine-input-max-width);
-  height: var(--combine-input-height);
-  padding: var(--combine-input-pad-y) var(--combine-input-pad-x);
+  width: 105px;
+  padding: 6px 10px;
   background: #3a3360;
   color: #ffffff;
   border: 1px solid #5a4bcf;
   border-radius: 5px;
   outline: none;
-  font-size: var(--combine-input-font-size);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
 }
 
@@ -362,16 +109,12 @@ input {
 }
 
 #combineGoBtn {
-  width: var(--combine-go-width);
-  min-width: var(--combine-go-min-width);
-  height: var(--combine-go-height);
-  padding: var(--combine-go-pad-y) var(--combine-go-pad-x);
+  padding: 6px 10px;
   background: #3a3360;
   color: white;
   border: none;
   border-radius: 5px;
   cursor: pointer;
-  font-size: var(--combine-go-font-size);
   transition: background 0.2s ease, transform 0.15s ease;
 }
 
@@ -384,43 +127,26 @@ input {
 }
 
 .bottom-controls {
-  display: var(--bottom-controls-display);
-  grid-column: var(--bottom-controls-column);
-  grid-row: var(--bottom-controls-row);
-  align-items: var(--bottom-controls-align);
-  justify-content: var(--bottom-controls-justify);
-  gap: var(--bottom-controls-gap);
-  flex-wrap: var(--bottom-controls-wrap);
-  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
 .nav-buttons {
   display: flex;
-  grid-column: var(--nav-buttons-column);
-  grid-row: var(--nav-buttons-row);
   align-items: center;
-  gap: var(--nav-buttons-gap);
-  flex-wrap: var(--nav-buttons-wrap);
-  min-width: 0;
+  gap: 6px;
 }
 
 .nav-buttons button {
   margin-right: 0;
-  min-width: var(--nav-btn-size);
-  min-height: var(--nav-btn-size);
-  width: var(--nav-btn-size);
-  height: var(--nav-btn-size);
-  padding: var(--nav-btn-pad-y) var(--nav-btn-pad-x);
+  padding: 6px 12px;
   background: #3a3360;
   color: white;
   border: none;
-  border-radius: var(--nav-btn-radius);
+  border-radius: 5px;
   cursor: pointer;
-  font-size: var(--nav-btn-font-size);
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   transition: background 0.2s ease, transform 0.15s ease;
 }
 
@@ -432,51 +158,34 @@ input {
   transform: scale(0.98);
 }
 
+body.fullscreen-mode .bottom-controls {
+  margin-top: -8px;
+}
+
 #progressContainer {
-  display: var(--progress-container-display);
-  grid-column: var(--progress-column);
-  grid-row: var(--progress-row);
-  width: var(--progress-container-width);
-  min-width: var(--progress-container-min-width);
-  flex: var(--progress-container-flex);
-  align-items: center;
-  justify-content: var(--progress-container-justify);
-  gap: var(--progress-container-gap);
-  margin-left: var(--progress-container-margin-left);
-  padding-right: var(--progress-safe-right);
-  min-width: 0;
+  width: 500px;
+  min-width: 150px;
 }
 
 #progressText {
-  font-size: var(--progress-text-font-size);
-  line-height: var(--progress-text-line-height);
+  font-size: 13px;
   color: #e0e0ff;
-  flex-shrink: 0;
 }
 
 .progress-bar-row {
   display: flex;
   align-items: center;
-  width: var(--progress-row-width);
-  min-width: var(--progress-row-min-width);
-  gap: var(--progress-row-gap);
-  min-width: 0;
+  gap: 10px;
 }
 
 #progressBar {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1;
   width: auto;
   background: #444;
-  border-radius: var(--progress-bar-radius);
+  border-radius: 5px;
   overflow: hidden;
-  height: var(--progress-bar-height);
+  height: 10px;
   margin-top: 5px;
-}
-
-body.device-ipad #progressBar,
-body.device-iphone #progressBar {
-  margin-top: 0;
 }
 
 #progressFill {
@@ -487,13 +196,12 @@ body.device-iphone #progressBar {
 }
 
 #progressSideFeedback {
-  width: var(--progress-feedback-width);
-  min-width: var(--progress-feedback-min-width);
-  margin-left: var(--progress-feedback-margin-left);
-  font-size: var(--progress-feedback-font-size);
+  width: 60px;
+  margin-left: 12px;
+  font-size: 18px;
   font-weight: bold;
-  line-height: var(--progress-feedback-line-height);
-  height: auto;
+  line-height: 1;
+  height: 18px;
   display: flex;
   align-items: center;
   white-space: nowrap;
@@ -505,32 +213,23 @@ body.device-iphone #progressBar {
   display: none;
 }
 
+/* ===== Utility Controls ===== */
 .utility-controls {
   position: relative;
   display: flex;
-  grid-column: var(--utility-controls-column);
-  grid-row: var(--utility-controls-row);
-  width: var(--utility-controls-width);
   align-items: flex-start;
-  justify-content: var(--utility-controls-justify);
-  justify-self: var(--utility-controls-justify-self);
-  gap: var(--utility-controls-gap);
-  margin-right: var(--utility-controls-margin-right);
-  padding-right: var(--top-controls-safe-right);
-  min-width: 0;
+  gap: 8px;
 }
 
 .icon-btn {
-  width: var(--icon-btn-size);
-  height: var(--icon-btn-size);
-  min-width: var(--icon-btn-size);
-  min-height: var(--icon-btn-size);
+  width: 34px;
+  height: 34px;
   background: #3a3360;
   color: #ffffff;
   border: 1px solid #5a4bcf;
-  border-radius: var(--icon-btn-radius);
+  border-radius: 8px;
   cursor: pointer;
-  font-size: var(--icon-btn-font-size);
+  font-size: 18px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -553,27 +252,25 @@ body.device-iphone #progressBar {
 
 .settings-popup {
   position: absolute;
-  top: var(--settings-popup-top);
-  right: var(--settings-popup-right);
-  width: var(--settings-popup-width);
+  top: 42px;
+  right: 0;
+  width: 210px;
   background: #2f2950;
   border: 1px solid #5a4bcf;
   border-radius: 10px;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
-  padding: var(--settings-popup-pad-top) var(--settings-popup-pad-right) var(--settings-popup-pad-bottom) var(--settings-popup-pad-left);
+  padding: 14px 14px 12px 14px;
   z-index: 2000;
 }
 
 .close-settings-btn {
   position: absolute;
-  top: var(--settings-close-top);
-  left: var(--settings-close-left);
-  width: var(--settings-close-size);
-  height: var(--settings-close-size);
+  top: 8px;
+  left: 8px;
   background: transparent;
   border: none;
   color: #ffffff;
-  font-size: var(--settings-close-font-size);
+  font-size: 14px;
   cursor: pointer;
   padding: 2px 4px;
   line-height: 1;
@@ -586,13 +283,13 @@ body.device-iphone #progressBar {
 .settings-popup-content {
   display: flex;
   flex-direction: column;
-  gap: var(--settings-content-gap);
+  gap: 10px;
   margin-top: 18px;
 }
 
 .settings-popup-content label {
   color: #cfcfff;
-  font-size: var(--settings-label-font-size);
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -605,33 +302,32 @@ body.device-iphone #progressBar {
   cursor: not-allowed;
 }
 
+/* ===== Flashcard Setting In Gear Popup ===== */
 .flashcard-setting-group {
   display: flex;
   flex-direction: column;
-  gap: var(--flashcard-setting-gap);
+  gap: 8px;
   margin-top: 4px;
 }
 
 .flashcard-setting-title {
   color: #cfcfff;
-  font-size: var(--flashcard-setting-title-font-size);
+  font-size: 13px;
 }
 
 .flashcard-setting-buttons {
   display: flex;
-  gap: var(--flashcard-setting-btn-gap);
+  gap: 8px;
 }
 
 .flashcard-setting-btn {
   flex: 1;
-  min-height: var(--flashcard-setting-btn-height);
   padding: 7px 10px;
   background: #3a3360;
   color: #ffffff;
   border: 1px solid #5a4bcf;
   border-radius: 8px;
   cursor: pointer;
-  font-size: var(--flashcard-setting-btn-font-size);
   transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
 }
 
@@ -649,79 +345,65 @@ body.device-iphone #progressBar {
   box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
 }
 
+/* ===== Quiz Area ===== */
 .quiz-area {
   display: flex;
-  flex-direction: var(--quiz-area-direction);
-  gap: var(--quiz-area-gap);
-  min-width: 0;
+  gap: 20px;
 }
 
 .question-container {
   flex: 2;
   min-width: 0;
-  display: var(--question-container-display);
-  flex-direction: var(--question-container-direction);
 }
 
 #questionText {
-  width: var(--question-width);
-  max-width: var(--question-max-width);
-  padding-right: var(--question-safe-right);
-  font-size: var(--question-font-size);
-  line-height: var(--question-line-height);
-  text-align: var(--question-align);
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  max-width: var(--content-width);
+  font-size: 16px;
+  line-height: 1.4;
+  word-wrap: break-word;
 }
 
+/* ===== Multiple Choice Options ===== */
 .options {
   display: flex;
   flex-direction: column;
-  gap: var(--options-gap);
+  gap: 12px;
   margin-top: 8px;
 }
 
 .option-block {
   display: flex;
   flex-direction: column;
-  gap: var(--option-block-gap);
+  gap: 6px;
 }
 
 .option-row {
   display: flex;
   align-items: center;
-  gap: var(--option-row-gap);
-  min-width: 0;
+  gap: 10px;
 }
 
 .explanation {
-  width: var(--option-explanation-width);
-  max-width: var(--option-explanation-max-width);
-  font-size: var(--option-explanation-font-size);
-  line-height: var(--option-explanation-line-height);
+  max-width: var(--content-width);
+  font-size: 16px;
   color: #d0d0ff;
   min-height: 15px;
   padding-left: 2px;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  word-wrap: break-word;
 }
 
 .optionBtn {
-  flex: 1 1 auto;
-  width: var(--option-btn-width);
-  min-width: 0;
-  max-width: var(--option-btn-max-width);
-  min-height: var(--option-btn-min-height);
-  padding: var(--option-btn-pad-y) var(--option-btn-pad-x);
+  width: 100%;
+  max-width: var(--content-width);
+  padding: 15px;
   background: #332b5c;
   border: 1px solid #5a4bcf;
   border-radius: 8px;
   cursor: pointer;
   text-align: left;
   color: #ffffff;
-  font-size: var(--option-btn-font-size);
-  line-height: var(--option-btn-line-height);
-  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  font-size: 16px;
+  transition: all 0.2s ease;
 }
 
 .optionBtn:hover {
@@ -735,10 +417,9 @@ body.device-iphone #progressBar {
 }
 
 .option-feedback {
-  width: var(--option-feedback-width);
-  min-width: var(--option-feedback-width);
+  width: 30px;
   text-align: center;
-  font-size: var(--option-feedback-font-size);
+  font-size: 20px;
   font-weight: 900;
   flex-shrink: 0;
   opacity: 1;
@@ -760,11 +441,10 @@ body.device-iphone #progressBar {
   opacity: 1;
 }
 
+/* ===== Hierarchy Type Styles ===== */
 #hierarchyContainer {
   display: flex;
   flex-direction: column;
-  width: var(--hierarchy-container-width);
-  max-width: var(--hierarchy-container-max-width);
   gap: 10px;
   margin-top: 15px;
   position: relative;
@@ -776,7 +456,6 @@ body.device-iphone #progressBar {
   gap: 10px;
   border-radius: 8px;
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  min-width: 0;
 }
 
 .hierarchy-row:hover {
@@ -794,9 +473,7 @@ body.device-iphone #progressBar {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-  font-size: var(--hierarchy-item-font-size);
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  box-sizing: border-box;
 }
 
 .hierarchy-item:hover {
@@ -812,11 +489,10 @@ body.device-iphone #progressBar {
 
 .hierarchy-feedback {
   font-weight: 900;
-  width: var(--hierarchy-feedback-width);
-  min-width: var(--hierarchy-feedback-width);
+  width: 30px;
   text-align: center;
   flex-shrink: 0;
-  font-size: var(--hierarchy-feedback-font-size);
+  font-size: 20px;
   line-height: 1;
   min-height: 20px;
   opacity: 1;
@@ -860,9 +536,9 @@ body.device-iphone #progressBar {
   transition: background 0.12s ease, border 0.12s ease;
 }
 
+/* ===== Hierarchy Submit Button ===== */
 #hierarchySubmit {
-  width: var(--hierarchy-submit-width);
-  max-width: 100%;
+  width: 120px;
   align-self: start;
   margin-top: 12px;
   padding: 8px 15px;
@@ -887,65 +563,24 @@ body.device-iphone #progressBar {
   transform: none;
 }
 
-.image-container {
-  flex: 1;
-  min-width: 0;
-}
-
-.image-container img,
-#questionImage {
-  max-width: 100%;
-  max-height: var(--question-image-max-height);
-  border-radius: 5px;
-  display: block;
-}
-
-#questionImage {
-  cursor: pointer;
-  transition: all 0.3s ease;
-  z-index: 1;
-}
-
-#questionImage.zoomed {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  max-width: var(--question-image-zoom-max-width);
-  max-height: var(--question-image-zoom-max-height);
-  width: auto;
-  height: auto;
-  transform: translate(-50%, -50%);
-  z-index: 9999;
-  background: rgba(0, 0, 0, 0.8);
-  border-radius: 5px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
-}
-
-.correct {
-  color: #4caf50;
-}
-
-.incorrect {
-  color: #ff6b6b;
-}
-
+/* ===== Flashcards ===== */
 .flashcard-container {
   position: relative;
   width: 100%;
-  max-width: var(--flashcard-container-max-width);
-  margin-top: var(--flashcard-margin-top);
+  max-width: 760px;
+  margin-top: 8px;
   perspective: 1500px;
   overflow: visible;
-  padding-left: var(--flashcard-container-pad-left);
-  padding-right: var(--flashcard-container-pad-right);
+  padding-left: 40px;
+  padding-right: 40px;
   box-sizing: border-box;
 }
 
 .flashcard-card {
   position: relative;
   width: 100%;
-  height: var(--flashcard-height);
-  min-height: var(--flashcard-min-height);
+  height: min(380px, 52vh);
+  min-height: 300px;
   cursor: pointer;
   touch-action: pan-y;
   transform: translateX(0);
@@ -997,7 +632,7 @@ body.device-iphone #progressBar {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--flashcard-split-gap);
+  gap: 18px;
 }
 
 .flashcard-side-content.text-only,
@@ -1007,16 +642,15 @@ body.device-iphone #progressBar {
 
 .flashcard-side-content.split {
   display: grid;
-  grid-template-columns: var(--flashcard-split-columns);
+  grid-template-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
   align-items: center;
-  gap: var(--flashcard-split-gap);
 }
 
 .flashcard-side-text {
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: var(--flashcard-text-line-height);
-  font-size: var(--flashcard-text-font-size);
+  line-height: 1.5;
+  font-size: 24px;
   color: #ffffff;
 }
 
@@ -1047,7 +681,7 @@ body.device-iphone #progressBar {
 
 .flashcard-side-image {
   max-width: 100%;
-  max-height: var(--flashcard-image-max-height);
+  max-height: 320px;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -1063,7 +697,7 @@ body.device-iphone #progressBar {
 
 .flashcard-help-text {
   width: 100%;
-  max-width: var(--flashcard-container-max-width);
+  max-width: 760px;
   margin-top: 8px;
   font-size: 12px;
   color: #cfcfff;
@@ -1071,34 +705,24 @@ body.device-iphone #progressBar {
 
 .flashcard-swipe-feedback {
   position: absolute;
-  top: 16px;
-  left: 50%;
-  width: auto;
-  max-width: calc(100% - 40px);
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(24, 20, 40, 0.82);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
   opacity: 0;
-  transform: translate(-50%, -6px) scale(0.96);
+  transform: scale(0.94);
   transition: opacity 0.14s ease, transform 0.14s ease;
-  font-size: var(--flashcard-swipe-font-size);
+  font-size: 28px;
   font-weight: 700;
-  line-height: 1.1;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  text-align: center;
   z-index: 4;
 }
 
 .flashcard-swipe-feedback.show {
   opacity: 1;
-  transform: translate(-50%, 0) scale(1);
+  transform: scale(1);
 }
 
 .flashcard-swipe-feedback.know {
@@ -1109,16 +733,12 @@ body.device-iphone #progressBar {
   color: #ff9b9d;
 }
 
-#flashcardGradeRow,
-.flashcard-grade-row {
-  display: none !important;
-}
-
 .flashcard-grade-row {
   position: absolute;
   inset: 0;
   width: auto;
   max-width: none;
+  display: block;
   margin-top: 0;
   pointer-events: none;
   overflow: visible;
@@ -1127,15 +747,13 @@ body.device-iphone #progressBar {
 .flashcard-grade-btn {
   position: absolute;
   top: 50%;
-  width: var(--flashcard-grade-btn-size);
-  height: var(--flashcard-grade-btn-size);
-  min-width: var(--flashcard-grade-btn-size);
-  min-height: var(--flashcard-grade-btn-size);
+  width: 56px;
+  height: 56px;
   padding: 0;
   border: none;
   border-radius: 999px;
   color: #ffffff;
-  font-size: var(--flashcard-grade-btn-font-size);
+  font-size: 28px;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
@@ -1151,12 +769,12 @@ body.device-iphone #progressBar {
 }
 
 .flashcard-side-btn.left {
-  left: var(--flashcard-side-btn-left);
+  left: 0;
   transform: translateY(-50%);
 }
 
 .flashcard-side-btn.right {
-  right: var(--flashcard-side-btn-right);
+  right: 0;
   transform: translateY(-50%);
 }
 
@@ -1176,6 +794,7 @@ body.device-iphone #progressBar {
   background: #3d8765;
 }
 
+/* ===== Flashcard Image Zoom ===== */
 .flashcard-image-zoom-btn {
   position: absolute;
   top: 10px;
@@ -1217,13 +836,13 @@ body.device-iphone #progressBar {
 
 .flashcard-image-modal {
   position: relative;
-  width: var(--flashcard-zoom-modal-width);
-  height: var(--flashcard-zoom-modal-height);
+  width: min(96vw, 1600px);
+  height: min(92vh, 1000px);
   background: #2a2540;
   border: 1px solid #5a4bcf;
   border-radius: 16px;
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
-  padding: var(--flashcard-zoom-modal-pad-top) var(--flashcard-zoom-modal-pad-right) var(--flashcard-zoom-modal-pad-bottom) var(--flashcard-zoom-modal-pad-left);
+  padding: 54px 16px 16px 16px;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -1263,10 +882,10 @@ body.device-iphone #progressBar {
   background: #241f39;
   border: 1px solid #4b4193;
   border-radius: 12px;
-  padding: var(--flashcard-zoom-viewport-pad);
+  padding: 12px;
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
 }
 
@@ -1274,12 +893,56 @@ body.device-iphone #progressBar {
   display: block;
   width: auto;
   height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  max-width: none;
+  max-height: none;
   border-radius: 10px;
 }
 
+/* ===== Image ===== */
+.image-container {
+  flex: 1;
+}
+
+.image-container img {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 5px;
+}
+
+#questionImage {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 1;
+}
+
+#questionImage.zoomed {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  max-width: 90%;
+  max-height: 90%;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 5px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+}
+
+/* ===== Feedback ===== */
+.correct {
+  color: #4caf50;
+}
+
+.incorrect {
+  color: #ff6b6b;
+}
+
+/* ===== Hint Overlay ===== */
 .hint-overlay {
   position: fixed;
   inset: 0;
@@ -1287,20 +950,23 @@ body.device-iphone #progressBar {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: var(--hint-overlay-pad-top) var(--hint-overlay-pad-right) var(--hint-overlay-pad-bottom) var(--hint-overlay-pad-left);
+  padding-top: 56px;
+  padding-right: 20px;
+  padding-bottom: 20px;
+  padding-left: 20px;
   background: rgba(30, 27, 46, 0.88);
   overflow: hidden;
 }
 
 .hint-modal {
   position: relative;
-  width: var(--hint-modal-width);
-  height: var(--hint-modal-height);
+  width: min(1800px, 96vw);
+  height: min(750px, calc(100vh - 76px));
   background: #2a2540;
   border: 1px solid #5a4bcf;
   border-radius: 16px;
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
-  padding: var(--hint-modal-pad-top) var(--hint-modal-pad-right) var(--hint-modal-pad-bottom) var(--hint-modal-pad-left);
+  padding: 26px 26px 22px 26px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -1335,10 +1001,10 @@ body.device-iphone #progressBar {
 }
 
 .hint-title {
-  font-size: var(--hint-title-font-size);
+  font-size: 24px;
   font-weight: 700;
   color: #ffffff;
-  margin-bottom: var(--hint-title-margin-bottom);
+  margin-bottom: 18px;
   padding-right: 60px;
   padding-top: 2px;
 }
@@ -1349,16 +1015,18 @@ body.device-iphone #progressBar {
   overflow: hidden;
 }
 
-.hint-body.text-only,
+.hint-body.text-only {
+  display: block;
+}
+
 .hint-body.image-only {
   display: block;
 }
 
 .hint-body.text-image {
   display: grid;
-  grid-template-columns: var(--hint-body-columns);
-  grid-template-rows: var(--hint-body-rows);
-  gap: var(--hint-body-gap);
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
+  gap: 18px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -1386,8 +1054,8 @@ body.device-iphone #progressBar {
 .hint-content {
   white-space: pre-wrap;
   word-wrap: break-word;
-  line-height: var(--hint-content-line-height);
-  font-size: var(--hint-content-font-size);
+  line-height: 1.6;
+  font-size: 30px;
   color: #e8e6ff;
 }
 
@@ -1412,45 +1080,132 @@ body.device-iphone #progressBar {
   margin: 0 auto;
 }
 
-body.device-desktop.fullscreen-mode .quiz-select-group {
-  display: none;
+
+@media (max-width: 900px) {
+  .hint-overlay {
+    padding: 40px 12px 20px 12px;
+  }
+
+  .hint-modal {
+    width: min(96vw, 1200px);
+    height: min(78vh, calc(100vh - 60px));
+    padding: 22px 18px 18px 18px;
+  }
+
+  .hint-body.text-image {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 1fr) minmax(220px, 1fr);
+  }
+
+  .flashcard-container,
+  .flashcard-grade-row {
+    max-width: 100%;
+  }
+
+  .flashcard-side-btn.left {
+    left: -58px;
+  }
+
+  .flashcard-side-btn.right {
+    right: -58px;
+  }
+
+  .flashcard-card {
+    height: min(500px, 60vh);
+    min-height: 370px;
+  }
+
+  .flashcard-side-content.split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .flashcard-side-text {
+    font-size: 21px;
+    text-align: center;
+  }
+
+  .flashcard-side-content.split .flashcard-side-text {
+    text-align: center;
+  }
+
+  .flashcard-image-modal {
+    width: min(96vw, 1200px);
+    height: min(88vh, calc(100vh - 24px));
+    padding: 52px 12px 12px 12px;
+  }
+
+  .flashcard-image-zoom-btn {
+    top: 8px;
+    right: 8px;
+  }
 }
 
-body.device-desktop.fullscreen-mode .container {
-  --container-max-width: 1100px;
-}
-
-body.device-desktop.fullscreen-mode {
-  --top-bar-gap: 8px;
-  --top-bar-margin-bottom: 12px;
-  --left-controls-gap: 6px;
-  --quiz-area-gap: 28px;
-  --question-max-width: 520px;
-  --question-font-size: 17px;
-  --option-btn-max-width: 520px;
-  --option-btn-font-size: 15px;
-  --option-explanation-max-width: 520px;
-  --question-image-max-height: 500px;
-  --flashcard-container-max-width: 920px;
-  --flashcard-height: min(470px, 63vh);
-  --flashcard-text-font-size: 26px;
-  --hint-overlay-pad-top: 64px;
-  --hint-overlay-pad-right: 20px;
-  --hint-overlay-pad-bottom: 20px;
-  --hint-overlay-pad-left: 20px;
-  --hint-modal-height: min(750px, calc(100vh - 84px));
-}
-
-body.active-question-flashcard #progressSideFeedback {
-  display: none;
-}
-
-body.active-question-flashcard .progress-bar-row {
-  gap: 0;
-}
-
+/* ===== Fullscreen App Mode ===== */
 body.fullscreen-mode .quiz-select-group {
-  display: none !important;
+  display: none;
+}
+
+body.fullscreen-mode .container {
+  max-width: 1100px;
+}
+
+body.fullscreen-mode .top-bar {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+body.fullscreen-mode .left-controls {
+  gap: 6px;
+}
+
+body.fullscreen-mode .quiz-area {
+  gap: 28px;
+}
+
+body.fullscreen-mode #questionText {
+  max-width: var(--content-width-fullscreen);
+  font-size: 17px;
+}
+
+body.fullscreen-mode .explanation {
+  max-width: var(--content-width-fullscreen);
+}
+
+body.fullscreen-mode .optionBtn {
+  max-width: var(--content-width-fullscreen);
+  font-size: 15px;
+}
+
+body.fullscreen-mode .image-container img,
+body.fullscreen-mode #questionImage {
+  max-height: 500px;
+}
+
+body.fullscreen-mode .flashcard-container,
+body.fullscreen-mode .flashcard-grade-row {
+  max-width: 920px;
+}
+
+body.fullscreen-mode .flashcard-card {
+  height: min(470px, 63vh);
+}
+
+body.fullscreen-mode .flashcard-side-text {
+  font-size: 26px;
+}
+
+/* ===== Hint Overlay In Fullscreen ===== */
+body.fullscreen-mode .hint-overlay {
+  padding-top: 64px;
+  padding-right: 20px;
+  padding-bottom: 20px;
+  padding-left: 20px;
+}
+
+body.fullscreen-mode .hint-modal {
+  width: min(1800px, 96vw);
+  height: min(750px, calc(100vh - 84px));
 }
 
 @supports (-webkit-touch-callout: none) {
@@ -1466,27 +1221,727 @@ body.fullscreen-mode .quiz-select-group {
     height: auto;
     -webkit-overflow-scrolling: touch;
   }
+
+  .hint-modal {
+    height: min(650px, calc(100svh - 95px)) !important;
+  }
+
+  body.fullscreen-mode .hint-modal {
+    height: min(650px, calc(100svh - 95px)) !important;
+  }
+
+  .flashcard-image-modal {
+    height: min(900px, calc(100svh - 24px));
+  }
+
+  .flashcard-grade-row {
+    display: block !important;
+  }
+
+  .flashcard-grade-btn {
+    display: inline-flex !important;
+    pointer-events: auto !important;
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    padding: 0 !important;
+    font-size: 12px !important;
+    line-height: 1 !important;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28) !important;
+  }
+
+  .flashcard-side-btn.left {
+    left: 6px !important;
+    right: auto !important;
+  }
+
+  .flashcard-side-btn.right {
+    right: 6px !important;
+    left: auto !important;
+  }
+
+  .flashcard-face {
+    padding-bottom: 20px !important;
+  }
+
+  .flashcard-help-text {
+    margin-top: 6px;
+  }
 }
 
-/* ===== Device Family Foundations ===== */
-body.device-ipad,
-body.device-iphone {
-  --container-width: 100%;
-  --progress-container-display: flex;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-radius: 0px;
-  --container-shadow: none;
+@media (max-width: 680px) {
+  .flashcard-setting-buttons {
+    width: 100%;
+  }
+
+  .flashcard-setting-btn {
+    flex: 1;
+  }
 }
 
-body.device-ipad .flashcard-setting-buttons,
-body.device-iphone .flashcard-setting-buttons {
-  width: 100%;
+.hint-overlay {
+  padding-top: 36px;
 }
 
-body.device-ipad .flashcard-setting-btn,
-body.device-iphone .flashcard-setting-btn {
-  flex: 1;
+body.fullscreen-mode .hint-overlay {
+  padding-top: 44px;
+}
+
+@media (orientation: portrait) {
+  @supports (-webkit-touch-callout: none) {
+    .hint-overlay {
+      padding-top: 20px !important;
+      padding-right: 12px !important;
+      padding-bottom: 16px !important;
+      padding-left: 12px !important;
+    }
+
+    body.fullscreen-mode .hint-overlay {
+      padding-top: 24px !important;
+      padding-right: 12px !important;
+      padding-bottom: 16px !important;
+      padding-left: 12px !important;
+    }
+
+    .hint-modal {
+      width: 96vw !important;
+      height: min(890px, calc(100svh - 36px)) !important;
+    }
+
+    body.fullscreen-mode .hint-modal {
+      width: 96vw !important;
+      height: min(890px, calc(100svh - 44px)) !important;
+    }
+
+    body.fullscreen-mode:has(#flashcardContainer) .flashcard-card {
+      height: min(550px, 62vh);
+      min-height: 360px;
+    }
+  }
+}
+
+@media (orientation: landscape) {
+  @supports (-webkit-touch-callout: none) {
+    .flashcard-card {
+      height: min(360px, 42vh);
+      min-height: 190px;
+    }
+
+    .flashcard-container {
+      margin-top: 4px;
+    }
+
+    .flashcard-grade-row {
+      margin-top: 6px;
+    }
+
+    .flashcard-side-content.split {
+      grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+      gap: 14px;
+    }
+
+    .flashcard-side-image {
+      max-height: 220px;
+    }
+  }
+}
+
+@media (orientation: landscape) {
+  @supports (-webkit-touch-callout: none) {
+    body.fullscreen-mode .flashcard-card {
+      height: min(490px, 57vh);
+      min-height: 250px;
+    }
+
+    body.fullscreen-mode .flashcard-container {
+      margin-top: 4px;
+    }
+
+    body.fullscreen-mode .flashcard-grade-row {
+      margin-top: 6px;
+    }
+
+    body.fullscreen-mode .flashcard-side-image {
+      max-height: 220px;
+    }
+
+    body.fullscreen-mode .flashcard-side-content.split {
+      grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+      gap: 14px;
+    }
+  }
+}
+
+/* ===== Narrow iPhone Layout ===== */
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  body {
+    padding: 0;
+  }
+
+  .container {
+    transform: none;
+    transform-origin: top center;
+    width: 100%;
+    max-width: 100%;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    padding-left: max(12px, env(safe-area-inset-left));
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .top-bar {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .top-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    align-items: start;
+  }
+
+  .left-controls,
+  .quiz-select-group,
+  .bottom-controls {
+    display: contents;
+  }
+
+  body.fullscreen-mode .quiz-select-group {
+    display: none !important;
+  }
+
+  #quizSelector {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 34px;
+    padding: 6px 10px;
+  }
+
+  .utility-controls {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    gap: 8px;
+  }
+
+  .combine-group {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    width: 100%;
+  }
+
+  #combineInput {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    box-sizing: border-box;
+  }
+
+  #combineGoBtn {
+    min-width: 52px;
+    height: 34px;
+    padding: 0 12px;
+  }
+
+  .nav-buttons {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    display: flex;
+    gap: 8px;
+  }
+
+  .nav-buttons button,
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-buttons button {
+    margin-right: 0;
+  }
+
+  #progressContainer {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #progressText {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .progress-bar-row {
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  #progressBar {
+    height: 5px;
+    margin-top: 0;
+  }
+
+  #progressSideFeedback {
+    width: auto;
+    min-width: 64px;
+    margin-left: 0;
+    font-size: 14px;
+    height: auto;
+    justify-content: flex-start;
+  }
+
+  body.active-question-flashcard #progressSideFeedback {
+    display: none;
+  }
+
+  body.active-question-flashcard .progress-bar-row {
+    gap: 0;
+  }
+
+  .quiz-area {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .question-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation {
+    max-width: none;
+    width: 100%;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation,
+  .hierarchy-item {
+    font-size: 15px;
+  }
+
+  .optionBtn {
+    padding: 13px;
+  }
+
+  .image-container img,
+  #questionImage {
+    max-height: 220px;
+    display: block;
+    margin: 0 auto;
+  }
+
+  .flashcard-container {
+    max-width: 100%;
+    padding-left: 18px;
+    padding-right: 18px;
+    margin-top: 6px;
+    flex: 1;
+  }
+
+  .flashcard-card {
+    height: min(62svh, 560px);
+    min-height: 360px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(74svh, 700px);
+    min-height: 460px;
+  }
+
+  .flashcard-side-text {
+    font-size: 20px;
+  }
+
+  .flashcard-side-content.split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    gap: 12px;
+  }
+
+  .flashcard-side-content.split .flashcard-side-text {
+    text-align: center;
+  }
+
+  .flashcard-side-image {
+    max-height: 240px;
+  }
+
+  .flashcard-grade-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    font-size: 16px;
+  }
+
+  .flashcard-side-btn.left {
+    left: 2px;
+  }
+
+  .flashcard-side-btn.right {
+    right: 2px;
+  }
+
+  .flashcard-swipe-feedback {
+    font-size: 22px;
+  }
+
+  body.fullscreen-mode .top-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    align-items: start;
+  }
+
+  body.fullscreen-mode .left-controls,
+  body.fullscreen-mode .bottom-controls {
+    display: contents;
+  }
+
+  body.fullscreen-mode .nav-buttons {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body.fullscreen-mode .utility-controls {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  body.fullscreen-mode #progressContainer {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  body {
+    padding: 0;
+  }
+
+  .container {
+    transform: none;
+    transform-origin: top center;
+    width: 100%;
+    max-width: 100%;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .top-bar {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .top-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    align-items: center;
+  }
+
+  .left-controls {
+    display: contents;
+  }
+
+  .quiz-select-group {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  body.fullscreen-mode .quiz-select-group {
+    display: none !important;
+  }
+
+  #quizSelector {
+    width: 136px;
+    min-width: 136px;
+    max-width: 136px;
+    height: 32px;
+    padding: 5px 8px;
+  }
+
+  .combine-group {
+    gap: 6px;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  #combineInput {
+    width: 84px;
+    height: 32px;
+    padding: 5px 8px;
+    box-sizing: border-box;
+  }
+
+  #combineGoBtn {
+    height: 32px;
+    padding: 0 10px;
+  }
+
+  .utility-controls {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    gap: 8px;
+  }
+
+  .bottom-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+
+  body.fullscreen-mode .bottom-controls {
+    grid-column: 1;
+    grid-row: 1;
+    margin-top: 0;
+    justify-content: flex-start;
+  }
+
+  body.fullscreen-mode .utility-controls {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .nav-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .nav-buttons button,
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    font-size: 17px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-buttons button {
+    margin-right: 0;
+  }
+
+  #progressContainer {
+    width: auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  #progressText {
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  .progress-bar-row {
+    width: min(150px, 42vw);
+    min-width: 0;
+    gap: 8px;
+  }
+
+  #progressBar {
+    height: 5px;
+    margin-top: 0;
+  }
+
+  #progressSideFeedback {
+    width: auto;
+    min-width: 58px;
+    margin-left: 0;
+    font-size: 13px;
+    height: auto;
+    justify-content: flex-start;
+  }
+
+  body.active-question-flashcard #progressSideFeedback {
+    display: none;
+  }
+
+  body.active-question-flashcard .progress-bar-row {
+    gap: 0;
+  }
+
+  .quiz-area {
+    gap: 12px;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation {
+    max-width: none;
+    width: 100%;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation,
+  .hierarchy-item {
+    font-size: 14px;
+  }
+
+  .optionBtn {
+    padding: 12px;
+  }
+
+  .image-container img,
+  #questionImage {
+    max-height: 170px;
+  }
+
+  .flashcard-container {
+    max-width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+    margin-top: 6px;
+  }
+
+  .flashcard-card {
+    height: min(56svh, 320px);
+    min-height: 220px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(64svh, 360px);
+    min-height: 260px;
+  }
+
+  .flashcard-side-text {
+    font-size: 17px;
+  }
+
+  .flashcard-side-content.split {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.9fr);
+    gap: 10px;
+  }
+
+  .flashcard-side-image {
+    max-height: 150px;
+  }
+
+  .flashcard-grade-btn {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    font-size: 14px;
+  }
+
+  .flashcard-side-btn.left {
+    left: 2px;
+  }
+
+  .flashcard-side-btn.right {
+    right: 2px;
+  }
+
+  .flashcard-swipe-feedback {
+    font-size: 18px;
+  }
+}
+
+
+/* ===== Final UI Tweaks ===== */
+#flashcardGradeRow,
+.flashcard-grade-row {
+  display: none !important;
+}
+
+.flashcard-swipe-feedback {
+  inset: auto;
+  top: 16px;
+  left: 50%;
+  width: auto;
+  max-width: calc(100% - 40px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(24, 20, 40, 0.82);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -6px) scale(0.96);
+  font-size: 34px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.flashcard-swipe-feedback.show {
+  transform: translate(-50%, 0) scale(1);
+}
+
+.flashcard-image-viewport {
+  align-items: center;
+  justify-content: center;
+}
+
+#flashcardZoomImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+button,
+select,
+input {
+  -webkit-tap-highlight-color: transparent;
 }
 
 .nav-buttons button,
@@ -1521,6 +1976,516 @@ body.device-iphone .flashcard-setting-btn {
     box-shadow: inherit;
   }
 
+  #combineGoBtn:hover,
+  .nav-buttons button:hover,
+  .icon-btn:hover,
+  .flashcard-setting-btn:hover,
+  #hierarchySubmit:hover {
+    background: inherit;
+  }
+
+  .optionBtn:hover {
+    background: #332b5c;
+    transform: none;
+  }
+
+  .hierarchy-item:hover {
+    background: #332b5c;
+    border-color: #5a4bcf;
+  }
+
+  .hierarchy-arrow:hover,
+  .close-settings-btn:hover {
+    color: #ffffff;
+  }
+}
+
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .top-row {
+    gap: 6px 8px;
+  }
+
+  .quiz-area {
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+  }
+
+  #quizSelector {
+    max-width: calc(100vw - 94px);
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+  }
+
+  .icon-btn,
+  .nav-buttons button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 17px;
+  }
+
+  .combine-group {
+    gap: 6px;
+  }
+
+  #combineInput {
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+
+  #combineGoBtn {
+    min-width: 46px;
+    padding: 0 10px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    gap: 6px;
+  }
+
+  #progressSideFeedback {
+    min-width: 56px;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation,
+  #hierarchyContainer,
+  #hierarchySubmit {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .flashcard-container {
+    padding-left: 8px;
+    padding-right: 8px;
+    margin-top: 4px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .flashcard-card {
+    height: min(72svh, 680px);
+    min-height: 420px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(80svh, 760px);
+    min-height: 500px;
+  }
+
+  .flashcard-swipe-feedback {
+    top: 12px;
+    max-width: calc(100% - 24px);
+    padding: 6px 12px;
+    font-size: 28px;
+  }
+
+  .flashcard-image-modal {
+    width: calc(100vw - 12px);
+    height: calc(100svh - 12px);
+    padding: 50px 8px 8px 8px;
+  }
+
+  .flashcard-image-viewport {
+    padding: 8px;
+  }
+
+  #questionImage.zoomed {
+    max-width: calc(100vw - 12px);
+    max-height: calc(100svh - 12px);
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    padding-top: max(6px, env(safe-area-inset-top));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .top-row {
+    gap: 6px 8px;
+  }
+
+  .quiz-area {
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+  }
+
+  #quizSelector {
+    width: 122px;
+    min-width: 122px;
+    max-width: 122px;
+    padding: 5px 7px;
+    font-size: 13px;
+  }
+
+  #combineInput {
+    width: 74px;
+    padding: 5px 7px;
+    font-size: 13px;
+  }
+
+  #combineGoBtn {
+    padding: 0 8px;
+    min-width: 42px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+  }
+
+  .icon-btn,
+  .nav-buttons button {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    font-size: 16px;
+  }
+
+  #questionText,
+  .optionBtn,
+  .explanation,
+  #hierarchyContainer,
+  #hierarchySubmit {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .flashcard-container {
+    padding-left: 8px;
+    padding-right: 8px;
+    margin-top: 4px;
+    min-height: 0;
+  }
+
+  .flashcard-card {
+    height: min(64svh, 340px);
+    min-height: 250px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(72svh, 390px);
+    min-height: 280px;
+  }
+
+  .flashcard-swipe-feedback {
+    top: 10px;
+    max-width: calc(100% - 20px);
+    padding: 5px 10px;
+    font-size: 22px;
+  }
+
+  .flashcard-image-modal {
+    width: calc(100vw - 10px);
+    height: calc(100svh - 10px);
+    padding: 48px 8px 8px 8px;
+  }
+
+  .flashcard-image-viewport {
+    padding: 8px;
+  }
+
+  #questionImage.zoomed {
+    max-width: calc(100vw - 10px);
+    max-height: calc(100svh - 10px);
+  }
+}
+
+/* ===== iPhone control alignment + flashcard spacing patch ===== */
+.nav-buttons button,
+.icon-btn,
+#combineGoBtn {
+  -webkit-tap-highlight-color: rgba(124, 108, 255, 0.24);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .nav-buttons button:active,
+  .icon-btn:active,
+  #combineGoBtn:active {
+    background: #5a4bcf !important;
+    border-color: #7c6cff !important;
+    transform: scale(0.98) !important;
+    box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+  }
+}
+
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .container {
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .top-row {
+    gap: 6px 6px;
+  }
+
+  #quizSelector {
+    max-width: calc(100vw - 118px);
+    padding: 6px 8px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+    margin-right: 2px;
+  }
+
+  .combine-group {
+    gap: 6px;
+    width: 100%;
+  }
+
+  #combineInput {
+    width: 100%;
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  #combineGoBtn {
+    min-width: 42px;
+    padding: 0 8px;
+    margin-right: 2px;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .top-row {
+    gap: 6px 6px;
+  }
+
+  #quizSelector {
+    width: 112px;
+    min-width: 112px;
+    max-width: 112px;
+  }
+
+  #combineInput {
+    width: 66px;
+  }
+
+  #combineGoBtn {
+    min-width: 38px;
+    padding: 0 7px;
+  }
+
+  .utility-controls {
+    gap: 6px;
+    margin-right: 2px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    width: min(128px, 30vw);
+    gap: 6px;
+  }
+
+  #progressSideFeedback {
+    min-width: 48px;
+    font-size: 12px;
+  }
+
+  .flashcard-container {
+    padding-left: 6px;
+    padding-right: 6px;
+    margin-top: 4px;
+  }
+
+  .flashcard-card {
+    height: min(68svh, 360px);
+    min-height: 250px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(74svh, 400px);
+    min-height: 280px;
+  }
+}
+
+/* ===== iPhone portrait/landscape alignment + question width patch ===== */
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .top-row {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px 8px;
+  }
+
+  #quizSelector {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px;
+  }
+
+  .utility-controls {
+    width: 74px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .combine-group {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px;
+    width: 100%;
+  }
+
+  #combineInput {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px;
+  }
+
+  #combineGoBtn {
+    width: 74px;
+    min-width: 74px;
+    padding: 0 8px;
+    justify-self: start;
+  }
+
+  body.fullscreen-mode .top-row {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 8px 8px;
+  }
+
+  body.fullscreen-mode .utility-controls {
+    width: 74px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  #questionText {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .optionBtn,
+  .explanation {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  .top-row {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    gap: 6px 8px;
+  }
+
+  #quizSelector {
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+  }
+
+  #combineInput {
+    width: 68px;
+  }
+
+  #combineGoBtn {
+    min-width: 38px;
+    padding: 0 7px;
+  }
+
+  .utility-controls {
+    width: 72px;
+    justify-self: start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  #progressContainer {
+    gap: 6px;
+  }
+
+  .progress-bar-row {
+    width: min(132px, 36vw);
+    gap: 6px;
+  }
+
+  body.fullscreen-mode .progress-bar-row {
+  width: min(150px, 42vw);
+}
+
+  #progressSideFeedback {
+    min-width: 52px;
+    font-size: 12px;
+  }
+
+  .flashcard-card {
+    height: min(62svh, 350px);
+    min-height: 240px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(70svh, 390px);
+    min-height: 270px;
+  }
+
+  #questionText {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  body.fullscreen-mode #progressContainer {
+    flex: 0 1 auto;
+    justify-content: flex-start;
+    gap: 6px;
+    margin-left: 6px;
+  }
+
+  body.fullscreen-mode .progress-bar-row {
+    width: 350px;
+  }
+
+  body.fullscreen-mode .flashcard-card {
+    height: min(80svh, 420px);
+    min-height: 300px;
+  }
+}  
+/* ===== Touch-device color-state sync only ===== */
+@media (hover: none) and (pointer: coarse) {
   .nav-buttons button,
   #combineGoBtn,
   .icon-btn,
@@ -1564,1817 +2529,4 @@ body.device-iphone .flashcard-setting-btn {
   .close-settings-btn:active {
     color: #7c6cff !important;
   }
-}
-
-
-/* ===== iPad Portrait Non-Fullscreen Only ===== */
-body.device-ipad.orientation-portrait:not(.fullscreen-mode) {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 6px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: auto;
-  --container-pad-top: max(18px, env(safe-area-inset-top));
-  --container-pad-right: max(20px, env(safe-area-inset-right));
-  --container-pad-bottom: max(20px, env(safe-area-inset-bottom));
-  --container-pad-left: max(18px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 4px;
-  --progress-safe-right: 2px;
-  --question-safe-right: 2px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 12px;
-  --top-bar-margin-bottom: 14px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 88px;
-  --top-row-align: start;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 10px;
-  --top-row-gap-x: 10px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: contents;
-  --quiz-select-group-column: auto;
-  --quiz-select-group-row: auto;
-  --quiz-select-group-gap: 8px;
-  --quiz-select-group-wrap: wrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 100%;
-  --quiz-selector-min-width: 0px;
-  --quiz-selector-max-width: 100%;
-  --quiz-selector-height: 40px;
-  --quiz-selector-font-size: 15px;
-  --quiz-selector-pad-y: 8px;
-  --quiz-selector-pad-x: 10px;
-  --combine-group-column: 1 / -1;
-  --combine-group-row: 2;
-  --combine-group-display: grid;
-  --combine-group-columns: minmax(0, 1fr) 112px;
-  --combine-group-gap: 10px;
-  --combine-group-width: 100%;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 100%;
-  --combine-input-min-width: 0px;
-  --combine-input-max-width: 100%;
-  --combine-input-height: 40px;
-  --combine-input-font-size: 15px;
-  --combine-input-pad-y: 8px;
-  --combine-input-pad-x: 10px;
-  --combine-go-width: 112px;
-  --combine-go-min-width: 112px;
-  --combine-go-height: 40px;
-  --combine-go-font-size: 15px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 16px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: contents;
-  --bottom-controls-column: auto;
-  --bottom-controls-row: auto;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: space-between;
-  --bottom-controls-gap: 8px;
-  --bottom-controls-wrap: wrap;
-  --nav-buttons-column: 1 / -1;
-  --nav-buttons-row: 3;
-  --nav-buttons-gap: 10px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 40px;
-  --nav-btn-font-size: 18px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 88px;
-  --utility-controls-justify-self: start;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 8px;
-  --utility-controls-margin-right: 0px;
-  --icon-btn-size: 40px;
-  --icon-btn-font-size: 18px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: 1 / -1;
-  --progress-row: 4;
-  --progress-container-display: flex;
-  --progress-container-width: 100%;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 0 1 auto;
-  --progress-container-justify: flex-start;
-  --progress-container-gap: 10px;
-  --progress-container-margin-left: 0px;
-  --progress-text-font-size: 15px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: min(260px, 45vw);
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 8px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 70px;
-  --progress-feedback-font-size: 15px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: column;
-  --quiz-area-gap: 10px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 18px;
-  --question-line-height: 1.45;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 16px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 14px;
-  --option-btn-pad-x: 14px;
-  --option-feedback-width: 34px;
-  --option-feedback-font-size: 22px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 16px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 16px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 280px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 20px;
-  --flashcard-container-pad-right: 20px;
-  --flashcard-margin-top: 6px;
-  --flashcard-height: min(60svh, 640px);
-  --flashcard-min-height: 420px;
-  --flashcard-text-font-size: 22px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: center;
-  --flashcard-split-columns: 1fr;
-  --flashcard-split-gap: 14px;
-  --flashcard-image-max-height: 260px;
-  --flashcard-grade-btn-size: 38px;
-  --flashcard-grade-btn-font-size: 16px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 24px;
-  --flashcard-zoom-modal-width: min(96vw, 1200px);
-  --flashcard-zoom-modal-height: min(88svh, calc(100svh - 24px));
-  --flashcard-zoom-modal-pad-top: 52px;
-  --flashcard-zoom-modal-pad-right: 12px;
-  --flashcard-zoom-modal-pad-bottom: 12px;
-  --flashcard-zoom-modal-pad-left: 12px;
-  --flashcard-zoom-viewport-pad: 12px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 28px;
-  --hint-overlay-pad-right: 18px;
-  --hint-overlay-pad-bottom: 18px;
-  --hint-overlay-pad-left: 18px;
-  --hint-modal-width: min(96vw, 1200px);
-  --hint-modal-height: min(84svh, calc(100svh - 46px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: 1fr;
-  --hint-body-rows: minmax(220px, 1fr) minmax(220px, 1fr);
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 26px;
-  --hint-content-line-height: 1.6;
-
-}
-
-/* ===== iPad Portrait Fullscreen Only ===== */
-body.device-ipad.orientation-portrait.fullscreen-mode {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 8px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: auto;
-  --container-pad-top: max(18px, env(safe-area-inset-top));
-  --container-pad-right: max(22px, env(safe-area-inset-right));
-  --container-pad-bottom: max(20px, env(safe-area-inset-bottom));
-  --container-pad-left: max(18px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 6px;
-  --progress-safe-right: 4px;
-  --question-safe-right: 2px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 10px;
-  --top-bar-margin-bottom: 12px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 88px;
-  --top-row-align: start;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 10px;
-  --top-row-gap-x: 10px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: contents;
-  --quiz-select-group-column: auto;
-  --quiz-select-group-row: auto;
-  --quiz-select-group-gap: 8px;
-  --quiz-select-group-wrap: wrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 100%;
-  --quiz-selector-min-width: 0px;
-  --quiz-selector-max-width: 100%;
-  --quiz-selector-height: 34px;
-  --quiz-selector-font-size: 14px;
-  --quiz-selector-pad-y: 6px;
-  --quiz-selector-pad-x: 8px;
-  --combine-group-column: 1 / -1;
-  --combine-group-row: 2;
-  --combine-group-display: grid;
-  --combine-group-columns: minmax(0, 1fr) auto;
-  --combine-group-gap: 8px;
-  --combine-group-width: 100%;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 100%;
-  --combine-input-min-width: 0px;
-  --combine-input-max-width: 100%;
-  --combine-input-height: 34px;
-  --combine-input-font-size: 14px;
-  --combine-input-pad-y: 6px;
-  --combine-input-pad-x: 8px;
-  --combine-go-width: auto;
-  --combine-go-min-width: 42px;
-  --combine-go-height: 34px;
-  --combine-go-font-size: 14px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 8px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: contents;
-  --bottom-controls-column: auto;
-  --bottom-controls-row: auto;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: space-between;
-  --bottom-controls-gap: 8px;
-  --bottom-controls-wrap: wrap;
-  --nav-buttons-column: 1;
-  --nav-buttons-row: 1;
-  --nav-buttons-gap: 10px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 40px;
-  --nav-btn-font-size: 18px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 88px;
-  --utility-controls-justify-self: start;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 8px;
-  --utility-controls-margin-right: 0px;
-  --icon-btn-size: 40px;
-  --icon-btn-font-size: 18px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: 1 / -1;
-  --progress-row: 2;
-  --progress-container-display: flex;
-  --progress-container-width: 100%;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 0 1 auto;
-  --progress-container-justify: flex-start;
-  --progress-container-gap: 8px;
-  --progress-container-margin-left: 0px;
-  --progress-text-font-size: 15px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: min(320px, 56vw);
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 8px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 74px;
-  --progress-feedback-font-size: 15px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: column;
-  --quiz-area-gap: 18px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 18px;
-  --question-line-height: 1.4;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 16px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 13px;
-  --option-btn-pad-x: 13px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 16px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 16px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 340px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 18px;
-  --flashcard-container-pad-right: 18px;
-  --flashcard-margin-top: 6px;
-  --flashcard-height: min(70svh, 760px);
-  --flashcard-min-height: 500px;
-  --flashcard-text-font-size: 26px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: center;
-  --flashcard-split-columns: 1fr;
-  --flashcard-split-gap: 16px;
-  --flashcard-image-max-height: 280px;
-  --flashcard-grade-btn-size: 38px;
-  --flashcard-grade-btn-font-size: 16px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 26px;
-  --flashcard-zoom-modal-width: min(96vw, 1280px);
-  --flashcard-zoom-modal-height: min(92svh, calc(100svh - 24px));
-  --flashcard-zoom-modal-pad-top: 54px;
-  --flashcard-zoom-modal-pad-right: 14px;
-  --flashcard-zoom-modal-pad-bottom: 14px;
-  --flashcard-zoom-modal-pad-left: 14px;
-  --flashcard-zoom-viewport-pad: 12px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 36px;
-  --hint-overlay-pad-right: 20px;
-  --hint-overlay-pad-bottom: 20px;
-  --hint-overlay-pad-left: 20px;
-  --hint-modal-width: min(96vw, 1600px);
-  --hint-modal-height: min(84svh, calc(100svh - 56px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: 1fr;
-  --hint-body-rows: minmax(220px, 1fr) minmax(220px, 1fr);
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 28px;
-  --hint-content-line-height: 1.6;
-
-}
-
-/* ===== iPad Landscape Non-Fullscreen Only ===== */
-body.device-ipad.orientation-landscape:not(.fullscreen-mode) {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 6px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: 100svh;
-  --container-pad-top: max(12px, env(safe-area-inset-top));
-  --container-pad-right: max(18px, env(safe-area-inset-right));
-  --container-pad-bottom: max(14px, env(safe-area-inset-bottom));
-  --container-pad-left: max(18px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 4px;
-  --progress-safe-right: 2px;
-  --question-safe-right: 0px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 10px;
-  --top-bar-margin-bottom: 12px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 88px;
-  --top-row-align: center;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 10px;
-  --top-row-gap-x: 12px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: flex;
-  --quiz-select-group-column: 1;
-  --quiz-select-group-row: 1;
-  --quiz-select-group-gap: 10px;
-  --quiz-select-group-wrap: nowrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 180px;
-  --quiz-selector-min-width: 180px;
-  --quiz-selector-max-width: 180px;
-  --quiz-selector-height: 38px;
-  --quiz-selector-font-size: 15px;
-  --quiz-selector-pad-y: 7px;
-  --quiz-selector-pad-x: 10px;
-  --combine-group-column: auto;
-  --combine-group-row: auto;
-  --combine-group-display: flex;
-  --combine-group-columns: none;
-  --combine-group-gap: 8px;
-  --combine-group-width: auto;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 108px;
-  --combine-input-min-width: 108px;
-  --combine-input-max-width: 108px;
-  --combine-input-height: 38px;
-  --combine-input-font-size: 15px;
-  --combine-input-pad-y: 7px;
-  --combine-input-pad-x: 10px;
-  --combine-go-width: auto;
-  --combine-go-min-width: 52px;
-  --combine-go-height: 38px;
-  --combine-go-font-size: 15px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 14px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: flex;
-  --bottom-controls-column: 1 / -1;
-  --bottom-controls-row: 2;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: space-between;
-  --bottom-controls-gap: 12px;
-  --bottom-controls-wrap: nowrap;
-  --nav-buttons-column: auto;
-  --nav-buttons-row: auto;
-  --nav-buttons-gap: 8px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 38px;
-  --nav-btn-font-size: 18px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 88px;
-  --utility-controls-justify-self: end;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 8px;
-  --utility-controls-margin-right: 0px;
-  --icon-btn-size: 38px;
-  --icon-btn-font-size: 18px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: auto;
-  --progress-row: auto;
-  --progress-container-width: auto;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 1;
-  --progress-container-justify: flex-end;
-  --progress-container-gap: 10px;
-  --progress-container-margin-left: 0px;
-  --progress-text-font-size: 14px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: min(280px, 36vw);
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 7px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 68px;
-  --progress-feedback-font-size: 14px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: row;
-  --quiz-area-gap: 18px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 17px;
-  --question-line-height: 1.4;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 15px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 13px;
-  --option-btn-pad-x: 13px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 15px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 15px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 320px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 16px;
-  --flashcard-container-pad-right: 16px;
-  --flashcard-margin-top: 6px;
-  --flashcard-height: min(54svh, 420px);
-  --flashcard-min-height: 280px;
-  --flashcard-text-font-size: 20px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: left;
-  --flashcard-split-columns: minmax(0, 1.05fr) minmax(220px, 0.95fr);
-  --flashcard-split-gap: 14px;
-  --flashcard-image-max-height: 220px;
-  --flashcard-grade-btn-size: 34px;
-  --flashcard-grade-btn-font-size: 14px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 20px;
-  --flashcard-zoom-modal-width: min(96vw, 1400px);
-  --flashcard-zoom-modal-height: min(90svh, calc(100svh - 24px));
-  --flashcard-zoom-modal-pad-top: 50px;
-  --flashcard-zoom-modal-pad-right: 8px;
-  --flashcard-zoom-modal-pad-bottom: 8px;
-  --flashcard-zoom-modal-pad-left: 8px;
-  --flashcard-zoom-viewport-pad: 8px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 24px;
-  --hint-overlay-pad-right: 16px;
-  --hint-overlay-pad-bottom: 16px;
-  --hint-overlay-pad-left: 16px;
-  --hint-modal-width: min(96vw, 1400px);
-  --hint-modal-height: min(82svh, calc(100svh - 40px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
-  --hint-body-rows: none;
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 24px;
-  --hint-content-line-height: 1.6;
-
-}
-
-/* ===== iPad Landscape Fullscreen Only ===== */
-body.device-ipad.orientation-landscape.fullscreen-mode {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 8px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: 100svh;
-  --container-pad-top: max(12px, env(safe-area-inset-top));
-  --container-pad-right: max(18px, env(safe-area-inset-right));
-  --container-pad-bottom: max(14px, env(safe-area-inset-bottom));
-  --container-pad-left: max(18px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 4px;
-  --progress-safe-right: 2px;
-  --question-safe-right: 0px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 8px;
-  --top-bar-margin-bottom: 10px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 88px;
-  --top-row-align: center;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 8px;
-  --top-row-gap-x: 12px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: contents;
-  --quiz-select-group-column: auto;
-  --quiz-select-group-row: auto;
-  --quiz-select-group-gap: 8px;
-  --quiz-select-group-wrap: wrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 100%;
-  --quiz-selector-min-width: 0px;
-  --quiz-selector-max-width: 100%;
-  --quiz-selector-height: 34px;
-  --quiz-selector-font-size: 14px;
-  --quiz-selector-pad-y: 6px;
-  --quiz-selector-pad-x: 8px;
-  --combine-group-column: 1 / -1;
-  --combine-group-row: 2;
-  --combine-group-display: grid;
-  --combine-group-columns: minmax(0, 1fr) auto;
-  --combine-group-gap: 8px;
-  --combine-group-width: 100%;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 100%;
-  --combine-input-min-width: 0px;
-  --combine-input-max-width: 100%;
-  --combine-input-height: 34px;
-  --combine-input-font-size: 14px;
-  --combine-input-pad-y: 6px;
-  --combine-input-pad-x: 8px;
-  --combine-go-width: auto;
-  --combine-go-min-width: 42px;
-  --combine-go-height: 34px;
-  --combine-go-font-size: 14px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 8px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: flex;
-  --bottom-controls-column: 1;
-  --bottom-controls-row: 1;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: flex-start;
-  --bottom-controls-gap: 12px;
-  --bottom-controls-wrap: nowrap;
-  --nav-buttons-column: 1 / -1;
-  --nav-buttons-row: 3;
-  --nav-buttons-gap: 8px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 38px;
-  --nav-btn-font-size: 18px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 88px;
-  --utility-controls-justify-self: end;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 8px;
-  --utility-controls-margin-right: 0px;
-  --icon-btn-size: 38px;
-  --icon-btn-font-size: 18px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: 1 / -1;
-  --progress-row: 2;
-  --progress-container-width: auto;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 0 1 auto;
-  --progress-container-justify: flex-start;
-  --progress-container-gap: 10px;
-  --progress-container-margin-left: 8px;
-  --progress-text-font-size: 14px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: min(340px, 44vw);
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 7px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 72px;
-  --progress-feedback-font-size: 14px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: row;
-  --quiz-area-gap: 22px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 17px;
-  --question-line-height: 1.4;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 15px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 13px;
-  --option-btn-pad-x: 13px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 15px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 15px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 420px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 16px;
-  --flashcard-container-pad-right: 16px;
-  --flashcard-margin-top: 6px;
-  --flashcard-height: min(62svh, 500px);
-  --flashcard-min-height: 320px;
-  --flashcard-text-font-size: 24px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: left;
-  --flashcard-split-columns: minmax(0, 1.05fr) minmax(240px, 0.95fr);
-  --flashcard-split-gap: 16px;
-  --flashcard-image-max-height: 240px;
-  --flashcard-grade-btn-size: 34px;
-  --flashcard-grade-btn-font-size: 14px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 22px;
-  --flashcard-zoom-modal-width: calc(100vw - 12px);
-  --flashcard-zoom-modal-height: calc(100svh - 12px);
-  --flashcard-zoom-modal-pad-top: 50px;
-  --flashcard-zoom-modal-pad-right: 8px;
-  --flashcard-zoom-modal-pad-bottom: 8px;
-  --flashcard-zoom-modal-pad-left: 8px;
-  --flashcard-zoom-viewport-pad: 8px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 28px;
-  --hint-overlay-pad-right: 18px;
-  --hint-overlay-pad-bottom: 18px;
-  --hint-overlay-pad-left: 18px;
-  --hint-modal-width: min(96vw, 1600px);
-  --hint-modal-height: min(82svh, calc(100svh - 46px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
-  --hint-body-rows: none;
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 26px;
-  --hint-content-line-height: 1.6;
-
-}
-
-/* ===== iPhone Portrait Non-Fullscreen Only ===== */
-body.device-iphone.orientation-portrait:not(.fullscreen-mode) {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 8px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: auto;
-  --container-pad-top: max(12px, env(safe-area-inset-top));
-  --container-pad-right: max(12px, env(safe-area-inset-right));
-  --container-pad-bottom: max(14px, env(safe-area-inset-bottom));
-  --container-pad-left: max(12px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 6px;
-  --progress-safe-right: 2px;
-  --question-safe-right: 2px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 8px;
-  --top-bar-margin-bottom: 10px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 74px;
-  --top-row-align: start;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 8px;
-  --top-row-gap-x: 8px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: contents;
-  --quiz-select-group-column: auto;
-  --quiz-select-group-row: auto;
-  --quiz-select-group-gap: 8px;
-  --quiz-select-group-wrap: wrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 100%;
-  --quiz-selector-min-width: 0px;
-  --quiz-selector-max-width: 100%;
-  --quiz-selector-height: 34px;
-  --quiz-selector-font-size: 14px;
-  --quiz-selector-pad-y: 6px;
-  --quiz-selector-pad-x: 8px;
-  --combine-group-column: 1 / -1;
-  --combine-group-row: 2;
-  --combine-group-display: grid;
-  --combine-group-columns: minmax(0, 1fr) 74px;
-  --combine-group-gap: 8px;
-  --combine-group-width: 100%;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 100%;
-  --combine-input-min-width: 0px;
-  --combine-input-max-width: 100%;
-  --combine-input-height: 34px;
-  --combine-input-font-size: 14px;
-  --combine-input-pad-y: 6px;
-  --combine-input-pad-x: 8px;
-  --combine-go-width: 74px;
-  --combine-go-min-width: 74px;
-  --combine-go-height: 34px;
-  --combine-go-font-size: 14px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 8px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: contents;
-  --bottom-controls-column: auto;
-  --bottom-controls-row: auto;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: space-between;
-  --bottom-controls-gap: 8px;
-  --bottom-controls-wrap: wrap;
-  --nav-buttons-column: 1 / -1;
-  --nav-buttons-row: 3;
-  --nav-buttons-gap: 8px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 34px;
-  --nav-btn-font-size: 18px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 74px;
-  --utility-controls-justify-self: start;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 6px;
-  --utility-controls-margin-right: 2px;
-  --icon-btn-size: 34px;
-  --icon-btn-font-size: 18px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: 1 / -1;
-  --progress-row: 4;
-  --progress-container-display: flex;
-  --progress-container-width: 100%;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 0 1 auto;
-  --progress-container-justify: flex-start;
-  --progress-container-gap: 8px;
-  --progress-container-margin-left: 0px;
-  --progress-text-font-size: 14px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: auto;
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 5px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 64px;
-  --progress-feedback-font-size: 14px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: column;
-  --quiz-area-gap: 10px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 15px;
-  --question-line-height: 1.4;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 15px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 13px;
-  --option-btn-pad-x: 13px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 15px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 15px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 220px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 18px;
-  --flashcard-container-pad-right: 18px;
-  --flashcard-margin-top: 6px;
-  --flashcard-height: min(62svh, 560px);
-  --flashcard-min-height: 360px;
-  --flashcard-text-font-size: 20px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: center;
-  --flashcard-split-columns: 1fr;
-  --flashcard-split-gap: 12px;
-  --flashcard-image-max-height: 240px;
-  --flashcard-grade-btn-size: 34px;
-  --flashcard-grade-btn-font-size: 16px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 22px;
-  --flashcard-zoom-modal-width: calc(100vw - 12px);
-  --flashcard-zoom-modal-height: calc(100svh - 12px);
-  --flashcard-zoom-modal-pad-top: 50px;
-  --flashcard-zoom-modal-pad-right: 8px;
-  --flashcard-zoom-modal-pad-bottom: 8px;
-  --flashcard-zoom-modal-pad-left: 8px;
-  --flashcard-zoom-viewport-pad: 8px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 20px;
-  --hint-overlay-pad-right: 12px;
-  --hint-overlay-pad-bottom: 16px;
-  --hint-overlay-pad-left: 12px;
-  --hint-modal-width: 96vw;
-  --hint-modal-height: min(890px, calc(100svh - 36px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: 1fr;
-  --hint-body-rows: minmax(220px, 1fr) minmax(220px, 1fr);
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 24px;
-  --hint-content-line-height: 1.6;
-
-}
-
-/* ===== iPhone Portrait Fullscreen Only ===== */
-body.device-iphone.orientation-portrait.fullscreen-mode {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 10px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: auto;
-  --container-pad-top: max(12px, env(safe-area-inset-top));
-  --container-pad-right: max(14px, env(safe-area-inset-right));
-  --container-pad-bottom: max(14px, env(safe-area-inset-bottom));
-  --container-pad-left: max(12px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 8px;
-  --progress-safe-right: 4px;
-  --question-safe-right: 2px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 8px;
-  --top-bar-margin-bottom: 10px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 74px;
-  --top-row-align: start;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 8px;
-  --top-row-gap-x: 8px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: contents;
-  --quiz-select-group-column: auto;
-  --quiz-select-group-row: auto;
-  --quiz-select-group-gap: 8px;
-  --quiz-select-group-wrap: wrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 100%;
-  --quiz-selector-min-width: 0px;
-  --quiz-selector-max-width: 100%;
-  --quiz-selector-height: 34px;
-  --quiz-selector-font-size: 14px;
-  --quiz-selector-pad-y: 6px;
-  --quiz-selector-pad-x: 8px;
-  --combine-group-column: 1 / -1;
-  --combine-group-row: 2;
-  --combine-group-display: grid;
-  --combine-group-columns: minmax(0, 1fr) auto;
-  --combine-group-gap: 8px;
-  --combine-group-width: 100%;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 100%;
-  --combine-input-min-width: 0px;
-  --combine-input-max-width: 100%;
-  --combine-input-height: 34px;
-  --combine-input-font-size: 14px;
-  --combine-input-pad-y: 6px;
-  --combine-input-pad-x: 8px;
-  --combine-go-width: auto;
-  --combine-go-min-width: 42px;
-  --combine-go-height: 34px;
-  --combine-go-font-size: 14px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 8px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: contents;
-  --bottom-controls-column: auto;
-  --bottom-controls-row: auto;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: space-between;
-  --bottom-controls-gap: 8px;
-  --bottom-controls-wrap: wrap;
-  --nav-buttons-column: 1;
-  --nav-buttons-row: 1;
-  --nav-buttons-gap: 8px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 34px;
-  --nav-btn-font-size: 18px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 74px;
-  --utility-controls-justify-self: start;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 6px;
-  --utility-controls-margin-right: 0px;
-  --icon-btn-size: 34px;
-  --icon-btn-font-size: 18px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: 1 / -1;
-  --progress-row: 2;
-  --progress-container-display: flex;
-  --progress-container-width: 100%;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 0 1 auto;
-  --progress-container-justify: flex-start;
-  --progress-container-gap: 8px;
-  --progress-container-margin-left: 0px;
-  --progress-text-font-size: 14px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: auto;
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 5px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 64px;
-  --progress-feedback-font-size: 14px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: column;
-  --quiz-area-gap: 10px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 15px;
-  --question-line-height: 1.4;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 15px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 13px;
-  --option-btn-pad-x: 13px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 15px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 15px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 240px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 18px;
-  --flashcard-container-pad-right: 18px;
-  --flashcard-margin-top: 6px;
-  --flashcard-height: min(74svh, 700px);
-  --flashcard-min-height: 460px;
-  --flashcard-text-font-size: 22px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: center;
-  --flashcard-split-columns: 1fr;
-  --flashcard-split-gap: 12px;
-  --flashcard-image-max-height: 260px;
-  --flashcard-grade-btn-size: 34px;
-  --flashcard-grade-btn-font-size: 16px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 22px;
-  --flashcard-zoom-modal-width: calc(100vw - 12px);
-  --flashcard-zoom-modal-height: calc(100svh - 12px);
-  --flashcard-zoom-modal-pad-top: 50px;
-  --flashcard-zoom-modal-pad-right: 8px;
-  --flashcard-zoom-modal-pad-bottom: 8px;
-  --flashcard-zoom-modal-pad-left: 8px;
-  --flashcard-zoom-viewport-pad: 8px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 24px;
-  --hint-overlay-pad-right: 12px;
-  --hint-overlay-pad-bottom: 16px;
-  --hint-overlay-pad-left: 12px;
-  --hint-modal-width: 96vw;
-  --hint-modal-height: min(890px, calc(100svh - 44px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: 1fr;
-  --hint-body-rows: minmax(220px, 1fr) minmax(220px, 1fr);
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 24px;
-  --hint-content-line-height: 1.6;
-
-}
-
-/* ===== iPhone Landscape Non-Fullscreen Only ===== */
-body.device-iphone.orientation-landscape:not(.fullscreen-mode) {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 8px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: 100svh;
-  --container-pad-top: max(6px, env(safe-area-inset-top));
-  --container-pad-right: max(10px, env(safe-area-inset-right));
-  --container-pad-bottom: max(6px, env(safe-area-inset-bottom));
-  --container-pad-left: max(10px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 6px;
-  --progress-safe-right: 2px;
-  --question-safe-right: 2px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 6px;
-  --top-bar-margin-bottom: 8px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 72px;
-  --top-row-align: center;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 6px;
-  --top-row-gap-x: 8px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: flex;
-  --quiz-select-group-column: 1;
-  --quiz-select-group-row: 1;
-  --quiz-select-group-gap: 8px;
-  --quiz-select-group-wrap: nowrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 120px;
-  --quiz-selector-min-width: 120px;
-  --quiz-selector-max-width: 120px;
-  --quiz-selector-height: 32px;
-  --quiz-selector-font-size: 13px;
-  --quiz-selector-pad-y: 5px;
-  --quiz-selector-pad-x: 7px;
-  --combine-group-column: auto;
-  --combine-group-row: auto;
-  --combine-group-display: flex;
-  --combine-group-columns: none;
-  --combine-group-gap: 6px;
-  --combine-group-width: auto;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 68px;
-  --combine-input-min-width: 68px;
-  --combine-input-max-width: 68px;
-  --combine-input-height: 32px;
-  --combine-input-font-size: 13px;
-  --combine-input-pad-y: 5px;
-  --combine-input-pad-x: 7px;
-  --combine-go-width: auto;
-  --combine-go-min-width: 38px;
-  --combine-go-height: 32px;
-  --combine-go-font-size: 13px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 7px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: flex;
-  --bottom-controls-column: 1 / -1;
-  --bottom-controls-row: 2;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: space-between;
-  --bottom-controls-gap: 8px;
-  --bottom-controls-wrap: nowrap;
-  --nav-buttons-column: 1 / -1;
-  --nav-buttons-row: 3;
-  --nav-buttons-gap: 8px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 32px;
-  --nav-btn-font-size: 17px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 72px;
-  --utility-controls-justify-self: start;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 6px;
-  --utility-controls-margin-right: 2px;
-  --icon-btn-size: 32px;
-  --icon-btn-font-size: 17px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: auto;
-  --progress-row: auto;
-  --progress-container-width: auto;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 1;
-  --progress-container-justify: flex-end;
-  --progress-container-gap: 6px;
-  --progress-container-margin-left: 0px;
-  --progress-text-font-size: 13px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: min(132px, 36vw);
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 5px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 52px;
-  --progress-feedback-font-size: 12px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: row;
-  --quiz-area-gap: 12px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 14px;
-  --question-line-height: 1.4;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 14px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 12px;
-  --option-btn-pad-x: 12px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 14px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 14px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 170px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 16px;
-  --flashcard-container-pad-right: 16px;
-  --flashcard-margin-top: 6px;
-  --flashcard-height: min(62svh, 350px);
-  --flashcard-min-height: 240px;
-  --flashcard-text-font-size: 17px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: left;
-  --flashcard-split-columns: minmax(0, 1fr) minmax(150px, 0.9fr);
-  --flashcard-split-gap: 10px;
-  --flashcard-image-max-height: 150px;
-  --flashcard-grade-btn-size: 30px;
-  --flashcard-grade-btn-font-size: 14px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 18px;
-  --flashcard-zoom-modal-width: calc(100vw - 10px);
-  --flashcard-zoom-modal-height: calc(100svh - 10px);
-  --flashcard-zoom-modal-pad-top: 48px;
-  --flashcard-zoom-modal-pad-right: 8px;
-  --flashcard-zoom-modal-pad-bottom: 8px;
-  --flashcard-zoom-modal-pad-left: 8px;
-  --flashcard-zoom-viewport-pad: 8px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 18px;
-  --hint-overlay-pad-right: 10px;
-  --hint-overlay-pad-bottom: 14px;
-  --hint-overlay-pad-left: 10px;
-  --hint-modal-width: 96vw;
-  --hint-modal-height: min(650px, calc(100svh - 32px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: 1fr;
-  --hint-body-rows: minmax(220px, 1fr) minmax(220px, 1fr);
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 20px;
-  --hint-content-line-height: 1.6;
-
-}
-
-/* ===== iPhone Landscape Fullscreen Only ===== */
-body.device-iphone.orientation-landscape.fullscreen-mode {
-  /* App Shell */
-  --body-pad-top: 0px;
-  --body-pad-right: 0px;
-  --body-pad-bottom: 0px;
-  --body-pad-left: 0px;
-  --edge-safe-right: 10px;
-  --container-width: 100%;
-  --container-max-width: 100%;
-  --container-scale: 1;
-  --container-min-height: 100svh;
-  --container-pad-top: max(6px, env(safe-area-inset-top));
-  --container-pad-right: max(12px, env(safe-area-inset-right));
-  --container-pad-bottom: max(6px, env(safe-area-inset-bottom));
-  --container-pad-left: max(10px, env(safe-area-inset-left));
-  --container-radius: 0px;
-  --container-shadow: none;
-
-  /* Safety Padding */
-  --top-controls-safe-right: 8px;
-  --progress-safe-right: 4px;
-  --question-safe-right: 2px;
-
-  /* Top Bar / Grid */
-  --top-bar-gap: 6px;
-  --top-bar-margin-bottom: 8px;
-  --top-row-display: grid;
-  --top-row-columns: minmax(0, 1fr) 72px;
-  --top-row-align: center;
-  --top-row-justify: normal;
-  --top-row-wrap: nowrap;
-  --top-row-gap-y: 6px;
-  --top-row-gap-x: 8px;
-  --left-controls-display: contents;
-  --left-controls-gap: 8px;
-
-  /* Quiz Selector / Combine */
-  --quiz-select-group-display: contents;
-  --quiz-select-group-column: auto;
-  --quiz-select-group-row: auto;
-  --quiz-select-group-gap: 8px;
-  --quiz-select-group-wrap: wrap;
-  --quiz-selector-column: 1;
-  --quiz-selector-row: 1;
-  --quiz-selector-width: 100%;
-  --quiz-selector-min-width: 0px;
-  --quiz-selector-max-width: 100%;
-  --quiz-selector-height: 34px;
-  --quiz-selector-font-size: 14px;
-  --quiz-selector-pad-y: 6px;
-  --quiz-selector-pad-x: 8px;
-  --combine-group-column: 1 / -1;
-  --combine-group-row: 2;
-  --combine-group-display: grid;
-  --combine-group-columns: minmax(0, 1fr) auto;
-  --combine-group-gap: 8px;
-  --combine-group-width: 100%;
-  --combine-group-wrap: nowrap;
-  --combine-input-width: 100%;
-  --combine-input-min-width: 0px;
-  --combine-input-max-width: 100%;
-  --combine-input-height: 34px;
-  --combine-input-font-size: 14px;
-  --combine-input-pad-y: 6px;
-  --combine-input-pad-x: 8px;
-  --combine-go-width: auto;
-  --combine-go-min-width: 42px;
-  --combine-go-height: 34px;
-  --combine-go-font-size: 14px;
-  --combine-go-pad-y: 0px;
-  --combine-go-pad-x: 8px;
-
-  /* Bottom Controls / Navigation */
-  --bottom-controls-display: flex;
-  --bottom-controls-column: 1;
-  --bottom-controls-row: 1;
-  --bottom-controls-align: center;
-  --bottom-controls-justify: flex-start;
-  --bottom-controls-gap: 8px;
-  --bottom-controls-wrap: nowrap;
-  --nav-buttons-column: 1 / -1;
-  --nav-buttons-row: 3;
-  --nav-buttons-gap: 8px;
-  --nav-buttons-wrap: nowrap;
-  --nav-btn-size: 32px;
-  --nav-btn-font-size: 17px;
-  --nav-btn-pad-y: 0px;
-  --nav-btn-pad-x: 0px;
-  --nav-btn-radius: 8px;
-
-  /* Utility / Settings */
-  --utility-controls-column: 2;
-  --utility-controls-row: 1;
-  --utility-controls-width: 72px;
-  --utility-controls-justify-self: start;
-  --utility-controls-justify: flex-start;
-  --utility-controls-gap: 6px;
-  --utility-controls-margin-right: 2px;
-  --icon-btn-size: 32px;
-  --icon-btn-font-size: 17px;
-  --icon-btn-radius: 8px;
-  --settings-popup-top: 42px;
-  --settings-popup-right: 0px;
-  --settings-popup-width: 210px;
-  --settings-popup-pad-top: 14px;
-  --settings-popup-pad-right: 14px;
-  --settings-popup-pad-bottom: 12px;
-  --settings-popup-pad-left: 14px;
-  --settings-close-top: 8px;
-  --settings-close-left: 8px;
-  --settings-close-size: 24px;
-  --settings-close-font-size: 14px;
-  --settings-content-gap: 10px;
-  --settings-label-font-size: 13px;
-  --flashcard-setting-gap: 8px;
-  --flashcard-setting-title-font-size: 13px;
-  --flashcard-setting-btn-gap: 8px;
-  --flashcard-setting-btn-height: 36px;
-  --flashcard-setting-btn-font-size: 14px;
-
-  /* Progress */
-  --progress-column: 1 / -1;
-  --progress-row: 2;
-  --progress-container-width: auto;
-  --progress-container-min-width: 0px;
-  --progress-container-flex: 0 1 auto;
-  --progress-container-justify: flex-start;
-  --progress-container-gap: 6px;
-  --progress-container-margin-left: 6px;
-  --progress-text-font-size: 13px;
-  --progress-text-line-height: 1.2;
-  --progress-row-width: min(150px, 42vw);
-  --progress-row-min-width: 0px;
-  --progress-row-gap: 8px;
-  --progress-bar-height: 5px;
-  --progress-bar-radius: 5px;
-  --progress-feedback-width: auto;
-  --progress-feedback-min-width: 52px;
-  --progress-feedback-font-size: 12px;
-  --progress-feedback-line-height: 1;
-  --progress-feedback-margin-left: 0px;
-
-  /* Question / Answers */
-  --quiz-area-direction: row;
-  --quiz-area-gap: 12px;
-  --question-container-display: flex;
-  --question-container-direction: column;
-  --question-width: 100%;
-  --question-max-width: 100%;
-  --question-font-size: 14px;
-  --question-line-height: 1.4;
-  --question-align: left;
-  --options-gap: 12px;
-  --option-block-gap: 6px;
-  --option-row-gap: 10px;
-  --option-btn-width: auto;
-  --option-btn-max-width: 100%;
-  --option-btn-min-height: 0px;
-  --option-btn-font-size: 14px;
-  --option-btn-line-height: 1.4;
-  --option-btn-pad-y: 13px;
-  --option-btn-pad-x: 13px;
-  --option-feedback-width: 30px;
-  --option-feedback-font-size: 20px;
-  --option-explanation-width: 100%;
-  --option-explanation-max-width: 100%;
-  --option-explanation-font-size: 14px;
-  --option-explanation-line-height: 1.4;
-  --hierarchy-container-width: 100%;
-  --hierarchy-container-max-width: 100%;
-  --hierarchy-item-font-size: 14px;
-  --hierarchy-feedback-width: 30px;
-  --hierarchy-feedback-font-size: 20px;
-  --hierarchy-submit-width: 120px;
-  --question-image-max-height: 190px;
-  --question-image-zoom-max-width: calc(100vw - 12px);
-  --question-image-zoom-max-height: calc(100svh - 12px);
-
-  /* Flashcards */
-  --flashcard-container-max-width: 100%;
-  --flashcard-container-pad-left: 8px;
-  --flashcard-container-pad-right: 8px;
-  --flashcard-margin-top: 4px;
-  --flashcard-height: min(80svh, 420px);
-  --flashcard-min-height: 300px;
-  --flashcard-text-font-size: 18px;
-  --flashcard-text-line-height: 1.5;
-  --flashcard-split-text-align: left;
-  --flashcard-split-columns: minmax(0, 1fr) minmax(150px, 0.9fr);
-  --flashcard-split-gap: 10px;
-  --flashcard-image-max-height: 160px;
-  --flashcard-grade-btn-size: 30px;
-  --flashcard-grade-btn-font-size: 14px;
-  --flashcard-side-btn-left: 2px;
-  --flashcard-side-btn-right: 2px;
-  --flashcard-swipe-font-size: 18px;
-  --flashcard-zoom-modal-width: calc(100vw - 10px);
-  --flashcard-zoom-modal-height: calc(100svh - 10px);
-  --flashcard-zoom-modal-pad-top: 48px;
-  --flashcard-zoom-modal-pad-right: 8px;
-  --flashcard-zoom-modal-pad-bottom: 8px;
-  --flashcard-zoom-modal-pad-left: 8px;
-  --flashcard-zoom-viewport-pad: 8px;
-
-  /* Hint Overlay */
-  --hint-overlay-pad-top: 22px;
-  --hint-overlay-pad-right: 10px;
-  --hint-overlay-pad-bottom: 14px;
-  --hint-overlay-pad-left: 10px;
-  --hint-modal-width: 96vw;
-  --hint-modal-height: min(650px, calc(100svh - 40px));
-  --hint-modal-pad-top: 22px;
-  --hint-modal-pad-right: 18px;
-  --hint-modal-pad-bottom: 18px;
-  --hint-modal-pad-left: 18px;
-  --hint-title-font-size: 24px;
-  --hint-title-margin-bottom: 18px;
-  --hint-body-columns: 1fr;
-  --hint-body-rows: minmax(220px, 1fr) minmax(220px, 1fr);
-  --hint-body-gap: 18px;
-  --hint-content-font-size: 20px;
-  --hint-content-line-height: 1.6;
-
 }
