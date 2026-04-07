@@ -2670,7 +2670,7 @@ input {
     width: auto !important;
     flex: 1 1 auto !important;
     min-width: 0 !important;
-    max-width: min(75vw, 500px) !important;
+    max-width: min(42vw, 160px) !important;
   }
 
   #progressSideFeedback {
@@ -2681,5 +2681,57 @@ input {
   body.fullscreen-mode .bottom-controls {
     min-width: 0;
     width: 100%;
+  }
+}
+
+
+/* ===== Folder + Quiz Dual Dropdown ===== */
+.folder-quiz-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#folderSelector,
+#quizSelector {
+  padding: 6px 10px;
+  background: #3a3360;
+  color: #ffffff;
+  border: 1px solid #5a4bcf;
+  border-radius: 5px;
+  width: 170px;
+  min-width: 170px;
+  max-width: 170px;
+}
+
+#folderSelector:disabled,
+#quizSelector:disabled {
+  background: #2f2a49;
+  color: #a6a1c7;
+  border-color: #4a4565;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+@media screen and (max-width: 430px) and (orientation: portrait),
+       screen and (max-height: 430px) and (orientation: landscape) {
+  .folder-quiz-group {
+    grid-column: 1;
+    grid-row: 1;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #folderSelector,
+  #quizSelector {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
   }
 }

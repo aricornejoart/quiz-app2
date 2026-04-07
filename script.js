@@ -41,6 +41,7 @@ let flashcardImageZoomOpen = false;
 let currentQuestionType = '';
 
 
+const folderSelector = document.getElementById('folderSelector');
 const quizSelector = document.getElementById('quizSelector');
 const combineInput = document.getElementById('combineInput');
 const combineGoBtn = document.getElementById('combineGoBtn');
@@ -516,6 +517,54 @@ async function applyLoadedQuestions(newQuestions) {
     showQuestion();
 }
 
+function normalizeFolderName(value) {
+    return normalizeSheetText(value) || 'Uncategorized';
+}
+
+function resetQuizSelector() {
+    quizSelector.innerHTML = '<option value="">Choose quiz</option>';
+    quizSelector.value = '';
+    quizSelector.disabled = true;
+}
+
+function renderSelectionPrompt(message = 'Choose a folder and a quiz.') {
+    clearQuestionUI();
+    currentQuestionType = '';
+    updateViewportClasses();
+
+    questionTextEl.style.display = 'block';
+    questionTextEl.innerText = message;
+    optionsContainer.style.display = 'none';
+    imageContainer.style.display = '';
+    questionImage.style.display = 'none';
+    questionImage.src = '';
+
+    clearFeedback();
+    updateProgress();
+}
+
+function clearActiveQuizSelection(message = 'Choose a folder and a quiz.') {
+    questions = [];
+    questionQueue = [];
+    resetModeState();
+    updateSettingsAvailability();
+    renderSelectionPrompt(message);
+}
+
+function getFolderNames() {
+    const seen = new Set();
+    const folders = [];
+
+    quizListCache.forEach(q => {
+        if (!seen.has(q.folder)) {
+            seen.add(q.folder);
+            folders.push(q.folder);
+        }
+    });
+
+    return folders;
+}
+
 // ================= LOAD QUIZ LIST =================
 async function loadQuizList() {
     const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=Config`);
@@ -525,23 +574,57 @@ async function loadQuizList() {
     return json.table.rows.map(r => ({
         sheet: getCellValue(r.c?.[0]),
         name: getCellValue(r.c?.[1]),
-        rangeNumber: getCellValue(r.c?.[2])
+        rangeNumber: getCellValue(r.c?.[2]),
+        folder: normalizeFolderName(r.c?.[3])
     })).filter(q => q.sheet && q.name);
 }
 
-// ================= DROPDOWN =================
-async function populateQuizDropdown() {
+// ================= DROPDOWNS =================
+async function populateFolderDropdown() {
     quizListCache = await loadQuizList();
-    quizSelector.innerHTML = '';
+    folderSelector.innerHTML = '<option value="">Choose folder</option>';
 
-    quizListCache.forEach(q => {
+    getFolderNames().forEach(folderName => {
+        const opt = document.createElement('option');
+        opt.value = folderName;
+        opt.innerText = folderName;
+        folderSelector.appendChild(opt);
+    });
+
+    folderSelector.value = '';
+    resetQuizSelector();
+
+    return quizListCache;
+}
+
+function populateQuizDropdown(folderName) {
+    resetQuizSelector();
+
+    if (!folderName) {
+        return [];
+    }
+
+    const quizzesForFolder = quizListCache.filter(q => q.folder === folderName);
+
+    quizzesForFolder.forEach(q => {
         const opt = document.createElement('option');
         opt.value = q.sheet;
         opt.innerText = q.name;
         quizSelector.appendChild(opt);
     });
 
-    return quizListCache;
+    quizSelector.disabled = quizzesForFolder.length === 0;
+    return quizzesForFolder;
+}
+
+async function loadSelectedQuiz(sheetName) {
+    const loadedQuestions = await loadQuestions(sheetName);
+
+    if (!loadedQuestions.length) {
+        throw new Error('No questions found');
+    }
+
+    await applyLoadedQuestions(loadedQuestions);
 }
 
 // ================= LOAD QUESTIONS =================
@@ -797,6 +880,11 @@ function isQuizFinished() {
 
 // ================= SHOW QUESTION =================
 function showQuestion() {
+    if (!questions.length) {
+        renderSelectionPrompt();
+        return;
+    }
+
     clearQuestionUI();
     questionAnswered = false;
     flashcardFlipped = false;
@@ -1714,6 +1802,11 @@ function resetModeState() {
 
 // ================= RESTART =================
 function restartQuiz() {
+    if (!questions.length) {
+        clearActiveQuizSelection();
+        return;
+    }
+
     resetModeState();
     questionQueue = [...questions];
 
@@ -1794,23 +1887,38 @@ combineGoBtn.addEventListener('click', async () => {
     }
 });
 
-quizSelector.addEventListener('change', async e => {
-    if (combineInput.value.trim()) {
+folderSelector.addEventListener('change', e => {
+    setCombineValidState(true);
+
+    const selectedFolder = e.target.value;
+    populateQuizDropdown(selectedFolder);
+
+    if (!selectedFolder) {
+        clearActiveQuizSelection();
         return;
     }
 
+    clearActiveQuizSelection('Choose a quiz.');
+});
+
+quizSelector.addEventListener('change', async e => {
     setCombineValidState(true);
 
-    questions = await loadQuestions(e.target.value);
-    questionQueue = [...questions];
+    const selectedQuiz = e.target.value;
 
-    if (document.getElementById('shuffleQuestions').checked) {
-        shuffleArray(questionQueue);
+    if (!selectedQuiz) {
+        clearActiveQuizSelection(folderSelector.value ? 'Choose a quiz.' : 'Choose a folder and a quiz.');
+        return;
     }
 
-    resetModeState();
-    updateSettingsAvailability();
-    showQuestion();
+    combineInput.value = '';
+
+    try {
+        await loadSelectedQuiz(selectedQuiz);
+    } catch (err) {
+        console.error(err);
+        clearActiveQuizSelection('Failed to load quiz.');
+    }
 });
 
 settingsBtn.addEventListener('click', e => {
@@ -1905,29 +2013,18 @@ window.addEventListener('orientationchange', handleViewportChange);
         applyResponsiveControlText();
         updateViewportClasses();
 
-        const list = await populateQuizDropdown();
+        const list = await populateFolderDropdown();
 
         if (!list.length) {
             questionTextEl.innerText = 'No quizzes found.';
             return;
         }
 
-        quizSelector.value = list[0].sheet;
-
-        questions = await loadQuestions(list[0].sheet);
-        questionQueue = [...questions];
-
-        if (document.getElementById('shuffleQuestions').checked) {
-            shuffleArray(questionQueue);
-        }
-
-        resetModeState();
-        updateSettingsAvailability();
-        showQuestion();
+        clearActiveQuizSelection();
         handleViewportChange();
     } catch (err) {
         console.error(err);
-        questionTextEl.innerText = 'Failed to load quiz.';
+        questionTextEl.innerText = 'Failed to load quiz list.';
     }
 })();
 

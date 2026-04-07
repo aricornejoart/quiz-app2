@@ -19,7 +19,14 @@
     <div class="top-row">
       <div class="left-controls">
         <div class="quiz-select-group" id="quizControls">
-          <select id="quizSelector"></select>
+          <div class="folder-quiz-group">
+            <select id="folderSelector">
+              <option value="">Choose folder</option>
+            </select>
+            <select id="quizSelector" disabled>
+              <option value="">Choose quiz</option>
+            </select>
+          </div>
 
           <div class="combine-group">
             <input
