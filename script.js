@@ -194,13 +194,50 @@ function syncBodyScrollLock() {
     document.body.style.overflow = (hintOverlayOpen || flashcardImageZoomOpen) ? 'hidden' : '';
 }
 
+function getViewportOrientation() {
+    return window.matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape';
+}
+
+function getDeviceFamily() {
+    const ua = navigator.userAgent || '';
+    const touchPoints = navigator.maxTouchPoints || 0;
+    const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const orientation = getViewportOrientation();
+    const minViewport = Math.min(window.innerWidth, window.innerHeight);
+    const maxViewport = Math.max(window.innerWidth, window.innerHeight);
+
+    const isIPhone = /iPhone/i.test(ua);
+    const isIPad = /iPad/i.test(ua) || (/Macintosh/i.test(ua) && touchPoints > 1);
+    const isPhoneSizedTouchViewport = coarsePointer && (minViewport <= 440 || (orientation === 'landscape' && window.innerHeight <= 440));
+    const isTabletSizedTouchViewport = coarsePointer && maxViewport >= 744 && maxViewport <= 1400 && minViewport >= 441;
+
+    if (isIPhone || isPhoneSizedTouchViewport) {
+        return 'iphone';
+    }
+
+    if (isIPad || isTabletSizedTouchViewport) {
+        return 'ipad';
+    }
+
+    return 'desktop';
+}
+
 function isNarrowIPhoneViewport() {
-    return window.matchMedia('(max-width: 440px), (max-height: 440px) and (orientation: landscape)').matches;
+    return getDeviceFamily() === 'iphone';
 }
 
 function updateViewportClasses() {
-    document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
-    document.body.classList.toggle('active-question-flashcard', currentQuestionType === 'flashcard');
+    const body = document.body;
+    const family = getDeviceFamily();
+    const orientation = getViewportOrientation();
+
+    body.classList.toggle('device-desktop', family === 'desktop');
+    body.classList.toggle('device-ipad', family === 'ipad');
+    body.classList.toggle('device-iphone', family === 'iphone');
+    body.classList.toggle('orientation-portrait', orientation === 'portrait');
+    body.classList.toggle('orientation-landscape', orientation === 'landscape');
+    body.classList.toggle('narrow-iphone-layout', family === 'iphone');
+    body.classList.toggle('active-question-flashcard', currentQuestionType === 'flashcard');
 }
 
 function applyResponsiveControlText() {
