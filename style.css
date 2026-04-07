@@ -2670,7 +2670,7 @@ input {
     width: auto !important;
     flex: 1 1 auto !important;
     min-width: 0 !important;
-    max-width: min(42vw, 160px) !important;
+    max-width: min(50vw, 230px) !important;
   }
 
   #progressSideFeedback {
