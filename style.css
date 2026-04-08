@@ -2642,14 +2642,16 @@ input {
     flex: 1 1 auto;
   }
 
- #folderSelector,
-#quizSelector,
-#combineInput {
-  width: min(120px, 34vw) !important;
-  max-width: min(120px, 34vw) !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-}
+  #quizSelector {
+    width: min(120px, 34vw) !important;
+    min-width: 0 !important;
+    max-width: min(120px, 34vw) !important;
+  }
+
+  #combineInput {
+    width: clamp(58px, 20vw, 84px) !important;
+    min-width: 0 !important;
+  }
 
   #combineGoBtn {
     min-width: 40px !important;
@@ -2726,12 +2728,14 @@ input {
     min-width: 0;
   }
 
-  #folderSelector,
-  #quizSelector {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    width: 100% !important;
+  .combine-group {
+    min-width: 0 !important;
+  }
+
+  #combineInput {
+    width: calc(100% - 48px) !important;
     min-width: 0 !important;
     max-width: none !important;
+    box-sizing: border-box !important;
   }
 }
