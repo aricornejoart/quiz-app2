@@ -2604,16 +2604,14 @@ input {
     grid-template-columns: minmax(0, 1fr) auto !important;
   }
 
-  #quizSelector {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-  }
-
-  #combineInput {
-    width: 100% !important;
-    min-width: 0 !important;
-  }
+  #folderSelector,
+#quizSelector,
+#combineInput {
+  width: min(100px, 30vw) !important;
+  max-width: min(100px, 30vw) !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
 
   #combineGoBtn {
     width: auto !important;
