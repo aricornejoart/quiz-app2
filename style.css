@@ -2728,14 +2728,13 @@ input {
     min-width: 0;
   }
 
-  .combine-group {
-    min-width: 0 !important;
-  }
-
-  #combineInput {
-    width: calc(100% - 48px) !important;
+  #folderSelector,
+  #quizSelector {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
-    box-sizing: border-box !important;
   }
+  
 }
