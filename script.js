@@ -12,12 +12,12 @@ let questionIdCounter = 0;
 let quizListCache = [];
 let isAppFullscreen = false;
 
-// penalty mode state
-let pendingPenaltyJump = false;
-let pendingPenaltyCorrect = false;
-let penaltyAnswerLocked = false;
-let penaltyFinished = false;
-let penaltySolvedIds = new Set();
+// retention mode state
+let pendingRetentionJump = false;
+let pendingRetentionCorrect = false;
+let retentionAnswerLocked = false;
+let retentionFinished = false;
+let retentionSolvedIds = new Set();
 
 // mastery mode state
 let pendingMasteryAdvance = false;
@@ -28,9 +28,9 @@ let normalFinished = false;
 // answer lock state
 let questionAnswered = false;
 
-// hints state
-let pendingHint = null;
-let hintOverlayOpen = false;
+// learning resources state
+let pendingLearningResource = null;
+let learningResourcesOverlayOpen = false;
 
 // flashcard state
 let flashcardFlipped = false;
@@ -43,8 +43,8 @@ let currentQuestionType = '';
 
 const folderSelector = document.getElementById('folderSelector');
 const quizSelector = document.getElementById('quizSelector');
-const combineInput = document.getElementById('combineInput');
-const combineGoBtn = document.getElementById('combineGoBtn');
+const mixInput = document.getElementById('mixInput');
+const mixGoBtn = document.getElementById('mixGoBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const settingsPopup = document.getElementById('settingsPopup');
@@ -56,13 +56,13 @@ const progressTextEl = document.getElementById('progressText');
 const progressSideFeedbackEl = document.getElementById('progressSideFeedback');
 
 
-const hintOverlay = document.getElementById('hintOverlay');
-const closeHintBtn = document.getElementById('closeHintBtn');
-const hintBody = document.getElementById('hintBody');
-const hintContent = document.getElementById('hintContent');
-const hintImage = document.getElementById('hintImage');
-const hintImagePanel = document.getElementById('hintImagePanel');
-const hintTextPanel = document.getElementById('hintTextPanel');
+const learningResourcesOverlay = document.getElementById('learningResourcesOverlay');
+const closeLearningResourcesBtn = document.getElementById('closeLearningResourcesBtn');
+const learningResourcesBody = document.getElementById('learningResourcesBody');
+const learningResourcesContent = document.getElementById('learningResourcesContent');
+const learningResourcesImageEl = document.getElementById('learningResourcesImage');
+const learningResourcesImagePanel = document.getElementById('learningResourcesImagePanel');
+const learningResourcesTextPanel = document.getElementById('learningResourcesTextPanel');
 
 const questionTextEl = document.getElementById('questionText');
 const questionImage = document.getElementById('questionImage');
@@ -114,8 +114,8 @@ function getCellValue(cell) {
 }
 
 // ================= MODE HELPERS =================
-function isPenaltyMode() {
-    return document.getElementById('penaltyMode').checked;
+function isRetentionMode() {
+    return document.getElementById('retentionMode').checked;
 }
 
 function isRetryMode() {
@@ -126,45 +126,48 @@ function isSpeedMode() {
     return document.getElementById('rapidMode').checked;
 }
 
-function isHintsMode() {
-    return document.getElementById('hintsMode').checked;
+function isLearningResourcesMode() {
+    return document.getElementById('learningResourcesMode').checked;
 }
 
 function isNormalMode() {
-    return !isPenaltyMode() && !isRetryMode();
+    return !isRetentionMode() && !isRetryMode();
 }
 
-function canUseHints() {
-    return isHintsMode() && !isSpeedMode() && (isPenaltyMode() || isRetryMode());
+function canUseLearningResources() {
+    return isLearningResourcesMode() && !isSpeedMode() && (isRetentionMode() || isRetryMode());
 }
 
 function hasFlashcardsInDeck() {
     return questions.some(q => q.type === 'flashcard');
 }
 
-function updateHintsAvailability() {
-    const hintsCheckbox = document.getElementById('hintsMode');
-    const hintsLabel = document.getElementById('hintsModeLabel');
-    const hintsAllowed = isPenaltyMode() || isRetryMode();
+function updateLearningResourcesAvailability() {
+    const learningResourcesCheckbox = document.getElementById('learningResourcesMode');
+    const learningResourcesSetting = document.getElementById('learningResourcesModeSetting');
+    const learningResourcesAllowed = isRetentionMode() || isRetryMode();
 
-    hintsCheckbox.disabled = !hintsAllowed;
-    hintsLabel.classList.toggle('disabled-setting', !hintsAllowed);
+    learningResourcesCheckbox.disabled = !learningResourcesAllowed;
 
-    if (!hintsAllowed) {
-        hintsCheckbox.checked = false;
-        clearPendingHint();
+    if (learningResourcesSetting) {
+        learningResourcesSetting.classList.toggle('disabled-setting', !learningResourcesAllowed);
+    }
+
+    if (!learningResourcesAllowed) {
+        learningResourcesCheckbox.checked = false;
+        clearPendingLearningResource();
     }
 }
 
 function updateShuffleAnswersAvailability() {
     const shuffleAnswersCheckbox = document.getElementById('shuffleAnswers');
-    const shuffleAnswersLabel = document.getElementById('shuffleAnswersLabel');
+    const shuffleAnswersSetting = document.getElementById('shuffleAnswersSetting');
     const supportsAnswerShuffle = questions.some(q => q.type === 'multiple choice' || q.type === 'hierarchy');
 
     shuffleAnswersCheckbox.disabled = !supportsAnswerShuffle;
 
-    if (shuffleAnswersLabel) {
-        shuffleAnswersLabel.classList.toggle('disabled-setting', !supportsAnswerShuffle);
+    if (shuffleAnswersSetting) {
+        shuffleAnswersSetting.classList.toggle('disabled-setting', !supportsAnswerShuffle);
     }
 
     if (!supportsAnswerShuffle) {
@@ -185,14 +188,14 @@ function updateFlashcardFrontButtonsUI() {
 }
 
 function updateSettingsAvailability() {
-    updateHintsAvailability();
+    updateLearningResourcesAvailability();
     updateShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
 }
 
 function syncBodyScrollLock() {
-    document.body.style.overflow = (hintOverlayOpen || flashcardImageZoomOpen) ? 'hidden' : '';
+    document.body.style.overflow = (learningResourcesOverlayOpen || flashcardImageZoomOpen) ? 'hidden' : '';
 }
 
 function isNarrowIPhoneViewport() {
@@ -298,27 +301,27 @@ function toggleFullscreenMode() {
     }
 }
 
-// ================= HINTS UI =================
-function clearPendingHint() {
-    pendingHint = null;
+// ================= LEARNING RESOURCES UI =================
+function clearPendingLearningResource() {
+    pendingLearningResource = null;
 }
 
-function queueHintIfEligible(question) {
-    const text = normalizeSheetText(question?.hintText);
-    const imageUrl = normalizeSheetText(question?.hintImage);
+function queueLearningResourceIfEligible(question) {
+    const text = normalizeSheetText(question?.learningResources);
+    const imageUrl = normalizeSheetText(question?.learningResourcesImage);
 
-    if (!canUseHints() || (!text && !imageUrl)) {
-        pendingHint = null;
+    if (!canUseLearningResources() || (!text && !imageUrl)) {
+        pendingLearningResource = null;
         return;
     }
 
-    pendingHint = {
+    pendingLearningResource = {
         text,
         imageUrl
     };
 }
 
-function openHintOverlay(hintData) {
+function openLearningResourcesOverlay(hintData) {
     if (!hintData) return;
 
     const text = normalizeSheetText(hintData.text);
@@ -328,61 +331,61 @@ function openHintOverlay(hintData) {
 
     if (!hasText && !hasImage) return;
 
-    hintContent.innerText = text;
-    hintImage.src = '';
-    hintImage.alt = 'Hint image';
-    hintImagePanel.classList.add('hidden');
+    learningResourcesContent.innerText = text;
+    learningResourcesImageEl.src = '';
+    learningResourcesImageEl.alt = 'Learning resource image';
+    learningResourcesImagePanel.classList.add('hidden');
 
-    hintBody.classList.remove('text-only', 'image-only', 'text-image');
+    learningResourcesBody.classList.remove('text-only', 'image-only', 'text-image');
 
     if (hasImage) {
-        hintImage.src = imageUrl;
-        hintImagePanel.classList.remove('hidden');
+        learningResourcesImageEl.src = imageUrl;
+        learningResourcesImagePanel.classList.remove('hidden');
     }
 
     if (hasText && hasImage) {
-        hintBody.classList.add('text-image');
-        hintTextPanel.classList.remove('hidden');
-        hintImagePanel.classList.remove('hidden');
+        learningResourcesBody.classList.add('text-image');
+        learningResourcesTextPanel.classList.remove('hidden');
+        learningResourcesImagePanel.classList.remove('hidden');
     } else if (hasText) {
-        hintBody.classList.add('text-only');
-        hintTextPanel.classList.remove('hidden');
-        hintImagePanel.classList.add('hidden');
+        learningResourcesBody.classList.add('text-only');
+        learningResourcesTextPanel.classList.remove('hidden');
+        learningResourcesImagePanel.classList.add('hidden');
     } else {
-        hintBody.classList.add('image-only');
-        hintTextPanel.classList.add('hidden');
-        hintImagePanel.classList.remove('hidden');
+        learningResourcesBody.classList.add('image-only');
+        learningResourcesTextPanel.classList.add('hidden');
+        learningResourcesImagePanel.classList.remove('hidden');
     }
 
-    hintOverlay.classList.remove('hidden');
-    hintOverlay.setAttribute('aria-hidden', 'false');
+    learningResourcesOverlay.classList.remove('hidden');
+    learningResourcesOverlay.setAttribute('aria-hidden', 'false');
     document.body.classList.add('hint-open');
-    hintOverlayOpen = true;
+    learningResourcesOverlayOpen = true;
     syncBodyScrollLock();
 }
 
-function closeHintOverlay() {
-    hintOverlay.classList.add('hidden');
-    hintOverlay.setAttribute('aria-hidden', 'true');
-    hintContent.innerText = '';
-    hintImage.src = '';
-    hintTextPanel.classList.remove('hidden');
-    hintImagePanel.classList.add('hidden');
-    hintBody.classList.remove('text-only', 'image-only', 'text-image');
+function closeLearningResourcesOverlay() {
+    learningResourcesOverlay.classList.add('hidden');
+    learningResourcesOverlay.setAttribute('aria-hidden', 'true');
+    learningResourcesContent.innerText = '';
+    learningResourcesImageEl.src = '';
+    learningResourcesTextPanel.classList.remove('hidden');
+    learningResourcesImagePanel.classList.add('hidden');
+    learningResourcesBody.classList.remove('text-only', 'image-only', 'text-image');
     document.body.classList.remove('hint-open');
-    hintOverlayOpen = false;
-    clearPendingHint();
+    learningResourcesOverlayOpen = false;
+    clearPendingLearningResource();
     syncBodyScrollLock();
 }
 
-function showPendingHintIfAny() {
-    if (!pendingHint) return;
-    openHintOverlay(pendingHint);
+function showPendingLearningResourceIfAny() {
+    if (!pendingLearningResource) return;
+    openLearningResourcesOverlay(pendingLearningResource);
 }
 
 // ================= FLASHCARD IMAGE ZOOM UI =================
 function openFlashcardImageOverlay(src, alt = 'Flashcard image') {
-    if (!src || !flashcardImageOverlay || !flashcardZoomImage || hintOverlayOpen) return;
+    if (!src || !flashcardImageOverlay || !flashcardZoomImage || learningResourcesOverlayOpen) return;
 
     flashcardZoomImage.src = src;
     flashcardZoomImage.alt = alt;
@@ -409,17 +412,17 @@ function closeFlashcardImageOverlay() {
     syncBodyScrollLock();
 }
 
-// ================= COMBINE HELPERS =================
-function setCombineValidState(isValid) {
-    combineInput.classList.toggle('invalid', !isValid);
+// ================= MIX HELPERS =================
+function setMixValidState(isValid) {
+    mixInput.classList.toggle('invalid', !isValid);
 }
 
-function normalizeCombineInput(value) {
+function normalizeMixInput(value) {
     return value.replace(/\s+/g, '');
 }
 
-function parseCombineRange(rawValue) {
-    const cleaned = normalizeCombineInput(rawValue);
+function parseMixRange(rawValue) {
+    const cleaned = normalizeMixInput(rawValue);
 
     if (!cleaned) {
         return { valid: false, numbers: [] };
@@ -480,10 +483,10 @@ function getQuizMapByRangeNumber() {
     return map;
 }
 
-async function loadCombinedQuestionsFromInput(rawValue) {
-    const parsed = parseCombineRange(rawValue);
+async function loadMixedQuestionsFromInput(rawValue) {
+    const parsed = parseMixRange(rawValue);
     if (!parsed.valid || parsed.numbers.length === 0) {
-        throw new Error('Invalid combine input');
+        throw new Error('Invalid mix input');
     }
 
     const quizMap = getQuizMapByRangeNumber();
@@ -670,8 +673,8 @@ async function loadQuestions(sheetName) {
                     .map(n => n ? Number(n) : null)
                     .filter(n => n !== null),
                 image: getCellValue(c[22]),
-                hintText: getCellValue(c[23]),
-                hintImage: getCellValue(c[24])
+                learningResources: getCellValue(c[23]),
+                learningResourcesImage: getCellValue(c[24])
             };
         }).filter(q => q.question && q.question.toLowerCase() !== 'question');
     }
@@ -686,8 +689,8 @@ async function loadQuestions(sheetName) {
                 definitionText: getCellValue(c[2]),
                 termImage: getCellValue(c[3]),
                 definitionImage: getCellValue(c[4]),
-                hintText: getCellValue(c[5]),
-                hintImage: getCellValue(c[6])
+                learningResources: getCellValue(c[5]),
+                learningResourcesImage: getCellValue(c[6])
             };
         }).filter(q => q.termText || q.definitionText || q.termImage || q.definitionImage);
     }
@@ -712,8 +715,8 @@ async function loadQuestions(sheetName) {
                 getCellValue(c[10])
             ],
             image: getCellValue(c[11]),
-            hintText: getCellValue(c[12]),
-            hintImage: getCellValue(c[13])
+            learningResources: getCellValue(c[12]),
+            learningResourcesImage: getCellValue(c[13])
         };
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
 }
@@ -834,11 +837,11 @@ function setFeedback(text, isCorrect) {
 
 function applyQuestionOutcome(q, isCorrect) {
     if (isCorrect) {
-        clearPendingHint();
+        clearPendingLearningResource();
         setFeedback('Correct!', true);
         handleCorrectAnswer();
     } else {
-        queueHintIfEligible(q);
+        queueLearningResourceIfEligible(q);
         setFeedback('Incorrect!', false);
         handleWrongAnswer();
     }
@@ -853,8 +856,8 @@ function updateProgress() {
     const total = questions.length;
     let remaining = 0;
 
-    if (isPenaltyMode()) {
-        remaining = penaltyFinished ? 0 : (questionQueue.length - currentIndex);
+    if (isRetentionMode()) {
+        remaining = retentionFinished ? 0 : (questionQueue.length - currentIndex);
     } else if (isRetryMode()) {
         remaining = questionQueue.length;
     } else {
@@ -873,7 +876,7 @@ function updateProgress() {
 
 // ================= FINISH CHECK =================
 function isQuizFinished() {
-    if (isPenaltyMode()) return penaltyFinished;
+    if (isRetentionMode()) return retentionFinished;
     if (isRetryMode()) return questionQueue.length === 0;
     return normalFinished;
 }
@@ -889,8 +892,8 @@ function showQuestion() {
     questionAnswered = false;
     flashcardFlipped = false;
 
-    if (isPenaltyMode()) {
-        penaltyAnswerLocked = false;
+    if (isRetentionMode()) {
+        retentionAnswerLocked = false;
     }
 
     if (isQuizFinished()) {
@@ -992,11 +995,11 @@ function showMC(q) {
 function handleWrongAnswer() {
     const q = questionQueue[currentIndex];
 
-    if (isPenaltyMode()) {
-        penaltySolvedIds.delete(q.id);
-        pendingPenaltyJump = true;
-        pendingPenaltyCorrect = false;
-        penaltyAnswerLocked = true;
+    if (isRetentionMode()) {
+        retentionSolvedIds.delete(q.id);
+        pendingRetentionJump = true;
+        pendingRetentionCorrect = false;
+        retentionAnswerLocked = true;
         return;
     }
 
@@ -1020,11 +1023,11 @@ function handleWrongAnswer() {
 function handleCorrectAnswer() {
     const q = questionQueue[currentIndex];
 
-    if (isPenaltyMode()) {
-        penaltySolvedIds.add(q.id);
-        pendingPenaltyCorrect = true;
-        pendingPenaltyJump = false;
-        penaltyAnswerLocked = true;
+    if (isRetentionMode()) {
+        retentionSolvedIds.add(q.id);
+        pendingRetentionCorrect = true;
+        pendingRetentionJump = false;
+        retentionAnswerLocked = true;
         return;
     }
 
@@ -1044,8 +1047,8 @@ function handleCorrectAnswer() {
 function checkAnswer(selected, explanations) {
     if (isQuizFinished()) return;
     if (questionAnswered) return;
-    if (hintOverlayOpen || flashcardImageZoomOpen) return;
-    if (isPenaltyMode() && penaltyAnswerLocked) return;
+    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
+    if (isRetentionMode() && retentionAnswerLocked) return;
 
     questionAnswered = true;
     setOptionButtonsEnabled(false);
@@ -1100,7 +1103,7 @@ function getFlashcardSideData(q, side) {
 }
 
 function toggleFlashcardFlip() {
-    if (hintOverlayOpen) return;
+    if (learningResourcesOverlayOpen) return;
     if (flashcardImageZoomOpen) return;
     if (questionAnswered) return;
 
@@ -1221,7 +1224,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         endTracking();
         resetCardPosition();
 
-        if (cancelled || hintOverlayOpen || flashcardImageZoomOpen || questionAnswered) {
+        if (cancelled || learningResourcesOverlayOpen || flashcardImageZoomOpen || questionAnswered) {
             clearFlashcardSwipeFeedback();
             return;
         }
@@ -1246,7 +1249,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     }
 
     card.addEventListener('pointerdown', e => {
-        if (hintOverlayOpen) return;
+        if (learningResourcesOverlayOpen) return;
         if (flashcardImageZoomOpen) return;
         if (questionAnswered) return;
         if (e.button !== undefined && e.button !== 0) return;
@@ -1294,8 +1297,8 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
 function gradeFlashcard(knewIt) {
     if (isQuizFinished()) return;
     if (questionAnswered) return;
-    if (hintOverlayOpen || flashcardImageZoomOpen) return;
-    if (isPenaltyMode() && penaltyAnswerLocked) return;
+    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
+    if (isRetentionMode() && retentionAnswerLocked) return;
 
     const q = questionQueue[currentIndex];
     questionAnswered = true;
@@ -1463,7 +1466,7 @@ function enableHierarchyDrag(container) {
 
     container.querySelectorAll('.hierarchy-item').forEach(item => {
         item.addEventListener('pointerdown', e => {
-            if (hintOverlayOpen || flashcardImageZoomOpen) return;
+            if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
             if (item.dataset.dragDisabled === 'true') return;
             if (questionAnswered) return;
             if (e.button !== undefined && e.button !== 0) return;
@@ -1541,7 +1544,7 @@ function showHierarchy(q) {
         up.className = 'hierarchy-arrow';
         up.onclick = e => {
             e.stopPropagation();
-            if (hintOverlayOpen || flashcardImageZoomOpen) return;
+            if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
             if (questionAnswered) return;
 
             const prev = row.previousElementSibling;
@@ -1556,7 +1559,7 @@ function showHierarchy(q) {
         down.className = 'hierarchy-arrow down-arrow';
         down.onclick = e => {
             e.stopPropagation();
-            if (hintOverlayOpen || flashcardImageZoomOpen) return;
+            if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
             if (questionAnswered) return;
 
             const next = row.nextElementSibling;
@@ -1595,9 +1598,9 @@ function showHierarchy(q) {
     submit.innerText = 'Submit';
 
     submit.onclick = () => {
-        if (hintOverlayOpen || flashcardImageZoomOpen) return;
+        if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
         if (questionAnswered) return;
-        if (isPenaltyMode() && penaltyAnswerLocked) return;
+        if (isRetentionMode() && retentionAnswerLocked) return;
 
         questionAnswered = true;
         setHierarchyInteractionEnabled(false);
@@ -1636,58 +1639,58 @@ function showHierarchy(q) {
 
 // ================= NAV =================
 function nextQuestion() {
-    if (hintOverlayOpen || flashcardImageZoomOpen) return;
+    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
 
     clearFeedback();
     clearExplanations();
 
     if (isQuizFinished()) {
         showQuestion();
-        showPendingHintIfAny();
+        showPendingLearningResourceIfAny();
         return;
     }
 
-    if (isPenaltyMode()) {
-        if (pendingPenaltyJump) {
+    if (isRetentionMode()) {
+        if (pendingRetentionJump) {
             currentIndex = Math.max(0, currentIndex - 3);
-            pendingPenaltyJump = false;
-            pendingPenaltyCorrect = false;
-            penaltyAnswerLocked = false;
+            pendingRetentionJump = false;
+            pendingRetentionCorrect = false;
+            retentionAnswerLocked = false;
             showQuestion();
-            showPendingHintIfAny();
+            showPendingLearningResourceIfAny();
             return;
         }
 
-        if (pendingPenaltyCorrect) {
+        if (pendingRetentionCorrect) {
             if (currentIndex < questionQueue.length - 1) {
                 currentIndex++;
-            } else if (penaltySolvedIds.size === questionQueue.length) {
-                penaltyFinished = true;
+            } else if (retentionSolvedIds.size === questionQueue.length) {
+                retentionFinished = true;
             }
 
-            pendingPenaltyCorrect = false;
-            penaltyAnswerLocked = false;
+            pendingRetentionCorrect = false;
+            retentionAnswerLocked = false;
             showQuestion();
-            showPendingHintIfAny();
+            showPendingLearningResourceIfAny();
             return;
         }
 
         if (currentIndex < questionQueue.length - 1) {
             currentIndex++;
-        } else if (penaltySolvedIds.size === questionQueue.length) {
-            penaltyFinished = true;
+        } else if (retentionSolvedIds.size === questionQueue.length) {
+            retentionFinished = true;
         }
 
-        penaltyAnswerLocked = false;
+        retentionAnswerLocked = false;
         showQuestion();
-        showPendingHintIfAny();
+        showPendingLearningResourceIfAny();
         return;
     }
 
     if (isRetryMode()) {
         if (questionQueue.length === 0) {
             showQuestion();
-            showPendingHintIfAny();
+            showPendingLearningResourceIfAny();
             return;
         }
 
@@ -1699,7 +1702,7 @@ function nextQuestion() {
             }
 
             showQuestion();
-            showPendingHintIfAny();
+            showPendingLearningResourceIfAny();
             return;
         }
 
@@ -1708,7 +1711,7 @@ function nextQuestion() {
         }
 
         showQuestion();
-        showPendingHintIfAny();
+        showPendingLearningResourceIfAny();
         return;
     }
 
@@ -1719,24 +1722,24 @@ function nextQuestion() {
     }
 
     showQuestion();
-    clearPendingHint();
+    clearPendingLearningResource();
 }
 
 function prevQuestion() {
-    if (hintOverlayOpen || flashcardImageZoomOpen) return;
+    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
 
     clearFeedback();
     clearExplanations();
-    clearPendingHint();
+    clearPendingLearningResource();
     flashcardFlipped = false;
 
-    if (isPenaltyMode()) {
-        pendingPenaltyJump = false;
-        pendingPenaltyCorrect = false;
-        penaltyAnswerLocked = false;
+    if (isRetentionMode()) {
+        pendingRetentionJump = false;
+        pendingRetentionCorrect = false;
+        retentionAnswerLocked = false;
 
-        if (penaltyFinished) {
-            penaltyFinished = false;
+        if (retentionFinished) {
+            retentionFinished = false;
             currentIndex = Math.max(0, questionQueue.length - 1);
             showQuestion();
             return;
@@ -1781,11 +1784,11 @@ function prevQuestion() {
 function resetModeState() {
     currentIndex = 0;
 
-    pendingPenaltyJump = false;
-    pendingPenaltyCorrect = false;
-    penaltyAnswerLocked = false;
-    penaltyFinished = false;
-    penaltySolvedIds = new Set();
+    pendingRetentionJump = false;
+    pendingRetentionCorrect = false;
+    retentionAnswerLocked = false;
+    retentionFinished = false;
+    retentionSolvedIds = new Set();
 
     pendingMasteryAdvance = false;
 
@@ -1795,8 +1798,8 @@ function resetModeState() {
     currentQuestionType = '';
     updateViewportClasses();
 
-    clearPendingHint();
-    closeHintOverlay();
+    clearPendingLearningResource();
+    closeLearningResourcesOverlay();
     closeFlashcardImageOverlay();
 }
 
@@ -1823,7 +1826,7 @@ nextBtn.onclick = nextQuestion;
 prevBtn.onclick = prevQuestion;
 restartBtn.onclick = restartQuiz;
 
-document.getElementById('penaltyMode').onchange = e => {
+document.getElementById('retentionMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('masteryMode').checked = false;
     }
@@ -1833,62 +1836,62 @@ document.getElementById('penaltyMode').onchange = e => {
 
 document.getElementById('masteryMode').onchange = e => {
     if (e.target.checked) {
-        document.getElementById('penaltyMode').checked = false;
+        document.getElementById('retentionMode').checked = false;
     }
     updateSettingsAvailability();
     restartQuiz();
 };
 
 document.getElementById('rapidMode').onchange = e => {
-    if (e.target.checked && isHintsMode()) {
-        document.getElementById('hintsMode').checked = false;
+    if (e.target.checked && isLearningResourcesMode()) {
+        document.getElementById('learningResourcesMode').checked = false;
     }
     updateSettingsAvailability();
     restartQuiz();
 };
 
-document.getElementById('hintsMode').onchange = e => {
+document.getElementById('learningResourcesMode').onchange = e => {
     if (e.target.checked && isSpeedMode()) {
         document.getElementById('rapidMode').checked = false;
     }
 };
 
-combineInput.addEventListener('input', () => {
-    setCombineValidState(true);
+mixInput.addEventListener('input', () => {
+    setMixValidState(true);
 });
 
-combineInput.addEventListener('keydown', e => {
+mixInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
         e.preventDefault();
-        combineGoBtn.click();
+        mixGoBtn.click();
     }
 });
 
-combineGoBtn.addEventListener('click', async () => {
-    const rawValue = combineInput.value.trim();
+mixGoBtn.addEventListener('click', async () => {
+    const rawValue = mixInput.value.trim();
 
     if (!rawValue) {
-        setCombineValidState(true);
+        setMixValidState(true);
         return;
     }
 
     try {
-        const combinedQuestions = await loadCombinedQuestionsFromInput(rawValue);
+        const mixedQuestions = await loadMixedQuestionsFromInput(rawValue);
 
-        if (!combinedQuestions.length) {
+        if (!mixedQuestions.length) {
             throw new Error('No questions found');
         }
 
-        setCombineValidState(true);
-        await applyLoadedQuestions(combinedQuestions);
+        setMixValidState(true);
+        await applyLoadedQuestions(mixedQuestions);
     } catch (err) {
         console.error(err);
-        setCombineValidState(false);
+        setMixValidState(false);
     }
 });
 
 folderSelector.addEventListener('change', e => {
-    setCombineValidState(true);
+    setMixValidState(true);
 
     const selectedFolder = e.target.value;
     populateQuizDropdown(selectedFolder);
@@ -1902,7 +1905,7 @@ folderSelector.addEventListener('change', e => {
 });
 
 quizSelector.addEventListener('change', async e => {
-    setCombineValidState(true);
+    setMixValidState(true);
 
     const selectedQuiz = e.target.value;
 
@@ -1911,7 +1914,7 @@ quizSelector.addEventListener('change', async e => {
         return;
     }
 
-    combineInput.value = '';
+    mixInput.value = '';
 
     try {
         await loadSelectedQuiz(selectedQuiz);
@@ -1939,9 +1942,9 @@ fullscreenBtn.addEventListener('click', () => {
     toggleFullscreenMode();
 });
 
-closeHintBtn.addEventListener('click', e => {
+closeLearningResourcesBtn.addEventListener('click', e => {
     e.stopPropagation();
-    closeHintOverlay();
+    closeLearningResourcesOverlay();
 });
 
 if (closeFlashcardImageBtn) {
@@ -1992,8 +1995,8 @@ document.addEventListener('keydown', e => {
             return;
         }
 
-        if (hintOverlayOpen) {
-            closeHintOverlay();
+        if (learningResourcesOverlayOpen) {
+            closeLearningResourcesOverlay();
             return;
         }
 
@@ -2030,6 +2033,6 @@ window.addEventListener('orientationchange', handleViewportChange);
 
 // ================= IMAGE ZOOM =================
 questionImage.onclick = function () {
-    if (hintOverlayOpen || flashcardImageZoomOpen) return;
+    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
     this.classList.toggle('zoomed');
 };
