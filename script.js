@@ -80,6 +80,8 @@ const closeFlashcardImageBtn = document.getElementById('closeFlashcardImageBtn')
 const flashcardImageViewport = document.getElementById('flashcardImageViewport');
 const flashcardZoomImage = document.getElementById('flashcardZoomImage');
 
+const settingHelpButtons = Array.from(document.querySelectorAll('.setting-help-btn'));
+
 // ================= SHEETS PARSER =================
 function parseGoogleSheetResponse(text) {
     const start = text.indexOf('{');
@@ -267,6 +269,7 @@ function openSettingsPopup() {
 function closeSettingsPopup() {
     settingsPopup.classList.add('hidden');
     settingsBtn.classList.remove('active');
+    closeAllSettingHelpTooltips();
 }
 
 function toggleSettingsPopup() {
@@ -274,6 +277,33 @@ function toggleSettingsPopup() {
         openSettingsPopup();
     } else {
         closeSettingsPopup();
+    }
+}
+
+function closeAllSettingHelpTooltips() {
+    settingHelpButtons.forEach(btn => {
+        const tooltipId = btn.dataset.helpTarget;
+        const tooltip = tooltipId ? document.getElementById(tooltipId) : null;
+        btn.setAttribute('aria-expanded', 'false');
+        if (tooltip) {
+            tooltip.classList.add('hidden');
+        }
+    });
+}
+
+function toggleSettingHelpTooltip(button) {
+    if (!button) return;
+
+    const tooltipId = button.dataset.helpTarget;
+    const tooltip = tooltipId ? document.getElementById(tooltipId) : null;
+    if (!tooltip) return;
+
+    const willOpen = tooltip.classList.contains('hidden');
+    closeAllSettingHelpTooltips();
+
+    if (willOpen) {
+        tooltip.classList.remove('hidden');
+        button.setAttribute('aria-expanded', 'true');
     }
 }
 
@@ -1938,6 +1968,22 @@ settingsPopup.addEventListener('click', e => {
     e.stopPropagation();
 });
 
+settingHelpButtons.forEach(button => {
+    button.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleSettingHelpTooltip(button);
+    });
+});
+
+settingsPopup.addEventListener('click', e => {
+    const clickedHelpButton = e.target.closest('.setting-help-btn');
+    const clickedTooltip = e.target.closest('.setting-help-tooltip');
+
+    if (!clickedHelpButton && !clickedTooltip) {
+        closeAllSettingHelpTooltips();
+    }
+});
+
 fullscreenBtn.addEventListener('click', () => {
     toggleFullscreenMode();
 });
@@ -1997,6 +2043,12 @@ document.addEventListener('keydown', e => {
 
         if (learningResourcesOverlayOpen) {
             closeLearningResourcesOverlay();
+            return;
+        }
+
+        const hasOpenHelpTooltip = settingHelpButtons.some(btn => btn.getAttribute('aria-expanded') === 'true');
+        if (hasOpenHelpTooltip) {
+            closeAllSettingHelpTooltips();
             return;
         }
 

@@ -2742,10 +2742,10 @@ input {
 
 /* ===== Updated Settings Layout / Mix / Learning Resources ===== */
 .settings-popup {
-  width: min(420px, calc(100vw - 24px));
-  max-height: min(78vh, 760px);
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(80vh, 760px);
   overflow: auto;
-  padding: 16px 16px 16px 16px;
+  padding: 16px;
   border-radius: 16px;
 }
 
@@ -2777,7 +2777,7 @@ input {
 
 .settings-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -2792,16 +2792,19 @@ input {
   transition: border-color 0.2s ease, opacity 0.2s ease, background 0.2s ease;
 }
 
-.setting-card-head {
+.setting-card {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 12px;
 }
 
-.setting-copy {
-  min-width: 0;
-  flex: 1;
+.setting-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  position: relative;
 }
 
 .setting-title,
@@ -2814,13 +2817,54 @@ input {
   line-height: 1.2;
 }
 
-.setting-description,
-.flashcard-setting-description,
-.mix-help-text {
-  margin-top: 6px;
-  color: #cfcfff;
+.setting-help-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid #7165c5;
+  background: transparent;
+  color: #e5e1ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.2s ease;
+}
+
+.setting-help-btn:hover,
+.setting-help-btn[aria-expanded="true"] {
+  background: rgba(124, 108, 255, 0.16);
+  border-color: #8f82ff;
+  color: #ffffff;
+}
+
+.setting-help-btn:active {
+  transform: scale(0.97);
+}
+
+.setting-help-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.22);
+}
+
+.setting-help-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 2200;
+  padding: 10px 11px;
+  border-radius: 10px;
+  border: 1px solid #6e60cb;
+  background: #332b5c;
+  color: #f0edff;
   font-size: 12px;
   line-height: 1.45;
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.35);
 }
 
 .setting-card.disabled-setting {
@@ -2829,8 +2873,7 @@ input {
   background: #211d34;
 }
 
-.setting-card.disabled-setting .setting-title,
-.setting-card.disabled-setting .setting-description {
+.setting-card.disabled-setting .setting-title {
   color: #9993bd;
 }
 
@@ -2842,7 +2885,8 @@ input {
   position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  align-self: flex-start;
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -2857,70 +2901,37 @@ input {
 
 .toggle-track {
   position: relative;
-  width: 86px;
-  height: 38px;
+  width: 78px;
+  height: 40px;
   border-radius: 999px;
   border: 1px solid #5a4bcf;
-  background: #312b52;
+  background: #2f2a47;
   display: block;
   box-sizing: border-box;
   box-shadow: inset 0 0 0 1px rgba(124, 108, 255, 0.04);
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.toggle-state {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  z-index: 1;
-  transition: opacity 0.2s ease, color 0.2s ease;
-}
-
-.toggle-state-off {
-  left: 11px;
-  color: #ffffff;
-  opacity: 1;
-}
-
-.toggle-state-on {
-  right: 13px;
-  color: #b8b2e8;
-  opacity: 0.6;
-}
-
 .toggle-thumb {
   position: absolute;
-  top: 3px;
-  left: 3px;
+  top: 4px;
+  left: 4px;
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: #ffffff;
+  background: #f7f5ff;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
   transition: transform 0.2s ease;
 }
 
 .toggle-switch input:checked + .toggle-track {
-  background: #453b73;
-  border-color: #7c6cff;
-  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.12);
+  background: #6d56ff;
+  border-color: #9588ff;
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18), 0 0 18px rgba(124, 108, 255, 0.18);
 }
 
 .toggle-switch input:checked + .toggle-track .toggle-thumb {
-  transform: translateX(48px);
-}
-
-.toggle-switch input:checked + .toggle-track .toggle-state-off {
-  color: #b8b2e8;
-  opacity: 0.6;
-}
-
-.toggle-switch input:checked + .toggle-track .toggle-state-on {
-  color: #ffffff;
-  opacity: 1;
+  transform: translateX(38px);
 }
 
 .toggle-switch input:focus-visible + .toggle-track {
@@ -2934,6 +2945,8 @@ input {
 .flashcard-setting-group {
   gap: 10px;
   margin-top: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .flashcard-setting-buttons {
@@ -2950,13 +2963,23 @@ input {
   margin-bottom: 4px;
 }
 
+.mix-help-text {
+  color: #cfcfff;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 #mixInput {
   width: 105px;
 }
 
-@media screen and (max-width: 768px) {
+@media screen and (max-width: 1024px) {
   .settings-popup {
-    width: min(400px, calc(100vw - 20px));
+    width: min(420px, calc(100vw - 20px));
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2977,13 +3000,9 @@ input {
     padding: 12px;
   }
 
-  .setting-card-head {
-    gap: 10px;
-  }
-
   .toggle-track {
-    width: 78px;
-    height: 34px;
+    width: 72px;
+    height: 36px;
   }
 
   .toggle-thumb {
@@ -2992,10 +3011,37 @@ input {
   }
 
   .toggle-switch input:checked + .toggle-track .toggle-thumb {
-    transform: translateX(44px);
+    transform: translateX(36px);
+  }
+
+  .setting-help-tooltip {
+    top: calc(100% + 6px);
   }
 }
 
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  .settings-popup {
+    width: min(292px, calc(100vw - 34px));
+    max-height: min(84vh, calc(100vh - 24px));
+    right: -2px;
+    padding: 14px 12px;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .setting-card,
+  .flashcard-setting-group,
+  .mix-help-card {
+    padding: 12px;
+  }
+
+  .setting-help-tooltip {
+    font-size: 11.5px;
+  }
+}
 #learningResourcesImage {
   max-width: 100%;
   width: auto;

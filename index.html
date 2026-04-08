@@ -73,105 +73,141 @@
 
             <div class="settings-grid">
               <div class="setting-card" id="shuffleQuestionsSetting">
-                <div class="setting-card-head">
-                  <div class="setting-copy">
-                    <label class="setting-title" for="shuffleQuestions">Shuffle Questions</label>
-                    <div class="setting-description">Randomizes the order of questions in the quiz.</div>
-                  </div>
-                  <label class="toggle-switch" for="shuffleQuestions" aria-label="Shuffle Questions toggle">
-                    <input type="checkbox" id="shuffleQuestions">
-                    <span class="toggle-track" aria-hidden="true">
-                      <span class="toggle-state toggle-state-off">Off</span>
-                      <span class="toggle-state toggle-state-on">On</span>
-                      <span class="toggle-thumb"></span>
-                    </span>
-                  </label>
+                <div class="setting-title-row">
+                  <label class="setting-title" for="shuffleQuestions">Shuffle Questions</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="shuffleQuestionsHelp"
+                    aria-label="About Shuffle Questions"
+                    aria-expanded="false"
+                    aria-controls="shuffleQuestionsHelp"
+                  >?</button>
                 </div>
+                <div id="shuffleQuestionsHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Randomizes question order.
+                </div>
+                <label class="toggle-switch" for="shuffleQuestions" aria-label="Shuffle Questions toggle">
+                  <input type="checkbox" id="shuffleQuestions">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
               </div>
 
               <div class="setting-card" id="shuffleAnswersSetting">
-                <div class="setting-card-head">
-                  <div class="setting-copy">
-                    <label class="setting-title" for="shuffleAnswers">Shuffle Answers</label>
-                    <div class="setting-description">Randomizes answer order when supported.</div>
-                  </div>
-                  <label class="toggle-switch" for="shuffleAnswers" aria-label="Shuffle Answers toggle">
-                    <input type="checkbox" id="shuffleAnswers">
-                    <span class="toggle-track" aria-hidden="true">
-                      <span class="toggle-state toggle-state-off">Off</span>
-                      <span class="toggle-state toggle-state-on">On</span>
-                      <span class="toggle-thumb"></span>
-                    </span>
-                  </label>
+                <div class="setting-title-row">
+                  <label class="setting-title" for="shuffleAnswers">Shuffle Answers</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="shuffleAnswersHelp"
+                    aria-label="About Shuffle Answers"
+                    aria-expanded="false"
+                    aria-controls="shuffleAnswersHelp"
+                  >?</button>
                 </div>
+                <div id="shuffleAnswersHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Randomizes answer order when supported.
+                </div>
+                <label class="toggle-switch" for="shuffleAnswers" aria-label="Shuffle Answers toggle">
+                  <input type="checkbox" id="shuffleAnswers">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
               </div>
 
               <div class="setting-card" id="retentionModeSetting">
-                <div class="setting-card-head">
-                  <div class="setting-copy">
-                    <label class="setting-title" for="retentionMode">Retention</label>
-                    <div class="setting-description">Helps retain memory by sending user back 3 questions everytime a question is wrong.</div>
-                  </div>
-                  <label class="toggle-switch" for="retentionMode" aria-label="Retention toggle">
-                    <input type="checkbox" id="retentionMode">
-                    <span class="toggle-track" aria-hidden="true">
-                      <span class="toggle-state toggle-state-off">Off</span>
-                      <span class="toggle-state toggle-state-on">On</span>
-                      <span class="toggle-thumb"></span>
-                    </span>
-                  </label>
+                <div class="setting-title-row">
+                  <label class="setting-title" for="retentionMode">Retention</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="retentionModeHelp"
+                    aria-label="About Retention"
+                    aria-expanded="false"
+                    aria-controls="retentionModeHelp"
+                  >?</button>
                 </div>
+                <div id="retentionModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Helps retain memory by sending user back 3 questions everytime a question is wrong.
+                </div>
+                <label class="toggle-switch" for="retentionMode" aria-label="Retention toggle">
+                  <input type="checkbox" id="retentionMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
               </div>
 
               <div class="setting-card" id="masteryModeSetting">
-                <div class="setting-card-head">
-                  <div class="setting-copy">
-                    <label class="setting-title" for="masteryMode">Mastery</label>
-                    <div class="setting-description">Missed questions return later so you can try again.</div>
-                  </div>
-                  <label class="toggle-switch" for="masteryMode" aria-label="Mastery toggle">
-                    <input type="checkbox" id="masteryMode">
-                    <span class="toggle-track" aria-hidden="true">
-                      <span class="toggle-state toggle-state-off">Off</span>
-                      <span class="toggle-state toggle-state-on">On</span>
-                      <span class="toggle-thumb"></span>
-                    </span>
-                  </label>
+                <div class="setting-title-row">
+                  <label class="setting-title" for="masteryMode">Mastery</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="masteryModeHelp"
+                    aria-label="About Mastery"
+                    aria-expanded="false"
+                    aria-controls="masteryModeHelp"
+                  >?</button>
                 </div>
+                <div id="masteryModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Missed questions return later until you solve them.
+                </div>
+                <label class="toggle-switch" for="masteryMode" aria-label="Mastery toggle">
+                  <input type="checkbox" id="masteryMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
               </div>
 
               <div class="setting-card" id="rapidModeSetting">
-                <div class="setting-card-head">
-                  <div class="setting-copy">
-                    <label class="setting-title" for="rapidMode">Rapid</label>
-                    <div class="setting-description">Moves faster with less interruption.</div>
-                  </div>
-                  <label class="toggle-switch" for="rapidMode" aria-label="Rapid toggle">
-                    <input type="checkbox" id="rapidMode">
-                    <span class="toggle-track" aria-hidden="true">
-                      <span class="toggle-state toggle-state-off">Off</span>
-                      <span class="toggle-state toggle-state-on">On</span>
-                      <span class="toggle-thumb"></span>
-                    </span>
-                  </label>
+                <div class="setting-title-row">
+                  <label class="setting-title" for="rapidMode">Rapid</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="rapidModeHelp"
+                    aria-label="About Rapid"
+                    aria-expanded="false"
+                    aria-controls="rapidModeHelp"
+                  >?</button>
                 </div>
+                <div id="rapidModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Speeds up quiz flow with less interruption.
+                </div>
+                <label class="toggle-switch" for="rapidMode" aria-label="Rapid toggle">
+                  <input type="checkbox" id="rapidMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
               </div>
 
               <div class="setting-card" id="learningResourcesModeSetting">
-                <div class="setting-card-head">
-                  <div class="setting-copy">
-                    <label class="setting-title" for="learningResourcesMode">Learning Resources</label>
-                    <div class="setting-description">Shows extra support after a miss when resources are available.</div>
-                  </div>
-                  <label class="toggle-switch" for="learningResourcesMode" aria-label="Learning Resources toggle">
-                    <input type="checkbox" id="learningResourcesMode">
-                    <span class="toggle-track" aria-hidden="true">
-                      <span class="toggle-state toggle-state-off">Off</span>
-                      <span class="toggle-state toggle-state-on">On</span>
-                      <span class="toggle-thumb"></span>
-                    </span>
-                  </label>
+                <div class="setting-title-row">
+                  <label class="setting-title" for="learningResourcesMode">Learning Resources</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="learningResourcesModeHelp"
+                    aria-label="About Learning Resources"
+                    aria-expanded="false"
+                    aria-controls="learningResourcesModeHelp"
+                  >?</button>
                 </div>
+                <div id="learningResourcesModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Shows study support after a wrong answer when available.
+                </div>
+                <label class="toggle-switch" for="learningResourcesMode" aria-label="Learning Resources toggle">
+                  <input type="checkbox" id="learningResourcesMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
               </div>
 
               <div id="flashcardFrontSetting" class="flashcard-setting-group settings-full-span hidden">
@@ -180,7 +216,6 @@
                   <button id="termFrontBtn" type="button" class="flashcard-setting-btn active">Term Front</button>
                   <button id="definitionFrontBtn" type="button" class="flashcard-setting-btn">Definition Front</button>
                 </div>
-                <div class="flashcard-setting-description">Choose which side appears first.</div>
               </div>
 
               <div class="mix-help-card settings-full-span">
@@ -192,6 +227,7 @@
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   </div>
