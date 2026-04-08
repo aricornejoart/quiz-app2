@@ -2642,16 +2642,14 @@ input {
     flex: 1 1 auto;
   }
 
-  #quizSelector {
-    width: min(120px, 34vw) !important;
-    min-width: 0 !important;
-    max-width: min(120px, 34vw) !important;
-  }
-
-  #combineInput {
-    width: clamp(58px, 20vw, 84px) !important;
-    min-width: 0 !important;
-  }
+ #folderSelector,
+#quizSelector,
+#combineInput {
+  width: min(120px, 34vw) !important;
+  max-width: min(120px, 34vw) !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
 
   #combineGoBtn {
     min-width: 40px !important;
