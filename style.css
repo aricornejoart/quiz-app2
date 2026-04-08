@@ -2730,6 +2730,8 @@ input {
 
   #folderSelector,
   #quizSelector {
+    grid-column: auto !important;
+    grid-row: auto !important;
     width: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
