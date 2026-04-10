@@ -115,6 +115,10 @@ function getCellValue(cell) {
     return '';
 }
 
+function normalizeClassificationId(value) {
+    return normalizeSheetText(value);
+}
+
 // ================= MODE HELPERS =================
 function isRetentionMode() {
     return document.getElementById('retentionMode').checked;
@@ -164,7 +168,9 @@ function updateLearningResourcesAvailability() {
 function updateShuffleAnswersAvailability() {
     const shuffleAnswersCheckbox = document.getElementById('shuffleAnswers');
     const shuffleAnswersSetting = document.getElementById('shuffleAnswersSetting');
-    const supportsAnswerShuffle = questions.some(q => q.type === 'multiple choice' || q.type === 'hierarchy');
+    const supportsAnswerShuffle = questions.some(q =>
+        q.type === 'multiple choice' || q.type === 'hierarchy' || q.type === 'classify'
+    );
 
     shuffleAnswersCheckbox.disabled = !supportsAnswerShuffle;
 
@@ -725,6 +731,37 @@ async function loadQuestions(sheetName) {
         }).filter(q => q.termText || q.definitionText || q.termImage || q.definitionImage);
     }
 
+    if (type === 'classify') {
+        return rows.map(r => {
+            const c = r.c || [];
+            const items = Array.from({ length: 10 }, (_, i) => ({
+                text: getCellValue(c[2 + i]),
+                correctClassificationId: normalizeClassificationId(getCellValue(c[12 + i]))
+            })).filter(item => item.text);
+
+            const classifications = Array.from({ length: 10 }, (_, i) => ({
+                label: getCellValue(c[22 + i]),
+                id: normalizeClassificationId(getCellValue(c[32 + i]))
+            })).filter(classification => classification.label && classification.id);
+
+            return {
+                id: `q_${questionIdCounter++}`,
+                question: getCellValue(c[0]),
+                type: 'classify',
+                items,
+                classifications,
+                image: getCellValue(c[42]),
+                learningResources: getCellValue(c[43]),
+                learningResourcesImage: getCellValue(c[44])
+            };
+        }).filter(q =>
+            q.question &&
+            q.question.toLowerCase() !== 'question' &&
+            q.items.length > 0 &&
+            q.classifications.length > 0
+        );
+    }
+
     return rows.map(r => {
         const c = r.c || [];
         return {
@@ -802,6 +839,25 @@ function setFlashcardInteractionEnabled(enabled) {
     });
 }
 
+function setClassifyInteractionEnabled(enabled) {
+    const submit = document.getElementById('classifySubmit');
+    if (submit) {
+        submit.disabled = !enabled;
+        submit.style.pointerEvents = enabled ? 'auto' : 'none';
+        submit.style.opacity = enabled ? '1' : '0.65';
+    }
+
+    document.querySelectorAll('.classify-item').forEach(btn => {
+        btn.disabled = !enabled;
+        btn.style.pointerEvents = enabled ? 'auto' : 'none';
+        btn.style.opacity = enabled ? '1' : '0.85';
+    });
+
+    document.querySelectorAll('.classify-drop-target').forEach(target => {
+        target.classList.toggle('disabled', !enabled);
+    });
+}
+
 // ================= UI RESET HELPERS =================
 function clearFeedback() {
     const fb = progressSideFeedbackEl;
@@ -828,11 +884,25 @@ function clearOptionFeedback() {
     }
 }
 
+function clearOptionButtonStateClasses() {
+    document.querySelectorAll('.optionBtn').forEach(btn => {
+        btn.classList.remove('option-correct', 'option-incorrect');
+    });
+}
+
 function removeHierarchyUI() {
     const oldHierarchy = document.getElementById('hierarchyContainer');
     if (oldHierarchy) oldHierarchy.remove();
 
     const oldSubmit = document.getElementById('hierarchySubmit');
+    if (oldSubmit) oldSubmit.remove();
+}
+
+function removeClassifyUI() {
+    const oldClassify = document.getElementById('classifyContainer');
+    if (oldClassify) oldClassify.remove();
+
+    const oldSubmit = document.getElementById('classifySubmit');
     if (oldSubmit) oldSubmit.remove();
 }
 
@@ -849,8 +919,10 @@ function clearQuestionUI() {
     clearFeedback();
     clearExplanations();
     clearOptionFeedback();
+    clearOptionButtonStateClasses();
     clearFlashcardSwipeFeedback();
     removeHierarchyUI();
+    removeClassifyUI();
     removeFlashcardUI();
     questionImage.classList.remove('zoomed');
 }
@@ -865,14 +937,24 @@ function setFeedback(text, isCorrect) {
     fb.classList.add(isCorrect ? 'correct' : 'incorrect');
 }
 
-function applyQuestionOutcome(q, isCorrect) {
+function applyQuestionOutcome(q, isCorrect, options = {}) {
+    const { useSideFeedback = true } = options;
+
     if (isCorrect) {
         clearPendingLearningResource();
-        setFeedback('Correct!', true);
+        if (useSideFeedback) {
+            setFeedback('Correct!', true);
+        } else {
+            clearFeedback();
+        }
         handleCorrectAnswer();
     } else {
         queueLearningResourceIfEligible(q);
-        setFeedback('Incorrect!', false);
+        if (useSideFeedback) {
+            setFeedback('Incorrect!', false);
+        } else {
+            clearFeedback();
+        }
         handleWrongAnswer();
     }
 
@@ -966,8 +1048,10 @@ function showQuestion() {
 
     if (q.type === 'multiple choice') {
         showMC(q);
-    } else {
+    } else if (q.type === 'hierarchy') {
         showHierarchy(q);
+    } else if (q.type === 'classify') {
+        showClassify(q);
     }
 
     updateProgress();
@@ -1002,6 +1086,7 @@ function showMC(q) {
             btn.disabled = false;
             btn.style.pointerEvents = 'auto';
             btn.style.opacity = '1';
+            btn.classList.remove('option-correct', 'option-incorrect');
             btn.onclick = () => checkAnswer(options[i], explanations);
             exp.innerText = '';
             if (fb) {
@@ -1011,6 +1096,7 @@ function showMC(q) {
         } else {
             btn.style.display = 'none';
             btn.innerText = '';
+            btn.classList.remove('option-correct', 'option-incorrect');
             btn.onclick = null;
             exp.innerText = '';
             if (fb) {
@@ -1088,9 +1174,16 @@ function checkAnswer(selected, explanations) {
 
     document.querySelectorAll('.optionBtn').forEach((btn, i) => {
         const feedbackEl = document.getElementById(`optionFeedback${i + 1}`);
+        btn.classList.remove('option-correct', 'option-incorrect');
 
         if (explanations[i]) {
             document.getElementById(`explanation${i + 1}`).innerText = explanations[i];
+        }
+
+        if (btn.innerText === q.correct) {
+            btn.classList.add('option-correct');
+        } else if (btn.innerText === selected && !isCorrect) {
+            btn.classList.add('option-incorrect');
         }
 
         if (feedbackEl) {
@@ -1224,9 +1317,23 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     let startY = 0;
     let activePointerId = null;
 
+    function clearSwipeBorderState() {
+        card.classList.remove('swiping-know', 'swiping-dont-know');
+    }
+
+    function setSwipeBorderState(kind) {
+        clearSwipeBorderState();
+        if (kind === 'know') {
+            card.classList.add('swiping-know');
+        } else if (kind === 'dont-know') {
+            card.classList.add('swiping-dont-know');
+        }
+    }
+
     function resetCardPosition() {
         card.style.transition = 'transform 0.18s ease';
         card.style.transform = '';
+        clearSwipeBorderState();
     }
 
     function endTracking() {
@@ -1256,10 +1363,12 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
 
         if (cancelled || learningResourcesOverlayOpen || flashcardImageZoomOpen || questionAnswered) {
             clearFlashcardSwipeFeedback();
+            clearSwipeBorderState();
             return;
         }
 
         if (isSwipe) {
+            setSwipeBorderState(dx > 0 ? 'know' : 'dont-know');
             setFlashcardSwipeFeedback(dx > 0 ? 'know' : 'dont-know');
             setTimeout(() => {
                 if (dx > 0) {
@@ -1290,6 +1399,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         activePointerId = e.pointerId;
         card.style.transition = 'none';
         clearFlashcardSwipeFeedback();
+        clearSwipeBorderState();
 
         try {
             card.setPointerCapture(e.pointerId);
@@ -1314,8 +1424,11 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         card.style.transform = `translateX(${limitedDx}px)`;
 
         if (Math.abs(dx) >= 18 && Math.abs(dx) > Math.abs(dy)) {
-            setFlashcardSwipeFeedback(dx > 0 ? 'know' : 'dont-know');
+            const swipeKind = dx > 0 ? 'know' : 'dont-know';
+            setSwipeBorderState(swipeKind);
+            setFlashcardSwipeFeedback(swipeKind);
         } else {
+            clearSwipeBorderState();
             clearFlashcardSwipeFeedback();
         }
     }, { passive: false });
@@ -1639,15 +1752,19 @@ function showHierarchy(q) {
         let allCorrect = true;
 
         rows.forEach((r, i) => {
-            const text = r.querySelector('.hierarchy-item').innerText;
+            const itemEl = r.querySelector('.hierarchy-item');
+            const text = itemEl.innerText;
             const fb = r.querySelector('.hierarchy-feedback');
 
+            itemEl.classList.remove('option-correct', 'option-incorrect');
             fb.classList.remove('correct-mark', 'incorrect-mark');
 
             if (q.options.indexOf(text) === q.correctOrder[i] - 1) {
+                itemEl.classList.add('option-correct');
                 fb.innerText = '✔';
                 fb.classList.add('correct-mark');
             } else {
+                itemEl.classList.add('option-incorrect');
                 fb.innerText = '✖';
                 fb.classList.add('incorrect-mark');
                 allCorrect = false;
@@ -1665,6 +1782,355 @@ function showHierarchy(q) {
 
     enableHierarchyDrag(container);
     setHierarchyInteractionEnabled(true);
+}
+
+
+// ================= CLASSIFY =================
+function showClassify(q) {
+    const container = document.createElement('div');
+    container.id = 'classifyContainer';
+    container.className = 'classify-container';
+
+    const helpText = document.createElement('div');
+    helpText.className = 'classify-help-text';
+    helpText.innerText = 'Tap an item, then tap a category box to move it. You can also drag items into a category.';
+    container.appendChild(helpText);
+
+    const categoryGrid = document.createElement('div');
+    categoryGrid.className = 'classify-category-grid';
+    container.appendChild(categoryGrid);
+
+    const bank = document.createElement('div');
+    bank.className = 'classify-bank classify-drop-target';
+    bank.dataset.classificationId = '';
+    bank.setAttribute('role', 'button');
+    bank.setAttribute('tabindex', '0');
+
+    const bankLabel = document.createElement('div');
+    bankLabel.className = 'classify-bank-label';
+    bankLabel.innerText = 'Items';
+
+    const bankItems = document.createElement('div');
+    bankItems.className = 'classify-bank-items';
+
+    bank.appendChild(bankLabel);
+    bank.appendChild(bankItems);
+    container.appendChild(bank);
+
+    const submit = document.createElement('button');
+    submit.id = 'classifySubmit';
+    submit.innerText = 'Submit';
+
+    const items = q.items.map((item, index) => ({
+        ...item,
+        runtimeKey: `classify_item_${index}`
+    }));
+
+    if (document.getElementById('shuffleAnswers').checked) {
+        shuffleArray(items);
+    }
+
+    const placements = new Map();
+    let selectedItemKey = null;
+    let suppressClickRuntimeKey = null;
+    let dragState = null;
+
+    function preserveWindowScroll(fn) {
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        fn();
+        window.scrollTo(scrollX, scrollY);
+    }
+
+    function getDropTargetFromPoint(clientX, clientY) {
+        const el = document.elementFromPoint(clientX, clientY);
+        const target = el ? el.closest('.classify-drop-target') : null;
+        if (!target || target.classList.contains('disabled')) return null;
+        return target;
+    }
+
+    function clearDropHover() {
+        container.querySelectorAll('.classify-drop-target.drag-hover').forEach(target => {
+            target.classList.remove('drag-hover');
+        });
+    }
+
+    function updateDropHover(target) {
+        clearDropHover();
+        if (target) {
+            target.classList.add('drag-hover');
+        }
+    }
+
+    function cleanupDragState() {
+        if (!dragState) return;
+
+        window.removeEventListener('pointermove', onDragPointerMove);
+        window.removeEventListener('pointerup', onDragPointerUp);
+        window.removeEventListener('pointercancel', onDragPointerUp);
+
+        if (dragState.ghost && dragState.ghost.parentNode) {
+            dragState.ghost.parentNode.removeChild(dragState.ghost);
+        }
+
+        if (dragState.sourceEl) {
+            dragState.sourceEl.classList.remove('drag-source');
+        }
+
+        document.body.classList.remove('classify-dragging');
+        clearDropHover();
+        dragState = null;
+    }
+
+    function startDragVisual() {
+        if (!dragState || dragState.dragging) return;
+
+        dragState.dragging = true;
+        document.body.classList.add('classify-dragging');
+
+        const ghost = document.createElement('div');
+        ghost.className = 'classify-drag-ghost';
+        ghost.innerText = dragState.itemText;
+
+        const rect = dragState.sourceRect;
+        ghost.style.width = `${Math.max(rect.width, 140)}px`;
+        ghost.style.left = `${dragState.lastClientX - dragState.offsetX}px`;
+        ghost.style.top = `${dragState.lastClientY - dragState.offsetY}px`;
+
+        document.body.appendChild(ghost);
+        dragState.ghost = ghost;
+
+        if (dragState.sourceEl) {
+            dragState.sourceEl.classList.add('drag-source');
+        }
+    }
+
+    function moveSelectedItemTo(classificationId) {
+        if (questionAnswered) return;
+        if (!selectedItemKey) return;
+
+        placements.set(selectedItemKey, normalizeClassificationId(classificationId));
+        selectedItemKey = null;
+        preserveWindowScroll(() => renderClassifyState());
+    }
+
+    function handleDroppedItem(runtimeKey, classificationId) {
+        placements.set(runtimeKey, normalizeClassificationId(classificationId));
+        selectedItemKey = null;
+        preserveWindowScroll(() => renderClassifyState());
+    }
+
+    function createItemButton(item) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'classify-item';
+        btn.innerText = item.text;
+        btn.dataset.runtimeKey = item.runtimeKey;
+        btn.setAttribute('aria-label', `Classify item ${item.text}`);
+
+        if (selectedItemKey === item.runtimeKey) {
+            btn.classList.add('selected');
+        }
+
+        if (questionAnswered) {
+            const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
+            const correctId = normalizeClassificationId(item.correctClassificationId);
+
+            if (placedId && placedId === correctId) {
+                btn.classList.add('option-correct');
+            } else {
+                btn.classList.add('option-incorrect');
+            }
+        }
+
+        btn.addEventListener('pointerdown', e => {
+            if (questionAnswered) return;
+            if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+
+            cleanupDragState();
+
+            const rect = btn.getBoundingClientRect();
+            dragState = {
+                pointerId: e.pointerId,
+                runtimeKey: item.runtimeKey,
+                itemText: item.text,
+                sourceEl: btn,
+                sourceRect: rect,
+                offsetX: e.clientX - rect.left,
+                offsetY: e.clientY - rect.top,
+                startX: e.clientX,
+                startY: e.clientY,
+                lastClientX: e.clientX,
+                lastClientY: e.clientY,
+                dragging: false,
+                ghost: null
+            };
+
+            window.addEventListener('pointermove', onDragPointerMove, { passive: false });
+            window.addEventListener('pointerup', onDragPointerUp);
+            window.addEventListener('pointercancel', onDragPointerUp);
+        });
+
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            btn.blur();
+
+            if (questionAnswered) return;
+            if (suppressClickRuntimeKey === item.runtimeKey) {
+                suppressClickRuntimeKey = null;
+                return;
+            }
+
+            selectedItemKey = selectedItemKey === item.runtimeKey ? null : item.runtimeKey;
+            preserveWindowScroll(() => renderClassifyState());
+        });
+
+        return btn;
+    }
+
+    function renderClassifyState() {
+        categoryGrid.innerHTML = '';
+        bankItems.innerHTML = '';
+
+        const activeClassificationId = selectedItemKey
+            ? normalizeClassificationId(placements.get(selectedItemKey))
+            : null;
+
+        q.classifications.forEach(classification => {
+            const box = document.createElement('div');
+            box.className = 'classify-category classify-drop-target';
+            box.dataset.classificationId = classification.id;
+            box.setAttribute('role', 'button');
+            box.setAttribute('tabindex', '0');
+
+            if (!questionAnswered && selectedItemKey) {
+                box.classList.add('is-ready');
+                if (activeClassificationId === classification.id) {
+                    box.classList.add('is-active');
+                }
+            }
+
+            const header = document.createElement('div');
+            header.className = 'classify-category-header';
+            header.innerText = classification.label;
+
+            const itemWrap = document.createElement('div');
+            itemWrap.className = 'classify-category-items';
+
+            items
+                .filter(item => normalizeClassificationId(placements.get(item.runtimeKey)) === classification.id)
+                .forEach(item => {
+                    itemWrap.appendChild(createItemButton(item));
+                });
+
+            box.addEventListener('click', () => moveSelectedItemTo(classification.id));
+            box.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    moveSelectedItemTo(classification.id);
+                }
+            });
+
+            box.appendChild(header);
+            box.appendChild(itemWrap);
+            categoryGrid.appendChild(box);
+        });
+
+        items
+            .filter(item => !normalizeClassificationId(placements.get(item.runtimeKey)))
+            .forEach(item => {
+                bankItems.appendChild(createItemButton(item));
+            });
+
+        bank.classList.toggle('is-active', !questionAnswered && !!selectedItemKey && !activeClassificationId);
+        bank.classList.toggle('is-ready', !questionAnswered && !!selectedItemKey);
+    }
+
+    function onDragPointerMove(e) {
+        if (!dragState || e.pointerId !== dragState.pointerId || questionAnswered) return;
+
+        dragState.lastClientX = e.clientX;
+        dragState.lastClientY = e.clientY;
+
+        const moveX = e.clientX - dragState.startX;
+        const moveY = e.clientY - dragState.startY;
+        const movedEnough = Math.abs(moveX) > 6 || Math.abs(moveY) > 6;
+
+        if (!dragState.dragging && !movedEnough) {
+            return;
+        }
+
+        if (!dragState.dragging) {
+            startDragVisual();
+            suppressClickRuntimeKey = dragState.runtimeKey;
+        }
+
+        e.preventDefault();
+
+        if (dragState.ghost) {
+            dragState.ghost.style.left = `${e.clientX - dragState.offsetX}px`;
+            dragState.ghost.style.top = `${e.clientY - dragState.offsetY}px`;
+        }
+
+        updateDropHover(getDropTargetFromPoint(e.clientX, e.clientY));
+    }
+
+    function onDragPointerUp(e) {
+        if (!dragState || e.pointerId !== dragState.pointerId) return;
+
+        const finishedDrag = dragState.dragging;
+        const runtimeKey = dragState.runtimeKey;
+        const target = finishedDrag ? getDropTargetFromPoint(e.clientX, e.clientY) : null;
+
+        cleanupDragState();
+
+        if (!finishedDrag) {
+            return;
+        }
+
+        if (target) {
+            handleDroppedItem(runtimeKey, target.dataset.classificationId || '');
+        }
+    }
+
+    bank.addEventListener('click', () => moveSelectedItemTo(''));
+    bank.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            moveSelectedItemTo('');
+        }
+    });
+
+    submit.onclick = () => {
+        if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
+        if (questionAnswered) return;
+        if (isRetentionMode() && retentionAnswerLocked) return;
+
+        questionAnswered = true;
+        selectedItemKey = null;
+        cleanupDragState();
+
+        const allCorrect = items.every(item => {
+            const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
+            const correctId = normalizeClassificationId(item.correctClassificationId);
+            return placedId && placedId === correctId;
+        });
+
+        preserveWindowScroll(() => renderClassifyState());
+        setClassifyInteractionEnabled(false);
+        applyQuestionOutcome(q, allCorrect, { useSideFeedback: false });
+
+        if (isSpeedMode()) {
+            setTimeout(nextQuestion, SPEED_DELAY);
+        }
+    };
+
+    questionContainer.appendChild(container);
+    questionContainer.appendChild(submit);
+
+    renderClassifyState();
+    setClassifyInteractionEnabled(true);
 }
 
 // ================= NAV =================
