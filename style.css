@@ -3247,3 +3247,69 @@ input {
   display: block;
   margin: 0 auto;
 }
+
+
+/* ===== Classify full-width responsive expansion (leave iPhone portrait unchanged) ===== */
+@media screen and (orientation: landscape),
+       screen and (min-width: 431px) and (orientation: portrait) {
+  body.active-question-classify .quiz-area {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+  }
+
+  body.active-question-classify .question-container,
+  body.active-question-classify .image-container,
+  body.active-question-classify .classify-container,
+  body.active-question-classify .classify-category-grid,
+  body.active-question-classify .classify-category,
+  body.active-question-classify .classify-bank,
+  body.active-question-classify #questionText {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  body.active-question-classify .question-container,
+  body.active-question-classify .image-container {
+    flex: 0 0 auto;
+  }
+
+  body.active-question-classify .image-container {
+    display: block;
+  }
+
+  body.active-question-classify .classify-category,
+  body.active-question-classify .classify-bank {
+    min-height: 170px;
+    padding: 16px 18px;
+  }
+
+  body.active-question-classify .classify-category-header,
+  body.active-question-classify .classify-bank-label {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  body.active-question-classify .classify-category-items,
+  body.active-question-classify .classify-bank-items {
+    width: 100%;
+    min-height: 78px;
+  }
+}
+
+@media screen and (min-width: 768px) and (orientation: portrait),
+       screen and (min-width: 768px) and (orientation: landscape) {
+  body.active-question-classify .classify-category,
+  body.active-question-classify .classify-bank {
+    min-height: 180px;
+    padding: 18px 20px;
+  }
+
+  body.active-question-classify .classify-category-header,
+  body.active-question-classify .classify-bank-label {
+    font-size: 17px;
+  }
+}

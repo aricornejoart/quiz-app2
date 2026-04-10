@@ -213,6 +213,7 @@ function isNarrowIPhoneViewport() {
 function updateViewportClasses() {
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
     document.body.classList.toggle('active-question-flashcard', currentQuestionType === 'flashcard');
+    document.body.classList.toggle('active-question-classify', currentQuestionType === 'classify');
 }
 
 function applyResponsiveControlText() {
