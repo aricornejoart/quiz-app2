@@ -119,6 +119,33 @@ function normalizeClassificationId(value) {
     return normalizeSheetText(value);
 }
 
+function parseClassifyItemValue(value) {
+    const raw = normalizeSheetText(value);
+    if (!raw) return null;
+
+    if (raw.toLowerCase().startsWith('img:')) {
+        const imageUrl = normalizeSheetText(raw.slice(4));
+        if (!imageUrl) return null;
+        return {
+            kind: 'image',
+            raw,
+            imageUrl,
+            text: '',
+            dragLabel: 'Image item',
+            ariaLabel: 'Classify image item'
+        };
+    }
+
+    return {
+        kind: 'text',
+        raw,
+        imageUrl: '',
+        text: raw,
+        dragLabel: raw,
+        ariaLabel: `Classify item ${raw}`
+    };
+}
+
 // ================= MODE HELPERS =================
 function isRetentionMode() {
     return document.getElementById('retentionMode').checked;
@@ -735,10 +762,15 @@ async function loadQuestions(sheetName) {
     if (type === 'classify') {
         return rows.map(r => {
             const c = r.c || [];
-            const items = Array.from({ length: 10 }, (_, i) => ({
-                text: getCellValue(c[2 + i]),
-                correctClassificationId: normalizeClassificationId(getCellValue(c[12 + i]))
-            })).filter(item => item.text);
+            const items = Array.from({ length: 10 }, (_, i) => {
+                const parsedItem = parseClassifyItemValue(getCellValue(c[2 + i]));
+                if (!parsedItem) return null;
+
+                return {
+                    ...parsedItem,
+                    correctClassificationId: normalizeClassificationId(getCellValue(c[12 + i]))
+                };
+            }).filter(Boolean);
 
             const classifications = Array.from({ length: 10 }, (_, i) => ({
                 label: getCellValue(c[22 + i]),
@@ -1825,7 +1857,9 @@ function showClassify(q) {
 
     const items = q.items.map((item, index) => ({
         ...item,
-        runtimeKey: `classify_item_${index}`
+        runtimeKey: `classify_item_${index}`,
+        dragLabel: item.dragLabel || item.text || 'Item',
+        ariaLabel: item.ariaLabel || (item.text ? `Classify item ${item.text}` : 'Classify item')
     }));
 
     if (document.getElementById('shuffleAnswers').checked) {
@@ -1923,12 +1957,53 @@ function showClassify(q) {
     }
 
     function createItemButton(item) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
+        const btn = document.createElement('div');
         btn.className = 'classify-item';
-        btn.innerText = item.text;
         btn.dataset.runtimeKey = item.runtimeKey;
-        btn.setAttribute('aria-label', `Classify item ${item.text}`);
+        btn.setAttribute('role', 'button');
+        btn.setAttribute('tabindex', questionAnswered ? '-1' : '0');
+        btn.setAttribute('aria-label', item.ariaLabel || 'Classify item');
+
+        const content = document.createElement('div');
+        content.className = 'classify-item-content';
+
+        if (item.kind === 'image' && item.imageUrl) {
+            btn.classList.add('is-image-item');
+
+            const img = document.createElement('img');
+            img.className = 'classify-item-image';
+            img.src = item.imageUrl;
+            img.alt = item.text || 'Classify image item';
+            img.draggable = false;
+            content.appendChild(img);
+
+            const zoomBtn = document.createElement('button');
+            zoomBtn.type = 'button';
+            zoomBtn.className = 'classify-item-zoom-btn';
+            zoomBtn.setAttribute('aria-label', 'Zoom item image');
+            zoomBtn.setAttribute('title', 'Zoom image');
+            zoomBtn.innerText = '⤢';
+
+            const stopZoomTrigger = e => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
+            zoomBtn.addEventListener('pointerdown', stopZoomTrigger);
+            zoomBtn.addEventListener('click', e => {
+                stopZoomTrigger(e);
+                openFlashcardImageOverlay(item.imageUrl, item.text || 'Classify image item');
+            });
+
+            btn.appendChild(zoomBtn);
+        } else {
+            const textSpan = document.createElement('div');
+            textSpan.className = 'classify-item-text';
+            textSpan.innerText = item.text;
+            content.appendChild(textSpan);
+        }
+
+        btn.appendChild(content);
 
         if (selectedItemKey === item.runtimeKey) {
             btn.classList.add('selected');
@@ -1955,7 +2030,7 @@ function showClassify(q) {
             dragState = {
                 pointerId: e.pointerId,
                 runtimeKey: item.runtimeKey,
-                itemText: item.text,
+                itemText: item.dragLabel || item.text || 'Item',
                 sourceEl: btn,
                 sourceRect: rect,
                 offsetX: e.clientX - rect.left,
@@ -1986,6 +2061,14 @@ function showClassify(q) {
 
             selectedItemKey = selectedItemKey === item.runtimeKey ? null : item.runtimeKey;
             preserveWindowScroll(() => renderClassifyState());
+        });
+
+        btn.addEventListener('keydown', e => {
+            if (questionAnswered) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                btn.click();
+            }
         });
 
         return btn;

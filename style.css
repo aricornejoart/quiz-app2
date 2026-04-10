@@ -668,6 +668,11 @@ body.fullscreen-mode .bottom-controls {
 }
 
 .classify-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
   padding: 11px 15px;
   background: #332b5c;
   border: 1px solid #5a4bcf;
@@ -680,6 +685,69 @@ body.fullscreen-mode .bottom-controls {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.classify-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.classify-item-text {
+  word-break: break-word;
+  text-align: center;
+}
+
+.classify-item.is-image-item {
+  min-width: 120px;
+  min-height: 120px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.classify-item-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 120px;
+  max-height: 96px;
+  object-fit: contain;
+  border-radius: 10px;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.classify-item-zoom-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #7c6cff;
+  border-radius: 8px;
+  background: rgba(42, 37, 64, 0.94);
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  touch-action: manipulation;
+  transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.classify-item-zoom-btn:hover {
+  background: #5a4bcf;
+}
+
+.classify-item-zoom-btn:active {
+  transform: scale(0.98);
 }
 
 .classify-item:hover {
@@ -711,7 +779,7 @@ body.classify-dragging {
   z-index: 14000;
   pointer-events: none;
   padding: 11px 15px;
-  border-radius: 999px;
+  border-radius: 18px;
   border: 1px solid #9f90ff;
   background: #5a4bcf;
   color: #ffffff;
@@ -2022,6 +2090,25 @@ body.fullscreen-mode .hint-overlay {
   .classify-item {
     font-size: 14px;
     padding: 10px 13px;
+  }
+
+  .classify-item.is-image-item {
+    min-width: 108px;
+    min-height: 108px;
+    padding: 10px;
+  }
+
+  .classify-item-image {
+    max-width: 96px;
+    max-height: 80px;
+  }
+
+  .classify-item-zoom-btn {
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
   }
 
   .image-container img,
