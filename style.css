@@ -581,6 +581,11 @@ body.fullscreen-mode .bottom-controls {
   transform: none;
 }
 
+#classifySubmit {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ===== Classify ===== */
 .classify-container {
   display: flex;

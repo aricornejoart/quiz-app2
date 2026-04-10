@@ -1819,6 +1819,7 @@ function showClassify(q) {
 
     const submit = document.createElement('button');
     submit.id = 'classifySubmit';
+    submit.type = 'button';
     submit.innerText = 'Submit';
 
     const items = q.items.map((item, index) => ({
@@ -2102,7 +2103,12 @@ function showClassify(q) {
         }
     });
 
-    submit.onclick = () => {
+    function handleClassifySubmit(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
         if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
         if (questionAnswered) return;
         if (isRetentionMode() && retentionAnswerLocked) return;
@@ -2119,12 +2125,20 @@ function showClassify(q) {
 
         preserveWindowScroll(() => renderClassifyState());
         setClassifyInteractionEnabled(false);
-        applyQuestionOutcome(q, allCorrect, { useSideFeedback: false });
+        applyQuestionOutcome(q, allCorrect);
 
         if (isSpeedMode()) {
             setTimeout(nextQuestion, SPEED_DELAY);
         }
-    };
+    }
+
+    submit.addEventListener('click', handleClassifySubmit);
+    submit.addEventListener('pointerup', e => {
+        if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+            handleClassifySubmit(e);
+        }
+    });
+    submit.addEventListener('touchend', handleClassifySubmit, { passive: false });
 
     questionContainer.appendChild(container);
     questionContainer.appendChild(submit);
