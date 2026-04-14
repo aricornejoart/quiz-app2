@@ -4,6 +4,10 @@ const sheetId = '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E';
 // ================= SETTINGS =================
 let SPEED_DELAY = 300;
 
+// ================= CLASSIFY CONFIG =================
+const CLASSIFY_ITEM_COUNT = 20;
+const CLASSIFY_CATEGORY_COUNT = 10;
+
 // ================= GLOBAL STATE =================
 let questions = [];
 let questionQueue = [];
@@ -762,19 +766,28 @@ async function loadQuestions(sheetName) {
     if (type === 'classify') {
         return rows.map(r => {
             const c = r.c || [];
-            const items = Array.from({ length: 10 }, (_, i) => {
-                const parsedItem = parseClassifyItemValue(getCellValue(c[2 + i]));
+
+            const itemStartCol = 2;
+            const itemClassificationIdStartCol = itemStartCol + CLASSIFY_ITEM_COUNT;
+            const classificationLabelStartCol = itemClassificationIdStartCol + CLASSIFY_ITEM_COUNT;
+            const classificationIdStartCol = classificationLabelStartCol + CLASSIFY_CATEGORY_COUNT;
+            const imageCol = classificationIdStartCol + CLASSIFY_CATEGORY_COUNT;
+            const learningResourcesCol = imageCol + 1;
+            const learningResourcesImageCol = imageCol + 2;
+
+            const items = Array.from({ length: CLASSIFY_ITEM_COUNT }, (_, i) => {
+                const parsedItem = parseClassifyItemValue(getCellValue(c[itemStartCol + i]));
                 if (!parsedItem) return null;
 
                 return {
                     ...parsedItem,
-                    correctClassificationId: normalizeClassificationId(getCellValue(c[12 + i]))
+                    correctClassificationId: normalizeClassificationId(getCellValue(c[itemClassificationIdStartCol + i]))
                 };
             }).filter(Boolean);
 
-            const classifications = Array.from({ length: 10 }, (_, i) => ({
-                label: getCellValue(c[22 + i]),
-                id: normalizeClassificationId(getCellValue(c[32 + i]))
+            const classifications = Array.from({ length: CLASSIFY_CATEGORY_COUNT }, (_, i) => ({
+                label: getCellValue(c[classificationLabelStartCol + i]),
+                id: normalizeClassificationId(getCellValue(c[classificationIdStartCol + i]))
             })).filter(classification => classification.label && classification.id);
 
             return {
@@ -783,9 +796,9 @@ async function loadQuestions(sheetName) {
                 type: 'classify',
                 items,
                 classifications,
-                image: getCellValue(c[42]),
-                learningResources: getCellValue(c[43]),
-                learningResourcesImage: getCellValue(c[44])
+                image: getCellValue(c[imageCol]),
+                learningResources: getCellValue(c[learningResourcesCol]),
+                learningResourcesImage: getCellValue(c[learningResourcesImageCol])
             };
         }).filter(q =>
             q.question &&
