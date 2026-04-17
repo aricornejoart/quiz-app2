@@ -6,7 +6,7 @@ let SPEED_DELAY = 300;
 
 // ================= CLASSIFY SHEET LAYOUT =================
 const CLASSIFY_ITEM_COUNT = 20;
-const CLASSIFY_CLASS_COUNT = 10;
+const CLASSIFY_CLASS_COUNT = 20;
 
 // ================= GLOBAL STATE =================
 let questions = [];
