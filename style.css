@@ -3497,3 +3497,34 @@ body.fullscreen-mode.active-question-classify .classify-classes-column {
   min-height: min(700px, 64vh);
   max-height: min(700px, 64vh);
 }
+
+@media screen and (max-width: 430px) and (orientation: portrait) {
+  body.fullscreen-mode.active-question-classify .classify-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  body.fullscreen-mode.active-question-classify .classify-bank-column,
+  body.fullscreen-mode.active-question-classify .classify-classes-column {
+    min-height: auto;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  body.fullscreen-mode.active-question-classify .classify-bank-column {
+    min-height: 160px;
+  }
+
+  body.fullscreen-mode.active-question-classify .classify-classes-column {
+    min-height: 180px;
+  }
+}
+
+@media screen and (max-height: 430px) and (orientation: landscape) {
+  body.fullscreen-mode.active-question-classify .classify-bank-column,
+  body.fullscreen-mode.active-question-classify .classify-classes-column {
+    min-height: min(80svh, 470px);
+    max-height: min(80svh, 470px);
+  }
+}
