@@ -1836,31 +1836,28 @@ function showClassify(q) {
     container.id = 'classifyContainer';
     container.className = 'classify-container';
 
-    const helpText = document.createElement('div');
-    helpText.className = 'classify-help-text';
-    helpText.innerText = 'Tap an item, then tap a category box to move it. You can also drag items into a category.';
-    container.appendChild(helpText);
-
-    const categoryGrid = document.createElement('div');
-    categoryGrid.className = 'classify-category-grid';
-    container.appendChild(categoryGrid);
+    const layout = document.createElement('div');
+    layout.className = 'classify-layout';
+    container.appendChild(layout);
 
     const bank = document.createElement('div');
-    bank.className = 'classify-bank classify-drop-target';
+    bank.className = 'classify-column classify-bank-column classify-drop-target';
     bank.dataset.classificationId = '';
     bank.setAttribute('role', 'button');
     bank.setAttribute('tabindex', '0');
-
-    const bankLabel = document.createElement('div');
-    bankLabel.className = 'classify-bank-label';
-    bankLabel.innerText = 'Items';
+    layout.appendChild(bank);
 
     const bankItems = document.createElement('div');
     bankItems.className = 'classify-bank-items';
-
-    bank.appendChild(bankLabel);
     bank.appendChild(bankItems);
-    container.appendChild(bank);
+
+    const classesColumn = document.createElement('div');
+    classesColumn.className = 'classify-column classify-classes-column';
+    layout.appendChild(classesColumn);
+
+    const categoryGrid = document.createElement('div');
+    categoryGrid.className = 'classify-category-grid';
+    classesColumn.appendChild(categoryGrid);
 
     const submit = document.createElement('button');
     submit.id = 'classifySubmit';
@@ -1888,6 +1885,35 @@ function showClassify(q) {
         const scrollY = window.scrollY;
         fn();
         window.scrollTo(scrollX, scrollY);
+    }
+
+    function getClassifyScrollState() {
+        return {
+            bankScrollTop: bank.scrollTop,
+            bankScrollLeft: bank.scrollLeft,
+            classesScrollTop: classesColumn.scrollTop,
+            classesScrollLeft: classesColumn.scrollLeft
+        };
+    }
+
+    function restoreClassifyScrollState(scrollState) {
+        if (!scrollState) return;
+
+        const applyScrollState = () => {
+            bank.scrollTop = scrollState.bankScrollTop;
+            bank.scrollLeft = scrollState.bankScrollLeft;
+            classesColumn.scrollTop = scrollState.classesScrollTop;
+            classesColumn.scrollLeft = scrollState.classesScrollLeft;
+        };
+
+        applyScrollState();
+        requestAnimationFrame(applyScrollState);
+    }
+
+    function renderClassifyStatePreservingScroll() {
+        const scrollState = getClassifyScrollState();
+        renderClassifyState();
+        restoreClassifyScrollState(scrollState);
     }
 
     function getDropTargetFromPoint(clientX, clientY) {
@@ -1959,13 +1985,13 @@ function showClassify(q) {
 
         placements.set(selectedItemKey, normalizeClassificationId(classificationId));
         selectedItemKey = null;
-        preserveWindowScroll(() => renderClassifyState());
+        preserveWindowScroll(() => renderClassifyStatePreservingScroll());
     }
 
     function handleDroppedItem(runtimeKey, classificationId) {
         placements.set(runtimeKey, normalizeClassificationId(classificationId));
         selectedItemKey = null;
-        preserveWindowScroll(() => renderClassifyState());
+        preserveWindowScroll(() => renderClassifyStatePreservingScroll());
     }
 
     function createItemButton(item) {
@@ -2072,7 +2098,7 @@ function showClassify(q) {
             }
 
             selectedItemKey = selectedItemKey === item.runtimeKey ? null : item.runtimeKey;
-            preserveWindowScroll(() => renderClassifyState());
+            preserveWindowScroll(() => renderClassifyStatePreservingScroll());
         });
 
         btn.addEventListener('keydown', e => {
@@ -2219,7 +2245,7 @@ function showClassify(q) {
             return placedId && placedId === correctId;
         });
 
-        preserveWindowScroll(() => renderClassifyState());
+        preserveWindowScroll(() => renderClassifyStatePreservingScroll());
         setClassifyInteractionEnabled(false);
         applyQuestionOutcome(q, allCorrect);
 
