@@ -3524,7 +3524,7 @@ body.fullscreen-mode.active-question-classify .classify-classes-column {
 @media screen and (max-height: 430px) and (orientation: landscape) {
   body.fullscreen-mode.active-question-classify .classify-bank-column,
   body.fullscreen-mode.active-question-classify .classify-classes-column {
-    min-height: min(80svh, 470px);
-    max-height: min(80svh, 470px);
+    min-height: min(76svh, 470px);
+    max-height: min(76svh, 470px);
   }
 }
