@@ -1,3 +1,14 @@
+/*
+MODIFICATION RULES FOR THIS APP
+- Preserve existing behavior and visuals unless the request explicitly says otherwise.
+- Keep code modular by feature even though this build uses a single JS file.
+- Reuse existing state, helpers, and DOM hooks before creating new ones.
+- Do not add ad hoc overrides or duplicate logic across unrelated sections.
+- When adding a feature, place it in the nearest existing feature section and keep the change narrowly scoped.
+- Do not refactor unrelated areas while implementing a feature unless the request explicitly asks for cleanup.
+- If behavior must change, document the reason in a nearby comment and keep the blast radius small.
+*/
+
 (() => {
     'use strict';
 
