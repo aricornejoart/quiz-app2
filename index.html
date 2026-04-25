@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Quiz App</title>
+  <title>Study Bunny</title>
+  <meta name="theme-color" content="#1e1b2e">
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Study Bunny">
@@ -13,7 +14,8 @@
 </head>
 <body>
 
-<div class="container">
+  <!-- App Shell -->
+  <main class="container" id="app">
 
   <div class="top-bar">
     <div class="top-row">
@@ -276,9 +278,10 @@
     </div>
   </div>
 
-</div>
+  </main>
 
-<div id="learningResourcesOverlay" class="hint-overlay hidden" aria-hidden="true">
+  <!-- Learning Resources Overlay -->
+  <div id="learningResourcesOverlay" class="hint-overlay hidden" aria-hidden="true">
   <div class="hint-modal">
     <button id="closeLearningResourcesBtn" class="close-hint-btn" type="button" aria-label="Close learning resources">✕</button>
     <div class="hint-title">Learning resources.</div>
@@ -293,9 +296,10 @@
       </div>
     </div>
   </div>
-</div>
+  </div>
 
-<div id="flashcardImageOverlay" class="flashcard-image-overlay hidden" aria-hidden="true">
+  <!-- Flashcard Image Overlay -->
+  <div id="flashcardImageOverlay" class="flashcard-image-overlay hidden" aria-hidden="true">
   <div class="flashcard-image-modal">
     <button
       id="closeFlashcardImageBtn"
@@ -312,6 +316,6 @@
   </div>
 </div>
 
-<script src="script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>

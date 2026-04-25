@@ -1,92 +1,88 @@
-// ================= CONFIG =================
-const sheetId = '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E';
+(() => {
+    'use strict';
 
-// ================= SETTINGS =================
-let SPEED_DELAY = 300;
+    /**
+     * Central configuration and app state.
+     * The quiz logic is intentionally preserved while the mutable globals are
+     * grouped into predictable objects for easier maintenance.
+     */
+    const CONFIG = {
+        sheetId: '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E',
+        speedDelay: 300,
+        classifyItemCount: 20,
+        classifyClassCount: 20
+    };
 
-// ================= CLASSIFY SHEET LAYOUT =================
-const CLASSIFY_ITEM_COUNT = 20;
-const CLASSIFY_CLASS_COUNT = 20;
+    const state = {
+        questions: [],
+        questionQueue: [],
+        currentIndex: 0,
+        questionIdCounter: 0,
+        quizListCache: [],
+        isAppFullscreen: false,
 
-// ================= GLOBAL STATE =================
-let questions = [];
-let questionQueue = [];
-let currentIndex = 0;
-let questionIdCounter = 0;
-let quizListCache = [];
-let isAppFullscreen = false;
+        pendingRetentionJump: false,
+        pendingRetentionCorrect: false,
+        retentionAnswerLocked: false,
+        retentionFinished: false,
+        retentionSolvedIds: new Set(),
 
-// retention mode state
-let pendingRetentionJump = false;
-let pendingRetentionCorrect = false;
-let retentionAnswerLocked = false;
-let retentionFinished = false;
-let retentionSolvedIds = new Set();
+        pendingMasteryAdvance: false,
 
-// mastery mode state
-let pendingMasteryAdvance = false;
+        normalFinished: false,
+        questionAnswered: false,
 
-// normal mode state
-let normalFinished = false;
+        pendingLearningResource: null,
+        learningResourcesOverlayOpen: false,
 
-// answer lock state
-let questionAnswered = false;
+        flashcardFlipped: false,
+        flashcardFrontMode: 'term',
 
-// learning resources state
-let pendingLearningResource = null;
-let learningResourcesOverlayOpen = false;
+        flashcardImageZoomOpen: false,
+        currentQuestionType: ''
+    };
 
-// flashcard state
-let flashcardFlipped = false;
-let flashcardFrontMode = 'term';
+    const elements = {
+        folderSelector: document.getElementById('folderSelector'),
+        quizSelector: document.getElementById('quizSelector'),
+        mixInput: document.getElementById('mixInput'),
+        mixGoBtn: document.getElementById('mixGoBtn'),
+        settingsBtn: document.getElementById('settingsBtn'),
+        fullscreenBtn: document.getElementById('fullscreenBtn'),
+        settingsPopup: document.getElementById('settingsPopup'),
+        closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+        prevBtn: document.getElementById('prevBtn'),
+        restartBtn: document.getElementById('restartBtn'),
+        nextBtn: document.getElementById('nextBtn'),
+        progressTextEl: document.getElementById('progressText'),
+        progressSideFeedbackEl: document.getElementById('progressSideFeedback'),
 
-// flashcard image zoom state
-let flashcardImageZoomOpen = false;
-let currentQuestionType = '';
+        learningResourcesOverlay: document.getElementById('learningResourcesOverlay'),
+        closeLearningResourcesBtn: document.getElementById('closeLearningResourcesBtn'),
+        learningResourcesBody: document.getElementById('learningResourcesBody'),
+        learningResourcesContent: document.getElementById('learningResourcesContent'),
+        learningResourcesImageEl: document.getElementById('learningResourcesImage'),
+        learningResourcesImagePanel: document.getElementById('learningResourcesImagePanel'),
+        learningResourcesTextPanel: document.getElementById('learningResourcesTextPanel'),
 
+        questionTextEl: document.getElementById('questionText'),
+        questionImage: document.getElementById('questionImage'),
+        imageContainer: document.querySelector('.image-container'),
+        optionsContainer: document.querySelector('.options'),
+        questionContainer: document.querySelector('.question-container'),
 
-const folderSelector = document.getElementById('folderSelector');
-const quizSelector = document.getElementById('quizSelector');
-const mixInput = document.getElementById('mixInput');
-const mixGoBtn = document.getElementById('mixGoBtn');
-const settingsBtn = document.getElementById('settingsBtn');
-const fullscreenBtn = document.getElementById('fullscreenBtn');
-const settingsPopup = document.getElementById('settingsPopup');
-const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-const prevBtn = document.getElementById('prevBtn');
-const restartBtn = document.getElementById('restartBtn');
-const nextBtn = document.getElementById('nextBtn');
-const progressTextEl = document.getElementById('progressText');
-const progressSideFeedbackEl = document.getElementById('progressSideFeedback');
+        flashcardFrontSetting: document.getElementById('flashcardFrontSetting'),
+        termFrontBtn: document.getElementById('termFrontBtn'),
+        definitionFrontBtn: document.getElementById('definitionFrontBtn'),
 
+        flashcardImageOverlay: document.getElementById('flashcardImageOverlay'),
+        closeFlashcardImageBtn: document.getElementById('closeFlashcardImageBtn'),
+        flashcardImageViewport: document.getElementById('flashcardImageViewport'),
+        flashcardZoomImage: document.getElementById('flashcardZoomImage'),
 
-const learningResourcesOverlay = document.getElementById('learningResourcesOverlay');
-const closeLearningResourcesBtn = document.getElementById('closeLearningResourcesBtn');
-const learningResourcesBody = document.getElementById('learningResourcesBody');
-const learningResourcesContent = document.getElementById('learningResourcesContent');
-const learningResourcesImageEl = document.getElementById('learningResourcesImage');
-const learningResourcesImagePanel = document.getElementById('learningResourcesImagePanel');
-const learningResourcesTextPanel = document.getElementById('learningResourcesTextPanel');
+        settingHelpButtons: Array.from(document.querySelectorAll('.setting-help-btn'))
+    };
 
-const questionTextEl = document.getElementById('questionText');
-const questionImage = document.getElementById('questionImage');
-const imageContainer = document.querySelector('.image-container');
-const optionsContainer = document.querySelector('.options');
-const questionContainer = document.querySelector('.question-container');
-
-const flashcardFrontSetting = document.getElementById('flashcardFrontSetting');
-const termFrontBtn = document.getElementById('termFrontBtn');
-const definitionFrontBtn = document.getElementById('definitionFrontBtn');
-
-// flashcard image overlay elements from HTML
-const flashcardImageOverlay = document.getElementById('flashcardImageOverlay');
-const closeFlashcardImageBtn = document.getElementById('closeFlashcardImageBtn');
-const flashcardImageViewport = document.getElementById('flashcardImageViewport');
-const flashcardZoomImage = document.getElementById('flashcardZoomImage');
-
-const settingHelpButtons = Array.from(document.querySelectorAll('.setting-help-btn'));
-
-// ================= SHEETS PARSER =================
 function parseGoogleSheetResponse(text) {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
@@ -176,7 +172,7 @@ function canUseLearningResources() {
 }
 
 function hasFlashcardsInDeck() {
-    return questions.some(q => q.type === 'flashcard');
+    return state.questions.some(q => q.type === 'flashcard');
 }
 
 function updateLearningResourcesAvailability() {
@@ -199,7 +195,7 @@ function updateLearningResourcesAvailability() {
 function updateShuffleAnswersAvailability() {
     const shuffleAnswersCheckbox = document.getElementById('shuffleAnswers');
     const shuffleAnswersSetting = document.getElementById('shuffleAnswersSetting');
-    const supportsAnswerShuffle = questions.some(q =>
+    const supportsAnswerShuffle = state.questions.some(q =>
         q.type === 'multiple choice' || q.type === 'hierarchy' || q.type === 'classify'
     );
 
@@ -215,15 +211,15 @@ function updateShuffleAnswersAvailability() {
 }
 
 function updateFlashcardFrontSettingVisibility() {
-    if (!flashcardFrontSetting) return;
-    flashcardFrontSetting.classList.toggle('hidden', !hasFlashcardsInDeck());
+    if (!elements.flashcardFrontSetting) return;
+    elements.flashcardFrontSetting.classList.toggle('hidden', !hasFlashcardsInDeck());
 }
 
 function updateFlashcardFrontButtonsUI() {
-    if (!termFrontBtn || !definitionFrontBtn) return;
+    if (!elements.termFrontBtn || !elements.definitionFrontBtn) return;
 
-    termFrontBtn.classList.toggle('active', flashcardFrontMode === 'term');
-    definitionFrontBtn.classList.toggle('active', flashcardFrontMode === 'definition');
+    elements.termFrontBtn.classList.toggle('active', state.flashcardFrontMode === 'term');
+    elements.definitionFrontBtn.classList.toggle('active', state.flashcardFrontMode === 'definition');
 }
 
 function updateSettingsAvailability() {
@@ -234,7 +230,7 @@ function updateSettingsAvailability() {
 }
 
 function syncBodyScrollLock() {
-    document.body.style.overflow = (learningResourcesOverlayOpen || flashcardImageZoomOpen) ? 'hidden' : '';
+    document.body.style.overflow = (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) ? 'hidden' : '';
 }
 
 function isNarrowIPhoneViewport() {
@@ -243,24 +239,24 @@ function isNarrowIPhoneViewport() {
 
 function updateViewportClasses() {
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
-    document.body.classList.toggle('active-question-flashcard', currentQuestionType === 'flashcard');
-    document.body.classList.toggle('active-question-classify', currentQuestionType === 'classify');
+    document.body.classList.toggle('active-question-flashcard', state.currentQuestionType === 'flashcard');
+    document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
 }
 
 function applyResponsiveControlText() {
     const useCompactIcons = isNarrowIPhoneViewport();
 
-    prevBtn.innerText = useCompactIcons ? '←' : 'Previous';
-    restartBtn.innerText = useCompactIcons ? '↻' : 'Restart';
-    nextBtn.innerText = useCompactIcons ? '→' : 'Next';
+    elements.prevBtn.innerText = useCompactIcons ? '←' : 'Previous';
+    elements.restartBtn.innerText = useCompactIcons ? '↻' : 'Restart';
+    elements.nextBtn.innerText = useCompactIcons ? '→' : 'Next';
 
-    prevBtn.setAttribute('aria-label', 'Previous');
-    restartBtn.setAttribute('aria-label', 'Restart');
-    nextBtn.setAttribute('aria-label', 'Next');
+    elements.prevBtn.setAttribute('aria-label', 'Previous');
+    elements.restartBtn.setAttribute('aria-label', 'Restart');
+    elements.nextBtn.setAttribute('aria-label', 'Next');
 
-    prevBtn.setAttribute('title', 'Previous');
-    restartBtn.setAttribute('title', 'Restart');
-    nextBtn.setAttribute('title', 'Next');
+    elements.prevBtn.setAttribute('title', 'Previous');
+    elements.restartBtn.setAttribute('title', 'Restart');
+    elements.nextBtn.setAttribute('title', 'Next');
 }
 
 function clearFlashcardSwipeFeedback() {
@@ -300,18 +296,18 @@ function handleViewportChange() {
 
 // ================= SETTINGS / FULLSCREEN UI =================
 function openSettingsPopup() {
-    settingsPopup.classList.remove('hidden');
-    settingsBtn.classList.add('active');
+    elements.settingsPopup.classList.remove('hidden');
+    elements.settingsBtn.classList.add('active');
 }
 
 function closeSettingsPopup() {
-    settingsPopup.classList.add('hidden');
-    settingsBtn.classList.remove('active');
+    elements.settingsPopup.classList.add('hidden');
+    elements.settingsBtn.classList.remove('active');
     closeAllSettingHelpTooltips();
 }
 
 function toggleSettingsPopup() {
-    if (settingsPopup.classList.contains('hidden')) {
+    if (elements.settingsPopup.classList.contains('hidden')) {
         openSettingsPopup();
     } else {
         closeSettingsPopup();
@@ -319,7 +315,7 @@ function toggleSettingsPopup() {
 }
 
 function closeAllSettingHelpTooltips() {
-    settingHelpButtons.forEach(btn => {
+    elements.settingHelpButtons.forEach(btn => {
         const tooltipId = btn.dataset.helpTarget;
         const tooltip = tooltipId ? document.getElementById(tooltipId) : null;
         btn.setAttribute('aria-expanded', 'false');
@@ -346,23 +342,23 @@ function toggleSettingHelpTooltip(button) {
 }
 
 function enterFullscreenMode() {
-    isAppFullscreen = true;
+    state.isAppFullscreen = true;
     document.body.classList.add('fullscreen-mode');
-    fullscreenBtn.classList.add('active');
-    fullscreenBtn.setAttribute('title', 'Exit Fullscreen');
+    elements.fullscreenBtn.classList.add('active');
+    elements.fullscreenBtn.setAttribute('title', 'Exit Fullscreen');
     handleViewportChange();
 }
 
 function exitFullscreenMode() {
-    isAppFullscreen = false;
+    state.isAppFullscreen = false;
     document.body.classList.remove('fullscreen-mode');
-    fullscreenBtn.classList.remove('active');
-    fullscreenBtn.setAttribute('title', 'Fullscreen');
+    elements.fullscreenBtn.classList.remove('active');
+    elements.fullscreenBtn.setAttribute('title', 'Fullscreen');
     handleViewportChange();
 }
 
 function toggleFullscreenMode() {
-    if (isAppFullscreen) {
+    if (state.isAppFullscreen) {
         exitFullscreenMode();
     } else {
         enterFullscreenMode();
@@ -371,7 +367,7 @@ function toggleFullscreenMode() {
 
 // ================= LEARNING RESOURCES UI =================
 function clearPendingLearningResource() {
-    pendingLearningResource = null;
+    state.pendingLearningResource = null;
 }
 
 function queueLearningResourceIfEligible(question) {
@@ -379,11 +375,11 @@ function queueLearningResourceIfEligible(question) {
     const imageUrl = normalizeSheetText(question?.learningResourcesImage);
 
     if (!canUseLearningResources() || (!text && !imageUrl)) {
-        pendingLearningResource = null;
+        state.pendingLearningResource = null;
         return;
     }
 
-    pendingLearningResource = {
+    state.pendingLearningResource = {
         text,
         imageUrl
     };
@@ -399,90 +395,90 @@ function openLearningResourcesOverlay(hintData) {
 
     if (!hasText && !hasImage) return;
 
-    learningResourcesContent.innerText = text;
-    learningResourcesImageEl.src = '';
-    learningResourcesImageEl.alt = 'Learning resource image';
-    learningResourcesImagePanel.classList.add('hidden');
+    elements.learningResourcesContent.innerText = text;
+    elements.learningResourcesImageEl.src = '';
+    elements.learningResourcesImageEl.alt = 'Learning resource image';
+    elements.learningResourcesImagePanel.classList.add('hidden');
 
-    learningResourcesBody.classList.remove('text-only', 'image-only', 'text-image');
+    elements.learningResourcesBody.classList.remove('text-only', 'image-only', 'text-image');
 
     if (hasImage) {
-        learningResourcesImageEl.src = imageUrl;
-        learningResourcesImagePanel.classList.remove('hidden');
+        elements.learningResourcesImageEl.src = imageUrl;
+        elements.learningResourcesImagePanel.classList.remove('hidden');
     }
 
     if (hasText && hasImage) {
-        learningResourcesBody.classList.add('text-image');
-        learningResourcesTextPanel.classList.remove('hidden');
-        learningResourcesImagePanel.classList.remove('hidden');
+        elements.learningResourcesBody.classList.add('text-image');
+        elements.learningResourcesTextPanel.classList.remove('hidden');
+        elements.learningResourcesImagePanel.classList.remove('hidden');
     } else if (hasText) {
-        learningResourcesBody.classList.add('text-only');
-        learningResourcesTextPanel.classList.remove('hidden');
-        learningResourcesImagePanel.classList.add('hidden');
+        elements.learningResourcesBody.classList.add('text-only');
+        elements.learningResourcesTextPanel.classList.remove('hidden');
+        elements.learningResourcesImagePanel.classList.add('hidden');
     } else {
-        learningResourcesBody.classList.add('image-only');
-        learningResourcesTextPanel.classList.add('hidden');
-        learningResourcesImagePanel.classList.remove('hidden');
+        elements.learningResourcesBody.classList.add('image-only');
+        elements.learningResourcesTextPanel.classList.add('hidden');
+        elements.learningResourcesImagePanel.classList.remove('hidden');
     }
 
-    learningResourcesOverlay.classList.remove('hidden');
-    learningResourcesOverlay.setAttribute('aria-hidden', 'false');
+    elements.learningResourcesOverlay.classList.remove('hidden');
+    elements.learningResourcesOverlay.setAttribute('aria-hidden', 'false');
     document.body.classList.add('hint-open');
-    learningResourcesOverlayOpen = true;
+    state.learningResourcesOverlayOpen = true;
     syncBodyScrollLock();
 }
 
 function closeLearningResourcesOverlay() {
-    learningResourcesOverlay.classList.add('hidden');
-    learningResourcesOverlay.setAttribute('aria-hidden', 'true');
-    learningResourcesContent.innerText = '';
-    learningResourcesImageEl.src = '';
-    learningResourcesTextPanel.classList.remove('hidden');
-    learningResourcesImagePanel.classList.add('hidden');
-    learningResourcesBody.classList.remove('text-only', 'image-only', 'text-image');
+    elements.learningResourcesOverlay.classList.add('hidden');
+    elements.learningResourcesOverlay.setAttribute('aria-hidden', 'true');
+    elements.learningResourcesContent.innerText = '';
+    elements.learningResourcesImageEl.src = '';
+    elements.learningResourcesTextPanel.classList.remove('hidden');
+    elements.learningResourcesImagePanel.classList.add('hidden');
+    elements.learningResourcesBody.classList.remove('text-only', 'image-only', 'text-image');
     document.body.classList.remove('hint-open');
-    learningResourcesOverlayOpen = false;
+    state.learningResourcesOverlayOpen = false;
     clearPendingLearningResource();
     syncBodyScrollLock();
 }
 
 function showPendingLearningResourceIfAny() {
-    if (!pendingLearningResource) return;
-    openLearningResourcesOverlay(pendingLearningResource);
+    if (!state.pendingLearningResource) return;
+    openLearningResourcesOverlay(state.pendingLearningResource);
 }
 
 // ================= FLASHCARD IMAGE ZOOM UI =================
 function openFlashcardImageOverlay(src, alt = 'Flashcard image') {
-    if (!src || !flashcardImageOverlay || !flashcardZoomImage || learningResourcesOverlayOpen) return;
+    if (!src || !elements.flashcardImageOverlay || !elements.flashcardZoomImage || state.learningResourcesOverlayOpen) return;
 
-    flashcardZoomImage.src = src;
-    flashcardZoomImage.alt = alt;
+    elements.flashcardZoomImage.src = src;
+    elements.flashcardZoomImage.alt = alt;
 
-    if (flashcardImageViewport) {
-        flashcardImageViewport.scrollTop = 0;
-        flashcardImageViewport.scrollLeft = 0;
+    if (elements.flashcardImageViewport) {
+        elements.flashcardImageViewport.scrollTop = 0;
+        elements.flashcardImageViewport.scrollLeft = 0;
     }
 
-    flashcardImageOverlay.classList.remove('hidden');
-    flashcardImageOverlay.setAttribute('aria-hidden', 'false');
-    flashcardImageZoomOpen = true;
+    elements.flashcardImageOverlay.classList.remove('hidden');
+    elements.flashcardImageOverlay.setAttribute('aria-hidden', 'false');
+    state.flashcardImageZoomOpen = true;
     syncBodyScrollLock();
 }
 
 function closeFlashcardImageOverlay() {
-    if (!flashcardImageOverlay || !flashcardZoomImage) return;
+    if (!elements.flashcardImageOverlay || !elements.flashcardZoomImage) return;
 
-    flashcardImageOverlay.classList.add('hidden');
-    flashcardImageOverlay.setAttribute('aria-hidden', 'true');
-    flashcardZoomImage.src = '';
-    flashcardZoomImage.alt = 'Flashcard image';
-    flashcardImageZoomOpen = false;
+    elements.flashcardImageOverlay.classList.add('hidden');
+    elements.flashcardImageOverlay.setAttribute('aria-hidden', 'true');
+    elements.flashcardZoomImage.src = '';
+    elements.flashcardZoomImage.alt = 'Flashcard image';
+    state.flashcardImageZoomOpen = false;
     syncBodyScrollLock();
 }
 
 // ================= MIX HELPERS =================
 function setMixValidState(isValid) {
-    mixInput.classList.toggle('invalid', !isValid);
+    elements.mixInput.classList.toggle('invalid', !isValid);
 }
 
 function normalizeMixInput(value) {
@@ -542,7 +538,7 @@ function parseMixRange(rawValue) {
 function getQuizMapByRangeNumber() {
     const map = new Map();
 
-    quizListCache.forEach(q => {
+    state.quizListCache.forEach(q => {
         if (q.rangeNumber !== null && q.rangeNumber !== undefined && q.rangeNumber !== '') {
             map.set(Number(q.rangeNumber), q);
         }
@@ -576,11 +572,11 @@ async function loadMixedQuestionsFromInput(rawValue) {
 }
 
 async function applyLoadedQuestions(newQuestions) {
-    questions = newQuestions;
-    questionQueue = [...questions];
+    state.questions = newQuestions;
+    state.questionQueue = [...state.questions];
 
     if (document.getElementById('shuffleQuestions').checked) {
-        shuffleArray(questionQueue);
+        shuffleArray(state.questionQueue);
     }
 
     resetModeState();
@@ -593,30 +589,30 @@ function normalizeFolderName(value) {
 }
 
 function resetQuizSelector() {
-    quizSelector.innerHTML = '<option value="">Choose quiz</option>';
-    quizSelector.value = '';
-    quizSelector.disabled = true;
+    elements.quizSelector.innerHTML = '<option value="">Choose quiz</option>';
+    elements.quizSelector.value = '';
+    elements.quizSelector.disabled = true;
 }
 
 function renderSelectionPrompt(message = 'Choose a folder and a quiz.') {
     clearQuestionUI();
-    currentQuestionType = '';
+    state.currentQuestionType = '';
     updateViewportClasses();
 
-    questionTextEl.style.display = 'block';
-    questionTextEl.innerText = message;
-    optionsContainer.style.display = 'none';
-    imageContainer.style.display = '';
-    questionImage.style.display = 'none';
-    questionImage.src = '';
+    elements.questionTextEl.style.display = 'block';
+    elements.questionTextEl.innerText = message;
+    elements.optionsContainer.style.display = 'none';
+    elements.imageContainer.style.display = '';
+    elements.questionImage.style.display = 'none';
+    elements.questionImage.src = '';
 
     clearFeedback();
     updateProgress();
 }
 
 function clearActiveQuizSelection(message = 'Choose a folder and a quiz.') {
-    questions = [];
-    questionQueue = [];
+    state.questions = [];
+    state.questionQueue = [];
     resetModeState();
     updateSettingsAvailability();
     renderSelectionPrompt(message);
@@ -626,7 +622,7 @@ function getFolderNames() {
     const seen = new Set();
     const folders = [];
 
-    quizListCache.forEach(q => {
+    state.quizListCache.forEach(q => {
         if (!seen.has(q.folder)) {
             seen.add(q.folder);
             folders.push(q.folder);
@@ -638,7 +634,7 @@ function getFolderNames() {
 
 // ================= LOAD QUIZ LIST =================
 async function loadQuizList() {
-    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=Config`);
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?sheet=Config`);
     const text = await res.text();
     const json = parseGoogleSheetResponse(text);
 
@@ -652,20 +648,20 @@ async function loadQuizList() {
 
 // ================= DROPDOWNS =================
 async function populateFolderDropdown() {
-    quizListCache = await loadQuizList();
-    folderSelector.innerHTML = '<option value="">Choose folder</option>';
+    state.quizListCache = await loadQuizList();
+    elements.folderSelector.innerHTML = '<option value="">Choose folder</option>';
 
     getFolderNames().forEach(folderName => {
         const opt = document.createElement('option');
         opt.value = folderName;
         opt.innerText = folderName;
-        folderSelector.appendChild(opt);
+        elements.folderSelector.appendChild(opt);
     });
 
-    folderSelector.value = '';
+    elements.folderSelector.value = '';
     resetQuizSelector();
 
-    return quizListCache;
+    return state.quizListCache;
 }
 
 function populateQuizDropdown(folderName) {
@@ -675,16 +671,16 @@ function populateQuizDropdown(folderName) {
         return [];
     }
 
-    const quizzesForFolder = quizListCache.filter(q => q.folder === folderName);
+    const quizzesForFolder = state.quizListCache.filter(q => q.folder === folderName);
 
     quizzesForFolder.forEach(q => {
         const opt = document.createElement('option');
         opt.value = q.sheet;
         opt.innerText = q.name;
-        quizSelector.appendChild(opt);
+        elements.quizSelector.appendChild(opt);
     });
 
-    quizSelector.disabled = quizzesForFolder.length === 0;
+    elements.quizSelector.disabled = quizzesForFolder.length === 0;
     return quizzesForFolder;
 }
 
@@ -692,7 +688,7 @@ async function loadSelectedQuiz(sheetName) {
     const loadedQuestions = await loadQuestions(sheetName);
 
     if (!loadedQuestions.length) {
-        throw new Error('No questions found');
+        throw new Error('No state.questions found');
     }
 
     await applyLoadedQuestions(loadedQuestions);
@@ -700,7 +696,7 @@ async function loadSelectedQuiz(sheetName) {
 
 // ================= LOAD QUESTIONS =================
 async function loadQuestions(sheetName) {
-    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}`);
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}`);
     const text = await res.text();
     const json = parseGoogleSheetResponse(text);
     const rows = json.table.rows;
@@ -711,7 +707,7 @@ async function loadQuestions(sheetName) {
         return rows.map(r => {
             const c = r.c || [];
             return {
-                id: `q_${questionIdCounter++}`,
+                id: `q_${state.questionIdCounter++}`,
                 question: getCellValue(c[0]),
                 type: 'hierarchy',
                 options: [
@@ -751,7 +747,7 @@ async function loadQuestions(sheetName) {
         return rows.slice(1).map(r => {
             const c = r.c || [];
             return {
-                id: `q_${questionIdCounter++}`,
+                id: `q_${state.questionIdCounter++}`,
                 type: 'flashcard',
                 termText: getCellValue(c[0]),
                 definitionText: getCellValue(c[2]),
@@ -766,13 +762,13 @@ async function loadQuestions(sheetName) {
     if (type === 'classify') {
         return rows.map(r => {
             const c = r.c || [];
-            const classLabelsStartCol = 2 + (CLASSIFY_ITEM_COUNT * 2);
-            const classIdsStartCol = classLabelsStartCol + CLASSIFY_CLASS_COUNT;
-            const imageCol = classIdsStartCol + CLASSIFY_CLASS_COUNT;
+            const classLabelsStartCol = 2 + (CONFIG.classifyItemCount * 2);
+            const classIdsStartCol = classLabelsStartCol + CONFIG.classifyClassCount;
+            const imageCol = classIdsStartCol + CONFIG.classifyClassCount;
             const learningResourceCol = imageCol + 1;
             const learningResourceImageCol = imageCol + 2;
 
-            const items = Array.from({ length: CLASSIFY_ITEM_COUNT }, (_, i) => {
+            const items = Array.from({ length: CONFIG.classifyItemCount }, (_, i) => {
                 const itemCol = 2 + (i * 2);
                 const itemClassIdCol = itemCol + 1;
                 const parsedItem = parseClassifyItemValue(getCellValue(c[itemCol]));
@@ -784,13 +780,13 @@ async function loadQuestions(sheetName) {
                 };
             }).filter(Boolean);
 
-            const classifications = Array.from({ length: CLASSIFY_CLASS_COUNT }, (_, i) => ({
+            const classifications = Array.from({ length: CONFIG.classifyClassCount }, (_, i) => ({
                 label: getCellValue(c[classLabelsStartCol + i]),
                 id: normalizeClassificationId(getCellValue(c[classIdsStartCol + i]))
             })).filter(classification => classification.label && classification.id);
 
             return {
-                id: `q_${questionIdCounter++}`,
+                id: `q_${state.questionIdCounter++}`,
                 question: getCellValue(c[0]),
                 type: 'classify',
                 items,
@@ -810,7 +806,7 @@ async function loadQuestions(sheetName) {
     return rows.map(r => {
         const c = r.c || [];
         return {
-            id: `q_${questionIdCounter++}`,
+            id: `q_${state.questionIdCounter++}`,
             question: getCellValue(c[0]),
             type: 'multiple choice',
             options: [
@@ -905,7 +901,7 @@ function setClassifyInteractionEnabled(enabled) {
 
 // ================= UI RESET HELPERS =================
 function clearFeedback() {
-    const fb = progressSideFeedbackEl;
+    const fb = elements.progressSideFeedbackEl;
     if (fb) {
         fb.innerText = '';
         fb.classList.remove('correct', 'incorrect');
@@ -969,12 +965,12 @@ function clearQuestionUI() {
     removeHierarchyUI();
     removeClassifyUI();
     removeFlashcardUI();
-    questionImage.classList.remove('zoomed');
+    elements.questionImage.classList.remove('zoomed');
 }
 
 // ================= FEEDBACK HELPER =================
 function setFeedback(text, isCorrect) {
-    const fb = progressSideFeedbackEl;
+    const fb = elements.progressSideFeedbackEl;
     if (!fb) return;
 
     fb.innerText = text;
@@ -1010,15 +1006,15 @@ function applyQuestionOutcome(q, isCorrect, options = {}) {
 
 // ================= PROGRESS =================
 function updateProgress() {
-    const total = questions.length;
+    const total = state.questions.length;
     let remaining = 0;
 
     if (isRetentionMode()) {
-        remaining = retentionFinished ? 0 : (questionQueue.length - currentIndex);
+        remaining = state.retentionFinished ? 0 : (state.questionQueue.length - state.currentIndex);
     } else if (isRetryMode()) {
-        remaining = questionQueue.length;
+        remaining = state.questionQueue.length;
     } else {
-        remaining = normalFinished ? 0 : (questionQueue.length - currentIndex);
+        remaining = state.normalFinished ? 0 : (state.questionQueue.length - state.currentIndex);
     }
 
     if (remaining < 0) remaining = 0;
@@ -1027,69 +1023,69 @@ function updateProgress() {
     const completed = total - remaining;
     const percent = total > 0 ? (completed / total) * 100 : 0;
 
-    progressTextEl.innerText = isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`;
+    elements.progressTextEl.innerText = isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`;
     document.getElementById('progressFill').style.width = `${percent}%`;
 }
 
 // ================= FINISH CHECK =================
 function isQuizFinished() {
-    if (isRetentionMode()) return retentionFinished;
-    if (isRetryMode()) return questionQueue.length === 0;
-    return normalFinished;
+    if (isRetentionMode()) return state.retentionFinished;
+    if (isRetryMode()) return state.questionQueue.length === 0;
+    return state.normalFinished;
 }
 
 // ================= SHOW QUESTION =================
 function showQuestion() {
-    if (!questions.length) {
+    if (!state.questions.length) {
         renderSelectionPrompt();
         return;
     }
 
     clearQuestionUI();
-    questionAnswered = false;
-    flashcardFlipped = false;
+    state.questionAnswered = false;
+    state.flashcardFlipped = false;
 
     if (isRetentionMode()) {
-        retentionAnswerLocked = false;
+        state.retentionAnswerLocked = false;
     }
 
     if (isQuizFinished()) {
-        questionTextEl.style.display = 'block';
-        questionTextEl.innerText = 'Quiz Finished!';
-        optionsContainer.style.display = 'none';
-        imageContainer.style.display = '';
-        questionImage.style.display = 'none';
-        questionImage.src = '';
-        currentQuestionType = '';
+        elements.questionTextEl.style.display = 'block';
+        elements.questionTextEl.innerText = 'Quiz Finished!';
+        elements.optionsContainer.style.display = 'none';
+        elements.imageContainer.style.display = '';
+        elements.questionImage.style.display = 'none';
+        elements.questionImage.src = '';
+        state.currentQuestionType = '';
         updateViewportClasses();
         updateProgress();
         return;
     }
 
-    if (currentIndex < 0) currentIndex = 0;
-    if (currentIndex >= questionQueue.length) currentIndex = questionQueue.length - 1;
+    if (state.currentIndex < 0) state.currentIndex = 0;
+    if (state.currentIndex >= state.questionQueue.length) state.currentIndex = state.questionQueue.length - 1;
 
-    const q = questionQueue[currentIndex];
-    currentQuestionType = q.type || '';
+    const q = state.questionQueue[state.currentIndex];
+    state.currentQuestionType = q.type || '';
     updateViewportClasses();
-    optionsContainer.style.display = 'none';
+    elements.optionsContainer.style.display = 'none';
 
     if (q.type === 'flashcard') {
-        questionTextEl.innerText = '';
-        questionTextEl.style.display = 'none';
-        imageContainer.style.display = 'none';
-        questionImage.style.display = 'none';
-        questionImage.src = '';
+        elements.questionTextEl.innerText = '';
+        elements.questionTextEl.style.display = 'none';
+        elements.imageContainer.style.display = 'none';
+        elements.questionImage.style.display = 'none';
+        elements.questionImage.src = '';
         showFlashcard(q);
         updateProgress();
         return;
     }
 
-    questionTextEl.style.display = 'block';
-    questionTextEl.innerText = q.question;
-    imageContainer.style.display = '';
-    questionImage.style.display = q.image ? 'block' : 'none';
-    questionImage.src = q.image || '';
+    elements.questionTextEl.style.display = 'block';
+    elements.questionTextEl.innerText = q.question;
+    elements.imageContainer.style.display = '';
+    elements.questionImage.style.display = q.image ? 'block' : 'none';
+    elements.questionImage.src = q.image || '';
 
     if (q.type === 'multiple choice') {
         showMC(q);
@@ -1104,7 +1100,7 @@ function showQuestion() {
 
 // ================= MULTIPLE CHOICE =================
 function showMC(q) {
-    const container = optionsContainer;
+    const container = elements.optionsContainer;
     container.style.display = 'flex';
 
     let options = [...q.options];
@@ -1154,52 +1150,52 @@ function showMC(q) {
 
 // ================= WRONG ANSWER LOGIC =================
 function handleWrongAnswer() {
-    const q = questionQueue[currentIndex];
+    const q = state.questionQueue[state.currentIndex];
 
     if (isRetentionMode()) {
-        retentionSolvedIds.delete(q.id);
-        pendingRetentionJump = true;
-        pendingRetentionCorrect = false;
-        retentionAnswerLocked = true;
+        state.retentionSolvedIds.delete(q.id);
+        state.pendingRetentionJump = true;
+        state.pendingRetentionCorrect = false;
+        state.retentionAnswerLocked = true;
         return;
     }
 
     if (isRetryMode()) {
         const wrongQuestion = q;
 
-        questionQueue.splice(currentIndex, 1);
+        state.questionQueue.splice(state.currentIndex, 1);
 
-        let insertIndex = currentIndex + 3;
-        if (insertIndex > questionQueue.length) {
-            insertIndex = questionQueue.length;
+        let insertIndex = state.currentIndex + 3;
+        if (insertIndex > state.questionQueue.length) {
+            insertIndex = state.questionQueue.length;
         }
 
-        questionQueue.splice(insertIndex, 0, wrongQuestion);
-        pendingMasteryAdvance = true;
+        state.questionQueue.splice(insertIndex, 0, wrongQuestion);
+        state.pendingMasteryAdvance = true;
         return;
     }
 }
 
 // ================= CORRECT ANSWER LOGIC =================
 function handleCorrectAnswer() {
-    const q = questionQueue[currentIndex];
+    const q = state.questionQueue[state.currentIndex];
 
     if (isRetentionMode()) {
-        retentionSolvedIds.add(q.id);
-        pendingRetentionCorrect = true;
-        pendingRetentionJump = false;
-        retentionAnswerLocked = true;
+        state.retentionSolvedIds.add(q.id);
+        state.pendingRetentionCorrect = true;
+        state.pendingRetentionJump = false;
+        state.retentionAnswerLocked = true;
         return;
     }
 
     if (isRetryMode()) {
-        questionQueue.splice(currentIndex, 1);
+        state.questionQueue.splice(state.currentIndex, 1);
 
-        if (questionQueue.length === 0) {
-            currentIndex = 0;
+        if (state.questionQueue.length === 0) {
+            state.currentIndex = 0;
         }
 
-        pendingMasteryAdvance = true;
+        state.pendingMasteryAdvance = true;
         return;
     }
 }
@@ -1207,14 +1203,14 @@ function handleCorrectAnswer() {
 // ================= ANSWER =================
 function checkAnswer(selected, explanations) {
     if (isQuizFinished()) return;
-    if (questionAnswered) return;
-    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
-    if (isRetentionMode() && retentionAnswerLocked) return;
+    if (state.questionAnswered) return;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+    if (isRetentionMode() && state.retentionAnswerLocked) return;
 
-    questionAnswered = true;
+    state.questionAnswered = true;
     setOptionButtonsEnabled(false);
 
-    const q = questionQueue[currentIndex];
+    const q = state.questionQueue[state.currentIndex];
     const isCorrect = selected === q.correct;
 
     document.querySelectorAll('.optionBtn').forEach((btn, i) => {
@@ -1249,7 +1245,7 @@ function checkAnswer(selected, explanations) {
     applyQuestionOutcome(q, isCorrect);
 
     if (isSpeedMode()) {
-        setTimeout(nextQuestion, SPEED_DELAY);
+        setTimeout(nextQuestion, CONFIG.speedDelay);
     }
 }
 
@@ -1271,15 +1267,15 @@ function getFlashcardSideData(q, side) {
 }
 
 function toggleFlashcardFlip() {
-    if (learningResourcesOverlayOpen) return;
-    if (flashcardImageZoomOpen) return;
-    if (questionAnswered) return;
+    if (state.learningResourcesOverlayOpen) return;
+    if (state.flashcardImageZoomOpen) return;
+    if (state.questionAnswered) return;
 
-    flashcardFlipped = !flashcardFlipped;
+    state.flashcardFlipped = !state.flashcardFlipped;
 
     const card = document.getElementById('flashcardCard');
     if (card) {
-        card.classList.toggle('is-flipped', flashcardFlipped);
+        card.classList.toggle('is-flipped', state.flashcardFlipped);
     }
 }
 
@@ -1406,7 +1402,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         endTracking();
         resetCardPosition();
 
-        if (cancelled || learningResourcesOverlayOpen || flashcardImageZoomOpen || questionAnswered) {
+        if (cancelled || state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.questionAnswered) {
             clearFlashcardSwipeFeedback();
             clearSwipeBorderState();
             return;
@@ -1433,9 +1429,9 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     }
 
     card.addEventListener('pointerdown', e => {
-        if (learningResourcesOverlayOpen) return;
-        if (flashcardImageZoomOpen) return;
-        if (questionAnswered) return;
+        if (state.learningResourcesOverlayOpen) return;
+        if (state.flashcardImageZoomOpen) return;
+        if (state.questionAnswered) return;
         if (e.button !== undefined && e.button !== 0) return;
 
         tracking = true;
@@ -1456,7 +1452,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     card.addEventListener('pointermove', e => {
         if (!tracking) return;
         if (activePointerId !== null && e.pointerId !== activePointerId) return;
-        if (questionAnswered) return;
+        if (state.questionAnswered) return;
 
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
@@ -1484,23 +1480,23 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
 
 function gradeFlashcard(knewIt) {
     if (isQuizFinished()) return;
-    if (questionAnswered) return;
-    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
-    if (isRetentionMode() && retentionAnswerLocked) return;
+    if (state.questionAnswered) return;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+    if (isRetentionMode() && state.retentionAnswerLocked) return;
 
-    const q = questionQueue[currentIndex];
-    questionAnswered = true;
+    const q = state.questionQueue[state.currentIndex];
+    state.questionAnswered = true;
     setFlashcardInteractionEnabled(false);
     applyQuestionOutcome(q, knewIt);
     nextQuestion();
 }
 
 function showFlashcard(q) {
-    const frontSide = flashcardFrontMode === 'term'
+    const frontSide = state.flashcardFrontMode === 'term'
         ? getFlashcardSideData(q, 'term')
         : getFlashcardSideData(q, 'definition');
 
-    const backSide = flashcardFrontMode === 'term'
+    const backSide = state.flashcardFrontMode === 'term'
         ? getFlashcardSideData(q, 'definition')
         : getFlashcardSideData(q, 'term');
 
@@ -1511,7 +1507,7 @@ function showFlashcard(q) {
     const card = document.createElement('div');
     card.id = 'flashcardCard';
     card.className = 'flashcard-card';
-    if (flashcardFlipped) {
+    if (state.flashcardFlipped) {
         card.classList.add('is-flipped');
     }
 
@@ -1549,7 +1545,7 @@ function showFlashcard(q) {
     gradeRow.appendChild(knowBtn);
     container.appendChild(gradeRow);
 
-    questionContainer.appendChild(container);
+    elements.questionContainer.appendChild(container);
 
     enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
     setFlashcardInteractionEnabled(true);
@@ -1654,9 +1650,9 @@ function enableHierarchyDrag(container) {
 
     container.querySelectorAll('.hierarchy-item').forEach(item => {
         item.addEventListener('pointerdown', e => {
-            if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
+            if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
             if (item.dataset.dragDisabled === 'true') return;
-            if (questionAnswered) return;
+            if (state.questionAnswered) return;
             if (e.button !== undefined && e.button !== 0) return;
 
             const row = item.closest('.hierarchy-row');
@@ -1732,8 +1728,8 @@ function showHierarchy(q) {
         up.className = 'hierarchy-arrow';
         up.onclick = e => {
             e.stopPropagation();
-            if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
-            if (questionAnswered) return;
+            if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+            if (state.questionAnswered) return;
 
             const prev = row.previousElementSibling;
             if (prev && prev.querySelector('.hierarchy-item')) {
@@ -1747,8 +1743,8 @@ function showHierarchy(q) {
         down.className = 'hierarchy-arrow down-arrow';
         down.onclick = e => {
             e.stopPropagation();
-            if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
-            if (questionAnswered) return;
+            if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+            if (state.questionAnswered) return;
 
             const next = row.nextElementSibling;
             if (next && next.querySelector('.hierarchy-item')) {
@@ -1779,18 +1775,18 @@ function showHierarchy(q) {
         container.appendChild(row);
     });
 
-    questionContainer.appendChild(container);
+    elements.questionContainer.appendChild(container);
 
     const submit = document.createElement('button');
     submit.id = 'hierarchySubmit';
     submit.innerText = 'Submit';
 
     submit.onclick = () => {
-        if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
-        if (questionAnswered) return;
-        if (isRetentionMode() && retentionAnswerLocked) return;
+        if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+        if (state.questionAnswered) return;
+        if (isRetentionMode() && state.retentionAnswerLocked) return;
 
-        questionAnswered = true;
+        state.questionAnswered = true;
         setHierarchyInteractionEnabled(false);
 
         const rows = [...container.children];
@@ -1819,11 +1815,11 @@ function showHierarchy(q) {
         applyQuestionOutcome(q, allCorrect);
 
         if (isSpeedMode()) {
-            setTimeout(nextQuestion, SPEED_DELAY);
+            setTimeout(nextQuestion, CONFIG.speedDelay);
         }
     };
 
-    questionContainer.appendChild(submit);
+    elements.questionContainer.appendChild(submit);
 
     enableHierarchyDrag(container);
     setHierarchyInteractionEnabled(true);
@@ -1980,7 +1976,7 @@ function showClassify(q) {
     }
 
     function moveSelectedItemTo(classificationId) {
-        if (questionAnswered) return;
+        if (state.questionAnswered) return;
         if (!selectedItemKey) return;
 
         placements.set(selectedItemKey, normalizeClassificationId(classificationId));
@@ -1999,7 +1995,7 @@ function showClassify(q) {
         btn.className = 'classify-item';
         btn.dataset.runtimeKey = item.runtimeKey;
         btn.setAttribute('role', 'button');
-        btn.setAttribute('tabindex', questionAnswered ? '-1' : '0');
+        btn.setAttribute('tabindex', state.questionAnswered ? '-1' : '0');
         btn.setAttribute('aria-label', item.ariaLabel || 'Classify item');
 
         const content = document.createElement('div');
@@ -2047,7 +2043,7 @@ function showClassify(q) {
             btn.classList.add('selected');
         }
 
-        if (questionAnswered) {
+        if (state.questionAnswered) {
             const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
             const correctId = normalizeClassificationId(item.correctClassificationId);
 
@@ -2059,7 +2055,7 @@ function showClassify(q) {
         }
 
         btn.addEventListener('pointerdown', e => {
-            if (questionAnswered) return;
+            if (state.questionAnswered) return;
             if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
 
             cleanupDragState();
@@ -2091,7 +2087,7 @@ function showClassify(q) {
             e.stopPropagation();
             btn.blur();
 
-            if (questionAnswered) return;
+            if (state.questionAnswered) return;
             if (suppressClickRuntimeKey === item.runtimeKey) {
                 suppressClickRuntimeKey = null;
                 return;
@@ -2102,7 +2098,7 @@ function showClassify(q) {
         });
 
         btn.addEventListener('keydown', e => {
-            if (questionAnswered) return;
+            if (state.questionAnswered) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 btn.click();
@@ -2127,7 +2123,7 @@ function showClassify(q) {
             box.setAttribute('role', 'button');
             box.setAttribute('tabindex', '0');
 
-            if (!questionAnswered && selectedItemKey) {
+            if (!state.questionAnswered && selectedItemKey) {
                 box.classList.add('is-ready');
                 if (activeClassificationId === classification.id) {
                     box.classList.add('is-active');
@@ -2166,12 +2162,12 @@ function showClassify(q) {
                 bankItems.appendChild(createItemButton(item));
             });
 
-        bank.classList.toggle('is-active', !questionAnswered && !!selectedItemKey && !activeClassificationId);
-        bank.classList.toggle('is-ready', !questionAnswered && !!selectedItemKey);
+        bank.classList.toggle('is-active', !state.questionAnswered && !!selectedItemKey && !activeClassificationId);
+        bank.classList.toggle('is-ready', !state.questionAnswered && !!selectedItemKey);
     }
 
     function onDragPointerMove(e) {
-        if (!dragState || e.pointerId !== dragState.pointerId || questionAnswered) return;
+        if (!dragState || e.pointerId !== dragState.pointerId || state.questionAnswered) return;
 
         dragState.lastClientX = e.clientX;
         dragState.lastClientY = e.clientY;
@@ -2231,11 +2227,11 @@ function showClassify(q) {
             event.stopPropagation();
         }
 
-        if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
-        if (questionAnswered) return;
-        if (isRetentionMode() && retentionAnswerLocked) return;
+        if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+        if (state.questionAnswered) return;
+        if (isRetentionMode() && state.retentionAnswerLocked) return;
 
-        questionAnswered = true;
+        state.questionAnswered = true;
         selectedItemKey = null;
         cleanupDragState();
 
@@ -2250,7 +2246,7 @@ function showClassify(q) {
         applyQuestionOutcome(q, allCorrect);
 
         if (isSpeedMode()) {
-            setTimeout(nextQuestion, SPEED_DELAY);
+            setTimeout(nextQuestion, CONFIG.speedDelay);
         }
     }
 
@@ -2262,8 +2258,8 @@ function showClassify(q) {
     });
     submit.addEventListener('touchend', handleClassifySubmit, { passive: false });
 
-    questionContainer.appendChild(container);
-    questionContainer.appendChild(submit);
+    elements.questionContainer.appendChild(container);
+    elements.questionContainer.appendChild(submit);
 
     renderClassifyState();
     setClassifyInteractionEnabled(true);
@@ -2271,7 +2267,7 @@ function showClassify(q) {
 
 // ================= NAV =================
 function nextQuestion() {
-    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
 
     clearFeedback();
     clearExplanations();
@@ -2283,54 +2279,54 @@ function nextQuestion() {
     }
 
     if (isRetentionMode()) {
-        if (pendingRetentionJump) {
-            currentIndex = Math.max(0, currentIndex - 3);
-            pendingRetentionJump = false;
-            pendingRetentionCorrect = false;
-            retentionAnswerLocked = false;
+        if (state.pendingRetentionJump) {
+            state.currentIndex = Math.max(0, state.currentIndex - 3);
+            state.pendingRetentionJump = false;
+            state.pendingRetentionCorrect = false;
+            state.retentionAnswerLocked = false;
             showQuestion();
             showPendingLearningResourceIfAny();
             return;
         }
 
-        if (pendingRetentionCorrect) {
-            if (currentIndex < questionQueue.length - 1) {
-                currentIndex++;
-            } else if (retentionSolvedIds.size === questionQueue.length) {
-                retentionFinished = true;
+        if (state.pendingRetentionCorrect) {
+            if (state.currentIndex < state.questionQueue.length - 1) {
+                state.currentIndex++;
+            } else if (state.retentionSolvedIds.size === state.questionQueue.length) {
+                state.retentionFinished = true;
             }
 
-            pendingRetentionCorrect = false;
-            retentionAnswerLocked = false;
+            state.pendingRetentionCorrect = false;
+            state.retentionAnswerLocked = false;
             showQuestion();
             showPendingLearningResourceIfAny();
             return;
         }
 
-        if (currentIndex < questionQueue.length - 1) {
-            currentIndex++;
-        } else if (retentionSolvedIds.size === questionQueue.length) {
-            retentionFinished = true;
+        if (state.currentIndex < state.questionQueue.length - 1) {
+            state.currentIndex++;
+        } else if (state.retentionSolvedIds.size === state.questionQueue.length) {
+            state.retentionFinished = true;
         }
 
-        retentionAnswerLocked = false;
+        state.retentionAnswerLocked = false;
         showQuestion();
         showPendingLearningResourceIfAny();
         return;
     }
 
     if (isRetryMode()) {
-        if (questionQueue.length === 0) {
+        if (state.questionQueue.length === 0) {
             showQuestion();
             showPendingLearningResourceIfAny();
             return;
         }
 
-        if (pendingMasteryAdvance) {
-            pendingMasteryAdvance = false;
+        if (state.pendingMasteryAdvance) {
+            state.pendingMasteryAdvance = false;
 
-            if (currentIndex >= questionQueue.length) {
-                currentIndex = Math.max(0, questionQueue.length - 1);
+            if (state.currentIndex >= state.questionQueue.length) {
+                state.currentIndex = Math.max(0, state.questionQueue.length - 1);
             }
 
             showQuestion();
@@ -2338,8 +2334,8 @@ function nextQuestion() {
             return;
         }
 
-        if (currentIndex < questionQueue.length - 1) {
-            currentIndex++;
+        if (state.currentIndex < state.questionQueue.length - 1) {
+            state.currentIndex++;
         }
 
         showQuestion();
@@ -2347,10 +2343,10 @@ function nextQuestion() {
         return;
     }
 
-    if (currentIndex < questionQueue.length - 1) {
-        currentIndex++;
+    if (state.currentIndex < state.questionQueue.length - 1) {
+        state.currentIndex++;
     } else {
-        normalFinished = true;
+        state.normalFinished = true;
     }
 
     showQuestion();
@@ -2358,27 +2354,27 @@ function nextQuestion() {
 }
 
 function prevQuestion() {
-    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
 
     clearFeedback();
     clearExplanations();
     clearPendingLearningResource();
-    flashcardFlipped = false;
+    state.flashcardFlipped = false;
 
     if (isRetentionMode()) {
-        pendingRetentionJump = false;
-        pendingRetentionCorrect = false;
-        retentionAnswerLocked = false;
+        state.pendingRetentionJump = false;
+        state.pendingRetentionCorrect = false;
+        state.retentionAnswerLocked = false;
 
-        if (retentionFinished) {
-            retentionFinished = false;
-            currentIndex = Math.max(0, questionQueue.length - 1);
+        if (state.retentionFinished) {
+            state.retentionFinished = false;
+            state.currentIndex = Math.max(0, state.questionQueue.length - 1);
             showQuestion();
             return;
         }
 
-        if (currentIndex > 0) {
-            currentIndex--;
+        if (state.currentIndex > 0) {
+            state.currentIndex--;
         }
 
         showQuestion();
@@ -2386,27 +2382,27 @@ function prevQuestion() {
     }
 
     if (isRetryMode()) {
-        if (pendingMasteryAdvance) {
-            pendingMasteryAdvance = false;
+        if (state.pendingMasteryAdvance) {
+            state.pendingMasteryAdvance = false;
         }
 
-        if (currentIndex > 0) {
-            currentIndex--;
+        if (state.currentIndex > 0) {
+            state.currentIndex--;
         }
 
         showQuestion();
         return;
     }
 
-    if (normalFinished) {
-        normalFinished = false;
-        currentIndex = Math.max(0, questionQueue.length - 1);
+    if (state.normalFinished) {
+        state.normalFinished = false;
+        state.currentIndex = Math.max(0, state.questionQueue.length - 1);
         showQuestion();
         return;
     }
 
-    if (currentIndex > 0) {
-        currentIndex--;
+    if (state.currentIndex > 0) {
+        state.currentIndex--;
     }
 
     showQuestion();
@@ -2414,20 +2410,20 @@ function prevQuestion() {
 
 // ================= RESET STATE =================
 function resetModeState() {
-    currentIndex = 0;
+    state.currentIndex = 0;
 
-    pendingRetentionJump = false;
-    pendingRetentionCorrect = false;
-    retentionAnswerLocked = false;
-    retentionFinished = false;
-    retentionSolvedIds = new Set();
+    state.pendingRetentionJump = false;
+    state.pendingRetentionCorrect = false;
+    state.retentionAnswerLocked = false;
+    state.retentionFinished = false;
+    state.retentionSolvedIds = new Set();
 
-    pendingMasteryAdvance = false;
+    state.pendingMasteryAdvance = false;
 
-    normalFinished = false;
-    questionAnswered = false;
-    flashcardFlipped = false;
-    currentQuestionType = '';
+    state.normalFinished = false;
+    state.questionAnswered = false;
+    state.flashcardFlipped = false;
+    state.currentQuestionType = '';
     updateViewportClasses();
 
     clearPendingLearningResource();
@@ -2437,16 +2433,16 @@ function resetModeState() {
 
 // ================= RESTART =================
 function restartQuiz() {
-    if (!questions.length) {
+    if (!state.questions.length) {
         clearActiveQuizSelection();
         return;
     }
 
     resetModeState();
-    questionQueue = [...questions];
+    state.questionQueue = [...state.questions];
 
     if (document.getElementById('shuffleQuestions').checked) {
-        shuffleArray(questionQueue);
+        shuffleArray(state.questionQueue);
     }
 
     updateSettingsAvailability();
@@ -2454,9 +2450,9 @@ function restartQuiz() {
 }
 
 // ================= EVENTS =================
-nextBtn.onclick = nextQuestion;
-prevBtn.onclick = prevQuestion;
-restartBtn.onclick = restartQuiz;
+elements.nextBtn.onclick = nextQuestion;
+elements.prevBtn.onclick = prevQuestion;
+elements.restartBtn.onclick = restartQuiz;
 
 document.getElementById('retentionMode').onchange = e => {
     if (e.target.checked) {
@@ -2488,19 +2484,19 @@ document.getElementById('learningResourcesMode').onchange = e => {
     }
 };
 
-mixInput.addEventListener('input', () => {
+elements.mixInput.addEventListener('input', () => {
     setMixValidState(true);
 });
 
-mixInput.addEventListener('keydown', e => {
+elements.mixInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
         e.preventDefault();
-        mixGoBtn.click();
+        elements.mixGoBtn.click();
     }
 });
 
-mixGoBtn.addEventListener('click', async () => {
-    const rawValue = mixInput.value.trim();
+elements.mixGoBtn.addEventListener('click', async () => {
+    const rawValue = elements.mixInput.value.trim();
 
     if (!rawValue) {
         setMixValidState(true);
@@ -2511,7 +2507,7 @@ mixGoBtn.addEventListener('click', async () => {
         const mixedQuestions = await loadMixedQuestionsFromInput(rawValue);
 
         if (!mixedQuestions.length) {
-            throw new Error('No questions found');
+            throw new Error('No state.questions found');
         }
 
         setMixValidState(true);
@@ -2522,7 +2518,7 @@ mixGoBtn.addEventListener('click', async () => {
     }
 });
 
-folderSelector.addEventListener('change', e => {
+elements.folderSelector.addEventListener('change', e => {
     setMixValidState(true);
 
     const selectedFolder = e.target.value;
@@ -2536,17 +2532,17 @@ folderSelector.addEventListener('change', e => {
     clearActiveQuizSelection('Choose a quiz.');
 });
 
-quizSelector.addEventListener('change', async e => {
+elements.quizSelector.addEventListener('change', async e => {
     setMixValidState(true);
 
     const selectedQuiz = e.target.value;
 
     if (!selectedQuiz) {
-        clearActiveQuizSelection(folderSelector.value ? 'Choose a quiz.' : 'Choose a folder and a quiz.');
+        clearActiveQuizSelection(elements.folderSelector.value ? 'Choose a quiz.' : 'Choose a folder and a quiz.');
         return;
     }
 
-    mixInput.value = '';
+    elements.mixInput.value = '';
 
     try {
         await loadSelectedQuiz(selectedQuiz);
@@ -2556,28 +2552,28 @@ quizSelector.addEventListener('change', async e => {
     }
 });
 
-settingsBtn.addEventListener('click', e => {
+elements.settingsBtn.addEventListener('click', e => {
     e.stopPropagation();
     toggleSettingsPopup();
 });
 
-closeSettingsBtn.addEventListener('click', e => {
+elements.closeSettingsBtn.addEventListener('click', e => {
     e.stopPropagation();
     closeSettingsPopup();
 });
 
-settingsPopup.addEventListener('click', e => {
+elements.settingsPopup.addEventListener('click', e => {
     e.stopPropagation();
 });
 
-settingHelpButtons.forEach(button => {
+elements.settingHelpButtons.forEach(button => {
     button.addEventListener('click', e => {
         e.stopPropagation();
         toggleSettingHelpTooltip(button);
     });
 });
 
-settingsPopup.addEventListener('click', e => {
+elements.settingsPopup.addEventListener('click', e => {
     const clickedHelpButton = e.target.closest('.setting-help-btn');
     const clickedTooltip = e.target.closest('.setting-help-tooltip');
 
@@ -2586,75 +2582,75 @@ settingsPopup.addEventListener('click', e => {
     }
 });
 
-fullscreenBtn.addEventListener('click', () => {
+elements.fullscreenBtn.addEventListener('click', () => {
     toggleFullscreenMode();
 });
 
-closeLearningResourcesBtn.addEventListener('click', e => {
+elements.closeLearningResourcesBtn.addEventListener('click', e => {
     e.stopPropagation();
     closeLearningResourcesOverlay();
 });
 
-if (closeFlashcardImageBtn) {
-    closeFlashcardImageBtn.addEventListener('click', e => {
+if (elements.closeFlashcardImageBtn) {
+    elements.closeFlashcardImageBtn.addEventListener('click', e => {
         e.stopPropagation();
         closeFlashcardImageOverlay();
     });
 }
 
-if (flashcardImageOverlay) {
-    flashcardImageOverlay.addEventListener('click', e => {
-        if (e.target === flashcardImageOverlay) {
+if (elements.flashcardImageOverlay) {
+    elements.flashcardImageOverlay.addEventListener('click', e => {
+        if (e.target === elements.flashcardImageOverlay) {
             closeFlashcardImageOverlay();
         }
     });
 }
 
-if (termFrontBtn) {
-    termFrontBtn.addEventListener('click', () => {
-        if (flashcardFrontMode === 'term') return;
-        flashcardFrontMode = 'term';
-        flashcardFlipped = false;
+if (elements.termFrontBtn) {
+    elements.termFrontBtn.addEventListener('click', () => {
+        if (state.flashcardFrontMode === 'term') return;
+        state.flashcardFrontMode = 'term';
+        state.flashcardFlipped = false;
         updateFlashcardFrontButtonsUI();
         showQuestion();
     });
 }
 
-if (definitionFrontBtn) {
-    definitionFrontBtn.addEventListener('click', () => {
-        if (flashcardFrontMode === 'definition') return;
-        flashcardFrontMode = 'definition';
-        flashcardFlipped = false;
+if (elements.definitionFrontBtn) {
+    elements.definitionFrontBtn.addEventListener('click', () => {
+        if (state.flashcardFrontMode === 'definition') return;
+        state.flashcardFrontMode = 'definition';
+        state.flashcardFlipped = false;
         updateFlashcardFrontButtonsUI();
         showQuestion();
     });
 }
 
 document.addEventListener('click', e => {
-    if (!settingsPopup.classList.contains('hidden') && !settingsPopup.contains(e.target) && e.target !== settingsBtn) {
+    if (!elements.settingsPopup.classList.contains('hidden') && !elements.settingsPopup.contains(e.target) && e.target !== elements.settingsBtn) {
         closeSettingsPopup();
     }
 });
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-        if (flashcardImageZoomOpen) {
+        if (state.flashcardImageZoomOpen) {
             closeFlashcardImageOverlay();
             return;
         }
 
-        if (learningResourcesOverlayOpen) {
+        if (state.learningResourcesOverlayOpen) {
             closeLearningResourcesOverlay();
             return;
         }
 
-        const hasOpenHelpTooltip = settingHelpButtons.some(btn => btn.getAttribute('aria-expanded') === 'true');
+        const hasOpenHelpTooltip = elements.settingHelpButtons.some(btn => btn.getAttribute('aria-expanded') === 'true');
         if (hasOpenHelpTooltip) {
             closeAllSettingHelpTooltips();
             return;
         }
 
-        if (isAppFullscreen) {
+        if (state.isAppFullscreen) {
             exitFullscreenMode();
         }
         closeSettingsPopup();
@@ -2673,7 +2669,7 @@ window.addEventListener('orientationchange', handleViewportChange);
         const list = await populateFolderDropdown();
 
         if (!list.length) {
-            questionTextEl.innerText = 'No quizzes found.';
+            elements.questionTextEl.innerText = 'No quizzes found.';
             return;
         }
 
@@ -2681,12 +2677,13 @@ window.addEventListener('orientationchange', handleViewportChange);
         handleViewportChange();
     } catch (err) {
         console.error(err);
-        questionTextEl.innerText = 'Failed to load quiz list.';
+        elements.questionTextEl.innerText = 'Failed to load quiz list.';
     }
 })();
 
 // ================= IMAGE ZOOM =================
-questionImage.onclick = function () {
-    if (learningResourcesOverlayOpen || flashcardImageZoomOpen) return;
+elements.questionImage.onclick = function () {
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
     this.classList.toggle('zoomed');
 };
+})();
