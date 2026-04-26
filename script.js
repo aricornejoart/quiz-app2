@@ -1013,6 +1013,21 @@ function normalizeFolderName(value) {
     return normalizeSheetText(value) || 'Uncategorized';
 }
 
+function htmlToDisplayText(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+
+    const temp = document.createElement('div');
+    temp.innerHTML = raw;
+    return normalizeSheetText(temp.textContent || temp.innerText || '');
+}
+
+function getStoredTextForDisplay(plainValue, htmlValue) {
+    const plain = normalizeSheetText(plainValue);
+    if (plain) return plain;
+    return htmlToDisplayText(htmlValue);
+}
+
 function resetQuizSelector() {
     elements.quizSelector.innerHTML = '<option value="">Choose quiz</option>';
     elements.quizSelector.value = '';
@@ -1089,28 +1104,171 @@ async function loadQuizListFromGoogleSheets() {
 }
 
 async function loadQuizListFromSupabase() {
-    throw new Error('Supabase quiz loading is not implemented yet. Google Sheets remains the runtime source for this phase.');
+    if (!state.auth.client || !state.auth.user?.id) {
+        return [];
+    }
+
+    try {
+        const [{ data: folders, error: foldersError }, { data: quizzes, error: quizzesError }, { data: questionRows, error: questionsError }] = await Promise.all([
+            state.auth.client
+                .from('folders')
+                .select('id, name, sort_order')
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true }),
+            state.auth.client
+                .from('quizzes')
+                .select('id, folder_id, name, sort_order, is_archived')
+                .eq('is_archived', false)
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true }),
+            state.auth.client
+                .from('questions')
+                .select('quiz_id, question_type')
+        ]);
+
+        if (foldersError) throw foldersError;
+        if (quizzesError) throw quizzesError;
+        if (questionsError) throw questionsError;
+
+        const folderMap = new Map((folders || []).map(folder => [folder.id, folder]));
+        const quizTypeMap = new Map();
+
+        (questionRows || []).forEach(row => {
+            if (!quizTypeMap.has(row.quiz_id)) {
+                quizTypeMap.set(row.quiz_id, []);
+            }
+            quizTypeMap.get(row.quiz_id).push(row.question_type);
+        });
+
+        return (quizzes || [])
+            .filter(quiz => {
+                const types = quizTypeMap.get(quiz.id) || [];
+                return types.length > 0 && types.every(type => type === 'multiple_choice');
+            })
+            .map(quiz => {
+                const folder = folderMap.get(quiz.folder_id) || null;
+                return {
+                    id: `sb:${quiz.id}`,
+                    source: DATA_SOURCES.SUPABASE,
+                    sourceQuizId: quiz.id,
+                    folderId: quiz.folder_id || '',
+                    folder: normalizeFolderName(folder?.name),
+                    folderSortOrder: Number(folder?.sort_order ?? 0),
+                    name: normalizeSheetText(quiz.name),
+                    rangeNumber: '',
+                    sortOrder: Number(quiz.sort_order ?? 0)
+                };
+            })
+            .sort((a, b) => {
+                if (a.folderSortOrder !== b.folderSortOrder) {
+                    return a.folderSortOrder - b.folderSortOrder;
+                }
+                if (a.folder !== b.folder) {
+                    return a.folder.localeCompare(b.folder);
+                }
+                if (a.sortOrder !== b.sortOrder) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return a.name.localeCompare(b.name);
+            });
+    } catch (error) {
+        console.error('Failed to load Supabase quiz list:', error);
+        return [];
+    }
 }
 
-async function loadQuestionsFromSupabase(_quizDescriptor) {
-    throw new Error('Supabase question loading is not implemented yet. Google Sheets remains the runtime source for this phase.');
+async function loadQuestionsFromSupabase(quizDescriptor) {
+    if (!state.auth.client || !quizDescriptor?.sourceQuizId) {
+        return [];
+    }
+
+    try {
+        const { data: questionRows, error: questionsError } = await state.auth.client
+            .from('questions')
+            .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, sort_order')
+            .eq('quiz_id', quizDescriptor.sourceQuizId)
+            .eq('question_type', 'multiple_choice')
+            .order('sort_order', { ascending: true });
+
+        if (questionsError) throw questionsError;
+
+        const questionIds = (questionRows || []).map(row => row.id).filter(Boolean);
+        if (!questionIds.length) {
+            return [];
+        }
+
+        const { data: detailRows, error: detailsError } = await state.auth.client
+            .from('multiple_choice_questions')
+            .select('question_id, correct_answer, correct_explanation_html, option_1_text, option_1_explanation_html, option_2_text, option_2_explanation_html, option_3_text, option_3_explanation_html, option_4_text, option_4_explanation_html')
+            .in('question_id', questionIds);
+
+        if (detailsError) throw detailsError;
+
+        const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
+
+        return (questionRows || []).map(row => {
+            const detail = detailMap.get(row.id);
+            if (!detail) return null;
+
+            const options = [
+                normalizeSheetText(detail.option_1_text),
+                normalizeSheetText(detail.option_2_text),
+                normalizeSheetText(detail.option_3_text),
+                normalizeSheetText(detail.option_4_text)
+            ].filter(Boolean);
+
+            const explanations = [
+                getStoredTextForDisplay('', detail.option_1_explanation_html),
+                getStoredTextForDisplay('', detail.option_2_explanation_html),
+                getStoredTextForDisplay('', detail.option_3_explanation_html),
+                getStoredTextForDisplay('', detail.option_4_explanation_html)
+            ];
+
+            const correctAnswer = normalizeSheetText(detail.correct_answer);
+            const correctIndex = options.findIndex(option => option === correctAnswer);
+            if (correctIndex >= 0 && !explanations[correctIndex]) {
+                explanations[correctIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
+            }
+
+            return {
+                id: `q_${state.questionIdCounter++}`,
+                sourceQuestionId: row.id,
+                question: getStoredTextForDisplay(row.prompt_plain, row.prompt_html),
+                type: 'multiple choice',
+                options,
+                correct: correctAnswer,
+                explanations,
+                image: normalizeSheetText(row.image_url),
+                learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+            };
+        }).filter(Boolean);
+    } catch (error) {
+        console.error('Failed to load Supabase quiz questions:', error);
+        return [];
+    }
 }
 
 async function loadQuizList() {
-    if (state.activeDataSource === DATA_SOURCES.SUPABASE) {
-        return loadQuizListFromSupabase();
-    }
+    const [googleSheetsQuizzes, supabaseQuizzes] = await Promise.all([
+        loadQuizListFromGoogleSheets(),
+        loadQuizListFromSupabase()
+    ]);
 
-    return loadQuizListFromGoogleSheets();
+    return [...supabaseQuizzes, ...googleSheetsQuizzes];
 }
 
 async function loadQuestions(quizReference) {
-    if (state.activeDataSource === DATA_SOURCES.SUPABASE) {
-        return loadQuestionsFromSupabase(quizReference);
+    if (isQuizDescriptor(quizReference)) {
+        if (quizReference.source === DATA_SOURCES.SUPABASE) {
+            return loadQuestionsFromSupabase(quizReference);
+        }
+
+        return loadQuestionsFromGoogleSheets(quizReference.sheet);
     }
 
-    if (isQuizDescriptor(quizReference)) {
-        return loadQuestionsFromGoogleSheets(quizReference.sheet);
+    if (state.activeDataSource === DATA_SOURCES.SUPABASE) {
+        return loadQuestionsFromSupabase(quizReference);
     }
 
     return loadQuestionsFromGoogleSheets(quizReference);
