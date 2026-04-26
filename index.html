@@ -18,6 +18,18 @@ MODIFICATION RULES FOR THIS APP
   <meta name="apple-mobile-web-app-title" content="Study Bunny">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
 
+  <script>
+    /*
+      Frontend-only Supabase bootstrap config.
+      Replace these placeholders with your project values from Supabase Connect.
+      Use the publishable key only.
+    */
+    window.STUDY_BUNNY_SUPABASE_CONFIG = window.STUDY_BUNNY_SUPABASE_CONFIG || {
+      url: "https://bvjqreqlogkiohqslfpx.supabase.co",
+      publishableKey: "sb_publishable_sAnZN4SIRkft7_khEMGz-w_PhXlu9DZ"
+    };
+  </script>
+
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -72,6 +84,7 @@ MODIFICATION RULES FOR THIS APP
       </div>
 
       <div class="utility-controls">
+        <button id="authBtn" class="icon-btn" type="button" aria-label="Account" title="Account">👤</button>
         <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
         <button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Fullscreen" title="Fullscreen">⛶</button>
 
@@ -260,6 +273,43 @@ MODIFICATION RULES FOR THIS APP
             </div>
           </div>
         </div>
+
+        <div id="authPopup" class="auth-popup hidden" aria-hidden="true">
+          <button id="closeAuthBtn" class="close-auth-btn" type="button" aria-label="Close account">✕</button>
+
+          <div class="auth-popup-content">
+            <div class="settings-section-title">Account</div>
+            <div id="authStatus" class="auth-status">Supabase not configured yet.</div>
+            <div id="authSessionSummary" class="auth-session-summary">Signed out</div>
+
+            <div class="auth-form">
+              <label class="auth-field">
+                <span>Display name</span>
+                <input id="authDisplayName" type="text" autocomplete="name" placeholder="Optional">
+              </label>
+
+              <label class="auth-field">
+                <span>Email</span>
+                <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
+              </label>
+
+              <label class="auth-field">
+                <span>Password</span>
+                <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password">
+              </label>
+
+              <div class="auth-actions">
+                <button id="authSignInBtn" type="button" class="auth-action-btn">Sign In</button>
+                <button id="authSignUpBtn" type="button" class="auth-action-btn">Sign Up</button>
+                <button id="authSignOutBtn" type="button" class="auth-action-btn auth-secondary-btn">Sign Out</button>
+              </div>
+            </div>
+
+            <div class="auth-source-note">
+              Runtime quizzes still load from Google Sheets for now. Supabase is connected here only for auth/session groundwork.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -347,6 +397,7 @@ MODIFICATION RULES FOR THIS APP
   </div>
 </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="script.js"></script>
 </body>
 </html>

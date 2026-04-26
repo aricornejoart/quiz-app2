@@ -21,8 +21,18 @@ MODIFICATION RULES FOR THIS APP
         sheetId: '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E',
         speedDelay: 300,
         classifyItemCount: 20,
-        classifyClassCount: 20
+        classifyClassCount: 20,
+        dataSource: 'google_sheets',
+        supabase: {
+            url: String(window.STUDY_BUNNY_SUPABASE_CONFIG?.url || '').trim(),
+            publishableKey: String(window.STUDY_BUNNY_SUPABASE_CONFIG?.publishableKey || '').trim()
+        }
     };
+
+    const DATA_SOURCES = Object.freeze({
+        GOOGLE_SHEETS: 'google_sheets',
+        SUPABASE: 'supabase'
+    });
 
     const state = {
         questions: [],
@@ -63,7 +73,17 @@ MODIFICATION RULES FOR THIS APP
         flashcardFrontMode: 'term',
 
         flashcardImageZoomOpen: false,
-        currentQuestionType: ''
+        currentQuestionType: '',
+        activeDataSource: CONFIG.dataSource,
+        auth: {
+            client: null,
+            configured: false,
+            initialized: false,
+            session: null,
+            user: null,
+            profile: null,
+            lastError: ''
+        }
     };
 
     const elements = {
@@ -71,6 +91,17 @@ MODIFICATION RULES FOR THIS APP
         quizSelector: document.getElementById('quizSelector'),
         mixInput: document.getElementById('mixInput'),
         mixGoBtn: document.getElementById('mixGoBtn'),
+        authBtn: document.getElementById('authBtn'),
+        authPopup: document.getElementById('authPopup'),
+        closeAuthBtn: document.getElementById('closeAuthBtn'),
+        authStatus: document.getElementById('authStatus'),
+        authSessionSummary: document.getElementById('authSessionSummary'),
+        authDisplayName: document.getElementById('authDisplayName'),
+        authEmail: document.getElementById('authEmail'),
+        authPassword: document.getElementById('authPassword'),
+        authSignInBtn: document.getElementById('authSignInBtn'),
+        authSignUpBtn: document.getElementById('authSignUpBtn'),
+        authSignOutBtn: document.getElementById('authSignOutBtn'),
         settingsBtn: document.getElementById('settingsBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
         settingsPopup: document.getElementById('settingsPopup'),
@@ -106,6 +137,268 @@ MODIFICATION RULES FOR THIS APP
 
         settingHelpButtons: Array.from(document.querySelectorAll('.setting-help-btn'))
     };
+
+    // ================= SUPABASE FRONTEND BOOTSTRAP =================
+    // This phase intentionally preserves the current Google Sheets quiz runtime.
+    // Supabase is connected here for account/session groundwork only.
+    function getSupabaseConfig() {
+        const url = CONFIG.supabase.url;
+        const publishableKey = CONFIG.supabase.publishableKey;
+        const hasPlaceholder = value => !value || /PASTE_YOUR_SUPABASE_/i.test(value);
+
+        return {
+            url,
+            publishableKey,
+            isConfigured: !hasPlaceholder(url) && !hasPlaceholder(publishableKey)
+        };
+    }
+
+    function getSupabaseClientFactory() {
+        return window.supabase?.createClient || null;
+    }
+
+    function setAuthStatus(message, variant = 'neutral') {
+        if (!elements.authStatus) return;
+        elements.authStatus.textContent = message;
+        elements.authStatus.classList.remove('is-error', 'is-success');
+
+        if (variant === 'error') {
+            elements.authStatus.classList.add('is-error');
+        } else if (variant === 'success') {
+            elements.authStatus.classList.add('is-success');
+        }
+    }
+
+    function getUserDisplayName() {
+        const profileName = normalizeSheetText(state.auth.profile?.display_name);
+        if (profileName) return profileName;
+
+        const metadataName = normalizeSheetText(state.auth.user?.user_metadata?.display_name);
+        if (metadataName) return metadataName;
+
+        const email = normalizeSheetText(state.auth.user?.email);
+        return email || 'Signed in';
+    }
+
+    function updateAuthUI() {
+        const configured = state.auth.configured;
+        const signedIn = !!state.auth.user;
+
+        if (elements.authSessionSummary) {
+            elements.authSessionSummary.textContent = signedIn
+                ? `Signed in as ${getUserDisplayName()}`
+                : 'Signed out';
+        }
+
+        if (elements.authBtn) {
+            elements.authBtn.title = signedIn ? `Account (${getUserDisplayName()})` : 'Account';
+            elements.authBtn.setAttribute('aria-label', elements.authBtn.title);
+        }
+
+        if (!configured) {
+            setAuthStatus('Paste your Supabase URL and publishable key into index.html, then reload.', 'error');
+        } else if (signedIn) {
+            setAuthStatus('Supabase connected. Session is active.', 'success');
+        } else if (state.auth.initialized) {
+            setAuthStatus('Supabase connected. Sign in or create an account to continue setup.');
+        }
+
+        if (elements.authDisplayName && signedIn && !elements.authDisplayName.value) {
+            elements.authDisplayName.value = getUserDisplayName();
+        }
+
+        [elements.authEmail, elements.authPassword, elements.authDisplayName, elements.authSignInBtn, elements.authSignUpBtn].forEach(el => {
+            if (!el) return;
+            el.disabled = !configured;
+        });
+
+        if (elements.authSignOutBtn) {
+            elements.authSignOutBtn.disabled = !configured || !signedIn;
+        }
+    }
+
+    function openAuthPopup() {
+        if (!elements.authPopup) return;
+        closeSettingsPopup();
+        elements.authPopup.classList.remove('hidden');
+        elements.authPopup.setAttribute('aria-hidden', 'false');
+        if (elements.authBtn) {
+            elements.authBtn.classList.add('active');
+        }
+        updateAuthUI();
+    }
+
+    function closeAuthPopup() {
+        if (!elements.authPopup) return;
+        elements.authPopup.classList.add('hidden');
+        elements.authPopup.setAttribute('aria-hidden', 'true');
+        if (elements.authBtn) {
+            elements.authBtn.classList.remove('active');
+        }
+    }
+
+    function toggleAuthPopup() {
+        if (!elements.authPopup) return;
+        if (elements.authPopup.classList.contains('hidden')) {
+            openAuthPopup();
+        } else {
+            closeAuthPopup();
+        }
+    }
+
+    async function loadAuthProfile(userId) {
+        if (!state.auth.client || !userId) {
+            state.auth.profile = null;
+            return null;
+        }
+
+        const { data, error } = await state.auth.client
+            .from('profiles')
+            .select('id, email, display_name')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (error) {
+            console.error(error);
+            state.auth.profile = null;
+            return null;
+        }
+
+        state.auth.profile = data || null;
+        return data || null;
+    }
+
+    async function syncAuthFromSession(session) {
+        state.auth.session = session || null;
+        state.auth.user = session?.user || null;
+
+        if (state.auth.user?.id) {
+            await loadAuthProfile(state.auth.user.id);
+        } else {
+            state.auth.profile = null;
+        }
+
+        updateAuthUI();
+    }
+
+    async function bootstrapSupabase() {
+        const { url, publishableKey, isConfigured } = getSupabaseConfig();
+        state.auth.configured = isConfigured;
+
+        if (!isConfigured) {
+            updateAuthUI();
+            return;
+        }
+
+        const factory = getSupabaseClientFactory();
+        if (!factory) {
+            setAuthStatus('Supabase client library failed to load. Check your connection and reload.', 'error');
+            updateAuthUI();
+            return;
+        }
+
+        try {
+            state.auth.client = factory(url, publishableKey);
+            state.auth.initialized = true;
+
+            state.auth.client.auth.onAuthStateChange((_event, session) => {
+                syncAuthFromSession(session).catch(err => console.error(err));
+            });
+
+            const { data, error } = await state.auth.client.auth.getSession();
+            if (error) {
+                throw error;
+            }
+
+            await syncAuthFromSession(data.session);
+        } catch (error) {
+            console.error(error);
+            state.auth.client = null;
+            state.auth.initialized = false;
+            setAuthStatus('Failed to initialize Supabase. Double-check your URL and publishable key.', 'error');
+            updateAuthUI();
+        }
+    }
+
+    function getAuthFormValues() {
+        return {
+            email: normalizeSheetText(elements.authEmail?.value).toLowerCase(),
+            password: String(elements.authPassword?.value || ''),
+            displayName: normalizeSheetText(elements.authDisplayName?.value)
+        };
+    }
+
+    async function handleAuthSignUp() {
+        if (!state.auth.client) return;
+
+        const { email, password, displayName } = getAuthFormValues();
+        if (!email || !password) {
+            setAuthStatus('Enter an email and password to create an account.', 'error');
+            return;
+        }
+
+        setAuthStatus('Creating account...');
+
+        const { error } = await state.auth.client.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    display_name: displayName
+                }
+            }
+        });
+
+        if (error) {
+            setAuthStatus(error.message || 'Could not create the account.', 'error');
+            return;
+        }
+
+        setAuthStatus('Account created. You can now sign in.', 'success');
+        updateAuthUI();
+    }
+
+    async function handleAuthSignIn() {
+        if (!state.auth.client) return;
+
+        const { email, password } = getAuthFormValues();
+        if (!email || !password) {
+            setAuthStatus('Enter your email and password to sign in.', 'error');
+            return;
+        }
+
+        setAuthStatus('Signing in...');
+
+        const { error } = await state.auth.client.auth.signInWithPassword({
+            email,
+            password
+        });
+
+        if (error) {
+            setAuthStatus(error.message || 'Could not sign in.', 'error');
+            return;
+        }
+
+        setAuthStatus('Signed in successfully.', 'success');
+        if (elements.authPassword) {
+            elements.authPassword.value = '';
+        }
+    }
+
+    async function handleAuthSignOut() {
+        if (!state.auth.client) return;
+        setAuthStatus('Signing out...');
+
+        const { error } = await state.auth.client.auth.signOut();
+        if (error) {
+            setAuthStatus(error.message || 'Could not sign out.', 'error');
+            return;
+        }
+
+        state.auth.profile = null;
+        setAuthStatus('Signed out.', 'success');
+        updateAuthUI();
+    }
 
 function parseGoogleSheetResponse(text) {
     const start = text.indexOf('{');
@@ -746,7 +1039,7 @@ function getFolderNames() {
 }
 
 // ================= LOAD QUIZ LIST =================
-async function loadQuizList() {
+async function loadQuizListFromGoogleSheets() {
     const res = await fetch(`https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?sheet=Config`);
     const text = await res.text();
     const json = parseGoogleSheetResponse(text);
@@ -757,6 +1050,30 @@ async function loadQuizList() {
         rangeNumber: getCellValue(r.c?.[2]),
         folder: normalizeFolderName(getCellValue(r.c?.[3]))
     })).filter(q => q.sheet && q.name);
+}
+
+async function loadQuizListFromSupabase() {
+    throw new Error('Supabase quiz loading is not implemented yet. Google Sheets remains the runtime source for this phase.');
+}
+
+async function loadQuestionsFromSupabase(_quizId) {
+    throw new Error('Supabase question loading is not implemented yet. Google Sheets remains the runtime source for this phase.');
+}
+
+async function loadQuizList() {
+    if (state.activeDataSource === DATA_SOURCES.SUPABASE) {
+        return loadQuizListFromSupabase();
+    }
+
+    return loadQuizListFromGoogleSheets();
+}
+
+async function loadQuestions(sheetName) {
+    if (state.activeDataSource === DATA_SOURCES.SUPABASE) {
+        return loadQuestionsFromSupabase(sheetName);
+    }
+
+    return loadQuestionsFromGoogleSheets(sheetName);
 }
 
 // ================= DROPDOWNS =================
@@ -808,7 +1125,7 @@ async function loadSelectedQuiz(sheetName) {
 }
 
 // ================= LOAD QUESTIONS =================
-async function loadQuestions(sheetName) {
+async function loadQuestionsFromGoogleSheets(sheetName) {
     const res = await fetch(`https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}`);
     const text = await res.text();
     const json = parseGoogleSheetResponse(text);
@@ -2907,6 +3224,47 @@ elements.settingsPopup.addEventListener('click', e => {
     }
 });
 
+if (elements.authBtn) {
+    elements.authBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleAuthPopup();
+    });
+}
+
+if (elements.closeAuthBtn) {
+    elements.closeAuthBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        closeAuthPopup();
+    });
+}
+
+if (elements.authSignInBtn) {
+    elements.authSignInBtn.addEventListener('click', () => {
+        handleAuthSignIn().catch(err => {
+            console.error(err);
+            setAuthStatus('Sign in failed.', 'error');
+        });
+    });
+}
+
+if (elements.authSignUpBtn) {
+    elements.authSignUpBtn.addEventListener('click', () => {
+        handleAuthSignUp().catch(err => {
+            console.error(err);
+            setAuthStatus('Sign up failed.', 'error');
+        });
+    });
+}
+
+if (elements.authSignOutBtn) {
+    elements.authSignOutBtn.addEventListener('click', () => {
+        handleAuthSignOut().catch(err => {
+            console.error(err);
+            setAuthStatus('Sign out failed.', 'error');
+        });
+    });
+}
+
 elements.fullscreenBtn.addEventListener('click', () => {
     toggleFullscreenMode();
 });
@@ -2955,6 +3313,10 @@ document.addEventListener('click', e => {
     if (!elements.settingsPopup.classList.contains('hidden') && !elements.settingsPopup.contains(e.target) && e.target !== elements.settingsBtn) {
         closeSettingsPopup();
     }
+
+    if (elements.authPopup && !elements.authPopup.classList.contains('hidden') && !elements.authPopup.contains(e.target) && e.target !== elements.authBtn) {
+        closeAuthPopup();
+    }
 });
 
 document.addEventListener('keydown', e => {
@@ -2975,6 +3337,11 @@ document.addEventListener('keydown', e => {
             return;
         }
 
+        if (elements.authPopup && !elements.authPopup.classList.contains('hidden')) {
+            closeAuthPopup();
+            return;
+        }
+
         if (state.isAppFullscreen) {
             exitFullscreenMode();
         }
@@ -2990,6 +3357,8 @@ window.addEventListener('orientationchange', handleViewportChange);
     try {
         applyResponsiveControlText();
         updateViewportClasses();
+        updateAuthUI();
+        await bootstrapSupabase();
 
         const list = await populateFolderDropdown();
 
