@@ -40,6 +40,19 @@ MODIFICATION RULES FOR THIS APP
 
         pendingMasteryAdvance: false,
 
+        masteryCheckPendingJump: false,
+        masteryCheckPendingAdvance: false,
+        masteryCheckPendingCheckpointStart: false,
+        masteryCheckPendingCheckpointComplete: false,
+        masteryCheckInCheckpoint: false,
+        masteryCheckFinished: false,
+        masteryCheckSegmentQuestions: [],
+        masteryCheckSegmentIds: new Set(),
+        masteryCheckCheckpointSolvedIds: new Set(),
+        masteryCheckResumeQueue: [],
+        masteryCheckResumeIndex: 0,
+        masteryCheckMasteredIds: new Set(),
+
         normalFinished: false,
         questionAnswered: false,
 
@@ -166,6 +179,10 @@ function isRetryMode() {
     return document.getElementById('masteryMode').checked;
 }
 
+function isMasteryCheckMode() {
+    return document.getElementById('masteryCheckMode').checked;
+}
+
 function isSpeedMode() {
     return document.getElementById('rapidMode').checked;
 }
@@ -175,11 +192,17 @@ function isLearningResourcesMode() {
 }
 
 function isNormalMode() {
-    return !isRetentionMode() && !isRetryMode();
+    return !isRetentionMode() && !isRetryMode() && !isMasteryCheckMode();
+}
+
+function isStructuredMode() {
+    return isRetentionMode() || isRetryMode() || isMasteryCheckMode();
 }
 
 function canUseLearningResources() {
-    return isLearningResourcesMode() && !isSpeedMode() && (isRetentionMode() || isRetryMode());
+    if (!isLearningResourcesMode()) return false;
+    if (isMasteryCheckMode()) return true;
+    return !isSpeedMode() && (isRetentionMode() || isRetryMode());
 }
 
 function hasFlashcardsInDeck() {
@@ -189,15 +212,21 @@ function hasFlashcardsInDeck() {
 function updateLearningResourcesAvailability() {
     const learningResourcesCheckbox = document.getElementById('learningResourcesMode');
     const learningResourcesSetting = document.getElementById('learningResourcesModeSetting');
-    const learningResourcesAllowed = isRetentionMode() || isRetryMode();
+    const learningResourcesAllowed = isRetentionMode() || isRetryMode() || isMasteryCheckMode();
+    const learningResourcesDisabledForCompatibility = !learningResourcesAllowed || (isSpeedMode() && !isMasteryCheckMode());
 
-    learningResourcesCheckbox.disabled = !learningResourcesAllowed;
+    learningResourcesCheckbox.disabled = learningResourcesDisabledForCompatibility;
 
     if (learningResourcesSetting) {
-        learningResourcesSetting.classList.toggle('disabled-setting', !learningResourcesAllowed);
+        learningResourcesSetting.classList.toggle('disabled-setting', learningResourcesDisabledForCompatibility);
     }
 
     if (!learningResourcesAllowed) {
+        learningResourcesCheckbox.checked = false;
+        clearPendingLearningResource();
+    }
+
+    if (isSpeedMode() && !isMasteryCheckMode() && learningResourcesCheckbox.checked) {
         learningResourcesCheckbox.checked = false;
         clearPendingLearningResource();
     }
@@ -233,11 +262,79 @@ function updateFlashcardFrontButtonsUI() {
     elements.definitionFrontBtn.classList.toggle('active', state.flashcardFrontMode === 'definition');
 }
 
+function setSettingDisabled(settingId, checkboxId, disabled) {
+    const card = document.getElementById(settingId);
+    const checkbox = document.getElementById(checkboxId);
+
+    if (checkbox) {
+        checkbox.disabled = disabled;
+    }
+
+    if (card) {
+        card.classList.toggle('disabled-setting', disabled);
+    }
+}
+
+function updateExclusiveModeAvailability() {
+    const retentionActive = isRetentionMode();
+    const masteryActive = isRetryMode();
+    const masteryCheckActive = isMasteryCheckMode();
+
+    setSettingDisabled('retentionModeSetting', 'retentionMode', masteryActive || masteryCheckActive);
+    setSettingDisabled('masteryModeSetting', 'masteryMode', retentionActive || masteryCheckActive);
+    setSettingDisabled('masteryCheckModeSetting', 'masteryCheckMode', retentionActive || masteryActive);
+}
+
+function updateRapidLearningResourcesCompatibility() {
+    const rapidSetting = document.getElementById('rapidModeSetting');
+    const rapidCheckbox = document.getElementById('rapidMode');
+    const learningResourcesCheckbox = document.getElementById('learningResourcesMode');
+
+    const allowRapidAndLearningTogether = isMasteryCheckMode();
+    const rapidDisabled = !allowRapidAndLearningTogether && !!learningResourcesCheckbox?.checked;
+
+    if (rapidCheckbox) {
+        rapidCheckbox.disabled = rapidDisabled;
+    }
+
+    if (rapidSetting) {
+        rapidSetting.classList.toggle('disabled-setting', rapidDisabled);
+    }
+}
+
+function setNavButtonEnabled(button, enabled) {
+    if (!button) return;
+    button.disabled = !enabled;
+    button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+}
+
+function updateNavigationButtons() {
+    const hasQuestions = state.questions.length > 0;
+
+    if (!hasQuestions || state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || isQuizFinished()) {
+        setNavButtonEnabled(elements.prevBtn, false);
+        setNavButtonEnabled(elements.nextBtn, false);
+        return;
+    }
+
+    if (isStructuredMode()) {
+        setNavButtonEnabled(elements.prevBtn, false);
+        setNavButtonEnabled(elements.nextBtn, state.questionAnswered);
+        return;
+    }
+
+    setNavButtonEnabled(elements.prevBtn, true);
+    setNavButtonEnabled(elements.nextBtn, true);
+}
+
 function updateSettingsAvailability() {
+    updateExclusiveModeAvailability();
     updateLearningResourcesAvailability();
+    updateRapidLearningResourcesCompatibility();
     updateShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
+    updateNavigationButtons();
 }
 
 function syncBodyScrollLock() {
@@ -437,6 +534,7 @@ function openLearningResourcesOverlay(hintData) {
     document.body.classList.add('hint-open');
     state.learningResourcesOverlayOpen = true;
     syncBodyScrollLock();
+    updateNavigationButtons();
 }
 
 function closeLearningResourcesOverlay() {
@@ -451,6 +549,7 @@ function closeLearningResourcesOverlay() {
     state.learningResourcesOverlayOpen = false;
     clearPendingLearningResource();
     syncBodyScrollLock();
+    updateNavigationButtons();
 }
 
 function showPendingLearningResourceIfAny() {
@@ -474,6 +573,7 @@ function openFlashcardImageOverlay(src, alt = 'Flashcard image') {
     elements.flashcardImageOverlay.setAttribute('aria-hidden', 'false');
     state.flashcardImageZoomOpen = true;
     syncBodyScrollLock();
+    updateNavigationButtons();
 }
 
 function closeFlashcardImageOverlay() {
@@ -485,6 +585,7 @@ function closeFlashcardImageOverlay() {
     elements.flashcardZoomImage.alt = 'Flashcard image';
     state.flashcardImageZoomOpen = false;
     syncBodyScrollLock();
+    updateNavigationButtons();
 }
 
 // ================= MIX HELPERS =================
@@ -619,6 +720,7 @@ function renderSelectionPrompt(message = 'Choose a folder and a quiz.') {
 
     clearFeedback();
     updateProgress();
+    updateNavigationButtons();
 }
 
 function clearActiveQuizSelection(message = 'Choose a folder and a quiz.') {
@@ -979,6 +1081,75 @@ function clearQuestionUI() {
     elements.questionImage.classList.remove('zoomed');
 }
 
+function getMasteryCheckRemainingCount() {
+    if (!isMasteryCheckMode()) return 0;
+    if (state.masteryCheckFinished) return 0;
+
+    if (state.masteryCheckInCheckpoint) {
+        return Math.max(0, state.masteryCheckResumeQueue.length - state.currentIndex);
+    }
+
+    return Math.max(0, state.questionQueue.length - state.currentIndex);
+}
+
+function resetMasteryCheckState() {
+    state.masteryCheckPendingJump = false;
+    state.masteryCheckPendingAdvance = false;
+    state.masteryCheckPendingCheckpointStart = false;
+    state.masteryCheckPendingCheckpointComplete = false;
+    state.masteryCheckInCheckpoint = false;
+    state.masteryCheckFinished = false;
+    state.masteryCheckSegmentQuestions = [];
+    state.masteryCheckSegmentIds = new Set();
+    state.masteryCheckCheckpointSolvedIds = new Set();
+    state.masteryCheckResumeQueue = [];
+    state.masteryCheckResumeIndex = 0;
+    state.masteryCheckMasteredIds = new Set();
+}
+
+function startMasteryCheckCheckpoint() {
+    const checkpointQuestions = [...state.masteryCheckSegmentQuestions];
+    const checkpointIds = new Set(checkpointQuestions.map(question => question.id));
+
+    state.masteryCheckResumeQueue = [...state.questionQueue];
+    state.masteryCheckResumeIndex = state.questionQueue
+        .slice(0, state.currentIndex + 1)
+        .filter(question => !checkpointIds.has(question.id)).length;
+
+    state.questionQueue = checkpointQuestions;
+    state.currentIndex = 0;
+    state.masteryCheckInCheckpoint = true;
+    state.masteryCheckCheckpointSolvedIds = new Set();
+    state.masteryCheckPendingCheckpointStart = false;
+    state.masteryCheckPendingCheckpointComplete = false;
+    state.masteryCheckPendingAdvance = false;
+    state.masteryCheckPendingJump = false;
+    state.masteryCheckSegmentQuestions = [];
+    state.masteryCheckSegmentIds = new Set();
+}
+
+function finishMasteryCheckCheckpoint() {
+    const masteredIds = new Set(state.questionQueue.map(question => question.id));
+
+    masteredIds.forEach(id => state.masteryCheckMasteredIds.add(id));
+
+    const filteredQueue = state.masteryCheckResumeQueue.filter(question => !masteredIds.has(question.id));
+
+    state.questionQueue = filteredQueue;
+    state.currentIndex = filteredQueue.length ? Math.min(state.masteryCheckResumeIndex, filteredQueue.length - 1) : 0;
+    state.masteryCheckInCheckpoint = false;
+    state.masteryCheckCheckpointSolvedIds = new Set();
+    state.masteryCheckResumeQueue = [];
+    state.masteryCheckResumeIndex = 0;
+    state.masteryCheckPendingCheckpointComplete = false;
+    state.masteryCheckPendingAdvance = false;
+    state.masteryCheckPendingJump = false;
+
+    if (filteredQueue.length === 0) {
+        state.masteryCheckFinished = true;
+    }
+}
+
 // ================= FEEDBACK HELPER =================
 function setFeedback(text, isCorrect) {
     const fb = elements.progressSideFeedbackEl;
@@ -1013,35 +1184,73 @@ function applyQuestionOutcome(q, isCorrect, options = {}) {
     if (isRetryMode()) {
         updateProgress();
     }
+
+    updateNavigationButtons();
 }
 
 // ================= PROGRESS =================
+function getMasteryCheckCompletedForProgressBar(total) {
+    if (!isMasteryCheckMode()) return 0;
+    if (state.masteryCheckFinished) return total;
+
+    const masteredCount = state.masteryCheckMasteredIds.size;
+    return masteredCount + state.currentIndex;
+}
+
 function updateProgress() {
     const total = state.questions.length;
+    const progressFillEl = document.getElementById('progressFill');
     let remaining = 0;
+    let completed = 0;
+    let percent = 0;
+    let useReviewProgressAppearance = false;
 
     if (isRetentionMode()) {
         remaining = state.retentionFinished ? 0 : (state.questionQueue.length - state.currentIndex);
+        completed = total - remaining;
+        percent = total > 0 ? (completed / total) * 100 : 0;
     } else if (isRetryMode()) {
         remaining = state.questionQueue.length;
+        completed = total - remaining;
+        percent = total > 0 ? (completed / total) * 100 : 0;
+    } else if (isMasteryCheckMode()) {
+        remaining = state.masteryCheckFinished ? 0 : getMasteryCheckRemainingCount();
+
+        if (state.masteryCheckInCheckpoint) {
+            const checkpointTotal = state.questionQueue.length;
+            completed = state.currentIndex;
+            percent = checkpointTotal > 0 ? (completed / checkpointTotal) * 100 : 0;
+            useReviewProgressAppearance = true;
+        } else {
+            completed = getMasteryCheckCompletedForProgressBar(total);
+            percent = total > 0 ? (completed / total) * 100 : 0;
+        }
     } else {
         remaining = state.normalFinished ? 0 : (state.questionQueue.length - state.currentIndex);
+        completed = total - remaining;
+        percent = total > 0 ? (completed / total) * 100 : 0;
     }
 
     if (remaining < 0) remaining = 0;
     if (remaining > total) remaining = total;
-
-    const completed = total - remaining;
-    const percent = total > 0 ? (completed / total) * 100 : 0;
+    if (completed < 0) completed = 0;
+    if (completed > total) completed = total;
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
 
     elements.progressTextEl.innerText = isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`;
-    document.getElementById('progressFill').style.width = `${percent}%`;
+
+    if (progressFillEl) {
+        progressFillEl.style.width = `${percent}%`;
+        progressFillEl.style.background = useReviewProgressAppearance ? '#f4c542' : '';
+    }
 }
 
 // ================= FINISH CHECK =================
 function isQuizFinished() {
     if (isRetentionMode()) return state.retentionFinished;
     if (isRetryMode()) return state.questionQueue.length === 0;
+    if (isMasteryCheckMode()) return state.masteryCheckFinished;
     return state.normalFinished;
 }
 
@@ -1070,6 +1279,7 @@ function showQuestion() {
         state.currentQuestionType = '';
         updateViewportClasses();
         updateProgress();
+        updateNavigationButtons();
         return;
     }
 
@@ -1089,6 +1299,7 @@ function showQuestion() {
         elements.questionImage.src = '';
         showFlashcard(q);
         updateProgress();
+        updateNavigationButtons();
         return;
     }
 
@@ -1107,6 +1318,7 @@ function showQuestion() {
     }
 
     updateProgress();
+    updateNavigationButtons();
 }
 
 // ================= MULTIPLE CHOICE =================
@@ -1185,6 +1397,13 @@ function handleWrongAnswer() {
         state.pendingMasteryAdvance = true;
         return;
     }
+
+    if (isMasteryCheckMode()) {
+        state.masteryCheckPendingJump = true;
+        state.masteryCheckPendingAdvance = false;
+        state.masteryCheckPendingCheckpointComplete = false;
+        return;
+    }
 }
 
 // ================= CORRECT ANSWER LOGIC =================
@@ -1207,6 +1426,40 @@ function handleCorrectAnswer() {
         }
 
         state.pendingMasteryAdvance = true;
+        return;
+    }
+
+    if (isMasteryCheckMode()) {
+        state.masteryCheckPendingJump = false;
+
+        if (state.masteryCheckInCheckpoint) {
+            state.masteryCheckCheckpointSolvedIds.add(q.id);
+
+            if (state.masteryCheckCheckpointSolvedIds.size === state.questionQueue.length) {
+                state.masteryCheckPendingCheckpointComplete = true;
+                state.masteryCheckPendingAdvance = false;
+            } else {
+                state.masteryCheckPendingAdvance = true;
+            }
+
+            return;
+        }
+
+        if (!state.masteryCheckSegmentIds.has(q.id) && !state.masteryCheckMasteredIds.has(q.id)) {
+            state.masteryCheckSegmentIds.add(q.id);
+            state.masteryCheckSegmentQuestions.push(q);
+        }
+
+        const atCheckpointBoundary = state.masteryCheckSegmentQuestions.length >= 10;
+        const atEndOfRemainingPool = state.currentIndex >= state.questionQueue.length - 1;
+
+        if (atCheckpointBoundary || (atEndOfRemainingPool && state.masteryCheckSegmentQuestions.length > 0)) {
+            state.masteryCheckPendingCheckpointStart = true;
+            state.masteryCheckPendingAdvance = false;
+        } else {
+            state.masteryCheckPendingAdvance = true;
+        }
+
         return;
     }
 }
@@ -2354,6 +2607,49 @@ function nextQuestion() {
         return;
     }
 
+    if (isMasteryCheckMode()) {
+        if (state.masteryCheckPendingJump) {
+            state.currentIndex = Math.max(0, state.currentIndex - 3);
+            state.masteryCheckPendingJump = false;
+            state.masteryCheckPendingAdvance = false;
+            showQuestion();
+            showPendingLearningResourceIfAny();
+            return;
+        }
+
+        if (state.masteryCheckPendingCheckpointComplete) {
+            finishMasteryCheckCheckpoint();
+            showQuestion();
+            showPendingLearningResourceIfAny();
+            return;
+        }
+
+        if (state.masteryCheckPendingCheckpointStart) {
+            startMasteryCheckCheckpoint();
+            showQuestion();
+            showPendingLearningResourceIfAny();
+            return;
+        }
+
+        if (state.masteryCheckPendingAdvance) {
+            state.masteryCheckPendingAdvance = false;
+
+            if (state.currentIndex < state.questionQueue.length - 1) {
+                state.currentIndex++;
+            } else if (!state.masteryCheckInCheckpoint && state.masteryCheckSegmentQuestions.length === 0) {
+                state.masteryCheckFinished = true;
+            }
+
+            showQuestion();
+            showPendingLearningResourceIfAny();
+            return;
+        }
+
+        showQuestion();
+        showPendingLearningResourceIfAny();
+        return;
+    }
+
     if (state.currentIndex < state.questionQueue.length - 1) {
         state.currentIndex++;
     } else {
@@ -2405,6 +2701,11 @@ function prevQuestion() {
         return;
     }
 
+    if (isMasteryCheckMode()) {
+        showQuestion();
+        return;
+    }
+
     if (state.normalFinished) {
         state.normalFinished = false;
         state.currentIndex = Math.max(0, state.questionQueue.length - 1);
@@ -2430,6 +2731,7 @@ function resetModeState() {
     state.retentionSolvedIds = new Set();
 
     state.pendingMasteryAdvance = false;
+    resetMasteryCheckState();
 
     state.normalFinished = false;
     state.questionAnswered = false;
@@ -2468,6 +2770,7 @@ elements.restartBtn.onclick = restartQuiz;
 document.getElementById('retentionMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('masteryMode').checked = false;
+        document.getElementById('masteryCheckMode').checked = false;
     }
     updateSettingsAvailability();
     restartQuiz();
@@ -2476,13 +2779,23 @@ document.getElementById('retentionMode').onchange = e => {
 document.getElementById('masteryMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('retentionMode').checked = false;
+        document.getElementById('masteryCheckMode').checked = false;
+    }
+    updateSettingsAvailability();
+    restartQuiz();
+};
+
+document.getElementById('masteryCheckMode').onchange = e => {
+    if (e.target.checked) {
+        document.getElementById('retentionMode').checked = false;
+        document.getElementById('masteryMode').checked = false;
     }
     updateSettingsAvailability();
     restartQuiz();
 };
 
 document.getElementById('rapidMode').onchange = e => {
-    if (e.target.checked && isLearningResourcesMode()) {
+    if (e.target.checked && isLearningResourcesMode() && !isMasteryCheckMode()) {
         document.getElementById('learningResourcesMode').checked = false;
     }
     updateSettingsAvailability();
@@ -2490,9 +2803,10 @@ document.getElementById('rapidMode').onchange = e => {
 };
 
 document.getElementById('learningResourcesMode').onchange = e => {
-    if (e.target.checked && isSpeedMode()) {
+    if (e.target.checked && isSpeedMode() && !isMasteryCheckMode()) {
         document.getElementById('rapidMode').checked = false;
     }
+    updateSettingsAvailability();
 };
 
 elements.mixInput.addEventListener('input', () => {

@@ -174,6 +174,29 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card" id="masteryCheckModeSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="masteryCheckMode">Mastery Check</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="masteryCheckModeHelp"
+                    aria-label="About Mastery Check"
+                    aria-expanded="false"
+                    aria-controls="masteryCheckModeHelp"
+                  >?</button>
+                </div>
+                <div id="masteryCheckModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Wrong answers send you back 3. Every 10 correctly completed new questions trigger a review check of those 10, and passed review questions are removed for the rest of the session.
+                </div>
+                <label class="toggle-switch" for="masteryCheckMode" aria-label="Mastery Check toggle">
+                  <input type="checkbox" id="masteryCheckMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
               <div class="setting-card" id="rapidModeSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="rapidMode">Rapid</label>

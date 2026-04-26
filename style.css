@@ -1,3 +1,14 @@
+/*
+STYLING RULES FOR THIS APP
+- Preserve current visual behavior unless explicitly asked to redesign.
+- Put shared behavior in base component rules first.
+- Use state layers second, viewport rules third, platform quirks last.
+- Prefer CSS variables and shared component rules over repeated overrides.
+- Avoid highly specific selectors unless a narrow fix is truly necessary.
+- Do not duplicate desktop / iPad / iPhone styles when one shared rule can cover them.
+- Keep fullscreen, active-question, and viewport logic aligned with the current state model.
+*/
+
 /* ===== App Theme + Override Architecture =====
    Order of intent:
    1) Base component styles
@@ -187,6 +198,17 @@ body.hint-open {
 
 .nav-buttons button:active {
   transform: scale(0.98);
+}
+
+.nav-buttons button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  background: #2a2640;
+  transform: none;
+}
+
+.nav-buttons button:disabled:hover {
+  background: #2a2640;
 }
 
 body.fullscreen-mode .bottom-controls {
