@@ -952,6 +952,26 @@ function getQuizMapByRangeNumber() {
     return map;
 }
 
+function isQuizDescriptor(value) {
+    return !!value && typeof value === 'object' && typeof value.source === 'string' && typeof value.id === 'string';
+}
+
+function encodeQuizSelectorValue(quizDescriptor) {
+    return isQuizDescriptor(quizDescriptor) ? quizDescriptor.id : '';
+}
+
+function getQuizBySelectorValue(selectorValue) {
+    return state.quizListCache.find(q => q.id === selectorValue) || null;
+}
+
+async function loadQuestionsForQuizDescriptor(quizDescriptor) {
+    if (!isQuizDescriptor(quizDescriptor)) {
+        throw new Error('Invalid quiz descriptor');
+    }
+
+    return loadQuestions(quizDescriptor);
+}
+
 async function loadMixedQuestionsFromInput(rawValue) {
     const parsed = parseMixRange(rawValue);
     if (!parsed.valid || parsed.numbers.length === 0) {
@@ -970,7 +990,7 @@ async function loadMixedQuestionsFromInput(rawValue) {
     }
 
     const results = await Promise.all(
-        selectedQuizzes.map(q => loadQuestions(q.sheet))
+        selectedQuizzes.map(q => loadQuestionsForQuizDescriptor(q))
     );
 
     return results.flat();
@@ -1039,24 +1059,40 @@ function getFolderNames() {
 }
 
 // ================= LOAD QUIZ LIST =================
+function createGoogleSheetsQuizDescriptor(row) {
+    const sheet = getCellValue(row.c?.[0]);
+    const name = getCellValue(row.c?.[1]);
+
+    if (!sheet || !name) {
+        return null;
+    }
+
+    return {
+        id: `gs:${sheet}`,
+        source: DATA_SOURCES.GOOGLE_SHEETS,
+        sourceQuizId: sheet,
+        sheet,
+        name,
+        rangeNumber: getCellValue(row.c?.[2]),
+        folder: normalizeFolderName(getCellValue(row.c?.[3]))
+    };
+}
+
 async function loadQuizListFromGoogleSheets() {
     const res = await fetch(`https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?sheet=Config`);
     const text = await res.text();
     const json = parseGoogleSheetResponse(text);
 
-    return json.table.rows.map(r => ({
-        sheet: getCellValue(r.c?.[0]),
-        name: getCellValue(r.c?.[1]),
-        rangeNumber: getCellValue(r.c?.[2]),
-        folder: normalizeFolderName(getCellValue(r.c?.[3]))
-    })).filter(q => q.sheet && q.name);
+    return json.table.rows
+        .map(createGoogleSheetsQuizDescriptor)
+        .filter(Boolean);
 }
 
 async function loadQuizListFromSupabase() {
     throw new Error('Supabase quiz loading is not implemented yet. Google Sheets remains the runtime source for this phase.');
 }
 
-async function loadQuestionsFromSupabase(_quizId) {
+async function loadQuestionsFromSupabase(_quizDescriptor) {
     throw new Error('Supabase question loading is not implemented yet. Google Sheets remains the runtime source for this phase.');
 }
 
@@ -1068,12 +1104,16 @@ async function loadQuizList() {
     return loadQuizListFromGoogleSheets();
 }
 
-async function loadQuestions(sheetName) {
+async function loadQuestions(quizReference) {
     if (state.activeDataSource === DATA_SOURCES.SUPABASE) {
-        return loadQuestionsFromSupabase(sheetName);
+        return loadQuestionsFromSupabase(quizReference);
     }
 
-    return loadQuestionsFromGoogleSheets(sheetName);
+    if (isQuizDescriptor(quizReference)) {
+        return loadQuestionsFromGoogleSheets(quizReference.sheet);
+    }
+
+    return loadQuestionsFromGoogleSheets(quizReference);
 }
 
 // ================= DROPDOWNS =================
@@ -1105,7 +1145,7 @@ function populateQuizDropdown(folderName) {
 
     quizzesForFolder.forEach(q => {
         const opt = document.createElement('option');
-        opt.value = q.sheet;
+        opt.value = encodeQuizSelectorValue(q);
         opt.innerText = q.name;
         elements.quizSelector.appendChild(opt);
     });
@@ -1114,8 +1154,14 @@ function populateQuizDropdown(folderName) {
     return quizzesForFolder;
 }
 
-async function loadSelectedQuiz(sheetName) {
-    const loadedQuestions = await loadQuestions(sheetName);
+async function loadSelectedQuiz(selectorValue) {
+    const selectedQuiz = getQuizBySelectorValue(selectorValue);
+
+    if (!selectedQuiz) {
+        throw new Error('Quiz not found');
+    }
+
+    const loadedQuestions = await loadQuestionsForQuizDescriptor(selectedQuiz);
 
     if (!loadedQuestions.length) {
         throw new Error('No state.questions found');
