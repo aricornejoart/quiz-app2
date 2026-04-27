@@ -41,6 +41,8 @@ MODIFICATION RULES FOR THIS APP
         currentIndex: 0,
         questionIdCounter: 0,
         quizListCache: [],
+        sourceQuestions: [],
+        emptyQuizMessage: '',
         isAppFullscreen: false,
 
         pendingRetentionJump: false,
@@ -99,7 +101,8 @@ MODIFICATION RULES FOR THIS APP
             editingQuizType: 'multiple_choice',
             studioQuizQuestions: [],
             currentStudioSection: 'folders',
-            lastError: ''
+            lastError: '',
+            starringInFlight: false
         }
     };
 
@@ -185,6 +188,8 @@ MODIFICATION RULES FOR THIS APP
         progressTextEl: document.getElementById('progressText'),
         progressSideFeedbackEl: document.getElementById('progressSideFeedback'),
 
+        excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
+        questionStarBtn: document.getElementById('questionStarBtn'),
         learningResourcesOverlay: document.getElementById('learningResourcesOverlay'),
         closeLearningResourcesBtn: document.getElementById('closeLearningResourcesBtn'),
         learningResourcesBody: document.getElementById('learningResourcesBody'),
@@ -1812,6 +1817,15 @@ MODIFICATION RULES FOR THIS APP
 
         updateAuthUI();
         await refreshQuizCatalog();
+
+        if (state.sourceQuestions.length) {
+            if (state.auth.user?.id) {
+                await hydrateStarredQuestionState(state.sourceQuestions);
+            } else {
+                state.sourceQuestions.forEach(question => { question.isStarred = false; });
+            }
+            applyFilteredQuestionsToSession({ resetSession: true });
+        }
     }
 
     async function bootstrapSupabase() {
@@ -2479,6 +2493,14 @@ function isLearningResourcesMode() {
     return document.getElementById('learningResourcesMode').checked;
 }
 
+function isExcludeStarredEnabled() {
+    return !!elements.excludeStarredQuestions?.checked;
+}
+
+function canPersistQuestionStarState(question = state.questionQueue[state.currentIndex]) {
+    return !!(state.auth.client && state.auth.user?.id && question?.sourceQuestionId);
+}
+
 function isNormalMode() {
     return !isRetentionMode() && !isRetryMode() && !isMasteryCheckMode();
 }
@@ -2517,6 +2539,29 @@ function updateLearningResourcesAvailability() {
     if (isSpeedMode() && !isMasteryCheckMode() && learningResourcesCheckbox.checked) {
         learningResourcesCheckbox.checked = false;
         clearPendingLearningResource();
+    }
+}
+
+function updateStarredQuestionAvailability() {
+    const starSettingCard = document.getElementById('excludeStarredQuestionsSetting');
+    const starSettingHelp = document.getElementById('excludeStarredQuestionsHelp');
+    const canUseStarred = !!(state.auth.client && state.auth.user?.id);
+
+    if (elements.excludeStarredQuestions) {
+        elements.excludeStarredQuestions.disabled = !canUseStarred;
+        if (!canUseStarred) {
+            elements.excludeStarredQuestions.checked = false;
+        }
+    }
+
+    if (starSettingCard) {
+        starSettingCard.classList.toggle('disabled-setting', !canUseStarred);
+    }
+
+    if (starSettingHelp && !canUseStarred) {
+        starSettingHelp.innerText = 'Sign in to use starred-question memory.';
+    } else if (starSettingHelp) {
+        starSettingHelp.innerText = 'Hides starred questions from the active study deck without removing the saved stars.';
     }
 }
 
@@ -2619,10 +2664,12 @@ function updateSettingsAvailability() {
     updateExclusiveModeAvailability();
     updateLearningResourcesAvailability();
     updateRapidLearningResourcesCompatibility();
+    updateStarredQuestionAvailability();
     updateShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
     updateNavigationButtons();
+    syncQuestionStarButton();
 }
 
 function syncBodyScrollLock() {
@@ -3026,17 +3073,130 @@ async function loadMixedQuestionsFromInput(rawValue) {
     return results.flat();
 }
 
-async function applyLoadedQuestions(newQuestions) {
-    state.questions = newQuestions;
-    state.questionQueue = [...state.questions];
+async function hydrateStarredQuestionState(questions) {
+    const questionRows = Array.isArray(questions) ? questions : [];
 
-    if (document.getElementById('shuffleQuestions').checked) {
+    questionRows.forEach(question => {
+        question.isStarred = false;
+    });
+
+    const sourceQuestionIds = questionRows
+        .map(question => normalizeSheetText(question?.sourceQuestionId))
+        .filter(Boolean);
+
+    if (!state.auth.client || !state.auth.user?.id || !sourceQuestionIds.length) {
+        return questionRows;
+    }
+
+    try {
+        const { data, error } = await state.auth.client
+            .from('user_question_state')
+            .select('question_id, is_starred')
+            .eq('user_id', state.auth.user.id)
+            .in('question_id', sourceQuestionIds);
+
+        if (error) throw error;
+
+        const starredMap = new Map((data || []).map(row => [normalizeSheetText(row.question_id), !!row.is_starred]));
+        questionRows.forEach(question => {
+            question.isStarred = !!starredMap.get(normalizeSheetText(question?.sourceQuestionId));
+        });
+    } catch (error) {
+        console.error('Failed to hydrate starred question state:', error);
+    }
+
+    return questionRows;
+}
+
+function getFilteredSourceQuestions() {
+    const sourceQuestions = Array.isArray(state.sourceQuestions) ? state.sourceQuestions : [];
+    if (!isExcludeStarredEnabled()) {
+        return [...sourceQuestions];
+    }
+    return sourceQuestions.filter(question => !question.isStarred);
+}
+
+function syncQuestionStarButton() {
+    const button = elements.questionStarBtn;
+    if (!button) return;
+
+    const currentQuestion = state.questionQueue[state.currentIndex] || null;
+    const canStar = canPersistQuestionStarState(currentQuestion) && !state.auth.starringInFlight && !isQuizFinished();
+
+    if (!currentQuestion || !canPersistQuestionStarState(currentQuestion) || isQuizFinished()) {
+        button.classList.add('hidden');
+        button.disabled = true;
+        button.innerText = '☆';
+        button.classList.remove('starred');
+        button.setAttribute('aria-label', 'Star question');
+        button.setAttribute('title', 'Star question');
+        return;
+    }
+
+    button.classList.remove('hidden');
+    button.disabled = !canStar;
+    button.innerText = currentQuestion.isStarred ? '★' : '☆';
+    button.classList.toggle('starred', !!currentQuestion.isStarred);
+    button.setAttribute('aria-label', currentQuestion.isStarred ? 'Unstar question' : 'Star question');
+    button.setAttribute('title', currentQuestion.isStarred ? 'Unstar question' : 'Star question');
+}
+
+function resetPendingStudyAdvanceFlags() {
+    state.pendingRetentionJump = false;
+    state.pendingRetentionCorrect = false;
+    state.retentionAnswerLocked = false;
+    state.pendingMasteryAdvance = false;
+    state.masteryCheckPendingJump = false;
+    state.masteryCheckPendingAdvance = false;
+    state.masteryCheckPendingCheckpointStart = false;
+    state.masteryCheckPendingCheckpointComplete = false;
+}
+
+function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestionId = '' } = {}) {
+    const visibleQuestions = getFilteredSourceQuestions();
+    state.emptyQuizMessage = '';
+
+    if (resetSession) {
+        resetModeState();
+    } else {
+        resetPendingStudyAdvanceFlags();
+    }
+
+    state.questions = [...visibleQuestions];
+    state.questionQueue = [...visibleQuestions];
+
+    if (document.getElementById('shuffleQuestions').checked && resetSession) {
         shuffleArray(state.questionQueue);
     }
 
-    resetModeState();
+    if (preserveQuestionId) {
+        const preservedIndex = state.questionQueue.findIndex(question => question.id === preserveQuestionId);
+        state.currentIndex = preservedIndex >= 0 ? preservedIndex : 0;
+    } else if (!resetSession) {
+        if (state.currentIndex >= state.questionQueue.length) {
+            state.currentIndex = Math.max(0, state.questionQueue.length - 1);
+        }
+    } else {
+        state.currentIndex = 0;
+    }
+
+    if (!state.questions.length) {
+        state.normalFinished = false;
+        state.retentionFinished = false;
+        state.masteryCheckFinished = false;
+        state.emptyQuizMessage = isExcludeStarredEnabled() && state.sourceQuestions.length
+            ? 'All questions in this deck are currently starred and excluded.'
+            : 'This quiz has no questions.';
+    }
+
     updateSettingsAvailability();
     showQuestion();
+}
+
+async function applyLoadedQuestions(newQuestions) {
+    const hydratedQuestions = await hydrateStarredQuestionState(newQuestions);
+    state.sourceQuestions = [...hydratedQuestions];
+    applyFilteredQuestionsToSession({ resetSession: true });
 }
 
 function normalizeFolderName(value) {
@@ -3069,6 +3229,11 @@ function renderSelectionPrompt(message = 'Choose a folder and a quiz.') {
     state.currentQuestionType = '';
     updateViewportClasses();
 
+    if (elements.questionStarBtn) {
+        elements.questionStarBtn.classList.add('hidden');
+        elements.questionStarBtn.disabled = true;
+    }
+
     elements.questionTextEl.style.display = 'block';
     elements.questionTextEl.innerText = message;
     elements.optionsContainer.style.display = 'none';
@@ -3079,11 +3244,14 @@ function renderSelectionPrompt(message = 'Choose a folder and a quiz.') {
     clearFeedback();
     updateProgress();
     updateNavigationButtons();
+    syncQuestionStarButton();
 }
 
 function clearActiveQuizSelection(message = 'Choose a folder and a quiz.') {
     state.questions = [];
     state.questionQueue = [];
+    state.sourceQuestions = [];
+    state.emptyQuizMessage = '';
     resetModeState();
     updateSettingsAvailability();
     renderSelectionPrompt(message);
@@ -3696,6 +3864,9 @@ function clearQuestionUI() {
     removeClassifyUI();
     removeFlashcardUI();
     elements.questionImage.classList.remove('zoomed');
+    if (elements.questionStarBtn) {
+        elements.questionStarBtn.classList.add('hidden');
+    }
 }
 
 function getMasteryCheckRemainingCount() {
@@ -3775,6 +3946,68 @@ function setFeedback(text, isCorrect) {
     fb.innerText = text;
     fb.classList.remove('correct', 'incorrect');
     fb.classList.add(isCorrect ? 'correct' : 'incorrect');
+}
+
+async function persistQuestionStarState(question, isStarred) {
+    if (!canPersistQuestionStarState(question)) {
+        return false;
+    }
+
+    const payload = {
+        user_id: state.auth.user.id,
+        question_id: question.sourceQuestionId,
+        is_starred: !!isStarred
+    };
+
+    const { error } = await state.auth.client
+        .from('user_question_state')
+        .upsert(payload, { onConflict: 'user_id,question_id' });
+
+    if (error) throw error;
+    return true;
+}
+
+function applyQuestionStarStateAcrossDeck(sourceQuestionId, isStarred) {
+    const targetId = normalizeSheetText(sourceQuestionId);
+    if (!targetId) return;
+
+    const applyState = question => {
+        if (normalizeSheetText(question?.sourceQuestionId) === targetId) {
+            question.isStarred = !!isStarred;
+        }
+    };
+
+    state.sourceQuestions.forEach(applyState);
+    state.questions.forEach(applyState);
+    state.questionQueue.forEach(applyState);
+}
+
+async function toggleCurrentQuestionStarState() {
+    const currentQuestion = state.questionQueue[state.currentIndex];
+    if (!canPersistQuestionStarState(currentQuestion) || state.auth.starringInFlight) {
+        return;
+    }
+
+    const nextStarred = !currentQuestion.isStarred;
+    state.auth.starringInFlight = true;
+    syncQuestionStarButton();
+
+    try {
+        await persistQuestionStarState(currentQuestion, nextStarred);
+        applyQuestionStarStateAcrossDeck(currentQuestion.sourceQuestionId, nextStarred);
+
+        if (nextStarred && isExcludeStarredEnabled()) {
+            applyFilteredQuestionsToSession({ resetSession: false });
+        } else {
+            syncQuestionStarButton();
+            updateProgress();
+        }
+    } catch (error) {
+        console.error('Could not update question star state:', error);
+    } finally {
+        state.auth.starringInFlight = false;
+        syncQuestionStarButton();
+    }
 }
 
 function applyQuestionOutcome(q, isCorrect, options = {}) {
@@ -3874,7 +4107,7 @@ function isQuizFinished() {
 // ================= SHOW QUESTION =================
 function showQuestion() {
     if (!state.questions.length) {
-        renderSelectionPrompt();
+        renderSelectionPrompt(state.emptyQuizMessage || 'Choose a folder and a quiz.');
         return;
     }
 
@@ -3897,6 +4130,7 @@ function showQuestion() {
         updateViewportClasses();
         updateProgress();
         updateNavigationButtons();
+        syncQuestionStarButton();
         return;
     }
 
@@ -3917,6 +4151,7 @@ function showQuestion() {
         showFlashcard(q);
         updateProgress();
         updateNavigationButtons();
+        syncQuestionStarButton();
         return;
     }
 
@@ -3936,6 +4171,7 @@ function showQuestion() {
 
     updateProgress();
     updateNavigationButtons();
+    syncQuestionStarButton();
 }
 
 // ================= MULTIPLE CHOICE =================
@@ -5430,6 +5666,7 @@ function resetModeState() {
     state.questionAnswered = false;
     state.flashcardFlipped = false;
     state.currentQuestionType = '';
+    state.emptyQuizMessage = '';
     updateViewportClasses();
 
     clearPendingLearningResource();
@@ -5439,8 +5676,13 @@ function resetModeState() {
 
 // ================= RESTART =================
 function restartQuiz() {
-    if (!state.questions.length) {
+    if (!state.sourceQuestions.length && !state.questions.length) {
         clearActiveQuizSelection();
+        return;
+    }
+
+    if (state.sourceQuestions.length) {
+        applyFilteredQuestionsToSession({ resetSession: true });
         return;
     }
 
@@ -5501,6 +5743,24 @@ document.getElementById('learningResourcesMode').onchange = e => {
     }
     updateSettingsAvailability();
 };
+
+if (elements.excludeStarredQuestions) {
+    elements.excludeStarredQuestions.addEventListener('change', () => {
+        if (!state.sourceQuestions.length) {
+            updateSettingsAvailability();
+            return;
+        }
+        applyFilteredQuestionsToSession({ resetSession: true });
+    });
+}
+
+if (elements.questionStarBtn) {
+    elements.questionStarBtn.addEventListener('click', () => {
+        toggleCurrentQuestionStarState().catch(err => {
+            console.error(err);
+        });
+    });
+}
 
 elements.mixInput.addEventListener('input', () => {
     setMixValidState(true);

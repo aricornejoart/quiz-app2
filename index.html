@@ -233,6 +233,29 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card" id="excludeStarredQuestionsSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="excludeStarredQuestions">Exclude Starred</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="excludeStarredQuestionsHelp"
+                    aria-label="About Exclude Starred"
+                    aria-expanded="false"
+                    aria-controls="excludeStarredQuestionsHelp"
+                  >?</button>
+                </div>
+                <div id="excludeStarredQuestionsHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Hides starred questions from the active study deck without removing the saved stars.
+                </div>
+                <label class="toggle-switch" for="excludeStarredQuestions" aria-label="Exclude Starred toggle">
+                  <input type="checkbox" id="excludeStarredQuestions">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
               <div class="setting-card" id="learningResourcesModeSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="learningResourcesMode">Learning Resources</label>
@@ -550,6 +573,7 @@ MODIFICATION RULES FOR THIS APP
   <div class="quiz-area">
     <div class="question-container">
       <div id="feedback"></div>
+      <button id="questionStarBtn" class="question-star-btn hidden" type="button" aria-label="Star question" title="Star question">☆</button>
       <div id="questionText">Loading...</div>
 
       <div class="options">
