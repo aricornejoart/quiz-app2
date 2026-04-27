@@ -359,6 +359,7 @@ MODIFICATION RULES FOR THIS APP
             <div class="quiz-studio-section-nav" role="tablist" aria-label="Quiz Studio sections">
               <button id="quizStudioFoldersTab" type="button" class="quiz-studio-nav-btn active" data-studio-section-target="folders" role="tab" aria-selected="true">Folders</button>
               <button id="quizStudioManageTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="manage" role="tab" aria-selected="false">Manage Quizzes</button>
+              <button id="quizStudioImportTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="import" role="tab" aria-selected="false">Import</button>
               <button id="quizStudioEditorTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="editor" role="tab" aria-selected="false">Quiz Editor</button>
             </div>
 
@@ -388,6 +389,61 @@ MODIFICATION RULES FOR THIS APP
                   <div class="creator-note">Edit quiz name, move a quiz to another folder, delete it, or open it in the editor to manage multiple questions or cards. In study mode, the quiz dropdown also includes a Study Entire Folder option.</div>
                   <div id="studioQuizList" class="studio-list"></div>
                 </section>
+              </section>
+
+              
+
+              <section id="quizStudioImportSection" class="quiz-studio-section hidden" data-studio-section="import" role="tabpanel">
+                <div class="studio-section-grid">
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Import Google Sheets Quiz</div>
+                    <div class="creator-note">Bring an existing Google Sheets quiz into Supabase so it can be edited in Quiz Studio and use saved star memory.</div>
+
+                    <label class="auth-field">
+                      <span>Source folder</span>
+                      <select id="importSourceFolderSelect">
+                        <option value="">Choose Google Sheets folder</option>
+                      </select>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Source quiz</span>
+                      <select id="importSourceQuizSelect">
+                        <option value="">Choose quiz</option>
+                      </select>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Destination folder</span>
+                      <select id="importTargetFolderSelect">
+                        <option value="">Use or create source folder name</option>
+                      </select>
+                    </label>
+
+                    <button id="importSourceQuizBtn" type="button" class="auth-action-btn">Import into Supabase</button>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Import Entire Google Sheets Folder</div>
+                    <div class="creator-note">Import every Google Sheets quiz in the selected source folder into Supabase at once. Existing quiz names are kept, and the destination folder is reused or created automatically.</div>
+
+                    <label class="auth-field">
+                      <span>Source folder</span>
+                      <select id="importEntireFolderSourceSelect">
+                        <option value="">Choose Google Sheets folder</option>
+                      </select>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Destination folder</span>
+                      <select id="importEntireFolderTargetSelect">
+                        <option value="">Use or create source folder name</option>
+                      </select>
+                    </label>
+
+                    <button id="importSourceFolderBtn" type="button" class="auth-action-btn">Import Entire Folder</button>
+                  </section>
+                </div>
               </section>
 
               <section id="quizStudioEditorSection" class="quiz-studio-section hidden" data-studio-section="editor" role="tabpanel">

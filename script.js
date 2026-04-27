@@ -130,6 +130,13 @@ MODIFICATION RULES FOR THIS APP
         creatorStatus: document.getElementById('creatorStatus'),
         studioFolderList: document.getElementById('studioFolderList'),
         studioQuizList: document.getElementById('studioQuizList'),
+        importSourceFolderSelect: document.getElementById('importSourceFolderSelect'),
+        importSourceQuizSelect: document.getElementById('importSourceQuizSelect'),
+        importTargetFolderSelect: document.getElementById('importTargetFolderSelect'),
+        importSourceQuizBtn: document.getElementById('importSourceQuizBtn'),
+        importEntireFolderSourceSelect: document.getElementById('importEntireFolderSourceSelect'),
+        importEntireFolderTargetSelect: document.getElementById('importEntireFolderTargetSelect'),
+        importSourceFolderBtn: document.getElementById('importSourceFolderBtn'),
         createFolderName: document.getElementById('createFolderName'),
         createFolderBtn: document.getElementById('createFolderBtn'),
         createQuizFolderSelect: document.getElementById('createQuizFolderSelect'),
@@ -517,6 +524,7 @@ MODIFICATION RULES FOR THIS APP
                     questionCount: rows.length,
                     quizType,
                     typeLabel: typeLabelMap[quizType] || 'Mixed types',
+                    sortOrder: Number(quiz.sort_order ?? 0),
                     firstQuestionId: rows[0]?.id || ''
                 };
             });
@@ -536,6 +544,99 @@ MODIFICATION RULES FOR THIS APP
         await loadManagedSupabaseQuizzes();
     }
 
+    function getGoogleSheetsQuizDescriptors() {
+        return state.quizListCache.filter(item => isQuizDescriptor(item) && item.source === DATA_SOURCES.GOOGLE_SHEETS);
+    }
+
+    function getGoogleSheetsFolderNames() {
+        return Array.from(new Set(getGoogleSheetsQuizDescriptors().map(item => normalizeFolderName(item.folder)))).sort((a, b) => a.localeCompare(b));
+    }
+
+    function getGoogleSheetsQuizzesForFolder(folderName) {
+        const normalizedFolder = normalizeFolderName(folderName);
+        return getGoogleSheetsQuizDescriptors()
+            .filter(item => normalizeFolderName(item.folder) === normalizedFolder)
+            .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    }
+
+    function populateSelectWithFolderOptions(selectEl, folders, placeholder) {
+        if (!selectEl) return;
+        const previousValue = selectEl.value;
+        selectEl.innerHTML = `<option value="">${placeholder}</option>`;
+        folders.forEach(folderName => {
+            const option = document.createElement('option');
+            option.value = folderName;
+            option.textContent = folderName;
+            selectEl.appendChild(option);
+        });
+        if (folders.includes(previousValue)) {
+            selectEl.value = previousValue;
+        }
+    }
+
+    function populateSelectWithSupabaseFolderTargets(selectEl, placeholder) {
+        if (!selectEl) return;
+        const previousValue = selectEl.value;
+        selectEl.innerHTML = `<option value="">${placeholder}</option>`;
+        state.auth.supabaseFolders.forEach(folder => {
+            const option = document.createElement('option');
+            option.value = folder.id;
+            option.textContent = folder.name;
+            selectEl.appendChild(option);
+        });
+        const validIds = new Set(state.auth.supabaseFolders.map(folder => folder.id));
+        if (validIds.has(previousValue)) {
+            selectEl.value = previousValue;
+        }
+    }
+
+    function renderGoogleSheetsImportControls() {
+        const creatorEnabled = state.auth.configured && !!state.auth.user;
+        const sourceFolders = getGoogleSheetsFolderNames();
+
+        populateSelectWithFolderOptions(elements.importSourceFolderSelect, sourceFolders, 'Choose Google Sheets folder');
+        populateSelectWithFolderOptions(elements.importEntireFolderSourceSelect, sourceFolders, 'Choose Google Sheets folder');
+        populateSelectWithSupabaseFolderTargets(elements.importTargetFolderSelect, 'Use or create source folder name');
+        populateSelectWithSupabaseFolderTargets(elements.importEntireFolderTargetSelect, 'Use or create source folder name');
+
+        if (elements.importSourceQuizSelect) {
+            const selectedFolder = elements.importSourceFolderSelect?.value || '';
+            const previousQuizId = elements.importSourceQuizSelect.value;
+            const quizzes = selectedFolder ? getGoogleSheetsQuizzesForFolder(selectedFolder) : [];
+            elements.importSourceQuizSelect.innerHTML = '<option value="">Choose quiz</option>';
+            quizzes.forEach(quiz => {
+                const option = document.createElement('option');
+                option.value = quiz.id;
+                option.textContent = quiz.name;
+                elements.importSourceQuizSelect.appendChild(option);
+            });
+            if (quizzes.some(quiz => quiz.id === previousQuizId)) {
+                elements.importSourceQuizSelect.value = previousQuizId;
+            }
+            elements.importSourceQuizSelect.disabled = !creatorEnabled || !quizzes.length;
+        }
+
+        [
+            elements.importSourceFolderSelect,
+            elements.importTargetFolderSelect,
+            elements.importEntireFolderSourceSelect,
+            elements.importEntireFolderTargetSelect
+        ].forEach(el => {
+            if (!el) return;
+            el.disabled = !creatorEnabled || !sourceFolders.length;
+        });
+
+        if (elements.importSourceQuizBtn) {
+            const canImportSingle = creatorEnabled && !!elements.importSourceFolderSelect?.value && !!elements.importSourceQuizSelect?.value;
+            elements.importSourceQuizBtn.disabled = !canImportSingle;
+        }
+
+        if (elements.importSourceFolderBtn) {
+            const canImportFolder = creatorEnabled && !!elements.importEntireFolderSourceSelect?.value;
+            elements.importSourceFolderBtn.disabled = !canImportFolder;
+        }
+    }
+
     function updateCreateQuizModeUI() {
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
@@ -543,17 +644,20 @@ MODIFICATION RULES FOR THIS APP
         const itemLabelMap = {
             multiple_choice: 'question',
             flashcard: 'flashcard',
-            hierarchy: 'hierarchy question'
+            hierarchy: 'hierarchy question',
+            classify: 'classify question'
         };
         const itemPluralMap = {
             multiple_choice: 'questions',
             flashcard: 'flashcards',
-            hierarchy: 'hierarchy questions'
+            hierarchy: 'hierarchy questions',
+            classify: 'classify questions'
         };
         const quizLabelMap = {
             multiple_choice: 'multiple-choice quiz',
             flashcard: 'flashcard quiz',
-            hierarchy: 'hierarchy quiz'
+            hierarchy: 'hierarchy quiz',
+            classify: 'classify quiz'
         };
         const itemLabel = itemLabelMap[quizType] || 'question';
         const itemPlural = itemPluralMap[quizType] || 'questions';
@@ -1493,7 +1597,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function setQuizStudioSection(sectionName = 'folders') {
-        const nextSection = ['folders', 'manage', 'editor'].includes(sectionName)
+        const nextSection = ['folders', 'manage', 'import', 'editor'].includes(sectionName)
             ? sectionName
             : 'folders';
 
@@ -1520,6 +1624,13 @@ MODIFICATION RULES FOR THIS APP
         [
             elements.createFolderName,
             elements.createFolderBtn,
+            elements.importSourceFolderSelect,
+            elements.importSourceQuizSelect,
+            elements.importTargetFolderSelect,
+            elements.importSourceQuizBtn,
+            elements.importEntireFolderSourceSelect,
+            elements.importEntireFolderTargetSelect,
+            elements.importSourceFolderBtn,
             elements.createQuizFolderSelect,
             elements.createQuizName,
             elements.createQuizTypeSelect,
@@ -1596,6 +1707,7 @@ MODIFICATION RULES FOR THIS APP
         updateCreateQuizModeUI();
         renderFolderManagementList();
         renderQuizManagementList();
+        renderGoogleSheetsImportControls();
         renderStudioQuestionList();
     }
 
@@ -2393,6 +2505,293 @@ MODIFICATION RULES FOR THIS APP
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not delete the quiz.', 'error');
+        }
+    }
+
+    async function ensureImportTargetFolderId(targetFolderId, sourceFolderName) {
+        const explicitTargetId = normalizeSheetText(targetFolderId);
+        if (explicitTargetId) {
+            return explicitTargetId;
+        }
+
+        const normalizedSourceFolder = normalizeFolderName(sourceFolderName);
+        const existingFolder = state.auth.supabaseFolders.find(folder => normalizeFolderName(folder.name) === normalizedSourceFolder) || null;
+        if (existingFolder?.id) {
+            return existingFolder.id;
+        }
+
+        const nextSortOrder = state.auth.supabaseFolders.reduce((maxValue, folder) => Math.max(maxValue, Number(folder.sort_order ?? 0)), -1) + 1;
+        const { data, error } = await state.auth.client
+            .from('folders')
+            .insert({ user_id: state.auth.user.id, name: normalizedSourceFolder, sort_order: nextSortOrder })
+            .select('id')
+            .single();
+
+        if (error) throw error;
+        await refreshStudioManagementData();
+        return data?.id || '';
+    }
+
+    function getQuestionTypeForImport(question) {
+        if (question?.type === 'multiple choice') return 'multiple_choice';
+        return normalizeSheetText(question?.type).replace(/\s+/g, '_') || 'multiple_choice';
+    }
+
+    async function importMultipleChoiceQuestionToSupabase(quizId, question, sortOrder) {
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: quizId,
+                question_type: 'multiple_choice',
+                prompt_html: buildStoredHtmlFromPlain(question.question),
+                prompt_plain: normalizeSheetText(question.question),
+                image_url: normalizeSheetText(question.image),
+                learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
+                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                sort_order: sortOrder
+            })
+            .select('id')
+            .single();
+        if (error) throw error;
+        const questionId = data?.id;
+        const options = Array.isArray(question.options) ? question.options.map(option => normalizeSheetText(option)).filter(Boolean) : [];
+        const explanations = Array.isArray(question.explanations) ? question.explanations.map(value => normalizeSheetText(value)) : [];
+        const correctAnswer = normalizeSheetText(question.correct);
+        const correctIndex = options.findIndex(option => option === correctAnswer);
+        const optionPayload = options.map((optionText, index) => ({ text: optionText, explanation_html: buildStoredHtmlFromPlain(explanations[index] || '') }));
+        const detailPayload = {
+            question_id: questionId,
+            correct_answer: correctAnswer,
+            correct_explanation_html: buildStoredHtmlFromPlain(correctIndex >= 0 ? (explanations[correctIndex] || '') : ''),
+            options_json: optionPayload,
+            option_1_text: options[0] || '',
+            option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''),
+            option_2_text: options[1] || '',
+            option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1] || ''),
+            option_3_text: options[2] || '',
+            option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2] || ''),
+            option_4_text: options[3] || '',
+            option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3] || '')
+        };
+        const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
+        if (detailError) {
+            const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
+            if (!missingColumn) throw detailError;
+            const fallbackPayload = { ...detailPayload };
+            delete fallbackPayload.options_json;
+            const { error: fallbackError } = await state.auth.client.from('multiple_choice_questions').upsert(fallbackPayload, { onConflict: 'question_id' });
+            if (fallbackError) throw fallbackError;
+        }
+    }
+
+    async function importFlashcardQuestionToSupabase(quizId, question, sortOrder) {
+        const term = normalizeSheetText(question.termText);
+        const definition = normalizeSheetText(question.definitionText);
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: quizId,
+                question_type: 'flashcard',
+                prompt_html: buildStoredHtmlFromPlain(term),
+                prompt_plain: term,
+                image_url: '',
+                learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
+                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                sort_order: sortOrder
+            })
+            .select('id')
+            .single();
+        if (error) throw error;
+        const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert({
+            question_id: data.id,
+            term_html: buildStoredHtmlFromPlain(term),
+            definition_html: buildStoredHtmlFromPlain(definition),
+            term_plain: term,
+            definition_plain: definition,
+            term_image_url: normalizeSheetText(question.termImage),
+            definition_image_url: normalizeSheetText(question.definitionImage)
+        }, { onConflict: 'question_id' });
+        if (detailError) throw detailError;
+    }
+
+    async function importHierarchyQuestionToSupabase(quizId, question, sortOrder) {
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: quizId,
+                question_type: 'hierarchy',
+                prompt_html: buildStoredHtmlFromPlain(question.question),
+                prompt_plain: normalizeSheetText(question.question),
+                image_url: normalizeSheetText(question.image),
+                learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
+                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                sort_order: sortOrder
+            })
+            .select('id')
+            .single();
+        if (error) throw error;
+        const itemTexts = Array.isArray(question.options) ? question.options.map(value => normalizeSheetText(value)).slice(0, 10) : [];
+        const detailPayload = { question_id: data.id, correct_order_json: Array.isArray(question.correctOrder) ? question.correctOrder : [] };
+        Array.from({ length: 10 }, (_, index) => {
+            detailPayload[`item_${index + 1}_text`] = itemTexts[index] || '';
+        });
+        const { error: detailError } = await state.auth.client.from('hierarchy_questions').upsert(detailPayload, { onConflict: 'question_id' });
+        if (detailError) throw detailError;
+    }
+
+    async function importClassifyQuestionToSupabase(quizId, question, sortOrder) {
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: quizId,
+                question_type: 'classify',
+                prompt_html: buildStoredHtmlFromPlain(question.question),
+                prompt_plain: normalizeSheetText(question.question),
+                image_url: normalizeSheetText(question.image),
+                learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
+                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                sort_order: sortOrder
+            })
+            .select('id')
+            .single();
+        if (error) throw error;
+        const classificationsJson = Array.isArray(question.classifications) ? question.classifications.map(classification => ({
+            label: normalizeSheetText(classification?.label),
+            imageUrl: normalizeSheetText(classification?.imageUrl),
+            id: normalizeSheetText(classification?.id)
+        })).filter(classification => classification.id && (classification.label || classification.imageUrl)) : [];
+        const itemsJson = Array.isArray(question.items) ? question.items.map((item, index) => ({
+            kind: normalizeSheetText(item?.kind || (item?.imageUrl ? 'image' : 'text')) || 'text',
+            raw: normalizeSheetText(item?.raw || item?.text || `classify_item_${index + 1}`),
+            imageUrl: normalizeSheetText(item?.imageUrl),
+            text: normalizeSheetText(item?.text || item?.raw),
+            dragLabel: normalizeSheetText(item?.dragLabel || item?.text || item?.raw || `Image item ${index + 1}`),
+            ariaLabel: normalizeSheetText(item?.ariaLabel || (item?.text ? `Classify item ${item.text}` : `Classify image item ${index + 1}`)),
+            correctClassificationId: normalizeSheetText(item?.correctClassificationId)
+        })) : [];
+        const { error: detailError } = await state.auth.client.from('classify_questions').upsert({
+            question_id: data.id,
+            items_json: itemsJson,
+            classifications_json: classificationsJson
+        }, { onConflict: 'question_id' });
+        if (detailError) throw detailError;
+    }
+
+    async function importGoogleSheetsQuestionsToSupabaseQuiz(quizId, questions) {
+        for (let index = 0; index < questions.length; index += 1) {
+            const question = questions[index];
+            const questionType = getQuestionTypeForImport(question);
+            if (questionType === 'flashcard') {
+                await importFlashcardQuestionToSupabase(quizId, question, index);
+            } else if (questionType === 'hierarchy') {
+                await importHierarchyQuestionToSupabase(quizId, question, index);
+            } else if (questionType === 'classify') {
+                await importClassifyQuestionToSupabase(quizId, question, index);
+            } else {
+                await importMultipleChoiceQuestionToSupabase(quizId, question, index);
+            }
+        }
+    }
+
+    async function importGoogleSheetsQuizDescriptorToSupabase(quizDescriptor, targetFolderId = '') {
+        const descriptor = isQuizDescriptor(quizDescriptor) ? quizDescriptor : getQuizBySelectorValue(quizDescriptor);
+        if (!descriptor || descriptor.source !== DATA_SOURCES.GOOGLE_SHEETS) {
+            throw new Error('Choose a valid Google Sheets quiz to import.');
+        }
+
+        const sourceQuestions = await loadQuestionsFromGoogleSheets(descriptor.sheet);
+        if (!sourceQuestions.length) {
+            throw new Error('The selected Google Sheets quiz does not have importable questions.');
+        }
+
+        const quizType = getQuestionTypeForImport(sourceQuestions[0]);
+        const invalidMixedTypes = sourceQuestions.some(question => getQuestionTypeForImport(question) !== quizType);
+        if (invalidMixedTypes) {
+            throw new Error('Mixed-type Google Sheets quizzes are not supported for import yet.');
+        }
+
+        const folderId = await ensureImportTargetFolderId(targetFolderId, descriptor.folder);
+        const nextSortOrder = state.auth.managedQuizzes
+            .filter(quiz => (quiz.folderId || '') === (folderId || ''))
+            .reduce((maxValue, quiz) => Math.max(maxValue, Number(quiz.sortOrder ?? 0)), -1) + 1;
+
+        const { data: quizRow, error: quizError } = await state.auth.client
+            .from('quizzes')
+            .insert({
+                user_id: state.auth.user.id,
+                folder_id: folderId || null,
+                name: descriptor.name,
+                description: '',
+                sort_order: nextSortOrder,
+                is_archived: false
+            })
+            .select('id')
+            .single();
+        if (quizError) throw quizError;
+
+        await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, sourceQuestions);
+        return { quizId: quizRow.id, quizName: descriptor.name, questionCount: sourceQuestions.length, quizType, folderId };
+    }
+
+    async function handleImportGoogleSheetsQuiz() {
+        if (!state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before importing Google Sheets quizzes.', 'error');
+            return;
+        }
+
+        const quizDescriptor = getQuizBySelectorValue(elements.importSourceQuizSelect?.value || '');
+        if (!quizDescriptor || quizDescriptor.source !== DATA_SOURCES.GOOGLE_SHEETS) {
+            setCreatorStatus('Choose a Google Sheets quiz to import.', 'error');
+            return;
+        }
+
+        try {
+            const targetFolderId = normalizeSheetText(elements.importTargetFolderSelect?.value);
+            const result = await importGoogleSheetsQuizDescriptorToSupabase(quizDescriptor, targetFolderId);
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
+            renderGoogleSheetsImportControls();
+            setQuizStudioSection('manage');
+            setCreatorStatus(`Imported "${result.quizName}" into Supabase.`, 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not import the Google Sheets quiz.', 'error');
+        }
+    }
+
+    async function handleImportGoogleSheetsFolder() {
+        if (!state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before importing Google Sheets folders.', 'error');
+            return;
+        }
+
+        const sourceFolderName = normalizeSheetText(elements.importEntireFolderSourceSelect?.value);
+        if (!sourceFolderName) {
+            setCreatorStatus('Choose a Google Sheets folder to import.', 'error');
+            return;
+        }
+
+        const sourceQuizzes = getGoogleSheetsQuizzesForFolder(sourceFolderName);
+        if (!sourceQuizzes.length) {
+            setCreatorStatus('That Google Sheets folder does not contain importable quizzes.', 'error');
+            return;
+        }
+
+        try {
+            const targetFolderId = await ensureImportTargetFolderId(normalizeSheetText(elements.importEntireFolderTargetSelect?.value), sourceFolderName);
+            let importedCount = 0;
+            for (const descriptor of sourceQuizzes) {
+                await importGoogleSheetsQuizDescriptorToSupabase(descriptor, targetFolderId);
+                importedCount += 1;
+            }
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
+            renderGoogleSheetsImportControls();
+            setQuizStudioSection('manage');
+            setCreatorStatus(`Imported ${importedCount} Google Sheets ${importedCount === 1 ? 'quiz' : 'quizzes'} into Supabase.`, 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not import that Google Sheets folder.', 'error');
         }
     }
 function parseGoogleSheetResponse(text) {
@@ -3547,6 +3946,7 @@ async function populateFolderDropdown() {
 
     elements.folderSelector.value = '';
     resetQuizSelector();
+    renderGoogleSheetsImportControls();
 
     return state.quizListCache;
 }
@@ -6199,6 +6599,36 @@ if (elements.studioQuizList) {
                 setCreatorStatus('Could not load the quiz into the study view.', 'error');
             });
         }
+    });
+}
+
+if (elements.importSourceFolderSelect) {
+    elements.importSourceFolderSelect.addEventListener('change', () => {
+        renderGoogleSheetsImportControls();
+    });
+}
+
+if (elements.importEntireFolderSourceSelect) {
+    elements.importEntireFolderSourceSelect.addEventListener('change', () => {
+        renderGoogleSheetsImportControls();
+    });
+}
+
+if (elements.importSourceQuizBtn) {
+    elements.importSourceQuizBtn.addEventListener('click', () => {
+        handleImportGoogleSheetsQuiz().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not import the Google Sheets quiz.', 'error');
+        });
+    });
+}
+
+if (elements.importSourceFolderBtn) {
+    elements.importSourceFolderBtn.addEventListener('click', () => {
+        handleImportGoogleSheetsFolder().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not import the Google Sheets folder.', 'error');
+        });
     });
 }
 
