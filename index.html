@@ -389,6 +389,7 @@ MODIFICATION RULES FOR THIS APP
                       <option value="multiple_choice">Multiple Choice</option>
                       <option value="flashcard">Flashcard</option>
                       <option value="hierarchy">Hierarchy</option>
+                      <option value="classify">Classify</option>
                     </select>
                   </label>
 
@@ -400,7 +401,7 @@ MODIFICATION RULES FOR THIS APP
                         <button id="studioDeleteQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Delete Question</button>
                       </div>
                     </div>
-                    <div class="creator-note">Each quiz can now contain multiple multiple-choice questions, flashcards, or hierarchy questions. Select an item to edit it, add a new item, or change the order.</div>
+                    <div class="creator-note">Each quiz can now contain multiple multiple-choice questions, flashcards, hierarchy questions, or classify questions. Select an item to edit it, add a new item, or change the order.</div>
                     <div id="studioQuestionList" class="studio-question-list"></div>
                     <div class="studio-question-order-actions">
                       <button id="studioMoveQuestionUpBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Up</button>
@@ -461,6 +462,32 @@ MODIFICATION RULES FOR THIS APP
                     </div>
 
                     <div id="createHierarchyFieldsContainer" class="studio-options-grid"></div>
+                  </div>
+
+                  <div id="classifyEditorFields" class="studio-editor-type-fields hidden">
+                    <div class="studio-options-toolbar">
+                      <div class="creator-note studio-options-note">Create categories and classify items. Categories and items can use text, images, or both. Each item must be assigned to one category.</div>
+                    </div>
+
+                    <div class="studio-classify-columns">
+                      <div class="studio-classify-column">
+                        <div class="creator-subsection-title studio-inline-title">Categories</div>
+                        <div class="studio-options-toolbar-actions">
+                          <button id="addClassifyCategoryBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Category</button>
+                          <button id="removeClassifyCategoryBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Category</button>
+                        </div>
+                        <div id="createClassifyCategoriesContainer" class="studio-options-grid"></div>
+                      </div>
+
+                      <div class="studio-classify-column">
+                        <div class="creator-subsection-title studio-inline-title">Items</div>
+                        <div class="studio-options-toolbar-actions">
+                          <button id="addClassifyItemBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Item</button>
+                          <button id="removeClassifyItemBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Item</button>
+                        </div>
+                        <div id="createClassifyItemsContainer" class="studio-options-grid"></div>
+                      </div>
+                    </div>
                   </div>
 
                   <div id="flashcardEditorFields" class="studio-editor-type-fields hidden">

@@ -144,6 +144,7 @@ MODIFICATION RULES FOR THIS APP
         sharedQuestionEditorFields: document.getElementById('sharedQuestionEditorFields'),
         multipleChoiceEditorFields: document.getElementById('multipleChoiceEditorFields'),
         hierarchyEditorFields: document.getElementById('hierarchyEditorFields'),
+        classifyEditorFields: document.getElementById('classifyEditorFields'),
         flashcardEditorFields: document.getElementById('flashcardEditorFields'),
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
@@ -163,6 +164,12 @@ MODIFICATION RULES FOR THIS APP
         createHierarchyFieldsContainer: document.getElementById('createHierarchyFieldsContainer'),
         addHierarchyItemBtn: document.getElementById('addHierarchyItemBtn'),
         removeHierarchyItemBtn: document.getElementById('removeHierarchyItemBtn'),
+        createClassifyCategoriesContainer: document.getElementById('createClassifyCategoriesContainer'),
+        createClassifyItemsContainer: document.getElementById('createClassifyItemsContainer'),
+        addClassifyCategoryBtn: document.getElementById('addClassifyCategoryBtn'),
+        removeClassifyCategoryBtn: document.getElementById('removeClassifyCategoryBtn'),
+        addClassifyItemBtn: document.getElementById('addClassifyItemBtn'),
+        removeClassifyItemBtn: document.getElementById('removeClassifyItemBtn'),
         createCorrectOptionSelect: document.getElementById('createCorrectOptionSelect'),
         createCorrectExplanation: document.getElementById('createCorrectExplanation'),
         createQuizModeNote: document.getElementById('createQuizModeNote'),
@@ -321,14 +328,20 @@ MODIFICATION RULES FOR THIS APP
         return getStudioCurrentQuizType() === 'hierarchy';
     }
 
+    function isStudioClassifyMode() {
+        return getStudioCurrentQuizType() === 'classify';
+    }
+
     function updateStudioEditorTypeUI() {
         const quizType = getStudioCurrentQuizType();
         const isFlashcard = quizType === 'flashcard';
         const isHierarchy = quizType === 'hierarchy';
+        const isClassify = quizType === 'classify';
         const isMultipleChoice = quizType === 'multiple_choice';
         if (elements.sharedQuestionEditorFields) elements.sharedQuestionEditorFields.classList.toggle('hidden', isFlashcard);
         if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', !isMultipleChoice);
         if (elements.hierarchyEditorFields) elements.hierarchyEditorFields.classList.toggle('hidden', !isHierarchy);
+        if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
@@ -540,7 +553,7 @@ MODIFICATION RULES FOR THIS APP
         const itemLabel = itemLabelMap[quizType] || 'question';
         const itemPlural = itemPluralMap[quizType] || 'questions';
         const quizLabel = quizLabelMap[quizType] || 'quiz';
-        const itemDisplayMap = { multiple_choice: 'Question', flashcard: 'Flashcard', hierarchy: 'Hierarchy Question' };
+        const itemDisplayMap = { multiple_choice: 'Question', flashcard: 'Flashcard', hierarchy: 'Hierarchy Question', classify: 'Classify Question' };
         const itemDisplay = itemDisplayMap[quizType] || 'Question';
 
         if (elements.createQuizBtn) {
@@ -774,6 +787,250 @@ MODIFICATION RULES FOR THIS APP
         return normalizeHierarchyDrafts(drafts);
     }
 
+    function normalizeClassifyCategoriesDrafts(categoryDrafts = null) {
+        const source = (Array.isArray(categoryDrafts) && categoryDrafts.length ? categoryDrafts : Array.from({ length: 2 }, (_, index) => ({ label: '', imageUrl: '', id: `class_${index + 1}` })))
+            .map((draft, index) => ({
+                label: normalizeSheetText(draft?.label),
+                imageUrl: normalizeSheetText(draft?.imageUrl),
+                id: normalizeSheetText(draft?.id) || `class_${index + 1}`
+            }))
+            .slice(0, CONFIG.classifyClassCount);
+
+        while (source.length < 2) {
+            source.push({ label: '', imageUrl: '', id: `class_${source.length + 1}` });
+        }
+
+        return source.map((draft, index) => ({ label: draft.label, imageUrl: draft.imageUrl, id: `class_${index + 1}` }));
+    }
+
+    function normalizeClassifyItemsDrafts(itemDrafts = null, categories = null) {
+        const normalizedCategories = normalizeClassifyCategoriesDrafts(categories);
+        const fallbackCategoryId = normalizedCategories[0]?.id || 'class_1';
+        const source = (Array.isArray(itemDrafts) && itemDrafts.length ? itemDrafts : Array.from({ length: 2 }, () => ({ text: '', imageUrl: '', categoryId: fallbackCategoryId })))
+            .map(draft => ({
+                text: normalizeSheetText(draft?.text),
+                imageUrl: normalizeSheetText(draft?.imageUrl),
+                categoryId: normalizeSheetText(draft?.categoryId) || fallbackCategoryId
+            }))
+            .slice(0, CONFIG.classifyItemCount);
+
+        while (source.length < 2) {
+            source.push({ text: '', imageUrl: '', categoryId: fallbackCategoryId });
+        }
+
+        return source.map(draft => ({
+            text: draft.text,
+            imageUrl: draft.imageUrl,
+            categoryId: normalizedCategories.some(category => category.id === draft.categoryId) ? draft.categoryId : fallbackCategoryId
+        }));
+    }
+
+    function setStudioClassifyRowImageState(wrapper, kind, dataUrl = '', label = '') {
+        if (!wrapper) return;
+        const normalizedDataUrl = normalizeSheetText(dataUrl);
+        const safeLabel = label || (kind === 'category' ? 'No category image selected.' : 'No item image selected.');
+        wrapper.dataset[kind === 'category' ? 'classifyCategoryImageUrl' : 'classifyItemImageUrl'] = normalizedDataUrl;
+
+        const fileNameEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-name]' : '[data-classify-item-image-name]');
+        if (fileNameEl) {
+            fileNameEl.textContent = normalizedDataUrl ? safeLabel : (kind === 'category' ? 'No category image selected.' : 'No item image selected.');
+        }
+
+        const previewEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-preview]' : '[data-classify-item-image-preview]');
+        if (previewEl) {
+            if (normalizedDataUrl) {
+                previewEl.src = normalizedDataUrl;
+                previewEl.classList.remove('hidden');
+            } else {
+                previewEl.src = '';
+                previewEl.classList.add('hidden');
+            }
+        }
+
+        const inputEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-file]' : '[data-classify-item-image-file]');
+        if (!normalizedDataUrl && inputEl) {
+            inputEl.value = '';
+        }
+    }
+
+    function createStudioClassifyCategoryRow(index, categoryData = {}) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'studio-option-pair studio-classify-row';
+        wrapper.dataset.classifyCategoryIndex = String(index + 1);
+        wrapper.innerHTML = `
+            <label class="auth-field">
+              <span>Category ${index + 1} text (optional)</span>
+              <input type="text" autocomplete="off" placeholder="Category ${index + 1}" data-classify-category-label>
+            </label>
+            <label class="auth-field">
+              <span>Category ${index + 1} image (optional)</span>
+              <input type="file" accept="image/*" data-classify-category-image-file>
+            </label>
+            <div class="studio-file-row">
+              <div class="studio-file-name" data-classify-category-image-name>No category image selected.</div>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-category-image-clear>Clear</button>
+            </div>
+            <img class="studio-inline-image-preview hidden" alt="Category image preview" data-classify-category-image-preview>
+        `;
+        const input = wrapper.querySelector('[data-classify-category-label]');
+        if (input) input.value = normalizeSheetText(categoryData.label);
+        setStudioClassifyRowImageState(wrapper, 'category', normalizeSheetText(categoryData.imageUrl), normalizeSheetText(categoryData.imageUrl) ? 'Selected image.' : '');
+        return wrapper;
+    }
+
+    function populateClassifyItemCategorySelect(select, categories, selectedId) {
+        if (!select) return;
+        select.innerHTML = '';
+        categories.forEach((category, index) => {
+            const option = document.createElement('option');
+            option.value = category.id;
+            const fallbackLabel = category.imageUrl ? `Category ${index + 1} (image)` : `Category ${index + 1}`;
+            option.textContent = normalizeSheetText(category.label) || fallbackLabel;
+            select.appendChild(option);
+        });
+        select.value = categories.some(category => category.id === selectedId) ? selectedId : (categories[0]?.id || '');
+    }
+
+    function createStudioClassifyItemRow(index, itemData = {}, categories = []) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'studio-option-pair studio-classify-row';
+        wrapper.dataset.classifyItemIndex = String(index + 1);
+        wrapper.innerHTML = `
+            <label class="auth-field">
+              <span>Item ${index + 1} text (optional)</span>
+              <input type="text" autocomplete="off" placeholder="Classify item ${index + 1}" data-classify-item-text>
+            </label>
+            <label class="auth-field">
+              <span>Item ${index + 1} image (optional)</span>
+              <input type="file" accept="image/*" data-classify-item-image-file>
+            </label>
+            <div class="studio-file-row">
+              <div class="studio-file-name" data-classify-item-image-name>No item image selected.</div>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-item-image-clear>Clear</button>
+            </div>
+            <img class="studio-inline-image-preview hidden" alt="Item image preview" data-classify-item-image-preview>
+            <label class="auth-field">
+              <span>Correct category</span>
+              <select data-classify-item-category></select>
+            </label>
+        `;
+        const input = wrapper.querySelector('[data-classify-item-text]');
+        const select = wrapper.querySelector('[data-classify-item-category]');
+        if (input) input.value = normalizeSheetText(itemData.text);
+        setStudioClassifyRowImageState(wrapper, 'item', normalizeSheetText(itemData.imageUrl), normalizeSheetText(itemData.imageUrl) ? 'Selected image.' : '');
+        populateClassifyItemCategorySelect(select, categories, itemData.categoryId);
+        return wrapper;
+    }
+
+    function getStudioClassifyCategoriesDraftsFromDOM() {
+        if (!elements.createClassifyCategoriesContainer) return normalizeClassifyCategoriesDrafts();
+        const drafts = Array.from(elements.createClassifyCategoriesContainer.querySelectorAll('[data-classify-category-index]')).map((row, index) => ({
+            label: normalizeSheetText(row.querySelector('[data-classify-category-label]')?.value),
+            imageUrl: normalizeSheetText(row.dataset.classifyCategoryImageUrl),
+            id: `class_${index + 1}`
+        }));
+        return normalizeClassifyCategoriesDrafts(drafts);
+    }
+
+    function getStudioClassifyItemsDraftsFromDOM(categoriesOverride = null) {
+        const categories = normalizeClassifyCategoriesDrafts(categoriesOverride || getStudioClassifyCategoriesDraftsFromDOM());
+        if (!elements.createClassifyItemsContainer) return normalizeClassifyItemsDrafts([], categories);
+        const fallbackCategoryId = categories[0]?.id || 'class_1';
+        const actualDrafts = Array.from(elements.createClassifyItemsContainer.querySelectorAll('[data-classify-item-index]')).map(row => ({
+            text: normalizeSheetText(row.querySelector('[data-classify-item-text]')?.value),
+            imageUrl: normalizeSheetText(row.dataset.classifyItemImageUrl),
+            categoryId: normalizeSheetText(row.querySelector('[data-classify-item-category]')?.value) || fallbackCategoryId
+        }));
+        return normalizeClassifyItemsDrafts(actualDrafts, categories);
+    }
+
+    function renderStudioClassifyFields(categoryDrafts = null, itemDrafts = null) {
+        if (!elements.createClassifyCategoriesContainer || !elements.createClassifyItemsContainer) return;
+        const categories = normalizeClassifyCategoriesDrafts(categoryDrafts);
+        const items = normalizeClassifyItemsDrafts(itemDrafts, categories);
+        elements.createClassifyCategoriesContainer.innerHTML = '';
+        categories.forEach((category, index) => {
+            elements.createClassifyCategoriesContainer.appendChild(createStudioClassifyCategoryRow(index, category));
+        });
+        elements.createClassifyItemsContainer.innerHTML = '';
+        items.forEach((item, index) => {
+            elements.createClassifyItemsContainer.appendChild(createStudioClassifyItemRow(index, item, categories));
+        });
+        updateCreatorUI();
+    }
+
+    function refreshStudioClassifyItemCategoryOptions() {
+        const categories = getStudioClassifyCategoriesDraftsFromDOM();
+        if (!elements.createClassifyItemsContainer) return;
+        elements.createClassifyItemsContainer.querySelectorAll('[data-classify-item-index]').forEach((row, index) => {
+            const select = row.querySelector('[data-classify-item-category]');
+            const currentValue = normalizeSheetText(select?.value);
+            populateClassifyItemCategorySelect(select, categories, currentValue || categories[0]?.id || `class_${Math.min(index + 1, categories.length)}`);
+        });
+    }
+
+    function addStudioClassifyCategoryField() {
+        const categories = getStudioClassifyCategoriesDraftsFromDOM();
+        const items = getStudioClassifyItemsDraftsFromDOM(categories);
+        if (categories.length >= CONFIG.classifyClassCount) {
+            setCreatorStatus(`Classify quizzes support up to ${CONFIG.classifyClassCount} categories.`, 'error');
+            return;
+        }
+        categories.push({ label: '', imageUrl: '', id: `class_${categories.length + 1}` });
+        renderStudioClassifyFields(categories, items);
+    }
+
+    function removeStudioClassifyCategoryField() {
+        const categories = getStudioClassifyCategoriesDraftsFromDOM();
+        const items = getStudioClassifyItemsDraftsFromDOM(categories);
+        if (categories.length <= 2) {
+            setCreatorStatus('Classify quizzes need at least 2 categories.', 'error');
+            return;
+        }
+        const removed = categories.pop();
+        const nextCategories = normalizeClassifyCategoriesDrafts(categories);
+        const fallbackCategoryId = nextCategories[0]?.id || 'class_1';
+        const nextItems = items.map(item => ({
+            text: item.text,
+            imageUrl: item.imageUrl,
+            categoryId: item.categoryId === removed.id ? fallbackCategoryId : item.categoryId
+        }));
+        renderStudioClassifyFields(nextCategories, nextItems);
+    }
+
+    function addStudioClassifyItemField() {
+        const categories = getStudioClassifyCategoriesDraftsFromDOM();
+        const items = getStudioClassifyItemsDraftsFromDOM(categories);
+        if (items.length >= CONFIG.classifyItemCount) {
+            setCreatorStatus(`Classify quizzes support up to ${CONFIG.classifyItemCount} items.`, 'error');
+            return;
+        }
+        items.push({ text: '', imageUrl: '', categoryId: categories[0]?.id || 'class_1' });
+        renderStudioClassifyFields(categories, items);
+    }
+
+    function removeStudioClassifyItemField() {
+        const categories = getStudioClassifyCategoriesDraftsFromDOM();
+        const items = getStudioClassifyItemsDraftsFromDOM(categories);
+        if (items.length <= 2) {
+            setCreatorStatus('Classify quizzes need at least 2 items.', 'error');
+            return;
+        }
+        items.pop();
+        renderStudioClassifyFields(categories, items);
+    }
+
+    function getClassifyDraftsFromDetailRow(detailRow) {
+        const categories = normalizeClassifyCategoriesDrafts((detailRow?.classifications_json || []).map(item => ({ label: item?.label, imageUrl: item?.imageUrl, id: item?.id })));
+        const fallbackCategoryId = categories[0]?.id || 'class_1';
+        const items = normalizeClassifyItemsDrafts((detailRow?.items_json || []).map(item => ({
+            text: normalizeSheetText(item?.text || (item?.kind === 'image' ? '' : item?.raw)),
+            imageUrl: normalizeSheetText(item?.imageUrl),
+            categoryId: normalizeSheetText(item?.correctClassificationId) || fallbackCategoryId
+        })), categories);
+        return { categories, items };
+    }
+
 
     function getMultipleChoiceDraftsFromDetailRow(detailRow) {
         const rawOptions = Array.isArray(detailRow?.options_json)
@@ -816,11 +1073,11 @@ MODIFICATION RULES FOR THIS APP
         const prompt = questionType === 'flashcard'
             ? normalizeSheetText(questionRow?.term_plain || questionRow?.prompt_plain || '')
             : normalizeSheetText(questionRow?.prompt_plain || '');
-        const prefix = questionType === 'flashcard' ? `Card ${index + 1}` : (questionType === 'hierarchy' ? `H${index + 1}` : `Q${index + 1}`);
+        const prefix = questionType === 'flashcard' ? `Card ${index + 1}` : (questionType === 'hierarchy' ? `H${index + 1}` : (questionType === 'classify' ? `C${index + 1}` : `Q${index + 1}`));
         if (prompt) {
             return `${prefix}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
         }
-        return questionType === 'flashcard' ? `Flashcard ${index + 1}` : (questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : `Question ${index + 1}`);
+        return questionType === 'flashcard' ? `Flashcard ${index + 1}` : (questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : (questionType === 'classify' ? `Classify ${index + 1}` : `Question ${index + 1}`));
     }
 
     function renderStudioQuestionList() {
@@ -844,8 +1101,8 @@ MODIFICATION RULES FOR THIS APP
         elements.studioQuestionList.innerHTML = state.auth.studioQuizQuestions.map((questionRow, index) => {
             const isActive = questionRow.id === state.auth.editingQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
-            const chipPrefix = questionType === 'flashcard' ? 'Card' : (questionType === 'hierarchy' ? 'H' : 'Q');
-            const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
+            const chipPrefix = questionType === 'flashcard' ? 'Card' : (questionType === 'hierarchy' ? 'H' : (questionType === 'classify' ? 'C' : 'Q'));
+            const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
             return `
                 <button
                   type="button"
@@ -867,6 +1124,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
         renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
+        renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         state.auth.editingQuestionId = null;
@@ -982,6 +1240,29 @@ MODIFICATION RULES FOR THIS APP
 
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             renderStudioHierarchyFields(getHierarchyDraftsFromDetailRow(detailRow));
+            renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
+            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+            if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
+
+            setStudioQuestionImageState(
+                normalizeSheetText(questionRow.image_url),
+                normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
+            );
+            setStudioFlashcardTermImageState('', 'No term image selected.');
+            setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
+            if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
+            if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
+        } else if (state.auth.editingQuizType === 'classify') {
+            const detailRow = await loadClassifyDetailByQuestionId(questionId);
+            if (!detailRow) {
+                throw new Error('Could not load that classify question into the editor.');
+            }
+
+            if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
+            const classifyDrafts = getClassifyDraftsFromDetailRow(detailRow);
+            renderStudioClassifyFields(classifyDrafts.categories, classifyDrafts.items);
+            renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
@@ -1023,7 +1304,7 @@ MODIFICATION RULES FOR THIS APP
         renderStudioQuestionList();
         updateCreateQuizModeUI();
         if (!suppressStatus) {
-            const statusLabel = state.auth.editingQuizType === 'flashcard' ? 'Flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'Hierarchy question' : 'Question');
+            const statusLabel = state.auth.editingQuizType === 'flashcard' ? 'Flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'Hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'Classify question' : 'Question'));
             setCreatorStatus(`${statusLabel} loaded into the editor.`, 'success');
         }
     }
@@ -1037,7 +1318,7 @@ MODIFICATION RULES FOR THIS APP
         clearStudioQuestionInputs();
         updateCreateQuizModeUI();
         setQuizStudioSection('editor');
-        const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : 'question');
+        const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : (getStudioCurrentQuizType() === 'classify' ? 'classify question' : 'question'));
         setCreatorStatus(`Ready to add a new ${nextItemLabel} to this quiz. Fill in the fields below and save.`, 'success');
     }
 
@@ -1187,6 +1468,25 @@ MODIFICATION RULES FOR THIS APP
         return rows[0] || null;
     }
 
+    async function loadClassifyDetailsByQuestionIds(questionIds) {
+        if (!state.auth.client || !Array.isArray(questionIds) || !questionIds.length) {
+            return [];
+        }
+
+        const { data, error } = await state.auth.client
+            .from('classify_questions')
+            .select('question_id, items_json, classifications_json')
+            .in('question_id', questionIds);
+
+        if (error) throw error;
+        return data || [];
+    }
+
+    async function loadClassifyDetailByQuestionId(questionId) {
+        const rows = await loadClassifyDetailsByQuestionIds([questionId]);
+        return rows[0] || null;
+    }
+
     function setQuizStudioSection(sectionName = 'folders') {
         const nextSection = ['folders', 'manage', 'editor'].includes(sectionName)
             ? sectionName
@@ -1227,6 +1527,10 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuestionImageClearBtn,
             elements.addHierarchyItemBtn,
             elements.removeHierarchyItemBtn,
+            elements.addClassifyCategoryBtn,
+            elements.removeClassifyCategoryBtn,
+            elements.addClassifyItemBtn,
+            elements.removeClassifyItemBtn,
             elements.createFlashcardTerm,
             elements.createFlashcardDefinition,
             elements.createFlashcardTermImageFile,
@@ -1256,6 +1560,18 @@ MODIFICATION RULES FOR THIS APP
 
         if (elements.createHierarchyFieldsContainer) {
             elements.createHierarchyFieldsContainer.querySelectorAll('input, select').forEach(el => {
+                el.disabled = !creatorEnabled;
+            });
+        }
+
+        if (elements.createClassifyCategoriesContainer) {
+            elements.createClassifyCategoriesContainer.querySelectorAll('input, button').forEach(el => {
+                el.disabled = !creatorEnabled;
+            });
+        }
+
+        if (elements.createClassifyItemsContainer) {
+            elements.createClassifyItemsContainer.querySelectorAll('input, select, button').forEach(el => {
                 el.disabled = !creatorEnabled;
             });
         }
@@ -1638,12 +1954,7 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const reader = new FileReader();
-        const dataUrl = await new Promise((resolve, reject) => {
-            reader.onload = () => resolve(String(reader.result || ''));
-            reader.onerror = () => reject(new Error('Could not read the selected image file.'));
-            reader.readAsDataURL(file);
-        });
+        const dataUrl = await readFileAsDataUrl(file);
 
         if (type === 'question') {
             setStudioQuestionImageState(dataUrl, `Selected: ${file.name}`);
@@ -1884,9 +2195,66 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    async function handleSaveClassifyQuiz() {
+        if (!state.auth.client || !state.auth.user?.id) return void setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
+        const quizName = normalizeSheetText(elements.createQuizName?.value);
+        const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
+        const categories = getStudioClassifyCategoriesDraftsFromDOM();
+        const items = getStudioClassifyItemsDraftsFromDOM(categories);
+        const categoryLabels = categories.map(category => category.label);
+        const itemTexts = items.map(item => item.text);
+        if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
+        if (!prompt) return void setCreatorStatus('Enter a classify prompt first.', 'error');
+        if (categories.some(category => !category.label && !category.imageUrl)) return void setCreatorStatus('Each category needs text, an image, or both before saving.', 'error');
+        if (new Set(categoryLabels.filter(Boolean)).size !== categoryLabels.filter(Boolean).length) return void setCreatorStatus('Category text labels must be unique when used.', 'error');
+        if (items.some(item => !item.text && !item.imageUrl)) return void setCreatorStatus('Each classify item needs text, an image, or both before saving.', 'error');
+        if (new Set(itemTexts.filter(Boolean)).size !== itemTexts.filter(Boolean).length) return void setCreatorStatus('Classify item text labels must be unique when used.', 'error');
+        if (items.some(item => !categories.some(category => category.id === item.categoryId))) return void setCreatorStatus('Each classify item needs a valid category.', 'error');
+        const isEditingQuiz = !!state.auth.editingQuizId;
+        const isEditingQuestion = !!state.auth.editingQuestionId;
+        setCreatorStatus(!isEditingQuiz ? 'Creating classify quiz...' : (isEditingQuestion ? 'Saving classify changes...' : 'Adding classify question to quiz...'));
+        try {
+            let quizId = state.auth.editingQuizId;
+            let questionId = state.auth.editingQuestionId;
+            if (quizId) {
+                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+                if (error) throw error;
+            } else {
+                const quizSortOrder = await getNextQuizSortOrder(folderId);
+                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                if (error) throw error;
+                quizId = data.id;
+            }
+            if (!questionId) {
+                const questionSortOrder = await getNextQuestionSortOrder(quizId);
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'classify', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                if (error) throw error;
+                questionId = data.id;
+            } else {
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', question_type: 'classify' }).eq('id', questionId);
+                if (error) throw error;
+            }
+            const classificationsJson = categories.map((category, index) => ({ label: category.label, imageUrl: category.imageUrl || '', id: category.id }));
+            const itemsJson = items.map((item, index) => ({ kind: item.imageUrl ? 'image' : 'text', raw: item.text || `classify_item_${index + 1}`, imageUrl: item.imageUrl || '', text: item.text, dragLabel: item.text || `Image item ${index + 1}`, ariaLabel: item.text ? `Classify item ${item.text}` : `Classify image item ${index + 1}`, correctClassificationId: item.categoryId }));
+            const { error: detailError } = await state.auth.client.from('classify_questions').upsert({ question_id: questionId, items_json: itemsJson, classifications_json: classificationsJson }, { onConflict: 'question_id' });
+            if (detailError) throw detailError;
+            state.auth.editingQuizType = 'classify';
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
+            await loadQuizIntoEditor(quizId, questionId);
+            setCreatorStatus(!isEditingQuiz ? 'Classify quiz created and first question saved.' : (isEditingQuestion ? 'Classify question updated.' : 'New classify question added to the quiz.'), 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not save the classify quiz.', 'error');
+        }
+    }
+
     async function handleSaveStudioQuiz() {
         if (isStudioFlashcardMode()) return handleSaveFlashcardQuiz();
         if (isStudioHierarchyMode()) return handleSaveHierarchyQuiz();
+        if (isStudioClassifyMode()) return handleSaveClassifyQuiz();
         return handleSaveMultipleChoiceQuiz();
     }
 
@@ -1977,7 +2345,7 @@ MODIFICATION RULES FOR THIS APP
 
             updateCreateQuizModeUI();
             openQuizStudioPage('editor');
-            const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : 'question');
+            const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'classify question' : 'question'));
             setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${nextItemTypeLabel} below.`, 'success');
         } catch (error) {
             console.error(error);
@@ -2047,6 +2415,20 @@ function getCellValue(cell) {
 
 function normalizeClassificationId(value) {
     return normalizeSheetText(value);
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        if (!file) {
+            resolve('');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => reject(reader.error || new Error('Could not read file.'));
+        reader.readAsDataURL(file);
+    });
 }
 
 function parseClassifyItemValue(value) {
@@ -2791,7 +3173,7 @@ async function loadQuizListFromSupabase() {
         return (quizzes || [])
             .filter(quiz => {
                 const types = quizTypeMap.get(quiz.id) || [];
-                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard' || type === 'hierarchy');
+                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard' || type === 'hierarchy' || type === 'classify');
             })
             .map(quiz => {
                 const types = quizTypeMap.get(quiz.id) || [];
@@ -2884,6 +3266,39 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     type: 'hierarchy',
                     options: sortedByOriginalIndex.map(item => item.text),
                     correctOrder,
+                    image: normalizeSheetText(row.image_url),
+                    learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                    learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+                };
+            }).filter(Boolean);
+        }
+        if (quizType === 'classify') {
+            const detailRows = await loadClassifyDetailsByQuestionIds(questionIds);
+            const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
+            return rows.map(row => {
+                const detail = detailMap.get(row.id);
+                if (!detail) return null;
+                const items = Array.isArray(detail.items_json) ? detail.items_json.map(item => ({
+                    kind: normalizeSheetText(item?.kind || (item?.imageUrl ? 'image' : 'text')) || 'text',
+                    raw: normalizeSheetText(item?.raw || item?.text),
+                    imageUrl: normalizeSheetText(item?.imageUrl),
+                    text: normalizeSheetText(item?.text || item?.raw),
+                    dragLabel: normalizeSheetText(item?.dragLabel || item?.text || item?.raw || 'Image item'),
+                    ariaLabel: normalizeSheetText(item?.ariaLabel || `Classify item ${item?.text || item?.raw || 'image'}`),
+                    correctClassificationId: normalizeSheetText(item?.correctClassificationId)
+                })) : [];
+                const classifications = Array.isArray(detail.classifications_json) ? detail.classifications_json.map(classification => ({
+                    label: normalizeSheetText(classification?.label),
+                    imageUrl: normalizeSheetText(classification?.imageUrl),
+                    id: normalizeSheetText(classification?.id)
+                })).filter(classification => classification.id && (classification.label || classification.imageUrl)) : [];
+                return {
+                    id: `q_${state.questionIdCounter++}`,
+                    sourceQuestionId: row.id,
+                    question: getStoredTextForDisplay(row.prompt_plain, row.prompt_html),
+                    type: 'classify',
+                    items,
+                    classifications,
                     image: normalizeSheetText(row.image_url),
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
@@ -4498,7 +4913,7 @@ function showClassify(q) {
         const content = document.createElement('div');
         content.className = 'classify-item-content';
 
-        if (item.kind === 'image' && item.imageUrl) {
+        if (item.imageUrl) {
             btn.classList.add('is-image-item');
 
             const img = document.createElement('img');
@@ -4507,6 +4922,13 @@ function showClassify(q) {
             img.alt = item.text || 'Classify image item';
             img.draggable = false;
             content.appendChild(img);
+
+            if (item.text) {
+                const textSpan = document.createElement('div');
+                textSpan.className = 'classify-item-text classify-item-image-text';
+                textSpan.innerText = item.text;
+                content.appendChild(textSpan);
+            }
 
             const zoomBtn = document.createElement('button');
             zoomBtn.type = 'button';
@@ -4629,7 +5051,45 @@ function showClassify(q) {
 
             const header = document.createElement('div');
             header.className = 'classify-category-header';
-            header.innerText = classification.label;
+            if (classification.imageUrl) {
+                const headerImageWrap = document.createElement('div');
+                headerImageWrap.className = 'classify-category-header-image-wrap';
+
+                const headerImg = document.createElement('img');
+                headerImg.className = 'classify-category-header-image';
+                headerImg.src = classification.imageUrl;
+                headerImg.alt = classification.label || 'Category image';
+                headerImageWrap.appendChild(headerImg);
+
+                const zoomBtn = document.createElement('button');
+                zoomBtn.type = 'button';
+                zoomBtn.className = 'classify-item-zoom-btn classify-category-zoom-btn';
+                zoomBtn.setAttribute('aria-label', 'Zoom category image');
+                zoomBtn.setAttribute('title', 'Zoom image');
+                zoomBtn.innerText = '⤢';
+
+                const stopZoomTrigger = e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                };
+
+                zoomBtn.addEventListener('pointerdown', stopZoomTrigger);
+                zoomBtn.addEventListener('click', e => {
+                    stopZoomTrigger(e);
+                    openFlashcardImageOverlay(classification.imageUrl, classification.label || 'Category image');
+                });
+
+                headerImageWrap.appendChild(zoomBtn);
+                header.appendChild(headerImageWrap);
+            }
+            if (classification.label) {
+                const headerText = document.createElement('div');
+                headerText.className = 'classify-category-header-text';
+                headerText.innerText = classification.label;
+                header.appendChild(headerText);
+            } else if (!classification.imageUrl) {
+                header.innerText = 'Category';
+            }
 
             const itemWrap = document.createElement('div');
             itemWrap.className = 'classify-category-items';
@@ -5240,6 +5700,79 @@ if (elements.removeHierarchyItemBtn) {
     });
 }
 
+if (elements.addClassifyCategoryBtn) {
+    elements.addClassifyCategoryBtn.addEventListener('click', () => {
+        addStudioClassifyCategoryField();
+    });
+}
+
+if (elements.removeClassifyCategoryBtn) {
+    elements.removeClassifyCategoryBtn.addEventListener('click', () => {
+        removeStudioClassifyCategoryField();
+    });
+}
+
+if (elements.addClassifyItemBtn) {
+    elements.addClassifyItemBtn.addEventListener('click', () => {
+        addStudioClassifyItemField();
+    });
+}
+
+if (elements.removeClassifyItemBtn) {
+    elements.removeClassifyItemBtn.addEventListener('click', () => {
+        removeStudioClassifyItemField();
+    });
+}
+
+if (elements.createClassifyCategoriesContainer) {
+    elements.createClassifyCategoriesContainer.addEventListener('change', event => {
+        const fileInput = event.target.closest('[data-classify-category-image-file]');
+        if (!fileInput) return;
+        const row = fileInput.closest('[data-classify-category-index]');
+        readFileAsDataUrl(fileInput.files?.[0]).then(dataUrl => {
+            setStudioClassifyRowImageState(row, 'category', dataUrl, fileInput.files?.[0] ? `Selected: ${fileInput.files[0].name}` : '');
+            refreshStudioClassifyItemCategoryOptions();
+        }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the category image.', 'error');
+        });
+    });
+
+    elements.createClassifyCategoriesContainer.addEventListener('click', event => {
+        const clearBtn = event.target.closest('[data-classify-category-image-clear]');
+        if (!clearBtn) return;
+        const row = clearBtn.closest('[data-classify-category-index]');
+        setStudioClassifyRowImageState(row, 'category');
+        refreshStudioClassifyItemCategoryOptions();
+    });
+
+    elements.createClassifyCategoriesContainer.addEventListener('input', event => {
+        if (event.target.closest('[data-classify-category-label]')) {
+            refreshStudioClassifyItemCategoryOptions();
+        }
+    });
+}
+
+if (elements.createClassifyItemsContainer) {
+    elements.createClassifyItemsContainer.addEventListener('change', event => {
+        const fileInput = event.target.closest('[data-classify-item-image-file]');
+        if (!fileInput) return;
+        const row = fileInput.closest('[data-classify-item-index]');
+        readFileAsDataUrl(fileInput.files?.[0]).then(dataUrl => {
+            setStudioClassifyRowImageState(row, 'item', dataUrl, fileInput.files?.[0] ? `Selected: ${fileInput.files[0].name}` : '');
+        }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the item image.', 'error');
+        });
+    });
+
+    elements.createClassifyItemsContainer.addEventListener('click', event => {
+        const clearBtn = event.target.closest('[data-classify-item-image-clear]');
+        if (!clearBtn) return;
+        const row = clearBtn.closest('[data-classify-item-index]');
+        setStudioClassifyRowImageState(row, 'item');
+    });
+}
 
 if (elements.createQuizTypeSelect) {
     elements.createQuizTypeSelect.addEventListener('change', () => {
