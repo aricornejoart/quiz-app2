@@ -362,7 +362,7 @@ MODIFICATION RULES FOR THIS APP
               <section id="quizStudioManageSection" class="quiz-studio-section hidden" data-studio-section="manage" role="tabpanel">
                 <section class="creator-subsection quiz-studio-panel">
                   <div class="creator-subsection-title">Manage Quizzes</div>
-                  <div class="creator-note">Edit quiz name, move a quiz to another folder, or delete it. Editing currently updates the first multiple-choice question created for that quiz.</div>
+                  <div class="creator-note">Edit quiz name, move a quiz to another folder, delete it, or open it in the editor to manage multiple multiple-choice questions.</div>
                   <div id="studioQuizList" class="studio-list"></div>
                 </section>
               </section>
@@ -370,7 +370,7 @@ MODIFICATION RULES FOR THIS APP
               <section id="quizStudioEditorSection" class="quiz-studio-section hidden" data-studio-section="editor" role="tabpanel">
                 <section class="creator-subsection quiz-studio-panel studio-quiz-editor-panel">
                   <div class="creator-subsection-title">Multiple-Choice Quiz Editor</div>
-                  <div id="createQuizModeNote" class="creator-note">First pass: creates a multiple-choice quiz with its first question using the full current multiple-choice field set.</div>
+                  <div id="createQuizModeNote" class="creator-note">Create a multiple-choice quiz, then keep adding, selecting, deleting, and reordering questions inside that same quiz.</div>
 
                   <label class="auth-field">
                     <span>Folder</span>
@@ -383,6 +383,22 @@ MODIFICATION RULES FOR THIS APP
                     <span>Quiz name</span>
                     <input id="createQuizName" type="text" autocomplete="off" placeholder="Example: Chapter 3 Review">
                   </label>
+
+                  <div class="studio-question-list-panel">
+                    <div class="studio-question-list-header">
+                      <div class="creator-subsection-title studio-inline-title">Questions</div>
+                      <div class="studio-question-header-actions">
+                        <button id="studioAddQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Question</button>
+                        <button id="studioDeleteQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Delete Question</button>
+                      </div>
+                    </div>
+                    <div class="creator-note">Each quiz can now contain multiple multiple-choice questions. Select a question to edit it, add a new question, or change the order.</div>
+                    <div id="studioQuestionList" class="studio-question-list"></div>
+                    <div class="studio-question-order-actions">
+                      <button id="studioMoveQuestionUpBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Up</button>
+                      <button id="studioMoveQuestionDownBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Down</button>
+                    </div>
+                  </div>
 
                   <label class="auth-field">
                     <span>Question prompt</span>

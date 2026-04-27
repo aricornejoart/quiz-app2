@@ -91,6 +91,7 @@ MODIFICATION RULES FOR THIS APP
             studioLearningResourcesImageLabel: 'No learning resources image selected.',
             editingQuizId: null,
             editingQuestionId: null,
+            studioQuizQuestions: [],
             currentStudioSection: 'folders',
             lastError: ''
         }
@@ -124,6 +125,11 @@ MODIFICATION RULES FOR THIS APP
         createFolderBtn: document.getElementById('createFolderBtn'),
         createQuizFolderSelect: document.getElementById('createQuizFolderSelect'),
         createQuizName: document.getElementById('createQuizName'),
+        studioQuestionList: document.getElementById('studioQuestionList'),
+        studioAddQuestionBtn: document.getElementById('studioAddQuestionBtn'),
+        studioDeleteQuestionBtn: document.getElementById('studioDeleteQuestionBtn'),
+        studioMoveQuestionUpBtn: document.getElementById('studioMoveQuestionUpBtn'),
+        studioMoveQuestionDownBtn: document.getElementById('studioMoveQuestionDownBtn'),
         createQuestionPrompt: document.getElementById('createQuestionPrompt'),
         createQuestionImageFile: document.getElementById('createQuestionImageFile'),
         createQuestionImageName: document.getElementById('createQuestionImageName'),
@@ -418,7 +424,7 @@ MODIFICATION RULES FOR THIS APP
                     folderId: quiz.folder_id || '',
                     folderName: folder ? normalizeFolderName(folder.name) : '',
                     questionCount: rows.length,
-                    allMultipleChoice: rows.length > 0 && types.every(type => type === 'multiple_choice'),
+                    allMultipleChoice: rows.length === 0 || types.every(type => type === 'multiple_choice'),
                     firstQuestionId: rows[0]?.id || ''
                 };
             });
@@ -439,20 +445,26 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function updateCreateQuizModeUI() {
-        const isEditing = !!state.auth.editingQuizId;
+        const isEditingQuiz = !!state.auth.editingQuizId;
+        const isEditingQuestion = !!state.auth.editingQuestionId;
 
         if (elements.createQuizBtn) {
-            elements.createQuizBtn.textContent = isEditing ? 'Save Quiz Changes' : 'Create Quiz';
+            elements.createQuizBtn.textContent = !isEditingQuiz
+                ? 'Create Quiz'
+                : (isEditingQuestion ? 'Save Question Changes' : 'Add Question To Quiz');
         }
 
         if (elements.createQuizCancelEditBtn) {
-            elements.createQuizCancelEditBtn.disabled = !isEditing;
+            elements.createQuizCancelEditBtn.disabled = !isEditingQuiz;
+            elements.createQuizCancelEditBtn.textContent = isEditingQuiz ? 'Start New Quiz' : 'Start New Quiz';
         }
 
         if (elements.createQuizModeNote) {
-            elements.createQuizModeNote.textContent = isEditing
-                ? 'Editing the selected quiz. Saving updates the quiz name, folder, and the first multiple-choice question for that quiz.'
-                : 'Creates a multiple-choice quiz with its first question. Add as many answer options as you need; each option gets its own explanation field.';
+            elements.createQuizModeNote.textContent = !isEditingQuiz
+                ? 'Creates a multiple-choice quiz and saves the current question into it. After that, you can keep adding, selecting, deleting, and reordering questions in the same quiz.'
+                : (isEditingQuestion
+                    ? 'Editing the selected multiple-choice question inside this quiz. Quiz name and folder changes save at the same time.'
+                    : 'This quiz is open in the editor. Fill in the fields below to add a new multiple-choice question to it.');
         }
     }
 
@@ -590,6 +602,234 @@ MODIFICATION RULES FOR THIS APP
         ].filter(item => item.text);
     }
 
+    function getStudioQuestionPreviewLabel(questionRow, index) {
+        const prompt = normalizeSheetText(questionRow?.prompt_plain || '');
+        if (prompt) {
+            return `Q${index + 1}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
+        }
+        return `Question ${index + 1}`;
+    }
+
+    function renderStudioQuestionList() {
+        if (!elements.studioQuestionList) return;
+
+        if (!state.auth.user?.id) {
+            elements.studioQuestionList.innerHTML = '<div class="studio-list-empty">Sign in to edit quiz questions.</div>';
+            return;
+        }
+
+        if (!state.auth.editingQuizId) {
+            elements.studioQuestionList.innerHTML = '<div class="studio-list-empty">Create a quiz or click Edit on a Supabase quiz to manage multiple questions here.</div>';
+            return;
+        }
+
+        if (!state.auth.studioQuizQuestions.length) {
+            elements.studioQuestionList.innerHTML = '<div class="studio-list-empty">No questions in this quiz yet. Click Add Question, fill in the editor, then save.</div>';
+            return;
+        }
+
+        elements.studioQuestionList.innerHTML = state.auth.studioQuizQuestions.map((questionRow, index) => {
+            const isActive = questionRow.id === state.auth.editingQuestionId;
+            return `
+                <button
+                  type="button"
+                  class="studio-question-list-item${isActive ? ' active' : ''}"
+                  data-studio-question-id="${escapeHtml(questionRow.id)}"
+                  aria-pressed="${isActive ? 'true' : 'false'}"
+                >
+                  <span class="studio-question-chip">Q${index + 1}</span>
+                  <span class="studio-question-label">${escapeHtml(getStudioQuestionPreviewLabel(questionRow, index).replace(/^Q\d+:\s*/, ''))}</span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    function clearStudioQuestionInputs() {
+        if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
+        if (elements.createLearningResources) elements.createLearningResources.value = '';
+        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+        if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+        if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
+        state.auth.editingQuestionId = null;
+        setStudioQuestionImageState('', 'No question image selected.');
+        setStudioLearningResourcesImageState('', 'No learning resources image selected.');
+        renderStudioQuestionList();
+        updateCreateQuizModeUI();
+    }
+
+    async function getNextQuestionSortOrder(quizId) {
+        if (!state.auth.client || !quizId) return 0;
+
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .select('sort_order')
+            .eq('quiz_id', quizId)
+            .order('sort_order', { ascending: false })
+            .limit(1);
+
+        if (error) throw error;
+        return Number(data?.[0]?.sort_order ?? -1) + 1;
+    }
+
+    async function loadStudioQuestionListForQuiz(quizId) {
+        if (!state.auth.client || !quizId) {
+            state.auth.studioQuizQuestions = [];
+            renderStudioQuestionList();
+            return [];
+        }
+
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .select('id, prompt_plain, sort_order')
+            .eq('quiz_id', quizId)
+            .eq('question_type', 'multiple_choice')
+            .order('sort_order', { ascending: true });
+
+        if (error) throw error;
+
+        state.auth.studioQuizQuestions = (data || []).map(row => ({
+            id: row.id,
+            prompt_plain: normalizeSheetText(row.prompt_plain),
+            sort_order: Number(row.sort_order ?? 0)
+        }));
+        renderStudioQuestionList();
+        return state.auth.studioQuizQuestions;
+    }
+
+    async function loadStudioQuestionIntoEditor(questionId, options = {}) {
+        const suppressStatus = !!options.suppressStatus;
+        if (!state.auth.client || !questionId) {
+            clearStudioQuestionInputs();
+            return;
+        }
+
+        const [{ data: questionRow, error: questionError }, detailRow] = await Promise.all([
+            state.auth.client
+                .from('questions')
+                .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url')
+                .eq('id', questionId)
+                .maybeSingle(),
+            loadMultipleChoiceDetailByQuestionId(questionId)
+        ]);
+
+        if (questionError) throw questionError;
+        if (!questionRow || !detailRow) {
+            throw new Error('Could not load that question into the editor.');
+        }
+
+        state.auth.editingQuestionId = questionRow.id;
+        if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
+        if (elements.createLearningResources) elements.createLearningResources.value = getStoredTextForDisplay('', questionRow.learning_resources_html);
+        if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
+
+        const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
+        renderStudioOptionFields(optionDrafts);
+        const correctIndex = Math.max(0, optionDrafts.findIndex(option => option.text === normalizeSheetText(detailRow.correct_answer)));
+        if (elements.createCorrectOptionSelect) {
+            elements.createCorrectOptionSelect.value = String(correctIndex + 1);
+        }
+
+        setStudioQuestionImageState(
+            normalizeSheetText(questionRow.image_url),
+            normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
+        );
+        setStudioLearningResourcesImageState(
+            normalizeSheetText(questionRow.learning_resources_image_url),
+            normalizeSheetText(questionRow.learning_resources_image_url) ? 'Existing learning resources image saved.' : 'No learning resources image selected.'
+        );
+
+        renderStudioQuestionList();
+        updateCreateQuizModeUI();
+        if (!suppressStatus) {
+            setCreatorStatus('Question loaded into the editor.', 'success');
+        }
+    }
+
+    function beginStudioNewQuestion() {
+        if (!state.auth.editingQuizId) {
+            setCreatorStatus('Create a quiz first, then you can add more questions to it.', 'error');
+            return;
+        }
+
+        clearStudioQuestionInputs();
+        updateCreateQuizModeUI();
+        setQuizStudioSection('editor');
+        setCreatorStatus('Ready to add a new question to this quiz. Fill in the fields below and save.', 'success');
+    }
+
+    async function handleDeleteStudioQuestion() {
+        if (!state.auth.client || !state.auth.editingQuizId || !state.auth.editingQuestionId) {
+            setCreatorStatus('Select a saved question first.', 'error');
+            return;
+        }
+
+        if (!confirm('Delete this question from the quiz?')) {
+            return;
+        }
+
+        const deletedQuestionId = state.auth.editingQuestionId;
+        const currentIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === deletedQuestionId);
+
+        const { error } = await state.auth.client
+            .from('questions')
+            .delete()
+            .eq('id', deletedQuestionId);
+
+        if (error) throw error;
+
+        await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
+        await refreshStudioManagementData();
+        await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true, clearIfMissing: true });
+
+        const nextQuestion = state.auth.studioQuizQuestions[currentIndex] || state.auth.studioQuizQuestions[currentIndex - 1] || null;
+        if (nextQuestion) {
+            await loadStudioQuestionIntoEditor(nextQuestion.id, { suppressStatus: true });
+            setCreatorStatus('Question deleted.', 'success');
+            return;
+        }
+
+        clearStudioQuestionInputs();
+        setCreatorStatus('Question deleted. This quiz currently has no questions.', 'success');
+    }
+
+    async function handleMoveStudioQuestion(direction) {
+        if (!state.auth.client || !state.auth.editingQuizId || !state.auth.editingQuestionId) {
+            setCreatorStatus('Select a saved question first.', 'error');
+            return;
+        }
+
+        const rows = state.auth.studioQuizQuestions;
+        const currentIndex = rows.findIndex(question => question.id === state.auth.editingQuestionId);
+        if (currentIndex === -1) {
+            setCreatorStatus('Could not find the selected question.', 'error');
+            return;
+        }
+
+        const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (swapIndex < 0 || swapIndex >= rows.length) {
+            setCreatorStatus(direction === 'up' ? 'That question is already first.' : 'That question is already last.', 'error');
+            return;
+        }
+
+        const currentRow = rows[currentIndex];
+        const otherRow = rows[swapIndex];
+
+        const updates = [
+            state.auth.client.from('questions').update({ sort_order: otherRow.sort_order }).eq('id', currentRow.id),
+            state.auth.client.from('questions').update({ sort_order: currentRow.sort_order }).eq('id', otherRow.id)
+        ];
+
+        const [currentUpdate, otherUpdate] = await Promise.all(updates);
+        if (currentUpdate.error) throw currentUpdate.error;
+        if (otherUpdate.error) throw otherUpdate.error;
+
+        await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
+        await refreshStudioManagementData();
+        await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
+        renderStudioQuestionList();
+        setCreatorStatus(direction === 'up' ? 'Question moved up.' : 'Question moved down.', 'success');
+    }
+
     async function loadMultipleChoiceDetailsByQuestionIds(questionIds) {
         if (!state.auth.client || !Array.isArray(questionIds) || !questionIds.length) {
             return [];
@@ -655,6 +895,10 @@ MODIFICATION RULES FOR THIS APP
             elements.createFolderBtn,
             elements.createQuizFolderSelect,
             elements.createQuizName,
+            elements.studioAddQuestionBtn,
+            elements.studioDeleteQuestionBtn,
+            elements.studioMoveQuestionUpBtn,
+            elements.studioMoveQuestionDownBtn,
             elements.createQuestionPrompt,
             elements.createQuestionImageFile,
             elements.createQuestionImageClearBtn,
@@ -694,25 +938,21 @@ MODIFICATION RULES FOR THIS APP
         updateCreateQuizModeUI();
         renderFolderManagementList();
         renderQuizManagementList();
+        renderStudioQuestionList();
     }
 
     function clearCreatorInputs(options = {}) {
         const keepFolderSelection = !!options.keepFolderSelection;
         if (elements.createFolderName) elements.createFolderName.value = '';
         if (elements.createQuizName) elements.createQuizName.value = '';
-        if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
-        if (elements.createLearningResources) elements.createLearningResources.value = '';
-        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
-        if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
-        if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         if (!keepFolderSelection && elements.createQuizFolderSelect) {
             elements.createQuizFolderSelect.value = '';
         }
 
         state.auth.editingQuizId = null;
-        state.auth.editingQuestionId = null;
-        setStudioQuestionImageState('', 'No question image selected.');
-        setStudioLearningResourcesImageState('', 'No learning resources image selected.');
+        state.auth.studioQuizQuestions = [];
+        clearStudioQuestionInputs();
+        renderStudioQuestionList();
         updateCreateQuizModeUI();
     }
 
@@ -1160,7 +1400,8 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const isEditingQuiz = !!state.auth.editingQuizId;
-        setCreatorStatus(isEditingQuiz ? 'Saving quiz changes...' : 'Creating quiz...');
+        const isEditingQuestion = !!state.auth.editingQuestionId;
+        setCreatorStatus(!isEditingQuiz ? 'Creating quiz...' : (isEditingQuestion ? 'Saving question changes...' : 'Adding question to quiz...'));
 
         try {
             let quizId = state.auth.editingQuizId;
@@ -1193,8 +1434,11 @@ MODIFICATION RULES FOR THIS APP
 
                 if (quizError) throw quizError;
                 quizId = quizInsert.id;
+            }
 
-                const { data: questionInsert, error: questionError } = await state.auth.client
+            if (!questionId) {
+                const questionSortOrder = await getNextQuestionSortOrder(quizId);
+                const { data: questionInsert, error: questionInsertError } = await state.auth.client
                     .from('questions')
                     .insert({
                         quiz_id: quizId,
@@ -1204,27 +1448,42 @@ MODIFICATION RULES FOR THIS APP
                         image_url: state.auth.studioQuestionImageDataUrl || '',
                         learning_resources_html: buildStoredHtmlFromPlain(learningResources),
                         learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '',
-                        sort_order: 0
+                        sort_order: questionSortOrder
                     })
                     .select('id')
                     .single();
 
-                if (questionError) throw questionError;
+                if (questionInsertError) throw questionInsertError;
                 questionId = questionInsert.id;
+            } else {
+                const { error: questionUpdateError } = await state.auth.client
+                    .from('questions')
+                    .update({
+                        prompt_html: buildStoredHtmlFromPlain(prompt),
+                        prompt_plain: prompt,
+                        image_url: state.auth.studioQuestionImageDataUrl || '',
+                        learning_resources_html: buildStoredHtmlFromPlain(learningResources),
+                        learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
+                    })
+                    .eq('id', questionId);
+
+                if (questionUpdateError) throw questionUpdateError;
             }
 
-            const { error: questionUpdateError } = await state.auth.client
-                .from('questions')
-                .update({
-                    prompt_html: buildStoredHtmlFromPlain(prompt),
-                    prompt_plain: prompt,
-                    image_url: state.auth.studioQuestionImageDataUrl || '',
-                    learning_resources_html: buildStoredHtmlFromPlain(learningResources),
-                    learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
-                })
-                .eq('id', questionId);
+            if (!isEditingQuestion || !state.auth.editingQuestionId) {
+                const { error: newQuestionUpdateError } = await state.auth.client
+                    .from('questions')
+                    .update({
+                        prompt_html: buildStoredHtmlFromPlain(prompt),
+                        prompt_plain: prompt,
+                        image_url: state.auth.studioQuestionImageDataUrl || '',
+                        learning_resources_html: buildStoredHtmlFromPlain(learningResources),
+                        learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
+                    })
+                    .eq('id', questionId);
 
-            if (questionUpdateError) throw questionUpdateError;
+                if (newQuestionUpdateError) throw newQuestionUpdateError;
+            }
 
             const optionPayload = optionDrafts.map(draft => ({
                 text: draft.text,
@@ -1261,8 +1520,8 @@ MODIFICATION RULES FOR THIS APP
             await refreshStudioManagementData();
             const createdDescriptorId = `sb:${quizId}`;
             await refreshQuizCatalog({ selectQuizId: createdDescriptorId, loadSelectedQuiz: true });
-            clearCreatorInputs({ keepFolderSelection: true });
-            setCreatorStatus(isEditingQuiz ? 'Quiz updated and reloaded.' : 'Quiz created and loaded successfully.', 'success');
+            await loadQuizIntoEditor(quizId, questionId);
+            setCreatorStatus(!isEditingQuiz ? 'Quiz created and first question saved.' : (isEditingQuestion ? 'Question updated.' : 'New question added to the quiz.'), 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not save the quiz.', 'error');
@@ -1315,7 +1574,7 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function loadQuizIntoEditor(quizId) {
+    async function loadQuizIntoEditor(quizId, preferredQuestionId = null) {
         try {
             const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
             if (!managedQuiz) {
@@ -1323,59 +1582,38 @@ MODIFICATION RULES FOR THIS APP
                 return;
             }
 
-            if (!managedQuiz.allMultipleChoice || !managedQuiz.firstQuestionId) {
-                setCreatorStatus('Editing is currently limited to Supabase multiple-choice quizzes with at least one question.', 'error');
+            if (!managedQuiz.allMultipleChoice) {
+                setCreatorStatus('Editing is currently limited to Supabase multiple-choice quizzes.', 'error');
                 return;
             }
 
-            const [{ data: quizRow, error: quizError }, { data: questionRow, error: questionError }, detailRow] = await Promise.all([
-                state.auth.client
-                    .from('quizzes')
-                    .select('id, folder_id, name')
-                    .eq('id', quizId)
-                    .maybeSingle(),
-                state.auth.client
-                    .from('questions')
-                    .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url')
-                    .eq('id', managedQuiz.firstQuestionId)
-                    .maybeSingle(),
-                loadMultipleChoiceDetailByQuestionId(managedQuiz.firstQuestionId)
-            ]);
+            const { data: quizRow, error: quizError } = await state.auth.client
+                .from('quizzes')
+                .select('id, folder_id, name')
+                .eq('id', quizId)
+                .maybeSingle();
 
             if (quizError) throw quizError;
-            if (questionError) throw questionError;
-            if (!quizRow || !questionRow || !detailRow) {
+            if (!quizRow) {
                 throw new Error('Could not load the selected quiz for editing.');
             }
 
             state.auth.editingQuizId = quizRow.id;
-            state.auth.editingQuestionId = questionRow.id;
-
             if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
-            if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
-            if (elements.createLearningResources) elements.createLearningResources.value = getStoredTextForDisplay('', questionRow.learning_resources_html);
-            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
 
-            const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
-            renderStudioOptionFields(optionDrafts);
-            const correctIndex = Math.max(0, optionDrafts.findIndex(option => option.text === normalizeSheetText(detailRow.correct_answer)));
-            if (elements.createCorrectOptionSelect) {
-                elements.createCorrectOptionSelect.value = String(correctIndex + 1);
+            const questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
+            const targetQuestionId = preferredQuestionId || questionRows[0]?.id || null;
+
+            if (targetQuestionId) {
+                await loadStudioQuestionIntoEditor(targetQuestionId, { suppressStatus: true });
+            } else {
+                clearStudioQuestionInputs();
             }
-
-            setStudioQuestionImageState(
-                normalizeSheetText(questionRow.image_url),
-                normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
-            );
-            setStudioLearningResourcesImageState(
-                normalizeSheetText(questionRow.learning_resources_image_url),
-                normalizeSheetText(questionRow.learning_resources_image_url) ? 'Existing learning resources image saved.' : 'No learning resources image selected.'
-            );
 
             updateCreateQuizModeUI();
             openQuizStudioPage('editor');
-            setCreatorStatus('Quiz loaded into the editor.', 'success');
+            setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : 'Quiz loaded. Add your first question below.', 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not load the quiz editor.', 'error');
@@ -1397,6 +1635,8 @@ MODIFICATION RULES FOR THIS APP
 
             if (state.auth.editingQuizId === quizId) {
                 clearCreatorInputs();
+                state.auth.studioQuizQuestions = [];
+                renderStudioQuestionList();
             }
 
             const currentSelectedWasDeleted = elements.quizSelector?.value === `sb:${quizId}`;
@@ -4547,9 +4787,54 @@ if (elements.createQuizBtn) {
 
 if (elements.createQuizCancelEditBtn) {
     elements.createQuizCancelEditBtn.addEventListener('click', () => {
-        clearCreatorInputs({ keepFolderSelection: true });
+        clearCreatorInputs();
         setQuizStudioSection('editor');
-        setCreatorStatus('Edit cancelled. You can create a new quiz now.');
+        setCreatorStatus('Ready to create a new quiz.');
+    });
+}
+
+if (elements.studioAddQuestionBtn) {
+    elements.studioAddQuestionBtn.addEventListener('click', () => {
+        beginStudioNewQuestion();
+    });
+}
+
+if (elements.studioDeleteQuestionBtn) {
+    elements.studioDeleteQuestionBtn.addEventListener('click', () => {
+        handleDeleteStudioQuestion().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not delete the question.', 'error');
+        });
+    });
+}
+
+if (elements.studioMoveQuestionUpBtn) {
+    elements.studioMoveQuestionUpBtn.addEventListener('click', () => {
+        handleMoveStudioQuestion('up').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not move the question.', 'error');
+        });
+    });
+}
+
+if (elements.studioMoveQuestionDownBtn) {
+    elements.studioMoveQuestionDownBtn.addEventListener('click', () => {
+        handleMoveStudioQuestion('down').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not move the question.', 'error');
+        });
+    });
+}
+
+if (elements.studioQuestionList) {
+    elements.studioQuestionList.addEventListener('click', e => {
+        const button = e.target.closest('[data-studio-question-id]');
+        if (!button) return;
+
+        loadStudioQuestionIntoEditor(button.dataset.studioQuestionId).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load that question.', 'error');
+        });
     });
 }
 

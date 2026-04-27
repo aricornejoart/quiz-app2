@@ -3963,6 +3963,87 @@ body.fullscreen-mode.active-question-classify {
   gap: 10px 12px;
 }
 
+.studio-question-list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+
+.studio-question-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.studio-inline-title {
+  margin: 0;
+}
+
+.studio-question-header-actions,
+.studio-question-order-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.studio-question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studio-question-list-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-bg-control-hover);
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.studio-question-list-item:hover {
+  background: var(--color-bg-control-hover);
+}
+
+.studio-question-list-item.active {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+  background: var(--color-bg-control-hover);
+}
+
+.studio-question-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.studio-question-label {
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 .studio-option-pair {
   display: flex;
   flex-direction: column;
@@ -4101,7 +4182,9 @@ body.fullscreen-mode.active-question-classify {
   .studio-file-row,
   .studio-list-controls,
   .studio-editor-actions,
-  .studio-options-toolbar-actions {
+  .studio-options-toolbar-actions,
+  .studio-question-header-actions,
+  .studio-question-order-actions {
     flex-direction: column;
     align-items: stretch;
   }
