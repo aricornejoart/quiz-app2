@@ -412,43 +412,15 @@ MODIFICATION RULES FOR THIS APP
                     <button id="createLearningResourcesImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
                   </div>
 
-                  <div class="studio-options-grid">
-                    <label class="auth-field">
-                      <span>Option 1</span>
-                      <input id="createOption1" type="text" autocomplete="off" placeholder="Answer option 1">
-                    </label>
-                    <label class="auth-field">
-                      <span>Option 1 explanation</span>
-                      <textarea id="createOption1Explanation" rows="2" placeholder="Explain option 1"></textarea>
-                    </label>
-
-                    <label class="auth-field">
-                      <span>Option 2</span>
-                      <input id="createOption2" type="text" autocomplete="off" placeholder="Answer option 2">
-                    </label>
-                    <label class="auth-field">
-                      <span>Option 2 explanation</span>
-                      <textarea id="createOption2Explanation" rows="2" placeholder="Explain option 2"></textarea>
-                    </label>
-
-                    <label class="auth-field">
-                      <span>Option 3</span>
-                      <input id="createOption3" type="text" autocomplete="off" placeholder="Answer option 3">
-                    </label>
-                    <label class="auth-field">
-                      <span>Option 3 explanation</span>
-                      <textarea id="createOption3Explanation" rows="2" placeholder="Explain option 3"></textarea>
-                    </label>
-
-                    <label class="auth-field">
-                      <span>Option 4</span>
-                      <input id="createOption4" type="text" autocomplete="off" placeholder="Answer option 4">
-                    </label>
-                    <label class="auth-field">
-                      <span>Option 4 explanation</span>
-                      <textarea id="createOption4Explanation" rows="2" placeholder="Explain option 4"></textarea>
-                    </label>
+                  <div class="studio-options-toolbar">
+                    <div class="creator-note studio-options-note">Add or remove options as needed. Each option includes its own explanation field automatically.</div>
+                    <div class="studio-options-toolbar-actions">
+                      <button id="addOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Option</button>
+                      <button id="removeOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Option</button>
+                    </div>
                   </div>
+
+                  <div id="createOptionFieldsContainer" class="studio-options-grid"></div>
 
                   <label class="auth-field">
                     <span>Correct option</span>

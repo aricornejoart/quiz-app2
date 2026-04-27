@@ -132,14 +132,9 @@ MODIFICATION RULES FOR THIS APP
         createLearningResourcesImageFile: document.getElementById('createLearningResourcesImageFile'),
         createLearningResourcesImageName: document.getElementById('createLearningResourcesImageName'),
         createLearningResourcesImageClearBtn: document.getElementById('createLearningResourcesImageClearBtn'),
-        createOption1: document.getElementById('createOption1'),
-        createOption1Explanation: document.getElementById('createOption1Explanation'),
-        createOption2: document.getElementById('createOption2'),
-        createOption2Explanation: document.getElementById('createOption2Explanation'),
-        createOption3: document.getElementById('createOption3'),
-        createOption3Explanation: document.getElementById('createOption3Explanation'),
-        createOption4: document.getElementById('createOption4'),
-        createOption4Explanation: document.getElementById('createOption4Explanation'),
+        createOptionFieldsContainer: document.getElementById('createOptionFieldsContainer'),
+        addOptionFieldBtn: document.getElementById('addOptionFieldBtn'),
+        removeOptionFieldBtn: document.getElementById('removeOptionFieldBtn'),
         createCorrectOptionSelect: document.getElementById('createCorrectOptionSelect'),
         createCorrectExplanation: document.getElementById('createCorrectExplanation'),
         createQuizModeNote: document.getElementById('createQuizModeNote'),
@@ -457,8 +452,177 @@ MODIFICATION RULES FOR THIS APP
         if (elements.createQuizModeNote) {
             elements.createQuizModeNote.textContent = isEditing
                 ? 'Editing the selected quiz. Saving updates the quiz name, folder, and the first multiple-choice question for that quiz.'
-                : 'First pass: creates a multiple-choice quiz with its first question using the full current multiple-choice field set.';
+                : 'Creates a multiple-choice quiz with its first question. Add as many answer options as you need; each option gets its own explanation field.';
         }
+    }
+
+    function createStudioOptionFieldRow(index, optionData = {}) {
+        const optionText = normalizeSheetText(optionData.text);
+        const optionExplanation = normalizeSheetText(optionData.explanation);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'studio-option-pair';
+        wrapper.dataset.optionIndex = String(index + 1);
+        wrapper.innerHTML = `
+            <label class="auth-field">
+              <span>Option ${index + 1}</span>
+              <input type="text" autocomplete="off" placeholder="Answer option ${index + 1}" data-option-text>
+            </label>
+            <label class="auth-field">
+              <span>Option ${index + 1} explanation</span>
+              <textarea rows="2" placeholder="Explain option ${index + 1}" data-option-explanation></textarea>
+            </label>
+        `;
+        const textInput = wrapper.querySelector('[data-option-text]');
+        const explanationInput = wrapper.querySelector('[data-option-explanation]');
+        if (textInput) textInput.value = optionText;
+        if (explanationInput) explanationInput.value = optionExplanation;
+        return wrapper;
+    }
+
+    function syncCorrectOptionSelect(preferredValue = null) {
+        if (!elements.createCorrectOptionSelect || !elements.createOptionFieldsContainer) return;
+
+        const optionRows = Array.from(elements.createOptionFieldsContainer.querySelectorAll('[data-option-index]'));
+        const previousValue = preferredValue || elements.createCorrectOptionSelect.value || '1';
+        elements.createCorrectOptionSelect.innerHTML = '';
+
+        optionRows.forEach((_, index) => {
+            const option = document.createElement('option');
+            option.value = String(index + 1);
+            option.textContent = `Option ${index + 1}`;
+            elements.createCorrectOptionSelect.appendChild(option);
+        });
+
+        if (!optionRows.length) {
+            const option = document.createElement('option');
+            option.value = '1';
+            option.textContent = 'Option 1';
+            elements.createCorrectOptionSelect.appendChild(option);
+        }
+
+        const maxValue = String(optionRows.length || 1);
+        const nextValue = Number(previousValue) >= 1 && Number(previousValue) <= Number(maxValue)
+            ? previousValue
+            : '1';
+        elements.createCorrectOptionSelect.value = nextValue;
+    }
+
+    function renderStudioOptionFields(optionDrafts = null) {
+        if (!elements.createOptionFieldsContainer) return;
+
+        const normalizedDrafts = (Array.isArray(optionDrafts) && optionDrafts.length ? optionDrafts : Array.from({ length: 4 }, () => ({ text: '', explanation: '' })))
+            .map(draft => ({
+                text: normalizeSheetText(draft?.text),
+                explanation: normalizeSheetText(draft?.explanation)
+            }));
+
+        const safeDrafts = normalizedDrafts.length >= 2 ? normalizedDrafts : [
+            ...normalizedDrafts,
+            ...Array.from({ length: 2 - normalizedDrafts.length }, () => ({ text: '', explanation: '' }))
+        ];
+
+        elements.createOptionFieldsContainer.innerHTML = '';
+        safeDrafts.forEach((draft, index) => {
+            elements.createOptionFieldsContainer.appendChild(createStudioOptionFieldRow(index, draft));
+        });
+        syncCorrectOptionSelect();
+        updateCreatorUI();
+    }
+
+    function getStudioOptionDraftsFromDOM() {
+        if (!elements.createOptionFieldsContainer) return [];
+        return Array.from(elements.createOptionFieldsContainer.querySelectorAll('[data-option-index]')).map(row => ({
+            text: normalizeSheetText(row.querySelector('[data-option-text]')?.value),
+            explanation: normalizeSheetText(row.querySelector('[data-option-explanation]')?.value)
+        }));
+    }
+
+    function addStudioOptionField() {
+        const drafts = getStudioOptionDraftsFromDOM();
+        drafts.push({ text: '', explanation: '' });
+        renderStudioOptionFields(drafts);
+        syncCorrectOptionSelect(String(drafts.length));
+    }
+
+    function removeStudioOptionField() {
+        const drafts = getStudioOptionDraftsFromDOM();
+        if (drafts.length <= 2) {
+            setCreatorStatus('Multiple-choice quizzes need at least 2 options.', 'error');
+            return;
+        }
+        drafts.pop();
+        renderStudioOptionFields(drafts);
+    }
+
+    function getMultipleChoiceDraftsFromDetailRow(detailRow) {
+        const rawOptions = Array.isArray(detailRow?.options_json)
+            ? detailRow.options_json
+            : [];
+
+        const normalizedFromJson = rawOptions
+            .map(item => ({
+                text: normalizeSheetText(item?.text),
+                explanation: getStoredTextForDisplay('', item?.explanation_html || '')
+            }))
+            .filter(item => item.text);
+
+        if (normalizedFromJson.length) {
+            return normalizedFromJson;
+        }
+
+        return [
+            {
+                text: normalizeSheetText(detailRow?.option_1_text),
+                explanation: getStoredTextForDisplay('', detailRow?.option_1_explanation_html)
+            },
+            {
+                text: normalizeSheetText(detailRow?.option_2_text),
+                explanation: getStoredTextForDisplay('', detailRow?.option_2_explanation_html)
+            },
+            {
+                text: normalizeSheetText(detailRow?.option_3_text),
+                explanation: getStoredTextForDisplay('', detailRow?.option_3_explanation_html)
+            },
+            {
+                text: normalizeSheetText(detailRow?.option_4_text),
+                explanation: getStoredTextForDisplay('', detailRow?.option_4_explanation_html)
+            }
+        ].filter(item => item.text);
+    }
+
+    async function loadMultipleChoiceDetailsByQuestionIds(questionIds) {
+        if (!state.auth.client || !Array.isArray(questionIds) || !questionIds.length) {
+            return [];
+        }
+
+        const baseSelect = 'question_id, correct_answer, correct_explanation_html, option_1_text, option_1_explanation_html, option_2_text, option_2_explanation_html, option_3_text, option_3_explanation_html, option_4_text, option_4_explanation_html';
+
+        const primary = await state.auth.client
+            .from('multiple_choice_questions')
+            .select(`${baseSelect}, options_json`)
+            .in('question_id', questionIds);
+
+        if (!primary.error) {
+            return primary.data || [];
+        }
+
+        const missingColumn = /options_json/i.test(primary.error.message || '') || /options_json/i.test(primary.error.details || '');
+        if (!missingColumn) {
+            throw primary.error;
+        }
+
+        const fallback = await state.auth.client
+            .from('multiple_choice_questions')
+            .select(baseSelect)
+            .in('question_id', questionIds);
+
+        if (fallback.error) throw fallback.error;
+        return fallback.data || [];
+    }
+
+    async function loadMultipleChoiceDetailByQuestionId(questionId) {
+        const rows = await loadMultipleChoiceDetailsByQuestionIds([questionId]);
+        return rows[0] || null;
     }
 
     function setQuizStudioSection(sectionName = 'folders') {
@@ -497,14 +661,8 @@ MODIFICATION RULES FOR THIS APP
             elements.createLearningResources,
             elements.createLearningResourcesImageFile,
             elements.createLearningResourcesImageClearBtn,
-            elements.createOption1,
-            elements.createOption1Explanation,
-            elements.createOption2,
-            elements.createOption2Explanation,
-            elements.createOption3,
-            elements.createOption3Explanation,
-            elements.createOption4,
-            elements.createOption4Explanation,
+            elements.addOptionFieldBtn,
+            elements.removeOptionFieldBtn,
             elements.createCorrectOptionSelect,
             elements.createCorrectExplanation,
             elements.createQuizBtn,
@@ -514,6 +672,12 @@ MODIFICATION RULES FOR THIS APP
             if (!el) return;
             el.disabled = !creatorEnabled && el !== elements.openQuizStudioBtn;
         });
+
+        if (elements.createOptionFieldsContainer) {
+            elements.createOptionFieldsContainer.querySelectorAll('input, textarea').forEach(el => {
+                el.disabled = !creatorEnabled;
+            });
+        }
 
         if (elements.openQuizStudioBtn) {
             elements.openQuizStudioBtn.disabled = !creatorEnabled;
@@ -538,14 +702,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.createQuizName) elements.createQuizName.value = '';
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
         if (elements.createLearningResources) elements.createLearningResources.value = '';
-        if (elements.createOption1) elements.createOption1.value = '';
-        if (elements.createOption1Explanation) elements.createOption1Explanation.value = '';
-        if (elements.createOption2) elements.createOption2.value = '';
-        if (elements.createOption2Explanation) elements.createOption2Explanation.value = '';
-        if (elements.createOption3) elements.createOption3.value = '';
-        if (elements.createOption3Explanation) elements.createOption3Explanation.value = '';
-        if (elements.createOption4) elements.createOption4.value = '';
-        if (elements.createOption4Explanation) elements.createOption4Explanation.value = '';
+        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         if (!keepFolderSelection && elements.createQuizFolderSelect) {
@@ -963,20 +1120,12 @@ MODIFICATION RULES FOR THIS APP
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
         const learningResources = normalizeSheetText(elements.createLearningResources?.value);
-        const options = [
-            normalizeSheetText(elements.createOption1?.value),
-            normalizeSheetText(elements.createOption2?.value),
-            normalizeSheetText(elements.createOption3?.value),
-            normalizeSheetText(elements.createOption4?.value)
-        ];
-        const explanations = [
-            normalizeSheetText(elements.createOption1Explanation?.value),
-            normalizeSheetText(elements.createOption2Explanation?.value),
-            normalizeSheetText(elements.createOption3Explanation?.value),
-            normalizeSheetText(elements.createOption4Explanation?.value)
-        ];
+        const optionDrafts = getStudioOptionDraftsFromDOM();
+        const options = optionDrafts.map(draft => draft.text);
+        const explanations = optionDrafts.map(draft => draft.explanation);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
-        const correctIndex = Math.max(0, Math.min(3, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
+        const maxOptionIndex = Math.max(0, options.length - 1);
+        const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
         const correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
         const correctAnswer = options[correctIndex];
 
@@ -990,13 +1139,18 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
+        if (options.length < 2) {
+            setCreatorStatus('Add at least 2 answer options.', 'error');
+            return;
+        }
+
         if (options.some(option => !option)) {
-            setCreatorStatus('Fill in all four answer options.', 'error');
+            setCreatorStatus('Fill in every answer option before saving.', 'error');
             return;
         }
 
         if (new Set(options).size !== options.length) {
-            setCreatorStatus('All four answer options must be unique.', 'error');
+            setCreatorStatus('All answer options must be unique.', 'error');
             return;
         }
 
@@ -1072,25 +1226,37 @@ MODIFICATION RULES FOR THIS APP
 
             if (questionUpdateError) throw questionUpdateError;
 
+            const optionPayload = optionDrafts.map(draft => ({
+                text: draft.text,
+                explanation_html: buildStoredHtmlFromPlain(draft.explanation)
+            }));
+
             const detailPayload = {
                 question_id: questionId,
                 correct_answer: correctAnswer,
                 correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation),
-                option_1_text: options[0],
-                option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0]),
-                option_2_text: options[1],
-                option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1]),
-                option_3_text: options[2],
-                option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2]),
-                option_4_text: options[3],
-                option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3])
+                options_json: optionPayload,
+                option_1_text: options[0] || '',
+                option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''),
+                option_2_text: options[1] || '',
+                option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1] || ''),
+                option_3_text: options[2] || '',
+                option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2] || ''),
+                option_4_text: options[3] || '',
+                option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3] || '')
             };
 
             const { error: detailError } = await state.auth.client
                 .from('multiple_choice_questions')
                 .upsert(detailPayload, { onConflict: 'question_id' });
 
-            if (detailError) throw detailError;
+            if (detailError) {
+                const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
+                if (missingColumn) {
+                    throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
+                }
+                throw detailError;
+            }
 
             await refreshStudioManagementData();
             const createdDescriptorId = `sb:${quizId}`;
@@ -1162,7 +1328,7 @@ MODIFICATION RULES FOR THIS APP
                 return;
             }
 
-            const [{ data: quizRow, error: quizError }, { data: questionRow, error: questionError }, { data: detailRow, error: detailError }] = await Promise.all([
+            const [{ data: quizRow, error: quizError }, { data: questionRow, error: questionError }, detailRow] = await Promise.all([
                 state.auth.client
                     .from('quizzes')
                     .select('id, folder_id, name')
@@ -1173,16 +1339,11 @@ MODIFICATION RULES FOR THIS APP
                     .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url')
                     .eq('id', managedQuiz.firstQuestionId)
                     .maybeSingle(),
-                state.auth.client
-                    .from('multiple_choice_questions')
-                    .select('question_id, correct_answer, correct_explanation_html, option_1_text, option_1_explanation_html, option_2_text, option_2_explanation_html, option_3_text, option_3_explanation_html, option_4_text, option_4_explanation_html')
-                    .eq('question_id', managedQuiz.firstQuestionId)
-                    .maybeSingle()
+                loadMultipleChoiceDetailByQuestionId(managedQuiz.firstQuestionId)
             ]);
 
             if (quizError) throw quizError;
             if (questionError) throw questionError;
-            if (detailError) throw detailError;
             if (!quizRow || !questionRow || !detailRow) {
                 throw new Error('Could not load the selected quiz for editing.');
             }
@@ -1194,23 +1355,11 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             if (elements.createLearningResources) elements.createLearningResources.value = getStoredTextForDisplay('', questionRow.learning_resources_html);
-            if (elements.createOption1) elements.createOption1.value = normalizeSheetText(detailRow.option_1_text);
-            if (elements.createOption1Explanation) elements.createOption1Explanation.value = getStoredTextForDisplay('', detailRow.option_1_explanation_html);
-            if (elements.createOption2) elements.createOption2.value = normalizeSheetText(detailRow.option_2_text);
-            if (elements.createOption2Explanation) elements.createOption2Explanation.value = getStoredTextForDisplay('', detailRow.option_2_explanation_html);
-            if (elements.createOption3) elements.createOption3.value = normalizeSheetText(detailRow.option_3_text);
-            if (elements.createOption3Explanation) elements.createOption3Explanation.value = getStoredTextForDisplay('', detailRow.option_3_explanation_html);
-            if (elements.createOption4) elements.createOption4.value = normalizeSheetText(detailRow.option_4_text);
-            if (elements.createOption4Explanation) elements.createOption4Explanation.value = getStoredTextForDisplay('', detailRow.option_4_explanation_html);
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
 
-            const options = [
-                normalizeSheetText(detailRow.option_1_text),
-                normalizeSheetText(detailRow.option_2_text),
-                normalizeSheetText(detailRow.option_3_text),
-                normalizeSheetText(detailRow.option_4_text)
-            ];
-            const correctIndex = Math.max(0, options.findIndex(option => option === normalizeSheetText(detailRow.correct_answer)));
+            const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
+            renderStudioOptionFields(optionDrafts);
+            const correctIndex = Math.max(0, optionDrafts.findIndex(option => option.text === normalizeSheetText(detailRow.correct_answer)));
             if (elements.createCorrectOptionSelect) {
                 elements.createCorrectOptionSelect.value = String(correctIndex + 1);
             }
@@ -2056,12 +2205,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             return [];
         }
 
-        const { data: detailRows, error: detailsError } = await state.auth.client
-            .from('multiple_choice_questions')
-            .select('question_id, correct_answer, correct_explanation_html, option_1_text, option_1_explanation_html, option_2_text, option_2_explanation_html, option_3_text, option_3_explanation_html, option_4_text, option_4_explanation_html')
-            .in('question_id', questionIds);
-
-        if (detailsError) throw detailsError;
+        const detailRows = await loadMultipleChoiceDetailsByQuestionIds(questionIds);
 
         const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
 
@@ -2069,19 +2213,9 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             const detail = detailMap.get(row.id);
             if (!detail) return null;
 
-            const options = [
-                normalizeSheetText(detail.option_1_text),
-                normalizeSheetText(detail.option_2_text),
-                normalizeSheetText(detail.option_3_text),
-                normalizeSheetText(detail.option_4_text)
-            ].filter(Boolean);
-
-            const explanations = [
-                getStoredTextForDisplay('', detail.option_1_explanation_html),
-                getStoredTextForDisplay('', detail.option_2_explanation_html),
-                getStoredTextForDisplay('', detail.option_3_explanation_html),
-                getStoredTextForDisplay('', detail.option_4_explanation_html)
-            ];
+            const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
+            const options = optionDrafts.map(draft => draft.text);
+            const explanations = optionDrafts.map(draft => draft.explanation);
 
             const correctAnswer = normalizeSheetText(detail.correct_answer);
             const correctIndex = options.findIndex(option => option === correctAnswer);
@@ -2402,20 +2536,16 @@ function clearFeedback() {
 }
 
 function clearExplanations() {
-    for (let i = 1; i <= 4; i++) {
-        const exp = document.getElementById(`explanation${i}`);
-        if (exp) exp.innerText = '';
-    }
+    elements.optionsContainer.querySelectorAll('.explanation').forEach(exp => {
+        exp.innerText = '';
+    });
 }
 
 function clearOptionFeedback() {
-    for (let i = 1; i <= 4; i++) {
-        const fb = document.getElementById(`optionFeedback${i}`);
-        if (fb) {
-            fb.innerText = '';
-            fb.classList.remove('correct-mark', 'incorrect-mark');
-        }
-    }
+    elements.optionsContainer.querySelectorAll('.option-feedback').forEach(fb => {
+        fb.innerText = '';
+        fb.classList.remove('correct-mark', 'incorrect-mark');
+    });
 }
 
 function clearOptionButtonStateClasses() {
@@ -2702,6 +2832,32 @@ function showQuestion() {
 }
 
 // ================= MULTIPLE CHOICE =================
+function ensureMultipleChoiceOptionBlocks(count) {
+    const container = elements.optionsContainer;
+    const getBlocks = () => Array.from(container.querySelectorAll('.option-block'));
+    let blocks = getBlocks();
+
+    while (blocks.length < count) {
+        const block = document.createElement('div');
+        block.className = 'option-block';
+        block.innerHTML = `
+            <div class="option-row">
+              <button class="optionBtn" type="button"></button>
+              <div class="option-feedback"></div>
+            </div>
+            <div class="explanation"></div>
+        `;
+        container.appendChild(block);
+        blocks = getBlocks();
+    }
+
+    blocks.forEach((block, index) => {
+        block.style.display = index < count ? '' : 'none';
+    });
+
+    return getBlocks();
+}
+
 function showMC(q) {
     const container = elements.optionsContainer;
     container.style.display = 'flex';
@@ -2719,36 +2875,41 @@ function showMC(q) {
         explanations = combo.map(x => x.e);
     }
 
-    for (let i = 0; i < 4; i++) {
-        const btn = document.getElementById(`option${i + 1}`);
-        const exp = document.getElementById(`explanation${i + 1}`);
-        const fb = document.getElementById(`optionFeedback${i + 1}`);
+    const blocks = ensureMultipleChoiceOptionBlocks(Math.max(options.length, 1));
 
-        if (options[i]) {
+    blocks.forEach((block, index) => {
+        const btn = block.querySelector('.optionBtn');
+        const exp = block.querySelector('.explanation');
+        const fb = block.querySelector('.option-feedback');
+        const optionValue = options[index] || '';
+
+        if (index < options.length && btn && exp && fb) {
+            block.style.display = '';
             btn.style.display = 'block';
-            btn.innerText = options[i];
+            btn.innerText = optionValue;
             btn.disabled = false;
             btn.style.pointerEvents = 'auto';
             btn.style.opacity = '1';
             btn.classList.remove('option-correct', 'option-incorrect');
-            btn.onclick = () => checkAnswer(options[i], explanations);
+            btn.onclick = () => checkAnswer(optionValue, explanations);
             exp.innerText = '';
-            if (fb) {
-                fb.innerText = '';
-                fb.classList.remove('correct-mark', 'incorrect-mark');
-            }
+            fb.innerText = '';
+            fb.classList.remove('correct-mark', 'incorrect-mark');
         } else {
-            btn.style.display = 'none';
-            btn.innerText = '';
-            btn.classList.remove('option-correct', 'option-incorrect');
-            btn.onclick = null;
-            exp.innerText = '';
+            block.style.display = 'none';
+            if (btn) {
+                btn.style.display = 'none';
+                btn.innerText = '';
+                btn.classList.remove('option-correct', 'option-incorrect');
+                btn.onclick = null;
+            }
+            if (exp) exp.innerText = '';
             if (fb) {
                 fb.innerText = '';
                 fb.classList.remove('correct-mark', 'incorrect-mark');
             }
         }
-    }
+    });
 }
 
 // ================= WRONG ANSWER LOGIC =================
@@ -2857,13 +3018,15 @@ function checkAnswer(selected, explanations) {
     const q = state.questionQueue[state.currentIndex];
     const isCorrect = selected === q.correct;
 
-    document.querySelectorAll('.optionBtn').forEach((btn, i) => {
-        const feedbackEl = document.getElementById(`optionFeedback${i + 1}`);
-        btn.classList.remove('option-correct', 'option-incorrect');
+    elements.optionsContainer.querySelectorAll('.option-block').forEach((block, i) => {
+        if (block.style.display === 'none') return;
+        const btn = block.querySelector('.optionBtn');
+        const explanationEl = block.querySelector('.explanation');
+        const feedbackEl = block.querySelector('.option-feedback');
+        if (!btn || !explanationEl || !feedbackEl) return;
 
-        if (explanations[i]) {
-            document.getElementById(`explanation${i + 1}`).innerText = explanations[i];
-        }
+        btn.classList.remove('option-correct', 'option-incorrect');
+        explanationEl.innerText = explanations[i] || '';
 
         if (btn.innerText === q.correct) {
             btn.classList.add('option-correct');
@@ -2871,18 +3034,16 @@ function checkAnswer(selected, explanations) {
             btn.classList.add('option-incorrect');
         }
 
-        if (feedbackEl) {
-            feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
+        feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
 
-            if (btn.innerText === q.correct) {
-                feedbackEl.innerText = '✔';
-                feedbackEl.classList.add('correct-mark');
-            } else if (btn.innerText === selected && !isCorrect) {
-                feedbackEl.innerText = '✖';
-                feedbackEl.classList.add('incorrect-mark');
-            } else {
-                feedbackEl.innerText = '';
-            }
+        if (btn.innerText === q.correct) {
+            feedbackEl.innerText = '✔';
+            feedbackEl.classList.add('correct-mark');
+        } else if (btn.innerText === selected && !isCorrect) {
+            feedbackEl.innerText = '✖';
+            feedbackEl.classList.add('incorrect-mark');
+        } else {
+            feedbackEl.innerText = '';
         }
     });
 
@@ -4363,6 +4524,18 @@ if (elements.quizStudioPage) {
     });
 }
 
+if (elements.addOptionFieldBtn) {
+    elements.addOptionFieldBtn.addEventListener('click', () => {
+        addStudioOptionField();
+    });
+}
+
+if (elements.removeOptionFieldBtn) {
+    elements.removeOptionFieldBtn.addEventListener('click', () => {
+        removeStudioOptionField();
+    });
+}
+
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
         handleSaveMultipleChoiceQuiz().catch(err => {
@@ -4553,6 +4726,7 @@ window.addEventListener('orientationchange', handleViewportChange);
 (async function () {
     try {
         mountFloatingPagesToBody();
+        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
         applyResponsiveControlText();
         updateViewportClasses();
         updateAuthUI();
