@@ -306,80 +306,171 @@ MODIFICATION RULES FOR THIS APP
             </div>
 
             <div class="auth-management-section">
-              <div class="auth-management-title">Create Content</div>
-              <div id="creatorStatus" class="creator-status">Sign in to create folders and multiple-choice quizzes.</div>
-
-              <div class="creator-subsection">
-                <div class="creator-subsection-title">Create Folder</div>
-                <label class="auth-field">
-                  <span>Folder name</span>
-                  <input id="createFolderName" type="text" autocomplete="off" placeholder="Example: Biology Unit 1">
-                </label>
-                <button id="createFolderBtn" type="button" class="auth-action-btn">Create Folder</button>
+              <div class="auth-management-title">Quiz Studio</div>
+              <div class="auth-source-note">
+                Open the dedicated page to create folders, create multiple-choice quizzes, and manage Supabase quiz content without crowding the account popup.
               </div>
-
-              <div class="creator-subsection">
-                <div class="creator-subsection-title">Create Multiple-Choice Quiz</div>
-                <div class="creator-note">First pass: creates one multiple-choice quiz with its first question.</div>
-
-                <label class="auth-field">
-                  <span>Folder</span>
-                  <select id="createQuizFolderSelect">
-                    <option value="">No folder</option>
-                  </select>
-                </label>
-
-                <label class="auth-field">
-                  <span>Quiz name</span>
-                  <input id="createQuizName" type="text" autocomplete="off" placeholder="Example: Chapter 3 Review">
-                </label>
-
-                <label class="auth-field">
-                  <span>Question prompt</span>
-                  <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
-                </label>
-
-                <label class="auth-field">
-                  <span>Option 1</span>
-                  <input id="createOption1" type="text" autocomplete="off" placeholder="Answer option 1">
-                </label>
-
-                <label class="auth-field">
-                  <span>Option 2</span>
-                  <input id="createOption2" type="text" autocomplete="off" placeholder="Answer option 2">
-                </label>
-
-                <label class="auth-field">
-                  <span>Option 3</span>
-                  <input id="createOption3" type="text" autocomplete="off" placeholder="Answer option 3">
-                </label>
-
-                <label class="auth-field">
-                  <span>Option 4</span>
-                  <input id="createOption4" type="text" autocomplete="off" placeholder="Answer option 4">
-                </label>
-
-                <label class="auth-field">
-                  <span>Correct option</span>
-                  <select id="createCorrectOptionSelect">
-                    <option value="1">Option 1</option>
-                    <option value="2">Option 2</option>
-                    <option value="3">Option 3</option>
-                    <option value="4">Option 4</option>
-                  </select>
-                </label>
-
-                <label class="auth-field">
-                  <span>Correct answer explanation (optional)</span>
-                  <textarea id="createCorrectExplanation" rows="3" placeholder="Explain why the correct answer is right"></textarea>
-                </label>
-
-                <button id="createQuizBtn" type="button" class="auth-action-btn">Create Quiz</button>
-              </div>
+              <button id="openQuizStudioBtn" type="button" class="auth-action-btn">Open Quiz Studio</button>
             </div>
 
             <div class="auth-source-note">
-              Runtime quizzes still load from Google Sheets, and Supabase multiple-choice quizzes now load when you are signed in. Quiz creation here is currently first-pass and multiple-choice only.
+              Google Sheets quizzes still work, and Supabase multiple-choice quizzes load when you are signed in.
+            </div>
+          </div>
+        </div>
+
+        <div id="quizStudioPage" class="quiz-studio-page hidden" aria-hidden="true">
+          <div class="quiz-studio-shell">
+            <button id="closeQuizStudioBtn" class="close-quiz-studio-btn" type="button" aria-label="Close quiz studio">✕</button>
+
+            <div class="quiz-studio-header">
+              <div class="quiz-studio-title-group">
+                <div class="quiz-studio-eyebrow">Supabase</div>
+                <h2 class="quiz-studio-title">Quiz Studio</h2>
+                <div class="quiz-studio-subtitle">Create folders, create multiple-choice quizzes, and manage Supabase quiz content.</div>
+              </div>
+            </div>
+
+            <div id="creatorStatus" class="creator-status">Sign in to create and manage Supabase quiz content.</div>
+
+            <div class="quiz-studio-section-nav" role="tablist" aria-label="Quiz Studio sections">
+              <button id="quizStudioFoldersTab" type="button" class="quiz-studio-nav-btn active" data-studio-section-target="folders" role="tab" aria-selected="true">Folders</button>
+              <button id="quizStudioManageTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="manage" role="tab" aria-selected="false">Manage Quizzes</button>
+              <button id="quizStudioEditorTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="editor" role="tab" aria-selected="false">Quiz Editor</button>
+            </div>
+
+            <div class="quiz-studio-sections">
+              <section id="quizStudioFoldersSection" class="quiz-studio-section is-active" data-studio-section="folders" role="tabpanel">
+                <div class="studio-section-grid studio-section-grid-folders">
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Create Folder</div>
+                    <label class="auth-field">
+                      <span>Folder name</span>
+                      <input id="createFolderName" type="text" autocomplete="off" placeholder="Example: Biology Unit 1">
+                    </label>
+                    <button id="createFolderBtn" type="button" class="auth-action-btn">Create Folder</button>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Manage Folders</div>
+                    <div class="creator-note">Rename folders or delete them. Deleting a folder keeps its quizzes but removes the folder assignment.</div>
+                    <div id="studioFolderList" class="studio-list"></div>
+                  </section>
+                </div>
+              </section>
+
+              <section id="quizStudioManageSection" class="quiz-studio-section hidden" data-studio-section="manage" role="tabpanel">
+                <section class="creator-subsection quiz-studio-panel">
+                  <div class="creator-subsection-title">Manage Quizzes</div>
+                  <div class="creator-note">Edit quiz name, move a quiz to another folder, or delete it. Editing currently updates the first multiple-choice question created for that quiz.</div>
+                  <div id="studioQuizList" class="studio-list"></div>
+                </section>
+              </section>
+
+              <section id="quizStudioEditorSection" class="quiz-studio-section hidden" data-studio-section="editor" role="tabpanel">
+                <section class="creator-subsection quiz-studio-panel studio-quiz-editor-panel">
+                  <div class="creator-subsection-title">Multiple-Choice Quiz Editor</div>
+                  <div id="createQuizModeNote" class="creator-note">First pass: creates a multiple-choice quiz with its first question using the full current multiple-choice field set.</div>
+
+                  <label class="auth-field">
+                    <span>Folder</span>
+                    <select id="createQuizFolderSelect">
+                      <option value="">No folder</option>
+                    </select>
+                  </label>
+
+                  <label class="auth-field">
+                    <span>Quiz name</span>
+                    <input id="createQuizName" type="text" autocomplete="off" placeholder="Example: Chapter 3 Review">
+                  </label>
+
+                  <label class="auth-field">
+                    <span>Question prompt</span>
+                    <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
+                  </label>
+
+                  <label class="auth-field">
+                    <span>Question image (optional)</span>
+                    <input id="createQuestionImageFile" type="file" accept="image/*">
+                  </label>
+                  <div class="studio-file-row">
+                    <div id="createQuestionImageName" class="studio-file-name">No question image selected.</div>
+                    <button id="createQuestionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                  </div>
+
+                  <label class="auth-field">
+                    <span>Learning resources</span>
+                    <textarea id="createLearningResources" rows="4" placeholder="Paste learning resources or study support here"></textarea>
+                  </label>
+
+                  <label class="auth-field">
+                    <span>Learning resources image (optional)</span>
+                    <input id="createLearningResourcesImageFile" type="file" accept="image/*">
+                  </label>
+                  <div class="studio-file-row">
+                    <div id="createLearningResourcesImageName" class="studio-file-name">No learning resources image selected.</div>
+                    <button id="createLearningResourcesImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                  </div>
+
+                  <div class="studio-options-grid">
+                    <label class="auth-field">
+                      <span>Option 1</span>
+                      <input id="createOption1" type="text" autocomplete="off" placeholder="Answer option 1">
+                    </label>
+                    <label class="auth-field">
+                      <span>Option 1 explanation</span>
+                      <textarea id="createOption1Explanation" rows="2" placeholder="Explain option 1"></textarea>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Option 2</span>
+                      <input id="createOption2" type="text" autocomplete="off" placeholder="Answer option 2">
+                    </label>
+                    <label class="auth-field">
+                      <span>Option 2 explanation</span>
+                      <textarea id="createOption2Explanation" rows="2" placeholder="Explain option 2"></textarea>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Option 3</span>
+                      <input id="createOption3" type="text" autocomplete="off" placeholder="Answer option 3">
+                    </label>
+                    <label class="auth-field">
+                      <span>Option 3 explanation</span>
+                      <textarea id="createOption3Explanation" rows="2" placeholder="Explain option 3"></textarea>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Option 4</span>
+                      <input id="createOption4" type="text" autocomplete="off" placeholder="Answer option 4">
+                    </label>
+                    <label class="auth-field">
+                      <span>Option 4 explanation</span>
+                      <textarea id="createOption4Explanation" rows="2" placeholder="Explain option 4"></textarea>
+                    </label>
+                  </div>
+
+                  <label class="auth-field">
+                    <span>Correct option</span>
+                    <select id="createCorrectOptionSelect">
+                      <option value="1">Option 1</option>
+                      <option value="2">Option 2</option>
+                      <option value="3">Option 3</option>
+                      <option value="4">Option 4</option>
+                    </select>
+                  </label>
+
+                  <label class="auth-field">
+                    <span>Correct answer explanation fallback (optional)</span>
+                    <textarea id="createCorrectExplanation" rows="3" placeholder="Used if the correct option explanation is left blank"></textarea>
+                  </label>
+
+                  <div class="studio-editor-actions">
+                    <button id="createQuizBtn" type="button" class="auth-action-btn">Create Quiz</button>
+                    <button id="createQuizCancelEditBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel Edit</button>
+                  </div>
+                </section>
+              </section>
             </div>
           </div>
         </div>

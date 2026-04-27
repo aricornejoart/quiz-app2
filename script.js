@@ -83,6 +83,15 @@ MODIFICATION RULES FOR THIS APP
             user: null,
             profile: null,
             supabaseFolders: [],
+            managedQuizzes: [],
+            quizStudioOpen: false,
+            studioQuestionImageDataUrl: '',
+            studioQuestionImageLabel: 'No question image selected.',
+            studioLearningResourcesImageDataUrl: '',
+            studioLearningResourcesImageLabel: 'No learning resources image selected.',
+            editingQuizId: null,
+            editingQuestionId: null,
+            currentStudioSection: 'folders',
             lastError: ''
         }
     };
@@ -103,19 +112,39 @@ MODIFICATION RULES FOR THIS APP
         authSignInBtn: document.getElementById('authSignInBtn'),
         authSignUpBtn: document.getElementById('authSignUpBtn'),
         authSignOutBtn: document.getElementById('authSignOutBtn'),
+        openQuizStudioBtn: document.getElementById('openQuizStudioBtn'),
+        quizStudioPage: document.getElementById('quizStudioPage'),
+        closeQuizStudioBtn: document.getElementById('closeQuizStudioBtn'),
+        quizStudioSectionButtons: Array.from(document.querySelectorAll('[data-studio-section-target]')),
+        quizStudioSections: Array.from(document.querySelectorAll('[data-studio-section]')),
         creatorStatus: document.getElementById('creatorStatus'),
+        studioFolderList: document.getElementById('studioFolderList'),
+        studioQuizList: document.getElementById('studioQuizList'),
         createFolderName: document.getElementById('createFolderName'),
         createFolderBtn: document.getElementById('createFolderBtn'),
         createQuizFolderSelect: document.getElementById('createQuizFolderSelect'),
         createQuizName: document.getElementById('createQuizName'),
         createQuestionPrompt: document.getElementById('createQuestionPrompt'),
+        createQuestionImageFile: document.getElementById('createQuestionImageFile'),
+        createQuestionImageName: document.getElementById('createQuestionImageName'),
+        createQuestionImageClearBtn: document.getElementById('createQuestionImageClearBtn'),
+        createLearningResources: document.getElementById('createLearningResources'),
+        createLearningResourcesImageFile: document.getElementById('createLearningResourcesImageFile'),
+        createLearningResourcesImageName: document.getElementById('createLearningResourcesImageName'),
+        createLearningResourcesImageClearBtn: document.getElementById('createLearningResourcesImageClearBtn'),
         createOption1: document.getElementById('createOption1'),
+        createOption1Explanation: document.getElementById('createOption1Explanation'),
         createOption2: document.getElementById('createOption2'),
+        createOption2Explanation: document.getElementById('createOption2Explanation'),
         createOption3: document.getElementById('createOption3'),
+        createOption3Explanation: document.getElementById('createOption3Explanation'),
         createOption4: document.getElementById('createOption4'),
+        createOption4Explanation: document.getElementById('createOption4Explanation'),
         createCorrectOptionSelect: document.getElementById('createCorrectOptionSelect'),
         createCorrectExplanation: document.getElementById('createCorrectExplanation'),
+        createQuizModeNote: document.getElementById('createQuizModeNote'),
         createQuizBtn: document.getElementById('createQuizBtn'),
+        createQuizCancelEditBtn: document.getElementById('createQuizCancelEditBtn'),
         settingsBtn: document.getElementById('settingsBtn'),
         fullscreenBtn: document.getElementById('fullscreenBtn'),
         settingsPopup: document.getElementById('settingsPopup'),
@@ -152,9 +181,15 @@ MODIFICATION RULES FOR THIS APP
         settingHelpButtons: Array.from(document.querySelectorAll('.setting-help-btn'))
     };
 
+    function mountFloatingPagesToBody() {
+        if (elements.quizStudioPage && elements.quizStudioPage.parentElement !== document.body) {
+            document.body.appendChild(elements.quizStudioPage);
+        }
+    }
+
     // ================= SUPABASE FRONTEND BOOTSTRAP =================
-    // This phase intentionally preserves the current Google Sheets quiz runtime.
-    // Supabase is connected here for account/session groundwork only.
+    // This phase keeps Google Sheets as a working source while moving account,
+    // folder, and multiple-choice quiz authoring onto Supabase.
     function getSupabaseConfig() {
         const url = CONFIG.supabase.url;
         const publishableKey = CONFIG.supabase.publishableKey;
@@ -210,6 +245,32 @@ MODIFICATION RULES FOR THIS APP
         return plain.split('\n').map(escapeHtml).join('<br>');
     }
 
+    function setStudioQuestionImageState(dataUrl = '', label = 'No question image selected.') {
+        state.auth.studioQuestionImageDataUrl = normalizeSheetText(dataUrl);
+        state.auth.studioQuestionImageLabel = label;
+
+        if (elements.createQuestionImageName) {
+            elements.createQuestionImageName.textContent = label;
+        }
+
+        if (!dataUrl && elements.createQuestionImageFile) {
+            elements.createQuestionImageFile.value = '';
+        }
+    }
+
+    function setStudioLearningResourcesImageState(dataUrl = '', label = 'No learning resources image selected.') {
+        state.auth.studioLearningResourcesImageDataUrl = normalizeSheetText(dataUrl);
+        state.auth.studioLearningResourcesImageLabel = label;
+
+        if (elements.createLearningResourcesImageName) {
+            elements.createLearningResourcesImageName.textContent = label;
+        }
+
+        if (!dataUrl && elements.createLearningResourcesImageFile) {
+            elements.createLearningResourcesImageFile.value = '';
+        }
+    }
+
     function populateCreatorFolderSelect() {
         if (!elements.createQuizFolderSelect) return;
 
@@ -228,10 +289,72 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function renderFolderManagementList() {
+        if (!elements.studioFolderList) return;
+
+        if (!state.auth.client || !state.auth.user?.id) {
+            elements.studioFolderList.innerHTML = '<div class="studio-list-empty">Sign in to manage folders.</div>';
+            return;
+        }
+
+        if (!state.auth.supabaseFolders.length) {
+            elements.studioFolderList.innerHTML = '<div class="studio-list-empty">No Supabase folders yet.</div>';
+            return;
+        }
+
+        elements.studioFolderList.innerHTML = state.auth.supabaseFolders.map(folder => `
+            <div class="studio-list-item" data-folder-id="${escapeHtml(folder.id)}">
+              <div class="studio-list-meta">
+                <div class="studio-list-title">${escapeHtml(folder.name)}</div>
+                <div class="studio-list-subtitle">Folder</div>
+              </div>
+              <div class="studio-list-controls">
+                <input class="studio-inline-input" type="text" value="${escapeHtml(folder.name)}" data-folder-rename-input>
+                <button type="button" class="auth-action-btn" data-action="save-folder">Save</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-folder">Delete</button>
+              </div>
+            </div>
+        `).join('');
+    }
+
+    function renderQuizManagementList() {
+        if (!elements.studioQuizList) return;
+
+        if (!state.auth.client || !state.auth.user?.id) {
+            elements.studioQuizList.innerHTML = '<div class="studio-list-empty">Sign in to manage Supabase quizzes.</div>';
+            return;
+        }
+
+        if (!state.auth.managedQuizzes.length) {
+            elements.studioQuizList.innerHTML = '<div class="studio-list-empty">No Supabase quizzes yet.</div>';
+            return;
+        }
+
+        elements.studioQuizList.innerHTML = state.auth.managedQuizzes.map(quiz => {
+            const folderLabel = quiz.folderName || 'No folder';
+            const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
+            const typeLabel = quiz.allMultipleChoice ? 'Multiple choice' : 'Mixed types';
+            return `
+                <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
+                  <div class="studio-list-meta">
+                    <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
+                    <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)}</div>
+                  </div>
+                  <div class="studio-list-controls">
+                    <button type="button" class="auth-action-btn" data-action="load-quiz">Load</button>
+                    <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
+                    <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-quiz">Delete</button>
+                  </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     async function loadCreatorFolders() {
         if (!state.auth.client || !state.auth.user?.id) {
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
+            renderFolderManagementList();
             return [];
         }
 
@@ -245,6 +368,7 @@ MODIFICATION RULES FOR THIS APP
             console.error('Failed to load creator folders:', error);
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
+            renderFolderManagementList();
             return [];
         }
 
@@ -254,7 +378,107 @@ MODIFICATION RULES FOR THIS APP
             sort_order: Number(folder.sort_order ?? 0)
         }));
         populateCreatorFolderSelect();
+        renderFolderManagementList();
         return state.auth.supabaseFolders;
+    }
+
+    async function loadManagedSupabaseQuizzes() {
+        if (!state.auth.client || !state.auth.user?.id) {
+            state.auth.managedQuizzes = [];
+            renderQuizManagementList();
+            return [];
+        }
+
+        try {
+            const [{ data: quizzes, error: quizzesError }, { data: questionRows, error: questionsError }] = await Promise.all([
+                state.auth.client
+                    .from('quizzes')
+                    .select('id, folder_id, name, sort_order, is_archived')
+                    .order('sort_order', { ascending: true })
+                    .order('name', { ascending: true }),
+                state.auth.client
+                    .from('questions')
+                    .select('id, quiz_id, question_type, sort_order')
+                    .order('sort_order', { ascending: true })
+            ]);
+
+            if (quizzesError) throw quizzesError;
+            if (questionsError) throw questionsError;
+
+            const questionMap = new Map();
+            (questionRows || []).forEach(row => {
+                if (!questionMap.has(row.quiz_id)) {
+                    questionMap.set(row.quiz_id, []);
+                }
+                questionMap.get(row.quiz_id).push(row);
+            });
+
+            state.auth.managedQuizzes = (quizzes || []).map(quiz => {
+                const folder = state.auth.supabaseFolders.find(item => item.id === quiz.folder_id) || null;
+                const rows = questionMap.get(quiz.id) || [];
+                const types = rows.map(row => row.question_type);
+                return {
+                    id: quiz.id,
+                    name: normalizeSheetText(quiz.name),
+                    folderId: quiz.folder_id || '',
+                    folderName: folder ? normalizeFolderName(folder.name) : '',
+                    questionCount: rows.length,
+                    allMultipleChoice: rows.length > 0 && types.every(type => type === 'multiple_choice'),
+                    firstQuestionId: rows[0]?.id || ''
+                };
+            });
+
+            renderQuizManagementList();
+            return state.auth.managedQuizzes;
+        } catch (error) {
+            console.error('Failed to load managed Supabase quizzes:', error);
+            state.auth.managedQuizzes = [];
+            renderQuizManagementList();
+            return [];
+        }
+    }
+
+    async function refreshStudioManagementData() {
+        await loadCreatorFolders();
+        await loadManagedSupabaseQuizzes();
+    }
+
+    function updateCreateQuizModeUI() {
+        const isEditing = !!state.auth.editingQuizId;
+
+        if (elements.createQuizBtn) {
+            elements.createQuizBtn.textContent = isEditing ? 'Save Quiz Changes' : 'Create Quiz';
+        }
+
+        if (elements.createQuizCancelEditBtn) {
+            elements.createQuizCancelEditBtn.disabled = !isEditing;
+        }
+
+        if (elements.createQuizModeNote) {
+            elements.createQuizModeNote.textContent = isEditing
+                ? 'Editing the selected quiz. Saving updates the quiz name, folder, and the first multiple-choice question for that quiz.'
+                : 'First pass: creates a multiple-choice quiz with its first question using the full current multiple-choice field set.';
+        }
+    }
+
+    function setQuizStudioSection(sectionName = 'folders') {
+        const nextSection = ['folders', 'manage', 'editor'].includes(sectionName)
+            ? sectionName
+            : 'folders';
+
+        state.auth.currentStudioSection = nextSection;
+
+        elements.quizStudioSections.forEach(section => {
+            const isActive = section.dataset.studioSection === nextSection;
+            section.classList.toggle('hidden', !isActive);
+            section.classList.toggle('is-active', isActive);
+        });
+
+        elements.quizStudioSectionButtons.forEach(button => {
+            const isActive = button.dataset.studioSectionTarget === nextSection;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
     }
 
     function updateCreatorUI() {
@@ -268,25 +492,44 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizFolderSelect,
             elements.createQuizName,
             elements.createQuestionPrompt,
+            elements.createQuestionImageFile,
+            elements.createQuestionImageClearBtn,
+            elements.createLearningResources,
+            elements.createLearningResourcesImageFile,
+            elements.createLearningResourcesImageClearBtn,
             elements.createOption1,
+            elements.createOption1Explanation,
             elements.createOption2,
+            elements.createOption2Explanation,
             elements.createOption3,
+            elements.createOption3Explanation,
             elements.createOption4,
+            elements.createOption4Explanation,
             elements.createCorrectOptionSelect,
             elements.createCorrectExplanation,
-            elements.createQuizBtn
+            elements.createQuizBtn,
+            elements.createQuizCancelEditBtn,
+            elements.openQuizStudioBtn
         ].forEach(el => {
             if (!el) return;
-            el.disabled = !creatorEnabled;
+            el.disabled = !creatorEnabled && el !== elements.openQuizStudioBtn;
         });
+
+        if (elements.openQuizStudioBtn) {
+            elements.openQuizStudioBtn.disabled = !creatorEnabled;
+        }
 
         if (!configured) {
             setCreatorStatus('Supabase is not configured yet. Add your URL and publishable key in index.html first.', 'error');
         } else if (!signedIn) {
-            setCreatorStatus('Sign in to create folders and multiple-choice quizzes.');
+            setCreatorStatus('Sign in to create and manage Supabase quiz content.');
         } else {
-            setCreatorStatus('Signed in. You can now create folders and first-pass multiple-choice quizzes.');
+            setCreatorStatus('Signed in. Quiz Studio is ready.', 'success');
         }
+
+        updateCreateQuizModeUI();
+        renderFolderManagementList();
+        renderQuizManagementList();
     }
 
     function clearCreatorInputs(options = {}) {
@@ -294,15 +537,26 @@ MODIFICATION RULES FOR THIS APP
         if (elements.createFolderName) elements.createFolderName.value = '';
         if (elements.createQuizName) elements.createQuizName.value = '';
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
+        if (elements.createLearningResources) elements.createLearningResources.value = '';
         if (elements.createOption1) elements.createOption1.value = '';
+        if (elements.createOption1Explanation) elements.createOption1Explanation.value = '';
         if (elements.createOption2) elements.createOption2.value = '';
+        if (elements.createOption2Explanation) elements.createOption2Explanation.value = '';
         if (elements.createOption3) elements.createOption3.value = '';
+        if (elements.createOption3Explanation) elements.createOption3Explanation.value = '';
         if (elements.createOption4) elements.createOption4.value = '';
+        if (elements.createOption4Explanation) elements.createOption4Explanation.value = '';
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         if (!keepFolderSelection && elements.createQuizFolderSelect) {
             elements.createQuizFolderSelect.value = '';
         }
+
+        state.auth.editingQuizId = null;
+        state.auth.editingQuestionId = null;
+        setStudioQuestionImageState('', 'No question image selected.');
+        setStudioLearningResourcesImageState('', 'No learning resources image selected.');
+        updateCreateQuizModeUI();
     }
 
     async function getNextSortOrderForFolder() {
@@ -413,6 +667,25 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function openQuizStudioPage(sectionName = state.auth.currentStudioSection || 'folders') {
+        if (!elements.quizStudioPage) return;
+        closeAuthPopup();
+        elements.quizStudioPage.classList.remove('hidden');
+        elements.quizStudioPage.setAttribute('aria-hidden', 'false');
+        state.auth.quizStudioOpen = true;
+        setQuizStudioSection(sectionName);
+        syncBodyScrollLock();
+        updateCreatorUI();
+    }
+
+    function closeQuizStudioPage() {
+        if (!elements.quizStudioPage) return;
+        elements.quizStudioPage.classList.add('hidden');
+        elements.quizStudioPage.setAttribute('aria-hidden', 'true');
+        state.auth.quizStudioOpen = false;
+        syncBodyScrollLock();
+    }
+
     async function loadAuthProfile(userId) {
         if (!state.auth.client || !userId) {
             state.auth.profile = null;
@@ -435,22 +708,56 @@ MODIFICATION RULES FOR THIS APP
         return data || null;
     }
 
+    async function refreshQuizCatalog(options = {}) {
+        const previousQuizId = elements.quizSelector?.value || '';
+        const targetQuizId = options.selectQuizId || previousQuizId;
+
+        await populateFolderDropdown();
+
+        const targetQuiz = state.quizListCache.find(q => q.id === targetQuizId) || null;
+        if (!targetQuiz) {
+            if (options.clearIfMissing) {
+                resetQuizSelector();
+                clearActiveQuizSelection();
+            }
+            return null;
+        }
+
+        if (elements.folderSelector) {
+            elements.folderSelector.value = targetQuiz.folder;
+        }
+        populateQuizDropdown(targetQuiz.folder);
+        if (elements.quizSelector) {
+            elements.quizSelector.value = targetQuiz.id;
+        }
+
+        if (options.loadSelectedQuiz) {
+            await loadSelectedQuiz(targetQuiz.id);
+        }
+
+        return targetQuiz;
+    }
+
     async function syncAuthFromSession(session) {
         state.auth.session = session || null;
         state.auth.user = session?.user || null;
 
         if (state.auth.user?.id) {
-            await Promise.all([
-                loadAuthProfile(state.auth.user.id),
-                loadCreatorFolders()
-            ]);
+            await loadAuthProfile(state.auth.user.id);
+            await refreshStudioManagementData();
         } else {
             state.auth.profile = null;
             state.auth.supabaseFolders = [];
+            state.auth.managedQuizzes = [];
+            state.auth.currentStudioSection = 'folders';
+            clearCreatorInputs();
             populateCreatorFolderSelect();
+            renderFolderManagementList();
+            renderQuizManagementList();
         }
 
         updateAuthUI();
+        await refreshQuizCatalog();
     }
 
     async function bootstrapSupabase() {
@@ -511,7 +818,7 @@ MODIFICATION RULES FOR THIS APP
 
         setAuthStatus('Creating account...');
 
-        const { error } = await state.auth.client.auth.signUp({
+        const { data, error } = await state.auth.client.auth.signUp({
             email,
             password,
             options: {
@@ -526,7 +833,11 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        setAuthStatus('Account created. You can now sign in.', 'success');
+        if (data.session) {
+            setAuthStatus('Account created and signed in.', 'success');
+        } else {
+            setAuthStatus('Account created. You can now sign in.', 'success');
+        }
         updateAuthUI();
     }
 
@@ -557,6 +868,48 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    async function handleAuthSignOut() {
+        if (!state.auth.client) return;
+
+        setAuthStatus('Signing out...');
+        const { error } = await state.auth.client.auth.signOut();
+
+        if (error) {
+            setAuthStatus(error.message || 'Could not sign out.', 'error');
+            return;
+        }
+
+        state.auth.profile = null;
+        closeQuizStudioPage();
+        closeAuthPopup();
+        setAuthStatus('Signed out.', 'success');
+    }
+
+    async function handleStudioFileInput(fileInput, type) {
+        const file = fileInput?.files?.[0];
+        if (!file) {
+            if (type === 'question') {
+                setStudioQuestionImageState();
+            } else {
+                setStudioLearningResourcesImageState();
+            }
+            return;
+        }
+
+        const reader = new FileReader();
+        const dataUrl = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Could not read the selected image file.'));
+            reader.readAsDataURL(file);
+        });
+
+        if (type === 'question') {
+            setStudioQuestionImageState(dataUrl, `Selected: ${file.name}`);
+        } else {
+            setStudioLearningResourcesImageState(dataUrl, `Selected: ${file.name}`);
+        }
+    }
+
     async function handleCreateFolder() {
         if (!state.auth.client || !state.auth.user?.id) {
             setCreatorStatus('Sign in before creating a folder.', 'error');
@@ -583,7 +936,8 @@ MODIFICATION RULES FOR THIS APP
 
             if (error) throw error;
 
-            await loadCreatorFolders();
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
             if (elements.createQuizFolderSelect) {
                 const createdFolder = state.auth.supabaseFolders.find(folder => folder.name === folderName);
                 if (createdFolder) {
@@ -593,30 +947,38 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createFolderName) {
                 elements.createFolderName.value = '';
             }
-            setCreatorStatus('Folder created. You can now create a quiz inside it.', 'success');
+            setCreatorStatus('Folder created.', 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not create the folder.', 'error');
         }
     }
 
-    async function handleCreateMultipleChoiceQuiz() {
+    async function handleSaveMultipleChoiceQuiz() {
         if (!state.auth.client || !state.auth.user?.id) {
-            setCreatorStatus('Sign in before creating a quiz.', 'error');
+            setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
             return;
         }
 
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
         const options = [
             normalizeSheetText(elements.createOption1?.value),
             normalizeSheetText(elements.createOption2?.value),
             normalizeSheetText(elements.createOption3?.value),
             normalizeSheetText(elements.createOption4?.value)
         ];
+        const explanations = [
+            normalizeSheetText(elements.createOption1Explanation?.value),
+            normalizeSheetText(elements.createOption2Explanation?.value),
+            normalizeSheetText(elements.createOption3Explanation?.value),
+            normalizeSheetText(elements.createOption4Explanation?.value)
+        ];
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const correctIndex = Math.max(0, Math.min(3, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
         const correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
+        const correctAnswer = options[correctIndex];
 
         if (!quizName) {
             setCreatorStatus('Enter a quiz name first.', 'error');
@@ -624,7 +986,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         if (!prompt) {
-            setCreatorStatus('Enter a question prompt for the first question.', 'error');
+            setCreatorStatus('Enter a question prompt.', 'error');
             return;
         }
 
@@ -638,83 +1000,265 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const correctAnswer = options[correctIndex];
         if (!correctAnswer) {
             setCreatorStatus('Choose which option is correct.', 'error');
             return;
         }
 
-        setCreatorStatus('Creating quiz...');
+        const isEditingQuiz = !!state.auth.editingQuizId;
+        setCreatorStatus(isEditingQuiz ? 'Saving quiz changes...' : 'Creating quiz...');
 
         try {
-            const quizSortOrder = await getNextQuizSortOrder(folderId);
-            const { data: quizInsert, error: quizError } = await state.auth.client
-                .from('quizzes')
-                .insert({
-                    user_id: state.auth.user.id,
-                    folder_id: folderId,
-                    name: quizName,
-                    description: '',
-                    sort_order: quizSortOrder,
-                    is_archived: false
-                })
-                .select('id')
-                .single();
+            let quizId = state.auth.editingQuizId;
+            let questionId = state.auth.editingQuestionId;
 
-            if (quizError) throw quizError;
+            if (quizId) {
+                const { error: quizError } = await state.auth.client
+                    .from('quizzes')
+                    .update({
+                        folder_id: folderId,
+                        name: quizName
+                    })
+                    .eq('id', quizId);
 
-            const { data: questionInsert, error: questionError } = await state.auth.client
+                if (quizError) throw quizError;
+            } else {
+                const quizSortOrder = await getNextQuizSortOrder(folderId);
+                const { data: quizInsert, error: quizError } = await state.auth.client
+                    .from('quizzes')
+                    .insert({
+                        user_id: state.auth.user.id,
+                        folder_id: folderId,
+                        name: quizName,
+                        description: '',
+                        sort_order: quizSortOrder,
+                        is_archived: false
+                    })
+                    .select('id')
+                    .single();
+
+                if (quizError) throw quizError;
+                quizId = quizInsert.id;
+
+                const { data: questionInsert, error: questionError } = await state.auth.client
+                    .from('questions')
+                    .insert({
+                        quiz_id: quizId,
+                        question_type: 'multiple_choice',
+                        prompt_html: buildStoredHtmlFromPlain(prompt),
+                        prompt_plain: prompt,
+                        image_url: state.auth.studioQuestionImageDataUrl || '',
+                        learning_resources_html: buildStoredHtmlFromPlain(learningResources),
+                        learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '',
+                        sort_order: 0
+                    })
+                    .select('id')
+                    .single();
+
+                if (questionError) throw questionError;
+                questionId = questionInsert.id;
+            }
+
+            const { error: questionUpdateError } = await state.auth.client
                 .from('questions')
-                .insert({
-                    quiz_id: quizInsert.id,
-                    question_type: 'multiple_choice',
+                .update({
                     prompt_html: buildStoredHtmlFromPlain(prompt),
                     prompt_plain: prompt,
-                    image_url: '',
-                    learning_resources_html: '',
-                    learning_resources_image_url: '',
-                    sort_order: 0
+                    image_url: state.auth.studioQuestionImageDataUrl || '',
+                    learning_resources_html: buildStoredHtmlFromPlain(learningResources),
+                    learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
                 })
-                .select('id')
-                .single();
+                .eq('id', questionId);
 
-            if (questionError) throw questionError;
+            if (questionUpdateError) throw questionUpdateError;
+
+            const detailPayload = {
+                question_id: questionId,
+                correct_answer: correctAnswer,
+                correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation),
+                option_1_text: options[0],
+                option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0]),
+                option_2_text: options[1],
+                option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1]),
+                option_3_text: options[2],
+                option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2]),
+                option_4_text: options[3],
+                option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3])
+            };
 
             const { error: detailError } = await state.auth.client
                 .from('multiple_choice_questions')
-                .insert({
-                    question_id: questionInsert.id,
-                    correct_answer: correctAnswer,
-                    correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation),
-                    option_1_text: options[0],
-                    option_1_explanation_html: '',
-                    option_2_text: options[1],
-                    option_2_explanation_html: '',
-                    option_3_text: options[2],
-                    option_3_explanation_html: '',
-                    option_4_text: options[3],
-                    option_4_explanation_html: ''
-                });
+                .upsert(detailPayload, { onConflict: 'question_id' });
 
             if (detailError) throw detailError;
 
-            await populateFolderDropdown();
-            const createdQuiz = state.quizListCache.find(q => q.source === DATA_SOURCES.SUPABASE && q.sourceQuizId === quizInsert.id);
-            if (createdQuiz) {
-                elements.folderSelector.value = createdQuiz.folder;
-                populateQuizDropdown(createdQuiz.folder);
-                elements.quizSelector.value = createdQuiz.id;
-                await loadSelectedQuiz(createdQuiz.id);
-            }
-
+            await refreshStudioManagementData();
+            const createdDescriptorId = `sb:${quizId}`;
+            await refreshQuizCatalog({ selectQuizId: createdDescriptorId, loadSelectedQuiz: true });
             clearCreatorInputs({ keepFolderSelection: true });
-            setCreatorStatus('Quiz created and loaded successfully.', 'success');
+            setCreatorStatus(isEditingQuiz ? 'Quiz updated and reloaded.' : 'Quiz created and loaded successfully.', 'success');
         } catch (error) {
             console.error(error);
-            setCreatorStatus(error.message || 'Could not create the quiz.', 'error');
+            setCreatorStatus(error.message || 'Could not save the quiz.', 'error');
         }
     }
 
+    async function handleRenameFolder(folderId, nextName) {
+        const folderName = normalizeSheetText(nextName);
+        if (!folderName) {
+            setCreatorStatus('Folder names cannot be blank.', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await state.auth.client
+                .from('folders')
+                .update({ name: folderName })
+                .eq('id', folderId);
+
+            if (error) throw error;
+
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
+            setCreatorStatus('Folder updated.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not update the folder.', 'error');
+        }
+    }
+
+    async function handleDeleteFolder(folderId) {
+        if (!confirm('Delete this folder? Quizzes inside it will keep existing but move to no folder.')) {
+            return;
+        }
+
+        try {
+            const { error } = await state.auth.client
+                .from('folders')
+                .delete()
+                .eq('id', folderId);
+
+            if (error) throw error;
+
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
+            setCreatorStatus('Folder deleted.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not delete the folder.', 'error');
+        }
+    }
+
+    async function loadQuizIntoEditor(quizId) {
+        try {
+            const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
+            if (!managedQuiz) {
+                setCreatorStatus('Could not find that quiz.', 'error');
+                return;
+            }
+
+            if (!managedQuiz.allMultipleChoice || !managedQuiz.firstQuestionId) {
+                setCreatorStatus('Editing is currently limited to Supabase multiple-choice quizzes with at least one question.', 'error');
+                return;
+            }
+
+            const [{ data: quizRow, error: quizError }, { data: questionRow, error: questionError }, { data: detailRow, error: detailError }] = await Promise.all([
+                state.auth.client
+                    .from('quizzes')
+                    .select('id, folder_id, name')
+                    .eq('id', quizId)
+                    .maybeSingle(),
+                state.auth.client
+                    .from('questions')
+                    .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url')
+                    .eq('id', managedQuiz.firstQuestionId)
+                    .maybeSingle(),
+                state.auth.client
+                    .from('multiple_choice_questions')
+                    .select('question_id, correct_answer, correct_explanation_html, option_1_text, option_1_explanation_html, option_2_text, option_2_explanation_html, option_3_text, option_3_explanation_html, option_4_text, option_4_explanation_html')
+                    .eq('question_id', managedQuiz.firstQuestionId)
+                    .maybeSingle()
+            ]);
+
+            if (quizError) throw quizError;
+            if (questionError) throw questionError;
+            if (detailError) throw detailError;
+            if (!quizRow || !questionRow || !detailRow) {
+                throw new Error('Could not load the selected quiz for editing.');
+            }
+
+            state.auth.editingQuizId = quizRow.id;
+            state.auth.editingQuestionId = questionRow.id;
+
+            if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
+            if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
+            if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
+            if (elements.createLearningResources) elements.createLearningResources.value = getStoredTextForDisplay('', questionRow.learning_resources_html);
+            if (elements.createOption1) elements.createOption1.value = normalizeSheetText(detailRow.option_1_text);
+            if (elements.createOption1Explanation) elements.createOption1Explanation.value = getStoredTextForDisplay('', detailRow.option_1_explanation_html);
+            if (elements.createOption2) elements.createOption2.value = normalizeSheetText(detailRow.option_2_text);
+            if (elements.createOption2Explanation) elements.createOption2Explanation.value = getStoredTextForDisplay('', detailRow.option_2_explanation_html);
+            if (elements.createOption3) elements.createOption3.value = normalizeSheetText(detailRow.option_3_text);
+            if (elements.createOption3Explanation) elements.createOption3Explanation.value = getStoredTextForDisplay('', detailRow.option_3_explanation_html);
+            if (elements.createOption4) elements.createOption4.value = normalizeSheetText(detailRow.option_4_text);
+            if (elements.createOption4Explanation) elements.createOption4Explanation.value = getStoredTextForDisplay('', detailRow.option_4_explanation_html);
+            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
+
+            const options = [
+                normalizeSheetText(detailRow.option_1_text),
+                normalizeSheetText(detailRow.option_2_text),
+                normalizeSheetText(detailRow.option_3_text),
+                normalizeSheetText(detailRow.option_4_text)
+            ];
+            const correctIndex = Math.max(0, options.findIndex(option => option === normalizeSheetText(detailRow.correct_answer)));
+            if (elements.createCorrectOptionSelect) {
+                elements.createCorrectOptionSelect.value = String(correctIndex + 1);
+            }
+
+            setStudioQuestionImageState(
+                normalizeSheetText(questionRow.image_url),
+                normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
+            );
+            setStudioLearningResourcesImageState(
+                normalizeSheetText(questionRow.learning_resources_image_url),
+                normalizeSheetText(questionRow.learning_resources_image_url) ? 'Existing learning resources image saved.' : 'No learning resources image selected.'
+            );
+
+            updateCreateQuizModeUI();
+            openQuizStudioPage('editor');
+            setCreatorStatus('Quiz loaded into the editor.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not load the quiz editor.', 'error');
+        }
+    }
+
+    async function handleDeleteQuiz(quizId) {
+        if (!confirm('Delete this quiz? This will remove its questions for this project.')) {
+            return;
+        }
+
+        try {
+            const { error } = await state.auth.client
+                .from('quizzes')
+                .delete()
+                .eq('id', quizId);
+
+            if (error) throw error;
+
+            if (state.auth.editingQuizId === quizId) {
+                clearCreatorInputs();
+            }
+
+            const currentSelectedWasDeleted = elements.quizSelector?.value === `sb:${quizId}`;
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ clearIfMissing: currentSelectedWasDeleted });
+            setCreatorStatus('Quiz deleted.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not delete the quiz.', 'error');
+        }
+    }
 function parseGoogleSheetResponse(text) {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
@@ -946,7 +1490,7 @@ function updateSettingsAvailability() {
 }
 
 function syncBodyScrollLock() {
-    document.body.style.overflow = (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) ? 'hidden' : '';
+    document.body.style.overflow = (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.auth?.quizStudioOpen) ? 'hidden' : '';
 }
 
 function isNarrowIPhoneViewport() {
@@ -3793,12 +4337,128 @@ if (elements.createFolderBtn) {
     });
 }
 
+if (elements.openQuizStudioBtn) {
+    elements.openQuizStudioBtn.addEventListener('click', () => {
+        openQuizStudioPage('folders');
+    });
+}
+
+elements.quizStudioSectionButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        setQuizStudioSection(button.dataset.studioSectionTarget || 'folders');
+    });
+});
+
+if (elements.closeQuizStudioBtn) {
+    elements.closeQuizStudioBtn.addEventListener('click', () => {
+        closeQuizStudioPage();
+    });
+}
+
+if (elements.quizStudioPage) {
+    elements.quizStudioPage.addEventListener('click', e => {
+        if (e.target === elements.quizStudioPage) {
+            closeQuizStudioPage();
+        }
+    });
+}
+
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
-        handleCreateMultipleChoiceQuiz().catch(err => {
+        handleSaveMultipleChoiceQuiz().catch(err => {
             console.error(err);
-            setCreatorStatus('Could not create the quiz.', 'error');
+            setCreatorStatus('Could not save the quiz.', 'error');
         });
+    });
+}
+
+if (elements.createQuizCancelEditBtn) {
+    elements.createQuizCancelEditBtn.addEventListener('click', () => {
+        clearCreatorInputs({ keepFolderSelection: true });
+        setQuizStudioSection('editor');
+        setCreatorStatus('Edit cancelled. You can create a new quiz now.');
+    });
+}
+
+if (elements.createQuestionImageFile) {
+    elements.createQuestionImageFile.addEventListener('change', () => {
+        handleStudioFileInput(elements.createQuestionImageFile, 'question').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the question image.', 'error');
+        });
+    });
+}
+
+if (elements.createQuestionImageClearBtn) {
+    elements.createQuestionImageClearBtn.addEventListener('click', () => {
+        setStudioQuestionImageState();
+    });
+}
+
+if (elements.createLearningResourcesImageFile) {
+    elements.createLearningResourcesImageFile.addEventListener('change', () => {
+        handleStudioFileInput(elements.createLearningResourcesImageFile, 'learning').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the learning resources image.', 'error');
+        });
+    });
+}
+
+if (elements.createLearningResourcesImageClearBtn) {
+    elements.createLearningResourcesImageClearBtn.addEventListener('click', () => {
+        setStudioLearningResourcesImageState();
+    });
+}
+
+if (elements.studioFolderList) {
+    elements.studioFolderList.addEventListener('click', e => {
+        const item = e.target.closest('[data-folder-id]');
+        if (!item) return;
+
+        const folderId = item.dataset.folderId;
+        if (e.target.matches('[data-action="save-folder"]')) {
+            const input = item.querySelector('[data-folder-rename-input]');
+            handleRenameFolder(folderId, input?.value || '').catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not update the folder.', 'error');
+            });
+        }
+
+        if (e.target.matches('[data-action="delete-folder"]')) {
+            handleDeleteFolder(folderId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not delete the folder.', 'error');
+            });
+        }
+    });
+}
+
+if (elements.studioQuizList) {
+    elements.studioQuizList.addEventListener('click', e => {
+        const item = e.target.closest('[data-quiz-id]');
+        if (!item) return;
+
+        const quizId = item.dataset.quizId;
+        if (e.target.matches('[data-action="edit-quiz"]')) {
+            loadQuizIntoEditor(quizId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not load the quiz editor.', 'error');
+            });
+        }
+
+        if (e.target.matches('[data-action="delete-quiz"]')) {
+            handleDeleteQuiz(quizId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not delete the quiz.', 'error');
+            });
+        }
+
+        if (e.target.matches('[data-action="load-quiz"]')) {
+            refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true }).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not load the quiz into the study view.', 'error');
+            });
+        }
     });
 }
 
@@ -3892,6 +4552,7 @@ window.addEventListener('orientationchange', handleViewportChange);
 // ================= INIT =================
 (async function () {
     try {
+        mountFloatingPagesToBody();
         applyResponsiveControlText();
         updateViewportClasses();
         updateAuthUI();
