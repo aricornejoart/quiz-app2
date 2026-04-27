@@ -144,6 +144,7 @@ MODIFICATION RULES FOR THIS APP
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
         studioQuestionList: document.getElementById('studioQuestionList'),
         studioAddQuestionBtn: document.getElementById('studioAddQuestionBtn'),
+        studioDuplicateQuestionBtn: document.getElementById('studioDuplicateQuestionBtn'),
         studioDeleteQuestionBtn: document.getElementById('studioDeleteQuestionBtn'),
         studioMoveQuestionUpBtn: document.getElementById('studioMoveQuestionUpBtn'),
         studioMoveQuestionDownBtn: document.getElementById('studioMoveQuestionDownBtn'),
@@ -407,6 +408,17 @@ MODIFICATION RULES FOR THIS APP
         `).join('');
     }
 
+
+    function buildStudioFolderSelectOptions(selectedFolderId = '') {
+        const normalizedSelected = normalizeSheetText(selectedFolderId);
+        const options = ['<option value="">No folder</option>'];
+        state.auth.supabaseFolders.forEach(folder => {
+            const isSelected = folder.id === normalizedSelected ? ' selected' : '';
+            options.push(`<option value="${escapeHtml(folder.id)}"${isSelected}>${escapeHtml(folder.name)}</option>`);
+        });
+        return options.join('');
+    }
+
     function renderQuizManagementList() {
         if (!elements.studioQuizList) return;
 
@@ -424,6 +436,7 @@ MODIFICATION RULES FOR THIS APP
             const folderLabel = quiz.folderName || 'No folder';
             const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
             const typeLabel = quiz.typeLabel || 'Mixed types';
+            const folderOptions = buildStudioFolderSelectOptions(quiz.folderId);
             return `
                 <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
                   <div class="studio-list-meta">
@@ -431,8 +444,12 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)}</div>
                   </div>
                   <div class="studio-list-controls">
+                    <input class="studio-inline-input" type="text" value="${escapeHtml(quiz.name)}" data-quiz-rename-input>
+                    <select class="studio-inline-select" data-quiz-folder-select>${folderOptions}</select>
+                    <button type="button" class="auth-action-btn" data-action="save-quiz">Save</button>
                     <button type="button" class="auth-action-btn" data-action="load-quiz">Load</button>
                     <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
+                    <button type="button" class="auth-action-btn auth-secondary-btn" data-action="duplicate-quiz">Duplicate</button>
                     <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-quiz">Delete</button>
                   </div>
                 </div>
@@ -1635,6 +1652,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizName,
             elements.createQuizTypeSelect,
             elements.studioAddQuestionBtn,
+            elements.studioDuplicateQuestionBtn,
             elements.studioDeleteQuestionBtn,
             elements.studioMoveQuestionUpBtn,
             elements.studioMoveQuestionDownBtn,
@@ -2476,6 +2494,219 @@ MODIFICATION RULES FOR THIS APP
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not load the quiz editor.', 'error');
+        }
+    }
+
+
+    async function handleSaveQuizMeta(quizId, nextName, nextFolderId) {
+        const quizName = normalizeSheetText(nextName);
+        const folderId = normalizeSheetText(nextFolderId) || null;
+        if (!quizName) {
+            setCreatorStatus('Quiz names cannot be blank.', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await state.auth.client
+                .from('quizzes')
+                .update({ name: quizName, folder_id: folderId })
+                .eq('id', quizId);
+
+            if (error) throw error;
+
+            if (state.auth.editingQuizId === quizId) {
+                if (elements.createQuizName) elements.createQuizName.value = quizName;
+                if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = folderId || '';
+            }
+
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${quizId}` });
+            setCreatorStatus('Quiz details updated.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not update the quiz.', 'error');
+        }
+    }
+
+    async function duplicateQuestionRecord(sourceQuestionId, targetQuizId, targetSortOrder) {
+        const { data: questionRow, error: questionError } = await state.auth.client
+            .from('questions')
+            .select('prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, question_type')
+            .eq('id', sourceQuestionId)
+            .maybeSingle();
+
+        if (questionError) throw questionError;
+        if (!questionRow) throw new Error('Could not load the source question.');
+
+        const { data: insertedQuestion, error: insertQuestionError } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: targetQuizId,
+                question_type: questionRow.question_type,
+                prompt_html: questionRow.prompt_html || '',
+                prompt_plain: questionRow.prompt_plain || '',
+                image_url: questionRow.image_url || '',
+                learning_resources_html: questionRow.learning_resources_html || '',
+                learning_resources_image_url: questionRow.learning_resources_image_url || '',
+                sort_order: targetSortOrder
+            })
+            .select('id')
+            .single();
+
+        if (insertQuestionError) throw insertQuestionError;
+        const newQuestionId = insertedQuestion.id;
+
+        if (questionRow.question_type === 'flashcard') {
+            const detail = await loadFlashcardDetailByQuestionId(sourceQuestionId);
+            if (!detail) throw new Error('Could not load the source flashcard details.');
+            const { error } = await state.auth.client.from('flashcard_questions').insert({
+                question_id: newQuestionId,
+                term_html: detail.term_html || '',
+                definition_html: detail.definition_html || '',
+                term_plain: detail.term_plain || '',
+                definition_plain: detail.definition_plain || '',
+                term_image_url: detail.term_image_url || '',
+                definition_image_url: detail.definition_image_url || ''
+            });
+            if (error) throw error;
+            return newQuestionId;
+        }
+
+        if (questionRow.question_type === 'hierarchy') {
+            const detail = await loadHierarchyDetailByQuestionId(sourceQuestionId);
+            if (!detail) throw new Error('Could not load the source hierarchy details.');
+            const { error } = await state.auth.client.from('hierarchy_questions').insert({
+                question_id: newQuestionId,
+                item_1_text: detail.item_1_text || '',
+                item_2_text: detail.item_2_text || '',
+                item_3_text: detail.item_3_text || '',
+                item_4_text: detail.item_4_text || '',
+                item_5_text: detail.item_5_text || '',
+                item_6_text: detail.item_6_text || '',
+                item_7_text: detail.item_7_text || '',
+                item_8_text: detail.item_8_text || '',
+                item_9_text: detail.item_9_text || '',
+                item_10_text: detail.item_10_text || '',
+                correct_order_json: Array.isArray(detail.correct_order_json) ? detail.correct_order_json : (detail.correct_order_json || [])
+            });
+            if (error) throw error;
+            return newQuestionId;
+        }
+
+        if (questionRow.question_type === 'classify') {
+            const detail = await loadClassifyDetailByQuestionId(sourceQuestionId);
+            if (!detail) throw new Error('Could not load the source classify details.');
+            const { error } = await state.auth.client.from('classify_questions').insert({
+                question_id: newQuestionId,
+                items_json: Array.isArray(detail.items_json) ? detail.items_json : (detail.items_json || []),
+                classifications_json: Array.isArray(detail.classifications_json) ? detail.classifications_json : (detail.classifications_json || [])
+            });
+            if (error) throw error;
+            return newQuestionId;
+        }
+
+        const detail = await loadMultipleChoiceDetailByQuestionId(sourceQuestionId);
+        if (!detail) throw new Error('Could not load the source multiple-choice details.');
+        const detailPayload = {
+            question_id: newQuestionId,
+            correct_answer: detail.correct_answer || '',
+            correct_explanation_html: detail.correct_explanation_html || '',
+            option_1_text: detail.option_1_text || '',
+            option_1_explanation_html: detail.option_1_explanation_html || '',
+            option_2_text: detail.option_2_text || '',
+            option_2_explanation_html: detail.option_2_explanation_html || '',
+            option_3_text: detail.option_3_text || '',
+            option_3_explanation_html: detail.option_3_explanation_html || '',
+            option_4_text: detail.option_4_text || '',
+            option_4_explanation_html: detail.option_4_explanation_html || ''
+        };
+        if (Object.prototype.hasOwnProperty.call(detail, 'options_json')) {
+            detailPayload.options_json = Array.isArray(detail.options_json) ? detail.options_json : [];
+        }
+        const { error: detailError } = await state.auth.client.from('multiple_choice_questions').insert(detailPayload);
+        if (detailError) {
+            const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
+            if (!missingColumn) throw detailError;
+            const fallbackPayload = { ...detailPayload };
+            delete fallbackPayload.options_json;
+            const { error: fallbackError } = await state.auth.client.from('multiple_choice_questions').insert(fallbackPayload);
+            if (fallbackError) throw fallbackError;
+        }
+        return newQuestionId;
+    }
+
+    async function handleDuplicateStudioQuestion() {
+        if (!state.auth.client || !state.auth.editingQuizId || !state.auth.editingQuestionId) {
+            setCreatorStatus('Select a saved question first.', 'error');
+            return;
+        }
+
+        try {
+            const nextSortOrder = await getNextQuestionSortOrder(state.auth.editingQuizId);
+            const duplicatedQuestionId = await duplicateQuestionRecord(state.auth.editingQuestionId, state.auth.editingQuizId, nextSortOrder);
+            await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
+            await loadStudioQuestionIntoEditor(duplicatedQuestionId, { suppressStatus: true });
+            setCreatorStatus('Question duplicated.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not duplicate the question.', 'error');
+        }
+    }
+
+    async function handleDuplicateQuiz(quizId) {
+        if (!state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before duplicating quizzes.', 'error');
+            return;
+        }
+
+        try {
+            const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
+            if (!managedQuiz) throw new Error('Could not find that quiz.');
+
+            const { data: quizRow, error: quizError } = await state.auth.client
+                .from('quizzes')
+                .select('id, folder_id, name, description')
+                .eq('id', quizId)
+                .maybeSingle();
+            if (quizError) throw quizError;
+            if (!quizRow) throw new Error('Could not load the source quiz.');
+
+            const nextSortOrder = await getNextQuizSortOrder(quizRow.folder_id || null);
+            const duplicateName = `${normalizeSheetText(quizRow.name) || 'Untitled Quiz'} (Copy)`;
+            const { data: insertedQuiz, error: insertQuizError } = await state.auth.client
+                .from('quizzes')
+                .insert({
+                    user_id: state.auth.user.id,
+                    folder_id: quizRow.folder_id || null,
+                    name: duplicateName,
+                    description: quizRow.description || '',
+                    sort_order: nextSortOrder,
+                    is_archived: false
+                })
+                .select('id')
+                .single();
+            if (insertQuizError) throw insertQuizError;
+            const newQuizId = insertedQuiz.id;
+
+            const { data: sourceQuestions, error: sourceQuestionsError } = await state.auth.client
+                .from('questions')
+                .select('id, sort_order')
+                .eq('quiz_id', quizId)
+                .order('sort_order', { ascending: true });
+            if (sourceQuestionsError) throw sourceQuestionsError;
+
+            for (const [index, question] of (sourceQuestions || []).entries()) {
+                await duplicateQuestionRecord(question.id, newQuizId, index);
+            }
+
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${newQuizId}`, loadSelectedQuiz: false });
+            setCreatorStatus('Quiz duplicated.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not duplicate the quiz.', 'error');
         }
     }
 
@@ -6468,6 +6699,15 @@ if (elements.studioAddQuestionBtn) {
     });
 }
 
+if (elements.studioDuplicateQuestionBtn) {
+    elements.studioDuplicateQuestionBtn.addEventListener('click', () => {
+        handleDuplicateStudioQuestion().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not duplicate the question.', 'error');
+        });
+    });
+}
+
 if (elements.studioDeleteQuestionBtn) {
     elements.studioDeleteQuestionBtn.addEventListener('click', () => {
         handleDeleteStudioQuestion().catch(err => {
@@ -6579,10 +6819,26 @@ if (elements.studioQuizList) {
         if (!item) return;
 
         const quizId = item.dataset.quizId;
+        if (e.target.matches('[data-action="save-quiz"]')) {
+            const nameInput = item.querySelector('[data-quiz-rename-input]');
+            const folderSelect = item.querySelector('[data-quiz-folder-select]');
+            handleSaveQuizMeta(quizId, nameInput?.value || '', folderSelect?.value || '').catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not update the quiz.', 'error');
+            });
+        }
+
         if (e.target.matches('[data-action="edit-quiz"]')) {
             loadQuizIntoEditor(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not load the quiz editor.', 'error');
+            });
+        }
+
+        if (e.target.matches('[data-action="duplicate-quiz"]')) {
+            handleDuplicateQuiz(quizId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not duplicate the quiz.', 'error');
             });
         }
 
