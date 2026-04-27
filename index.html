@@ -305,8 +305,81 @@ MODIFICATION RULES FOR THIS APP
               </div>
             </div>
 
+            <div class="auth-management-section">
+              <div class="auth-management-title">Create Content</div>
+              <div id="creatorStatus" class="creator-status">Sign in to create folders and multiple-choice quizzes.</div>
+
+              <div class="creator-subsection">
+                <div class="creator-subsection-title">Create Folder</div>
+                <label class="auth-field">
+                  <span>Folder name</span>
+                  <input id="createFolderName" type="text" autocomplete="off" placeholder="Example: Biology Unit 1">
+                </label>
+                <button id="createFolderBtn" type="button" class="auth-action-btn">Create Folder</button>
+              </div>
+
+              <div class="creator-subsection">
+                <div class="creator-subsection-title">Create Multiple-Choice Quiz</div>
+                <div class="creator-note">First pass: creates one multiple-choice quiz with its first question.</div>
+
+                <label class="auth-field">
+                  <span>Folder</span>
+                  <select id="createQuizFolderSelect">
+                    <option value="">No folder</option>
+                  </select>
+                </label>
+
+                <label class="auth-field">
+                  <span>Quiz name</span>
+                  <input id="createQuizName" type="text" autocomplete="off" placeholder="Example: Chapter 3 Review">
+                </label>
+
+                <label class="auth-field">
+                  <span>Question prompt</span>
+                  <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
+                </label>
+
+                <label class="auth-field">
+                  <span>Option 1</span>
+                  <input id="createOption1" type="text" autocomplete="off" placeholder="Answer option 1">
+                </label>
+
+                <label class="auth-field">
+                  <span>Option 2</span>
+                  <input id="createOption2" type="text" autocomplete="off" placeholder="Answer option 2">
+                </label>
+
+                <label class="auth-field">
+                  <span>Option 3</span>
+                  <input id="createOption3" type="text" autocomplete="off" placeholder="Answer option 3">
+                </label>
+
+                <label class="auth-field">
+                  <span>Option 4</span>
+                  <input id="createOption4" type="text" autocomplete="off" placeholder="Answer option 4">
+                </label>
+
+                <label class="auth-field">
+                  <span>Correct option</span>
+                  <select id="createCorrectOptionSelect">
+                    <option value="1">Option 1</option>
+                    <option value="2">Option 2</option>
+                    <option value="3">Option 3</option>
+                    <option value="4">Option 4</option>
+                  </select>
+                </label>
+
+                <label class="auth-field">
+                  <span>Correct answer explanation (optional)</span>
+                  <textarea id="createCorrectExplanation" rows="3" placeholder="Explain why the correct answer is right"></textarea>
+                </label>
+
+                <button id="createQuizBtn" type="button" class="auth-action-btn">Create Quiz</button>
+              </div>
+            </div>
+
             <div class="auth-source-note">
-              Runtime quizzes still load from Google Sheets for now. Supabase is connected here only for auth/session groundwork.
+              Runtime quizzes still load from Google Sheets, and Supabase multiple-choice quizzes now load when you are signed in. Quiz creation here is currently first-pass and multiple-choice only.
             </div>
           </div>
         </div>
