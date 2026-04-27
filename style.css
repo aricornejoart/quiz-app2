@@ -4070,8 +4070,7 @@ body.fullscreen-mode.active-question-classify {
   margin: 0;
 }
 
-.studio-question-header-actions,
-.studio-question-order-actions {
+.studio-question-header-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -4089,9 +4088,15 @@ body.fullscreen-mode.active-question-classify {
   gap: 6px;
 }
 
-.studio-question-insert-row {
+.studio-question-insert-row,
+.studio-question-tail-action {
   display: flex;
   justify-content: center;
+}
+
+.studio-question-tail-actions {
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .studio-question-insert-btn {
@@ -4108,7 +4113,8 @@ body.fullscreen-mode.active-question-classify {
   transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
 }
 
-.studio-question-insert-btn:hover {
+.studio-question-insert-btn:hover,
+.studio-add-tail-btn:hover {
   background: var(--color-bg-control-hover);
   border-color: var(--color-border-strong);
   transform: translateY(-1px);
@@ -4123,16 +4129,14 @@ body.fullscreen-mode.active-question-classify {
 .studio-question-list-item {
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
   padding: 10px 12px;
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
   border-radius: 10px;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, opacity 0.15s ease;
 }
 
 .studio-question-list-item:hover {
@@ -4145,17 +4149,75 @@ body.fullscreen-mode.active-question-classify {
   background: var(--color-bg-control-hover);
 }
 
+.studio-question-list-item.dragging {
+  opacity: 0.55;
+}
+
+.studio-question-list-item.drag-over {
+  border-color: #9f90ff;
+  box-shadow: 0 0 0 2px rgba(159, 144, 255, 0.22);
+}
+
+.studio-question-row-handle,
+.studio-question-row-delete {
+  flex-shrink: 0;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-main);
+  cursor: pointer;
+  align-self: center;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.studio-question-row-handle:hover,
+.studio-question-row-delete:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-border-strong);
+}
+
+.studio-question-row-handle {
+  cursor: grab;
+  font-size: 18px;
+}
+
+.studio-question-row-handle:active {
+  cursor: grabbing;
+}
+
+.studio-question-row-delete {
+  font-size: 18px;
+}
+
+.studio-question-list-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
 .studio-question-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
-  height: 28px;
-  padding: 0 8px;
+  min-width: 52px;
+  height: 30px;
+  padding: 0 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   font-size: 13px;
   font-weight: 700;
+  align-self: center;
 }
 
 .studio-question-label {
@@ -4164,6 +4226,44 @@ body.fullscreen-mode.active-question-classify {
   font-size: 15px;
   line-height: 1.45;
   word-break: break-word;
+}
+
+.studio-flashcard-inline-fields {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.studio-flashcard-inline-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studio-flashcard-inline-field span {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.studio-flashcard-inline-field textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--color-text-main);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.studio-save-tail-btn,
+.studio-add-tail-btn {
+  min-width: 160px;
 }
 
 .studio-option-pair {
@@ -4364,5 +4464,12 @@ body.active-question-flashcard .question-star-btn {
   body.active-question-flashcard .question-star-btn {
     right: 6px;
     bottom: 6px;
+  }
+}
+
+
+@media (max-width: 900px) {
+  .studio-flashcard-inline-fields {
+    grid-template-columns: 1fr;
   }
 }

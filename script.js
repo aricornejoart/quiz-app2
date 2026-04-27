@@ -35,6 +35,8 @@ MODIFICATION RULES FOR THIS APP
         FOLDER_DECK: 'folder_deck'
     });
 
+    const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
+
     const state = {
         questions: [],
         questionQueue: [],
@@ -105,7 +107,9 @@ MODIFICATION RULES FOR THIS APP
             lastError: '',
             starringInFlight: false,
             studioQuestionSearchQuery: '',
-            studioHasUnsavedChanges: false
+            studioHasUnsavedChanges: false,
+            studioDraggingQuestionId: null,
+            studioPendingNewQuestionRow: null
         }
     };
 
@@ -1245,6 +1249,81 @@ MODIFICATION RULES FOR THIS APP
         return window.confirm(`You have unsaved Quiz Studio changes. Discard them and ${actionLabel}?`);
     }
 
+    function getStudioPendingFlashcardRow() {
+        if (!state.auth.editingQuizId || getStudioCurrentQuizType() !== 'flashcard') return null;
+        const row = state.auth.studioPendingNewQuestionRow;
+        if (!row || row.question_type !== 'flashcard') return null;
+        return row;
+    }
+
+    function focusStudioPendingFlashcardTerm() {
+        const pendingInlineField = elements.studioQuestionList?.querySelector('[data-studio-pending-flashcard-term]');
+        if (pendingInlineField) {
+            pendingInlineField.focus();
+            return;
+        }
+        if (elements.createFlashcardTerm) {
+            elements.createFlashcardTerm.focus();
+        }
+    }
+
+    function isStudioFlashcardEditorBlank() {
+        const term = normalizeSheetText(elements.createFlashcardTerm?.value);
+        const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
+        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        return !term
+            && !definition
+            && !learningResources
+            && !state.auth.studioFlashcardTermImageDataUrl
+            && !state.auth.studioFlashcardDefinitionImageDataUrl
+            && !state.auth.studioLearningResourcesImageDataUrl;
+    }
+
+    async function handleStudioFlashcardAddCard() {
+        if (!isStudioFlashcardMode()) {
+            beginStudioNewQuestion();
+            return;
+        }
+
+        const hasCurrentQuestion = !!state.auth.editingQuestionId;
+        const hasPendingRow = !!getStudioPendingFlashcardRow();
+        const hasUnsavedChanges = !!state.auth.studioHasUnsavedChanges;
+        const isBlank = isStudioFlashcardEditorBlank();
+
+        if (hasUnsavedChanges && !isBlank) {
+            await handleSaveFlashcardQuiz();
+            beginStudioNewQuestion();
+            focusStudioPendingFlashcardTerm();
+            return;
+        }
+
+        if (!hasCurrentQuestion && hasPendingRow) {
+            focusStudioPendingFlashcardTerm();
+            return;
+        }
+
+        beginStudioNewQuestion();
+        focusStudioPendingFlashcardTerm();
+    }
+
+    function getStudioListRowsWithPendingDraft() {
+        const rows = [...state.auth.studioQuizQuestions];
+        const pendingRow = getStudioPendingFlashcardRow();
+        if (!pendingRow) return rows;
+
+        const insertAfterId = state.auth.pendingInsertAfterQuestionId;
+        if (insertAfterId) {
+            const insertIndex = rows.findIndex(question => question.id === insertAfterId);
+            if (insertIndex !== -1) {
+                rows.splice(insertIndex + 1, 0, pendingRow);
+                return rows;
+            }
+        }
+
+        rows.push(pendingRow);
+        return rows;
+    }
+
     function getFilteredStudioQuizQuestions() {
         const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '').toLowerCase();
         if (!query) {
@@ -1255,6 +1334,13 @@ MODIFICATION RULES FOR THIS APP
             const preview = getStudioQuestionPreviewLabel(questionRow, index).toLowerCase();
             return preview.includes(query);
         });
+    }
+
+    function getStudioQuestionChipLabel(questionType, index) {
+        if (questionType === 'flashcard') return `Card ${index + 1}`;
+        if (questionType === 'hierarchy') return `H${index + 1}`;
+        if (questionType === 'classify') return `C${index + 1}`;
+        return `Q${index + 1}`;
     }
 
     function renderStudioQuestionList() {
@@ -1270,47 +1356,126 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        if (!state.auth.studioQuizQuestions.length) {
+        const displayRows = getStudioListRowsWithPendingDraft();
+        if (!displayRows.length) {
             elements.studioQuestionList.innerHTML = '<div class="studio-list-empty">No questions in this quiz yet. Click Add Question, fill in the editor, then save.</div>';
             return;
         }
 
-        const filteredQuestions = getFilteredStudioQuizQuestions();
+        const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '').toLowerCase();
+        const filteredQuestions = !query
+            ? displayRows
+            : displayRows.filter((questionRow, filteredIndex) => {
+                let previewIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
+                if (previewIndex === -1) previewIndex = filteredIndex;
+                const preview = getStudioQuestionPreviewLabel(questionRow, previewIndex).toLowerCase();
+                return preview.includes(query);
+            });
         if (!filteredQuestions.length) {
             elements.studioQuestionList.innerHTML = '<div class="studio-list-empty">No questions match your search.</div>';
             return;
         }
 
-        elements.studioQuestionList.innerHTML = filteredQuestions.map((questionRow) => {
-            const index = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
-            const isActive = questionRow.id === state.auth.editingQuestionId;
+        const editingType = getStudioCurrentQuizType();
+        const rowsHtml = filteredQuestions.map((questionRow, filteredIndex) => {
+            let index = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
+            if (index === -1) index = filteredIndex;
+            const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
+            const isActive = questionRow.id === state.auth.editingQuestionId || (isPendingRow && !state.auth.editingQuestionId && editingType === 'flashcard');
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
-            const chipPrefix = questionType === 'flashcard' ? 'Card' : (questionType === 'hierarchy' ? 'H' : (questionType === 'classify' ? 'C' : 'Q'));
+            const chipLabel = isPendingRow ? 'New Card' : getStudioQuestionChipLabel(questionType, index);
             const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
+            const dragTitle = questionType === 'flashcard' ? 'Drag to reorder this card' : 'Drag to reorder this question';
+
+            let itemContent = '';
+            if (editingType === 'flashcard' && questionType === 'flashcard') {
+                const termValue = escapeHtml(normalizeSheetText(questionRow.term_plain || questionRow.prompt_plain || ''));
+                const definitionValue = escapeHtml(normalizeSheetText(questionRow.definition_plain || ''));
+                const termAttr = isPendingRow ? 'data-studio-pending-flashcard-term="true"' : `data-studio-flashcard-term-id="${escapeHtml(questionRow.id)}"`;
+                const definitionAttr = isPendingRow ? 'data-studio-pending-flashcard-definition="true"' : `data-studio-flashcard-definition-id="${escapeHtml(questionRow.id)}"`;
+                itemContent = `
+                    <div class="studio-flashcard-inline-fields">
+                      <label class="studio-flashcard-inline-field">
+                        <span>Term</span>
+                        <textarea rows="2" ${termAttr} placeholder="Term">${termValue}</textarea>
+                      </label>
+                      <label class="studio-flashcard-inline-field">
+                        <span>Definition</span>
+                        <textarea rows="2" ${definitionAttr} placeholder="Definition">${definitionValue}</textarea>
+                      </label>
+                    </div>
+                `;
+            } else {
+                itemContent = `
+                    <button
+                      type="button"
+                      class="studio-question-list-main"
+                      data-studio-question-id="${escapeHtml(questionRow.id)}"
+                      aria-pressed="${isActive ? 'true' : 'false'}"
+                    >
+                      <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
+                    </button>
+                `;
+            }
+
+            const rowDropAttr = isPendingRow ? '' : `data-studio-drop-question-id="${escapeHtml(questionRow.id)}"`;
+            const handleAttrs = isPendingRow
+                ? 'disabled'
+                : `data-studio-drag-question-id="${escapeHtml(questionRow.id)}" draggable="true"`;
+            const deleteAttrs = isPendingRow
+                ? 'data-studio-discard-pending-card="true"'
+                : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`;
+            const deleteLabel = isPendingRow ? 'Discard new card' : `Delete ${chipLabel}`;
+            const deleteTitle = isPendingRow ? 'Discard this unsaved card' : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
+
             return `
                 <div class="studio-question-list-row">
-                  <button
-                    type="button"
-                    class="studio-question-list-item${isActive ? ' active' : ''}"
-                    data-studio-question-id="${escapeHtml(questionRow.id)}"
-                    aria-pressed="${isActive ? 'true' : 'false'}"
+                  <div
+                    class="studio-question-list-item${isActive ? ' active' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
+                    data-studio-row-question-id="${escapeHtml(questionRow.id)}"
+                    ${rowDropAttr}
                   >
-                    <span class="studio-question-chip">${escapeHtml(`${chipPrefix}${index + 1}`)}</span>
-                    <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
-                  </button>
-                  <div class="studio-question-insert-row">
+                    <button
+                      type="button"
+                      class="studio-question-row-handle"
+                      ${handleAttrs}
+                      title="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
+                      aria-label="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
+                    >☰</button>
+                    <span class="studio-question-chip">${escapeHtml(chipLabel)}</span>
+                    ${itemContent}
+                    <button
+                      type="button"
+                      class="studio-question-row-delete"
+                      ${deleteAttrs}
+                      aria-label="${escapeHtml(deleteLabel)}"
+                      title="${escapeHtml(deleteTitle)}"
+                    >🗑</button>
+                  </div>
+                  ${isPendingRow ? '' : `<div class="studio-question-insert-row">
                     <button
                       type="button"
                       class="studio-question-insert-btn${isInsertTarget ? ' active' : ''}"
                       data-studio-insert-after-question-id="${escapeHtml(questionRow.id)}"
-                      aria-label="Add a new question after ${escapeHtml(`${chipPrefix}${index + 1}`)}"
+                      aria-label="Add a new question after ${escapeHtml(chipLabel)}"
                       title="Add a new question after this one"
                     >+</button>
-                  </div>
+                  </div>`}
                 </div>
             `;
         }).join('');
+
+        const addTailHtml = editingType === 'flashcard'
+            ? `
+                <div class="studio-question-tail-action studio-question-tail-actions">
+                  <button type="button" class="auth-action-btn auth-secondary-btn studio-save-tail-btn" data-studio-save-tail-card="true">Save Changes</button>
+                  <button type="button" class="auth-action-btn studio-add-tail-btn" data-studio-add-tail-card="true">Add Card</button>
+                </div>
+              `
+            : '';
+
+        elements.studioQuestionList.innerHTML = `${rowsHtml}${addTailHtml}`;
     }
 
     function clearStudioQuestionInputs(options = {}) {
@@ -1326,6 +1491,9 @@ MODIFICATION RULES FOR THIS APP
         state.auth.editingQuestionId = null;
         if (!options.keepPendingInsert) {
             state.auth.pendingInsertAfterQuestionId = null;
+        }
+        if (!options.keepPendingDraft) {
+            state.auth.studioPendingNewQuestionRow = null;
         }
         setStudioQuestionImageState('', 'No question image selected.');
         setStudioLearningResourcesImageState('', 'No learning resources image selected.');
@@ -1405,6 +1573,7 @@ MODIFICATION RULES FOR THIS APP
 
         state.auth.editingQuestionId = questionRow.id;
         state.auth.pendingInsertAfterQuestionId = null;
+        state.auth.studioPendingNewQuestionRow = null;
         state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
 
         if (elements.createLearningResources) {
@@ -1528,8 +1697,11 @@ MODIFICATION RULES FOR THIS APP
             ? insertAfterQuestionId
             : null;
 
-        clearStudioQuestionInputs({ keepPendingInsert: !!validInsertAfterQuestionId });
+        clearStudioQuestionInputs({ keepPendingInsert: !!validInsertAfterQuestionId, keepPendingDraft: getStudioCurrentQuizType() === 'flashcard' });
         state.auth.pendingInsertAfterQuestionId = validInsertAfterQuestionId;
+        state.auth.studioPendingNewQuestionRow = getStudioCurrentQuizType() === 'flashcard'
+            ? { id: STUDIO_PENDING_NEW_FLASHCARD_ID, question_type: 'flashcard', prompt_plain: '', term_plain: '', definition_plain: '' }
+            : null;
         renderStudioQuestionList();
         updateCreateQuizModeUI();
         setStudioDirtyState(false);
@@ -1540,6 +1712,44 @@ MODIFICATION RULES FOR THIS APP
         } else {
             setCreatorStatus(`Ready to add a new ${nextItemLabel} to this quiz. Fill in the fields below and save.`, 'success');
         }
+    }
+
+    function updateStudioFlashcardDraft(questionId, field, value) {
+        const questionRow = state.auth.studioQuizQuestions.find(question => question.id === questionId);
+        if (!questionRow) return;
+
+        if (field === 'term') {
+            questionRow.term_plain = value;
+            questionRow.prompt_plain = value;
+            if (questionId === state.auth.editingQuestionId && elements.createFlashcardTerm) {
+                elements.createFlashcardTerm.value = value;
+            }
+        } else if (field === 'definition') {
+            questionRow.definition_plain = value;
+            if (questionId === state.auth.editingQuestionId && elements.createFlashcardDefinition) {
+                elements.createFlashcardDefinition.value = value;
+            }
+        }
+
+        setStudioDirtyState(true);
+    }
+
+    async function reorderStudioQuestionBeforeTarget(draggedQuestionId, targetQuestionId) {
+        if (!state.auth.client || !draggedQuestionId || !targetQuestionId || draggedQuestionId === targetQuestionId) return;
+
+        const orderedQuestionIds = state.auth.studioQuizQuestions.map(question => question.id);
+        const draggedIndex = orderedQuestionIds.indexOf(draggedQuestionId);
+        const targetIndex = orderedQuestionIds.indexOf(targetQuestionId);
+        if (draggedIndex === -1 || targetIndex === -1) return;
+
+        orderedQuestionIds.splice(draggedIndex, 1);
+        const nextTargetIndex = orderedQuestionIds.indexOf(targetQuestionId);
+        orderedQuestionIds.splice(nextTargetIndex, 0, draggedQuestionId);
+
+        await reorderStudioQuizQuestionIds(orderedQuestionIds);
+        await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
+        renderStudioQuestionList();
+        setCreatorStatus('Question order updated.', 'success');
     }
 
     async function reorderStudioQuizQuestionIds(orderedQuestionIds) {
@@ -1572,8 +1782,8 @@ MODIFICATION RULES FOR THIS APP
         await reorderStudioQuizQuestionIds(orderedQuestionIds);
     }
 
-    async function handleDeleteStudioQuestion() {
-        if (!state.auth.client || !state.auth.editingQuizId || !state.auth.editingQuestionId) {
+    async function handleDeleteStudioQuestion(questionId = state.auth.editingQuestionId) {
+        if (!state.auth.client || !state.auth.editingQuizId || !questionId) {
             setCreatorStatus('Select a saved question first.', 'error');
             return;
         }
@@ -1582,7 +1792,7 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const deletedQuestionId = state.auth.editingQuestionId;
+        const deletedQuestionId = questionId;
         const currentIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === deletedQuestionId);
 
         const { error } = await state.auth.client
@@ -1596,9 +1806,13 @@ MODIFICATION RULES FOR THIS APP
         await refreshStudioManagementData();
         await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true, clearIfMissing: true });
 
-        const nextQuestion = state.auth.studioQuizQuestions[currentIndex] || state.auth.studioQuizQuestions[currentIndex - 1] || null;
+        const shouldKeepCurrentSelection = state.auth.editingQuestionId && state.auth.editingQuestionId !== deletedQuestionId;
+        const nextQuestion = shouldKeepCurrentSelection
+            ? state.auth.studioQuizQuestions.find(question => question.id === state.auth.editingQuestionId)
+            : (state.auth.studioQuizQuestions[currentIndex] || state.auth.studioQuizQuestions[currentIndex - 1] || null);
+
         if (nextQuestion) {
-            await loadStudioQuestionIntoEditor(nextQuestion.id, { suppressStatus: true });
+            await loadStudioQuestionIntoEditor(nextQuestion.id, { suppressStatus: true, force: true });
             setCreatorStatus('Question deleted.', 'success');
             return;
         }
@@ -2354,9 +2568,11 @@ MODIFICATION RULES FOR THIS APP
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
             state.auth.editingQuizType = 'multiple_choice';
+            setStudioDirtyState(false);
+            state.auth.studioPendingNewQuestionRow = null;
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
-            await loadQuizIntoEditor(quizId, questionId);
+            await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? 'Quiz created and first question saved.' : (isEditingQuestion ? 'Question updated.' : 'New question added to the quiz.'), 'success');
         } catch (error) {
             console.error(error);
@@ -2406,9 +2622,11 @@ MODIFICATION RULES FOR THIS APP
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
             state.auth.editingQuizType = 'flashcard';
+            setStudioDirtyState(false);
+            state.auth.studioPendingNewQuestionRow = null;
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
-            await loadQuizIntoEditor(quizId, questionId);
+            await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? 'Flashcard quiz created and first card saved.' : (isEditingQuestion ? 'Flashcard updated.' : 'New flashcard added to the quiz.'), 'success');
         } catch (error) {
             console.error(error);
@@ -2481,9 +2699,11 @@ MODIFICATION RULES FOR THIS APP
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
             state.auth.editingQuizType = 'hierarchy';
+            setStudioDirtyState(false);
+            state.auth.studioPendingNewQuestionRow = null;
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
-            await loadQuizIntoEditor(quizId, questionId);
+            await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? 'Hierarchy quiz created and first question saved.' : (isEditingQuestion ? 'Hierarchy question updated.' : 'New hierarchy question added to the quiz.'), 'success');
         } catch (error) {
             console.error(error);
@@ -2541,9 +2761,11 @@ MODIFICATION RULES FOR THIS APP
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
             state.auth.editingQuizType = 'classify';
+            setStudioDirtyState(false);
+            state.auth.studioPendingNewQuestionRow = null;
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
-            await loadQuizIntoEditor(quizId, questionId);
+            await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? 'Classify quiz created and first question saved.' : (isEditingQuestion ? 'Classify question updated.' : 'New classify question added to the quiz.'), 'success');
         } catch (error) {
             console.error(error);
@@ -6899,10 +7121,51 @@ if (elements.studioMoveQuestionDownBtn) {
 }
 
 if (elements.studioQuestionList) {
+    const clearStudioQuestionDropTargets = () => {
+        elements.studioQuestionList.querySelectorAll('.studio-question-list-item.drag-over').forEach(node => {
+            node.classList.remove('drag-over');
+        });
+    };
+
     elements.studioQuestionList.addEventListener('click', e => {
+        const discardPendingButton = e.target.closest('[data-studio-discard-pending-card]');
+        if (discardPendingButton) {
+            state.auth.studioPendingNewQuestionRow = null;
+            clearStudioQuestionInputs();
+            setCreatorStatus('Unsaved new card discarded.', 'success');
+            return;
+        }
+
+        const deleteButton = e.target.closest('[data-studio-delete-question-id]');
+        if (deleteButton) {
+            handleDeleteStudioQuestion(deleteButton.dataset.studioDeleteQuestionId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not delete the question.', 'error');
+            });
+            return;
+        }
+
         const insertButton = e.target.closest('[data-studio-insert-after-question-id]');
         if (insertButton) {
             beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId);
+            return;
+        }
+
+        const saveTailButton = e.target.closest('[data-studio-save-tail-card]');
+        if (saveTailButton) {
+            handleSaveFlashcardQuiz().catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not save the flashcard.', 'error');
+            });
+            return;
+        }
+
+        const addTailButton = e.target.closest('[data-studio-add-tail-card]');
+        if (addTailButton) {
+            handleStudioFlashcardAddCard().catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not add the next flashcard.', 'error');
+            });
             return;
         }
 
@@ -6912,6 +7175,114 @@ if (elements.studioQuestionList) {
         loadStudioQuestionIntoEditor(button.dataset.studioQuestionId).catch(err => {
             console.error(err);
             setCreatorStatus('Could not load that question.', 'error');
+        });
+    });
+
+    elements.studioQuestionList.addEventListener('focusin', e => {
+        const termField = e.target.closest('[data-studio-flashcard-term-id], [data-studio-pending-flashcard-term]');
+        const definitionField = e.target.closest('[data-studio-flashcard-definition-id], [data-studio-pending-flashcard-definition]');
+        const targetField = termField || definitionField;
+        if (!targetField) return;
+
+        if (targetField.hasAttribute('data-studio-pending-flashcard-term') || targetField.hasAttribute('data-studio-pending-flashcard-definition')) {
+            return;
+        }
+
+        const questionId = targetField.dataset.studioFlashcardTermId || targetField.dataset.studioFlashcardDefinitionId;
+        if (!questionId || questionId === state.auth.editingQuestionId) return;
+
+        const selector = termField ? `[data-studio-flashcard-term-id="${questionId}"]` : `[data-studio-flashcard-definition-id="${questionId}"]`;
+        loadStudioQuestionIntoEditor(questionId, { suppressStatus: true }).then(() => {
+            const replacementField = elements.studioQuestionList?.querySelector(selector);
+            if (replacementField) {
+                replacementField.focus();
+                const valueLength = replacementField.value.length;
+                replacementField.setSelectionRange(valueLength, valueLength);
+            }
+        }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load that flashcard.', 'error');
+        });
+    });
+
+    elements.studioQuestionList.addEventListener('input', e => {
+        const termField = e.target.closest('[data-studio-flashcard-term-id]');
+        if (termField) {
+            updateStudioFlashcardDraft(termField.dataset.studioFlashcardTermId, 'term', termField.value);
+            return;
+        }
+
+        const pendingTermField = e.target.closest('[data-studio-pending-flashcard-term]');
+        if (pendingTermField) {
+            const row = getStudioPendingFlashcardRow();
+            if (row) {
+                row.term_plain = pendingTermField.value;
+                row.prompt_plain = pendingTermField.value;
+                if (elements.createFlashcardTerm && elements.createFlashcardTerm !== document.activeElement) {
+                    elements.createFlashcardTerm.value = pendingTermField.value;
+                }
+                setStudioDirtyState(true);
+            }
+            return;
+        }
+
+        const definitionField = e.target.closest('[data-studio-flashcard-definition-id]');
+        if (definitionField) {
+            updateStudioFlashcardDraft(definitionField.dataset.studioFlashcardDefinitionId, 'definition', definitionField.value);
+            return;
+        }
+
+        const pendingDefinitionField = e.target.closest('[data-studio-pending-flashcard-definition]');
+        if (pendingDefinitionField) {
+            const row = getStudioPendingFlashcardRow();
+            if (row) {
+                row.definition_plain = pendingDefinitionField.value;
+                if (elements.createFlashcardDefinition && elements.createFlashcardDefinition !== document.activeElement) {
+                    elements.createFlashcardDefinition.value = pendingDefinitionField.value;
+                }
+                setStudioDirtyState(true);
+            }
+        }
+    });
+
+    elements.studioQuestionList.addEventListener('dragstart', e => {
+        const handle = e.target.closest('[data-studio-drag-question-id]');
+        if (!handle) return;
+        state.auth.studioDraggingQuestionId = handle.dataset.studioDragQuestionId;
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', state.auth.studioDraggingQuestionId);
+        }
+        window.requestAnimationFrame(() => renderStudioQuestionList());
+    });
+
+    elements.studioQuestionList.addEventListener('dragend', () => {
+        state.auth.studioDraggingQuestionId = null;
+        clearStudioQuestionDropTargets();
+        renderStudioQuestionList();
+    });
+
+    elements.studioQuestionList.addEventListener('dragover', e => {
+        if (!state.auth.studioDraggingQuestionId) return;
+        const targetRow = e.target.closest('[data-studio-drop-question-id]');
+        if (!targetRow) return;
+        e.preventDefault();
+        clearStudioQuestionDropTargets();
+        targetRow.classList.add('drag-over');
+    });
+
+    elements.studioQuestionList.addEventListener('drop', e => {
+        const targetRow = e.target.closest('[data-studio-drop-question-id]');
+        if (!targetRow || !state.auth.studioDraggingQuestionId) return;
+        e.preventDefault();
+        const targetQuestionId = targetRow.dataset.studioDropQuestionId;
+        const draggedQuestionId = state.auth.studioDraggingQuestionId;
+        state.auth.studioDraggingQuestionId = null;
+        clearStudioQuestionDropTargets();
+        reorderStudioQuestionBeforeTarget(draggedQuestionId, targetQuestionId).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not reorder the question.', 'error');
+            renderStudioQuestionList();
         });
     });
 }
@@ -7091,6 +7462,54 @@ document.addEventListener('change', event => {
         handleStudioDirtyInput(event);
     }
 });
+
+if (elements.createFlashcardTerm) {
+    elements.createFlashcardTerm.addEventListener('input', () => {
+        if (state.auth.editingQuizType !== 'flashcard') return;
+        const pendingRow = getStudioPendingFlashcardRow();
+        if (!state.auth.editingQuestionId && pendingRow) {
+            pendingRow.term_plain = elements.createFlashcardTerm.value;
+            pendingRow.prompt_plain = elements.createFlashcardTerm.value;
+            const pendingField = elements.studioQuestionList?.querySelector('[data-studio-pending-flashcard-term]');
+            if (pendingField && pendingField !== document.activeElement) {
+                pendingField.value = elements.createFlashcardTerm.value;
+            }
+            return;
+        }
+        if (!state.auth.editingQuestionId) return;
+        const row = state.auth.studioQuizQuestions.find(question => question.id === state.auth.editingQuestionId);
+        if (!row) return;
+        row.term_plain = elements.createFlashcardTerm.value;
+        row.prompt_plain = elements.createFlashcardTerm.value;
+        const listField = elements.studioQuestionList?.querySelector(`[data-studio-flashcard-term-id="${state.auth.editingQuestionId}"]`);
+        if (listField && listField !== document.activeElement) {
+            listField.value = elements.createFlashcardTerm.value;
+        }
+    });
+}
+
+if (elements.createFlashcardDefinition) {
+    elements.createFlashcardDefinition.addEventListener('input', () => {
+        if (state.auth.editingQuizType !== 'flashcard') return;
+        const pendingRow = getStudioPendingFlashcardRow();
+        if (!state.auth.editingQuestionId && pendingRow) {
+            pendingRow.definition_plain = elements.createFlashcardDefinition.value;
+            const pendingField = elements.studioQuestionList?.querySelector('[data-studio-pending-flashcard-definition]');
+            if (pendingField && pendingField !== document.activeElement) {
+                pendingField.value = elements.createFlashcardDefinition.value;
+            }
+            return;
+        }
+        if (!state.auth.editingQuestionId) return;
+        const row = state.auth.studioQuizQuestions.find(question => question.id === state.auth.editingQuestionId);
+        if (!row) return;
+        row.definition_plain = elements.createFlashcardDefinition.value;
+        const listField = elements.studioQuestionList?.querySelector(`[data-studio-flashcard-definition-id="${state.auth.editingQuestionId}"]`);
+        if (listField && listField !== document.activeElement) {
+            listField.value = elements.createFlashcardDefinition.value;
+        }
+    });
+}
 
 if (elements.studioQuestionSearchInput) {
     elements.studioQuestionSearchInput.addEventListener('input', () => {
