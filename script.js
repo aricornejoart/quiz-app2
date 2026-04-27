@@ -31,7 +31,8 @@ MODIFICATION RULES FOR THIS APP
 
     const DATA_SOURCES = Object.freeze({
         GOOGLE_SHEETS: 'google_sheets',
-        SUPABASE: 'supabase'
+        SUPABASE: 'supabase',
+        FOLDER_DECK: 'folder_deck'
     });
 
     const state = {
@@ -89,8 +90,13 @@ MODIFICATION RULES FOR THIS APP
             studioQuestionImageLabel: 'No question image selected.',
             studioLearningResourcesImageDataUrl: '',
             studioLearningResourcesImageLabel: 'No learning resources image selected.',
+            studioFlashcardTermImageDataUrl: '',
+            studioFlashcardTermImageLabel: 'No term image selected.',
+            studioFlashcardDefinitionImageDataUrl: '',
+            studioFlashcardDefinitionImageLabel: 'No definition image selected.',
             editingQuizId: null,
             editingQuestionId: null,
+            editingQuizType: 'multiple_choice',
             studioQuizQuestions: [],
             currentStudioSection: 'folders',
             lastError: ''
@@ -125,6 +131,7 @@ MODIFICATION RULES FOR THIS APP
         createFolderBtn: document.getElementById('createFolderBtn'),
         createQuizFolderSelect: document.getElementById('createQuizFolderSelect'),
         createQuizName: document.getElementById('createQuizName'),
+        createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
         studioQuestionList: document.getElementById('studioQuestionList'),
         studioAddQuestionBtn: document.getElementById('studioAddQuestionBtn'),
         studioDeleteQuestionBtn: document.getElementById('studioDeleteQuestionBtn'),
@@ -134,6 +141,16 @@ MODIFICATION RULES FOR THIS APP
         createQuestionImageFile: document.getElementById('createQuestionImageFile'),
         createQuestionImageName: document.getElementById('createQuestionImageName'),
         createQuestionImageClearBtn: document.getElementById('createQuestionImageClearBtn'),
+        multipleChoiceEditorFields: document.getElementById('multipleChoiceEditorFields'),
+        flashcardEditorFields: document.getElementById('flashcardEditorFields'),
+        createFlashcardTerm: document.getElementById('createFlashcardTerm'),
+        createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
+        createFlashcardTermImageFile: document.getElementById('createFlashcardTermImageFile'),
+        createFlashcardTermImageName: document.getElementById('createFlashcardTermImageName'),
+        createFlashcardTermImageClearBtn: document.getElementById('createFlashcardTermImageClearBtn'),
+        createFlashcardDefinitionImageFile: document.getElementById('createFlashcardDefinitionImageFile'),
+        createFlashcardDefinitionImageName: document.getElementById('createFlashcardDefinitionImageName'),
+        createFlashcardDefinitionImageClearBtn: document.getElementById('createFlashcardDefinitionImageClearBtn'),
         createLearningResources: document.getElementById('createLearningResources'),
         createLearningResourcesImageFile: document.getElementById('createLearningResourcesImageFile'),
         createLearningResourcesImageName: document.getElementById('createLearningResourcesImageName'),
@@ -272,6 +289,39 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+
+    function setStudioFlashcardTermImageState(dataUrl = '', label = 'No term image selected.') {
+        state.auth.studioFlashcardTermImageDataUrl = normalizeSheetText(dataUrl);
+        state.auth.studioFlashcardTermImageLabel = label;
+        if (elements.createFlashcardTermImageName) elements.createFlashcardTermImageName.textContent = label;
+        if (!dataUrl && elements.createFlashcardTermImageFile) elements.createFlashcardTermImageFile.value = '';
+    }
+
+    function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.') {
+        state.auth.studioFlashcardDefinitionImageDataUrl = normalizeSheetText(dataUrl);
+        state.auth.studioFlashcardDefinitionImageLabel = label;
+        if (elements.createFlashcardDefinitionImageName) elements.createFlashcardDefinitionImageName.textContent = label;
+        if (!dataUrl && elements.createFlashcardDefinitionImageFile) elements.createFlashcardDefinitionImageFile.value = '';
+    }
+
+    function getStudioCurrentQuizType() {
+        return normalizeSheetText(state.auth.editingQuizType || elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
+    }
+
+    function isStudioFlashcardMode() {
+        return getStudioCurrentQuizType() === 'flashcard';
+    }
+
+    function updateStudioEditorTypeUI() {
+        const isFlashcard = isStudioFlashcardMode();
+        if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', isFlashcard);
+        if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
+        if (elements.createQuizTypeSelect) {
+            elements.createQuizTypeSelect.value = isFlashcard ? 'flashcard' : 'multiple_choice';
+            elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
+        }
+    }
+
     function populateCreatorFolderSelect() {
         if (!elements.createQuizFolderSelect) return;
 
@@ -334,7 +384,7 @@ MODIFICATION RULES FOR THIS APP
         elements.studioQuizList.innerHTML = state.auth.managedQuizzes.map(quiz => {
             const folderLabel = quiz.folderName || 'No folder';
             const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
-            const typeLabel = quiz.allMultipleChoice ? 'Multiple choice' : 'Mixed types';
+            const typeLabel = quiz.typeLabel || 'Mixed types';
             return `
                 <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
                   <div class="studio-list-meta">
@@ -418,13 +468,23 @@ MODIFICATION RULES FOR THIS APP
                 const folder = state.auth.supabaseFolders.find(item => item.id === quiz.folder_id) || null;
                 const rows = questionMap.get(quiz.id) || [];
                 const types = rows.map(row => row.question_type);
+                const uniqueTypes = Array.from(new Set(types));
+                const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : (rows.length ? 'mixed' : 'multiple_choice');
+                const typeLabelMap = {
+                    multiple_choice: 'Multiple choice',
+                    flashcard: 'Flashcard',
+                    hierarchy: 'Hierarchy',
+                    classify: 'Classify',
+                    mixed: 'Mixed types'
+                };
                 return {
                     id: quiz.id,
                     name: normalizeSheetText(quiz.name),
                     folderId: quiz.folder_id || '',
                     folderName: folder ? normalizeFolderName(folder.name) : '',
                     questionCount: rows.length,
-                    allMultipleChoice: rows.length === 0 || types.every(type => type === 'multiple_choice'),
+                    quizType,
+                    typeLabel: typeLabelMap[quizType] || 'Mixed types',
                     firstQuestionId: rows[0]?.id || ''
                 };
             });
@@ -447,25 +507,30 @@ MODIFICATION RULES FOR THIS APP
     function updateCreateQuizModeUI() {
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
+        const isFlashcard = isStudioFlashcardMode();
+        const itemLabel = isFlashcard ? 'flashcard' : 'question';
+        const quizLabel = isFlashcard ? 'flashcard quiz' : 'multiple-choice quiz';
 
         if (elements.createQuizBtn) {
             elements.createQuizBtn.textContent = !isEditingQuiz
                 ? 'Create Quiz'
-                : (isEditingQuestion ? 'Save Question Changes' : 'Add Question To Quiz');
+                : (isEditingQuestion ? `Save ${isFlashcard ? 'Flashcard' : 'Question'} Changes` : `Add ${isFlashcard ? 'Flashcard' : 'Question'} To Quiz`);
         }
 
         if (elements.createQuizCancelEditBtn) {
             elements.createQuizCancelEditBtn.disabled = !isEditingQuiz;
-            elements.createQuizCancelEditBtn.textContent = isEditingQuiz ? 'Start New Quiz' : 'Start New Quiz';
+            elements.createQuizCancelEditBtn.textContent = 'Start New Quiz';
         }
 
         if (elements.createQuizModeNote) {
             elements.createQuizModeNote.textContent = !isEditingQuiz
-                ? 'Creates a multiple-choice quiz and saves the current question into it. After that, you can keep adding, selecting, deleting, and reordering questions in the same quiz.'
+                ? `Creates a ${quizLabel} and saves the current ${itemLabel} into it. After that, you can keep adding, selecting, deleting, and reordering ${isFlashcard ? 'flashcards' : 'questions'} inside that same quiz.`
                 : (isEditingQuestion
-                    ? 'Editing the selected multiple-choice question inside this quiz. Quiz name and folder changes save at the same time.'
-                    : 'This quiz is open in the editor. Fill in the fields below to add a new multiple-choice question to it.');
+                    ? `Editing the selected ${itemLabel} inside this quiz. Quiz name and folder changes save at the same time.`
+                    : `This quiz is open in the editor. Fill in the fields below to add a new ${itemLabel} to it.`);
         }
+
+        updateStudioEditorTypeUI();
     }
 
     function createStudioOptionFieldRow(index, optionData = {}) {
@@ -603,11 +668,15 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getStudioQuestionPreviewLabel(questionRow, index) {
-        const prompt = normalizeSheetText(questionRow?.prompt_plain || '');
+        const questionType = normalizeSheetText(questionRow?.question_type || 'multiple_choice');
+        const prompt = questionType === 'flashcard'
+            ? normalizeSheetText(questionRow?.term_plain || questionRow?.prompt_plain || '')
+            : normalizeSheetText(questionRow?.prompt_plain || '');
+        const prefix = questionType === 'flashcard' ? `Card ${index + 1}` : `Q${index + 1}`;
         if (prompt) {
-            return `Q${index + 1}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
+            return `${prefix}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
         }
-        return `Question ${index + 1}`;
+        return questionType === 'flashcard' ? `Flashcard ${index + 1}` : `Question ${index + 1}`;
     }
 
     function renderStudioQuestionList() {
@@ -647,12 +716,16 @@ MODIFICATION RULES FOR THIS APP
     function clearStudioQuestionInputs() {
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
         if (elements.createLearningResources) elements.createLearningResources.value = '';
+        if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
+        if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         state.auth.editingQuestionId = null;
         setStudioQuestionImageState('', 'No question image selected.');
         setStudioLearningResourcesImageState('', 'No learning resources image selected.');
+        setStudioFlashcardTermImageState('', 'No term image selected.');
+        setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
         renderStudioQuestionList();
         updateCreateQuizModeUI();
     }
@@ -680,16 +753,22 @@ MODIFICATION RULES FOR THIS APP
 
         const { data, error } = await state.auth.client
             .from('questions')
-            .select('id, prompt_plain, sort_order')
+            .select('id, prompt_plain, question_type, sort_order')
             .eq('quiz_id', quizId)
-            .eq('question_type', 'multiple_choice')
             .order('sort_order', { ascending: true });
 
         if (error) throw error;
 
-        state.auth.studioQuizQuestions = (data || []).map(row => ({
+        const rows = (data || []);
+        const flashcardQuestionIds = rows.filter(row => row.question_type === 'flashcard').map(row => row.id);
+        const flashcardDetails = flashcardQuestionIds.length ? await loadFlashcardDetailsByQuestionIds(flashcardQuestionIds) : [];
+        const flashcardMap = new Map((flashcardDetails || []).map(row => [row.question_id, row]));
+
+        state.auth.studioQuizQuestions = rows.map(row => ({
             id: row.id,
             prompt_plain: normalizeSheetText(row.prompt_plain),
+            term_plain: normalizeSheetText(flashcardMap.get(row.id)?.term_plain),
+            question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
             sort_order: Number(row.sort_order ?? 0)
         }));
         renderStudioQuestionList();
@@ -703,45 +782,78 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const [{ data: questionRow, error: questionError }, detailRow] = await Promise.all([
-            state.auth.client
-                .from('questions')
-                .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url')
-                .eq('id', questionId)
-                .maybeSingle(),
-            loadMultipleChoiceDetailByQuestionId(questionId)
-        ]);
+        const { data: questionRow, error: questionError } = await state.auth.client
+            .from('questions')
+            .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, question_type')
+            .eq('id', questionId)
+            .maybeSingle();
 
         if (questionError) throw questionError;
-        if (!questionRow || !detailRow) {
+        if (!questionRow) {
             throw new Error('Could not load that question into the editor.');
         }
 
         state.auth.editingQuestionId = questionRow.id;
-        if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
-        if (elements.createLearningResources) elements.createLearningResources.value = getStoredTextForDisplay('', questionRow.learning_resources_html);
-        if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
+        state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
 
-        const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
-        renderStudioOptionFields(optionDrafts);
-        const correctIndex = Math.max(0, optionDrafts.findIndex(option => option.text === normalizeSheetText(detailRow.correct_answer)));
-        if (elements.createCorrectOptionSelect) {
-            elements.createCorrectOptionSelect.value = String(correctIndex + 1);
+        if (elements.createLearningResources) {
+            elements.createLearningResources.value = getStoredTextForDisplay('', questionRow.learning_resources_html);
         }
-
-        setStudioQuestionImageState(
-            normalizeSheetText(questionRow.image_url),
-            normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
-        );
         setStudioLearningResourcesImageState(
             normalizeSheetText(questionRow.learning_resources_image_url),
             normalizeSheetText(questionRow.learning_resources_image_url) ? 'Existing learning resources image saved.' : 'No learning resources image selected.'
         );
 
+        if (state.auth.editingQuizType === 'flashcard') {
+            const detailRow = await loadFlashcardDetailByQuestionId(questionId);
+            if (!detailRow) {
+                throw new Error('Could not load that flashcard into the editor.');
+            }
+
+            if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = getStoredTextForDisplay(detailRow.term_plain, detailRow.term_html);
+            if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = getStoredTextForDisplay(detailRow.definition_plain, detailRow.definition_html);
+            setStudioFlashcardTermImageState(
+                normalizeSheetText(detailRow.term_image_url),
+                normalizeSheetText(detailRow.term_image_url) ? 'Existing term image saved.' : 'No term image selected.'
+            );
+            setStudioFlashcardDefinitionImageState(
+                normalizeSheetText(detailRow.definition_image_url),
+                normalizeSheetText(detailRow.definition_image_url) ? 'Existing definition image saved.' : 'No definition image selected.'
+            );
+            setStudioQuestionImageState('', 'No question image selected.');
+            if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
+            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
+            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+            if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+        } else {
+            const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId);
+            if (!detailRow) {
+                throw new Error('Could not load that question into the editor.');
+            }
+
+            if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
+            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
+            const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
+            renderStudioOptionFields(optionDrafts);
+            const correctIndex = Math.max(0, optionDrafts.findIndex(option => option.text === normalizeSheetText(detailRow.correct_answer)));
+            if (elements.createCorrectOptionSelect) {
+                elements.createCorrectOptionSelect.value = String(correctIndex + 1);
+            }
+
+            setStudioQuestionImageState(
+                normalizeSheetText(questionRow.image_url),
+                normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
+            );
+            setStudioFlashcardTermImageState('', 'No term image selected.');
+            setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
+            if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
+            if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
+        }
+
         renderStudioQuestionList();
         updateCreateQuizModeUI();
         if (!suppressStatus) {
-            setCreatorStatus('Question loaded into the editor.', 'success');
+            setCreatorStatus(state.auth.editingQuizType === 'flashcard' ? 'Flashcard loaded into the editor.' : 'Question loaded into the editor.', 'success');
         }
     }
 
@@ -865,6 +977,25 @@ MODIFICATION RULES FOR THIS APP
         return rows[0] || null;
     }
 
+    async function loadFlashcardDetailsByQuestionIds(questionIds) {
+        if (!state.auth.client || !Array.isArray(questionIds) || !questionIds.length) {
+            return [];
+        }
+
+        const { data, error } = await state.auth.client
+            .from('flashcard_questions')
+            .select('question_id, term_html, definition_html, term_plain, definition_plain, term_image_url, definition_image_url')
+            .in('question_id', questionIds);
+
+        if (error) throw error;
+        return data || [];
+    }
+
+    async function loadFlashcardDetailByQuestionId(questionId) {
+        const rows = await loadFlashcardDetailsByQuestionIds([questionId]);
+        return rows[0] || null;
+    }
+
     function setQuizStudioSection(sectionName = 'folders') {
         const nextSection = ['folders', 'manage', 'editor'].includes(sectionName)
             ? sectionName
@@ -895,6 +1026,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createFolderBtn,
             elements.createQuizFolderSelect,
             elements.createQuizName,
+            elements.createQuizTypeSelect,
             elements.studioAddQuestionBtn,
             elements.studioDeleteQuestionBtn,
             elements.studioMoveQuestionUpBtn,
@@ -902,6 +1034,12 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuestionPrompt,
             elements.createQuestionImageFile,
             elements.createQuestionImageClearBtn,
+            elements.createFlashcardTerm,
+            elements.createFlashcardDefinition,
+            elements.createFlashcardTermImageFile,
+            elements.createFlashcardTermImageClearBtn,
+            elements.createFlashcardDefinitionImageFile,
+            elements.createFlashcardDefinitionImageClearBtn,
             elements.createLearningResources,
             elements.createLearningResourcesImageFile,
             elements.createLearningResourcesImageClearBtn,
@@ -950,6 +1088,10 @@ MODIFICATION RULES FOR THIS APP
         }
 
         state.auth.editingQuizId = null;
+        state.auth.editingQuizType = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
+        if (elements.createQuizTypeSelect) {
+            elements.createQuizTypeSelect.value = state.auth.editingQuizType;
+        }
         state.auth.studioQuizQuestions = [];
         clearStudioQuestionInputs();
         renderStudioQuestionList();
@@ -1287,6 +1429,10 @@ MODIFICATION RULES FOR THIS APP
         if (!file) {
             if (type === 'question') {
                 setStudioQuestionImageState();
+            } else if (type === 'term') {
+                setStudioFlashcardTermImageState();
+            } else if (type === 'definition') {
+                setStudioFlashcardDefinitionImageState();
             } else {
                 setStudioLearningResourcesImageState();
             }
@@ -1302,6 +1448,10 @@ MODIFICATION RULES FOR THIS APP
 
         if (type === 'question') {
             setStudioQuestionImageState(dataUrl, `Selected: ${file.name}`);
+        } else if (type === 'term') {
+            setStudioFlashcardTermImageState(dataUrl, `Selected: ${file.name}`);
+        } else if (type === 'definition') {
+            setStudioFlashcardDefinitionImageState(dataUrl, `Selected: ${file.name}`);
         } else {
             setStudioLearningResourcesImageState(dataUrl, `Selected: ${file.name}`);
         }
@@ -1356,7 +1506,6 @@ MODIFICATION RULES FOR THIS APP
             setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
             return;
         }
-
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
         const learningResources = normalizeSheetText(elements.createLearningResources?.value);
@@ -1368,164 +1517,105 @@ MODIFICATION RULES FOR THIS APP
         const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
         const correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
         const correctAnswer = options[correctIndex];
-
-        if (!quizName) {
-            setCreatorStatus('Enter a quiz name first.', 'error');
-            return;
-        }
-
-        if (!prompt) {
-            setCreatorStatus('Enter a question prompt.', 'error');
-            return;
-        }
-
-        if (options.length < 2) {
-            setCreatorStatus('Add at least 2 answer options.', 'error');
-            return;
-        }
-
-        if (options.some(option => !option)) {
-            setCreatorStatus('Fill in every answer option before saving.', 'error');
-            return;
-        }
-
-        if (new Set(options).size !== options.length) {
-            setCreatorStatus('All answer options must be unique.', 'error');
-            return;
-        }
-
-        if (!correctAnswer) {
-            setCreatorStatus('Choose which option is correct.', 'error');
-            return;
-        }
-
+        if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
+        if (!prompt) return void setCreatorStatus('Enter a question prompt.', 'error');
+        if (options.length < 2) return void setCreatorStatus('Add at least 2 answer options.', 'error');
+        if (options.some(option => !option)) return void setCreatorStatus('Fill in every answer option before saving.', 'error');
+        if (new Set(options).size !== options.length) return void setCreatorStatus('All answer options must be unique.', 'error');
+        if (!correctAnswer) return void setCreatorStatus('Choose which option is correct.', 'error');
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
         setCreatorStatus(!isEditingQuiz ? 'Creating quiz...' : (isEditingQuestion ? 'Saving question changes...' : 'Adding question to quiz...'));
-
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
-
             if (quizId) {
-                const { error: quizError } = await state.auth.client
-                    .from('quizzes')
-                    .update({
-                        folder_id: folderId,
-                        name: quizName
-                    })
-                    .eq('id', quizId);
-
-                if (quizError) throw quizError;
+                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+                if (error) throw error;
             } else {
                 const quizSortOrder = await getNextQuizSortOrder(folderId);
-                const { data: quizInsert, error: quizError } = await state.auth.client
-                    .from('quizzes')
-                    .insert({
-                        user_id: state.auth.user.id,
-                        folder_id: folderId,
-                        name: quizName,
-                        description: '',
-                        sort_order: quizSortOrder,
-                        is_archived: false
-                    })
-                    .select('id')
-                    .single();
-
-                if (quizError) throw quizError;
-                quizId = quizInsert.id;
+                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                if (error) throw error;
+                quizId = data.id;
             }
-
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data: questionInsert, error: questionInsertError } = await state.auth.client
-                    .from('questions')
-                    .insert({
-                        quiz_id: quizId,
-                        question_type: 'multiple_choice',
-                        prompt_html: buildStoredHtmlFromPlain(prompt),
-                        prompt_plain: prompt,
-                        image_url: state.auth.studioQuestionImageDataUrl || '',
-                        learning_resources_html: buildStoredHtmlFromPlain(learningResources),
-                        learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '',
-                        sort_order: questionSortOrder
-                    })
-                    .select('id')
-                    .single();
-
-                if (questionInsertError) throw questionInsertError;
-                questionId = questionInsert.id;
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'multiple_choice', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                if (error) throw error;
+                questionId = data.id;
             } else {
-                const { error: questionUpdateError } = await state.auth.client
-                    .from('questions')
-                    .update({
-                        prompt_html: buildStoredHtmlFromPlain(prompt),
-                        prompt_plain: prompt,
-                        image_url: state.auth.studioQuestionImageDataUrl || '',
-                        learning_resources_html: buildStoredHtmlFromPlain(learningResources),
-                        learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
-                    })
-                    .eq('id', questionId);
-
-                if (questionUpdateError) throw questionUpdateError;
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '' }).eq('id', questionId);
+                if (error) throw error;
             }
-
-            if (!isEditingQuestion || !state.auth.editingQuestionId) {
-                const { error: newQuestionUpdateError } = await state.auth.client
-                    .from('questions')
-                    .update({
-                        prompt_html: buildStoredHtmlFromPlain(prompt),
-                        prompt_plain: prompt,
-                        image_url: state.auth.studioQuestionImageDataUrl || '',
-                        learning_resources_html: buildStoredHtmlFromPlain(learningResources),
-                        learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
-                    })
-                    .eq('id', questionId);
-
-                if (newQuestionUpdateError) throw newQuestionUpdateError;
-            }
-
-            const optionPayload = optionDrafts.map(draft => ({
-                text: draft.text,
-                explanation_html: buildStoredHtmlFromPlain(draft.explanation)
-            }));
-
-            const detailPayload = {
-                question_id: questionId,
-                correct_answer: correctAnswer,
-                correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation),
-                options_json: optionPayload,
-                option_1_text: options[0] || '',
-                option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''),
-                option_2_text: options[1] || '',
-                option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1] || ''),
-                option_3_text: options[2] || '',
-                option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2] || ''),
-                option_4_text: options[3] || '',
-                option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3] || '')
-            };
-
-            const { error: detailError } = await state.auth.client
-                .from('multiple_choice_questions')
-                .upsert(detailPayload, { onConflict: 'question_id' });
-
+            const optionPayload = optionDrafts.map(draft => ({ text: draft.text, explanation_html: buildStoredHtmlFromPlain(draft.explanation) }));
+            const detailPayload = { question_id: questionId, correct_answer: correctAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionPayload, option_1_text: options[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''), option_2_text: options[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1] || ''), option_3_text: options[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2] || ''), option_4_text: options[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3] || '') };
+            const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) {
                 const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
-                if (missingColumn) {
-                    throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
-                }
+                if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
                 throw detailError;
             }
-
+            state.auth.editingQuizType = 'multiple_choice';
             await refreshStudioManagementData();
-            const createdDescriptorId = `sb:${quizId}`;
-            await refreshQuizCatalog({ selectQuizId: createdDescriptorId, loadSelectedQuiz: true });
+            await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(quizId, questionId);
             setCreatorStatus(!isEditingQuiz ? 'Quiz created and first question saved.' : (isEditingQuestion ? 'Question updated.' : 'New question added to the quiz.'), 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not save the quiz.', 'error');
         }
+    }
+
+    async function handleSaveFlashcardQuiz() {
+        if (!state.auth.client || !state.auth.user?.id) return void setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
+        const quizName = normalizeSheetText(elements.createQuizName?.value);
+        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
+        const term = normalizeSheetText(elements.createFlashcardTerm?.value);
+        const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
+        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
+        if (!term) return void setCreatorStatus('Enter a flashcard term first.', 'error');
+        if (!definition) return void setCreatorStatus('Enter a flashcard definition first.', 'error');
+        const isEditingQuiz = !!state.auth.editingQuizId;
+        const isEditingQuestion = !!state.auth.editingQuestionId;
+        setCreatorStatus(!isEditingQuiz ? 'Creating flashcard quiz...' : (isEditingQuestion ? 'Saving flashcard changes...' : 'Adding flashcard to quiz...'));
+        try {
+            let quizId = state.auth.editingQuizId;
+            let questionId = state.auth.editingQuestionId;
+            if (quizId) {
+                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+                if (error) throw error;
+            } else {
+                const quizSortOrder = await getNextQuizSortOrder(folderId);
+                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                if (error) throw error;
+                quizId = data.id;
+            }
+            if (!questionId) {
+                const questionSortOrder = await getNextQuestionSortOrder(quizId);
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'flashcard', prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                if (error) throw error;
+                questionId = data.id;
+            } else {
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '' }).eq('id', questionId);
+                if (error) throw error;
+            }
+            const detailPayload = { question_id: questionId, term_html: buildStoredHtmlFromPlain(term), definition_html: buildStoredHtmlFromPlain(definition), term_plain: term, definition_plain: definition, term_image_url: state.auth.studioFlashcardTermImageDataUrl || '', definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || '' };
+            const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
+            if (detailError) throw detailError;
+            state.auth.editingQuizType = 'flashcard';
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
+            await loadQuizIntoEditor(quizId, questionId);
+            setCreatorStatus(!isEditingQuiz ? 'Flashcard quiz created and first card saved.' : (isEditingQuestion ? 'Flashcard updated.' : 'New flashcard added to the quiz.'), 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not save the flashcard quiz.', 'error');
+        }
+    }
+
+    async function handleSaveStudioQuiz() {
+        return isStudioFlashcardMode() ? handleSaveFlashcardQuiz() : handleSaveMultipleChoiceQuiz();
     }
 
     async function handleRenameFolder(folderId, nextName) {
@@ -1582,8 +1672,8 @@ MODIFICATION RULES FOR THIS APP
                 return;
             }
 
-            if (!managedQuiz.allMultipleChoice) {
-                setCreatorStatus('Editing is currently limited to Supabase multiple-choice quizzes.', 'error');
+            if (managedQuiz.quizType === 'mixed') {
+                setCreatorStatus('Editing is currently limited to single-type Supabase quizzes.', 'error');
                 return;
             }
 
@@ -1599,8 +1689,10 @@ MODIFICATION RULES FOR THIS APP
             }
 
             state.auth.editingQuizId = quizRow.id;
+            state.auth.editingQuizType = managedQuiz.quizType || 'multiple_choice';
             if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
+            if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
 
             const questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
             const targetQuestionId = preferredQuestionId || questionRows[0]?.id || null;
@@ -1613,7 +1705,7 @@ MODIFICATION RULES FOR THIS APP
 
             updateCreateQuizModeUI();
             openQuizStudioPage('editor');
-            setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : 'Quiz loaded. Add your first question below.', 'success');
+            setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${state.auth.editingQuizType === 'flashcard' ? 'flashcard' : 'question'} below.`, 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not load the quiz editor.', 'error');
@@ -2212,9 +2304,44 @@ function getQuizBySelectorValue(selectorValue) {
     return state.quizListCache.find(q => q.id === selectorValue) || null;
 }
 
+function buildFolderDeckDescriptors(quizDescriptors) {
+    const byFolder = new Map();
+
+    quizDescriptors.forEach(quiz => {
+        if (!isQuizDescriptor(quiz) || quiz.source === DATA_SOURCES.FOLDER_DECK) return;
+        const folderName = normalizeFolderName(quiz.folder);
+        if (!byFolder.has(folderName)) {
+            byFolder.set(folderName, []);
+        }
+        byFolder.get(folderName).push(quiz);
+    });
+
+    return Array.from(byFolder.entries()).map(([folderName, quizzes]) => ({
+        id: `fd:${encodeURIComponent(folderName)}`,
+        source: DATA_SOURCES.FOLDER_DECK,
+        folder: folderName,
+        folderId: '',
+        folderSortOrder: quizzes.reduce((minValue, quiz) => Math.min(minValue, Number(quiz.folderSortOrder ?? 0)), Number(quizzes[0]?.folderSortOrder ?? 0)),
+        name: 'Study Entire Folder',
+        rangeNumber: '',
+        sortOrder: -1
+    }));
+}
+
 async function loadQuestionsForQuizDescriptor(quizDescriptor) {
     if (!isQuizDescriptor(quizDescriptor)) {
         throw new Error('Invalid quiz descriptor');
+    }
+
+    if (quizDescriptor.source === DATA_SOURCES.FOLDER_DECK) {
+        const memberQuizzes = state.quizListCache.filter(item =>
+            isQuizDescriptor(item)
+            && item.source !== DATA_SOURCES.FOLDER_DECK
+            && normalizeFolderName(item.folder) === normalizeFolderName(quizDescriptor.folder)
+        );
+
+        const results = await Promise.all(memberQuizzes.map(item => loadQuestions(item)));
+        return results.flat();
     }
 
     return loadQuestions(quizDescriptor);
@@ -2391,14 +2518,17 @@ async function loadQuizListFromSupabase() {
         return (quizzes || [])
             .filter(quiz => {
                 const types = quizTypeMap.get(quiz.id) || [];
-                return types.length > 0 && types.every(type => type === 'multiple_choice');
+                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard');
             })
             .map(quiz => {
+                const types = quizTypeMap.get(quiz.id) || [];
+                const quizType = types[0] || 'multiple_choice';
                 const folder = folderMap.get(quiz.folder_id) || null;
                 return {
                     id: `sb:${quiz.id}`,
                     source: DATA_SOURCES.SUPABASE,
                     sourceQuizId: quiz.id,
+                    quizType,
                     folderId: quiz.folder_id || '',
                     folder: normalizeFolderName(folder?.name),
                     folderSortOrder: Number(folder?.sort_order ?? 0),
@@ -2433,36 +2563,46 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
     try {
         const { data: questionRows, error: questionsError } = await state.auth.client
             .from('questions')
-            .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, sort_order')
+            .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, sort_order, question_type')
             .eq('quiz_id', quizDescriptor.sourceQuizId)
-            .eq('question_type', 'multiple_choice')
             .order('sort_order', { ascending: true });
-
         if (questionsError) throw questionsError;
-
-        const questionIds = (questionRows || []).map(row => row.id).filter(Boolean);
-        if (!questionIds.length) {
-            return [];
+        const rows = questionRows || [];
+        const questionIds = rows.map(row => row.id).filter(Boolean);
+        if (!questionIds.length) return [];
+        const quizType = normalizeSheetText(quizDescriptor.quizType || rows[0]?.question_type || 'multiple_choice');
+        if (quizType === 'flashcard') {
+            const detailRows = await loadFlashcardDetailsByQuestionIds(questionIds);
+            const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
+            return rows.map(row => {
+                const detail = detailMap.get(row.id);
+                if (!detail) return null;
+                return {
+                    id: `q_${state.questionIdCounter++}`,
+                    sourceQuestionId: row.id,
+                    type: 'flashcard',
+                    termText: getStoredTextForDisplay(detail.term_plain, detail.term_html),
+                    definitionText: getStoredTextForDisplay(detail.definition_plain, detail.definition_html),
+                    termImage: normalizeSheetText(detail.term_image_url),
+                    definitionImage: normalizeSheetText(detail.definition_image_url),
+                    learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                    learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+                };
+            }).filter(Boolean);
         }
-
         const detailRows = await loadMultipleChoiceDetailsByQuestionIds(questionIds);
-
         const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-
-        return (questionRows || []).map(row => {
+        return rows.map(row => {
             const detail = detailMap.get(row.id);
             if (!detail) return null;
-
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
             const options = optionDrafts.map(draft => draft.text);
             const explanations = optionDrafts.map(draft => draft.explanation);
-
             const correctAnswer = normalizeSheetText(detail.correct_answer);
             const correctIndex = options.findIndex(option => option === correctAnswer);
             if (correctIndex >= 0 && !explanations[correctIndex]) {
                 explanations[correctIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
             }
-
             return {
                 id: `q_${state.questionIdCounter++}`,
                 sourceQuestionId: row.id,
@@ -2488,7 +2628,10 @@ async function loadQuizList() {
         loadQuizListFromSupabase()
     ]);
 
-    return [...supabaseQuizzes, ...googleSheetsQuizzes];
+    const quizDescriptors = [...supabaseQuizzes, ...googleSheetsQuizzes];
+    const folderDeckDescriptors = buildFolderDeckDescriptors(quizDescriptors);
+
+    return [...quizDescriptors, ...folderDeckDescriptors];
 }
 
 async function loadQuestions(quizReference) {
@@ -2532,12 +2675,21 @@ function populateQuizDropdown(folderName) {
         return [];
     }
 
-    const quizzesForFolder = state.quizListCache.filter(q => q.folder === folderName);
+    const quizzesForFolder = state.quizListCache
+        .filter(q => q.folder === folderName)
+        .sort((a, b) => {
+            if (a.source === DATA_SOURCES.FOLDER_DECK && b.source !== DATA_SOURCES.FOLDER_DECK) return -1;
+            if (a.source !== DATA_SOURCES.FOLDER_DECK && b.source === DATA_SOURCES.FOLDER_DECK) return 1;
+            if (Number(a.sortOrder ?? 0) !== Number(b.sortOrder ?? 0)) {
+                return Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0);
+            }
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
 
     quizzesForFolder.forEach(q => {
         const opt = document.createElement('option');
         opt.value = encodeQuizSelectorValue(q);
-        opt.innerText = q.name;
+        opt.innerText = q.source === DATA_SOURCES.FOLDER_DECK ? 'Study Entire Folder' : q.name;
         elements.quizSelector.appendChild(opt);
     });
 
@@ -4635,7 +4787,7 @@ elements.folderSelector.addEventListener('change', e => {
         return;
     }
 
-    clearActiveQuizSelection('Choose a quiz.');
+    clearActiveQuizSelection('Choose a quiz or study the whole folder.');
 });
 
 elements.quizSelector.addEventListener('change', async e => {
@@ -4644,7 +4796,7 @@ elements.quizSelector.addEventListener('change', async e => {
     const selectedQuiz = e.target.value;
 
     if (!selectedQuiz) {
-        clearActiveQuizSelection(elements.folderSelector.value ? 'Choose a quiz.' : 'Choose a folder and a quiz.');
+        clearActiveQuizSelection(elements.folderSelector.value ? 'Choose a quiz or study the whole folder.' : 'Choose a folder and a quiz.');
         return;
     }
 
@@ -4776,9 +4928,21 @@ if (elements.removeOptionFieldBtn) {
     });
 }
 
+
+if (elements.createQuizTypeSelect) {
+    elements.createQuizTypeSelect.addEventListener('change', () => {
+        if (state.auth.editingQuizId) {
+            elements.createQuizTypeSelect.value = state.auth.editingQuizType;
+            return;
+        }
+        state.auth.editingQuizType = normalizeSheetText(elements.createQuizTypeSelect.value || 'multiple_choice') || 'multiple_choice';
+        updateCreateQuizModeUI();
+    });
+}
+
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
-        handleSaveMultipleChoiceQuiz().catch(err => {
+        handleSaveStudioQuiz().catch(err => {
             console.error(err);
             setCreatorStatus('Could not save the quiz.', 'error');
         });
@@ -4865,6 +5029,19 @@ if (elements.createLearningResourcesImageFile) {
 if (elements.createLearningResourcesImageClearBtn) {
     elements.createLearningResourcesImageClearBtn.addEventListener('click', () => {
         setStudioLearningResourcesImageState();
+    });
+}
+
+
+if (elements.createFlashcardTermImageClearBtn) {
+    elements.createFlashcardTermImageClearBtn.addEventListener('click', () => {
+        setStudioFlashcardTermImageState();
+    });
+}
+
+if (elements.createFlashcardDefinitionImageClearBtn) {
+    elements.createFlashcardDefinitionImageClearBtn.addEventListener('click', () => {
+        setStudioFlashcardDefinitionImageState();
     });
 }
 

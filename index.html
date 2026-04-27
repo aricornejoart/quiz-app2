@@ -308,7 +308,7 @@ MODIFICATION RULES FOR THIS APP
             <div class="auth-management-section">
               <div class="auth-management-title">Quiz Studio</div>
               <div class="auth-source-note">
-                Open the dedicated page to create folders, create multiple-choice quizzes, and manage Supabase quiz content without crowding the account popup.
+                Open the dedicated page to create folders, create quizzes, and manage Supabase quiz content without crowding the account popup.
               </div>
               <button id="openQuizStudioBtn" type="button" class="auth-action-btn">Open Quiz Studio</button>
             </div>
@@ -327,7 +327,7 @@ MODIFICATION RULES FOR THIS APP
               <div class="quiz-studio-title-group">
                 <div class="quiz-studio-eyebrow">Supabase</div>
                 <h2 class="quiz-studio-title">Quiz Studio</h2>
-                <div class="quiz-studio-subtitle">Create folders, create multiple-choice quizzes, and manage Supabase quiz content.</div>
+                <div class="quiz-studio-subtitle">Create folders, create quizzes, load entire folders as study decks, and manage Supabase quiz content.</div>
               </div>
             </div>
 
@@ -362,15 +362,15 @@ MODIFICATION RULES FOR THIS APP
               <section id="quizStudioManageSection" class="quiz-studio-section hidden" data-studio-section="manage" role="tabpanel">
                 <section class="creator-subsection quiz-studio-panel">
                   <div class="creator-subsection-title">Manage Quizzes</div>
-                  <div class="creator-note">Edit quiz name, move a quiz to another folder, delete it, or open it in the editor to manage multiple multiple-choice questions.</div>
+                  <div class="creator-note">Edit quiz name, move a quiz to another folder, delete it, or open it in the editor to manage multiple questions or cards. In study mode, the quiz dropdown also includes a Study Entire Folder option.</div>
                   <div id="studioQuizList" class="studio-list"></div>
                 </section>
               </section>
 
               <section id="quizStudioEditorSection" class="quiz-studio-section hidden" data-studio-section="editor" role="tabpanel">
                 <section class="creator-subsection quiz-studio-panel studio-quiz-editor-panel">
-                  <div class="creator-subsection-title">Multiple-Choice Quiz Editor</div>
-                  <div id="createQuizModeNote" class="creator-note">Create a multiple-choice quiz, then keep adding, selecting, deleting, and reordering questions inside that same quiz.</div>
+                  <div class="creator-subsection-title">Quiz Editor</div>
+                  <div id="createQuizModeNote" class="creator-note">Choose a quiz type, then keep adding, selecting, deleting, and reordering questions or cards inside that same quiz.</div>
 
                   <label class="auth-field">
                     <span>Folder</span>
@@ -383,6 +383,13 @@ MODIFICATION RULES FOR THIS APP
                     <span>Quiz name</span>
                     <input id="createQuizName" type="text" autocomplete="off" placeholder="Example: Chapter 3 Review">
                   </label>
+                  <label class="auth-field">
+                    <span>Quiz type</span>
+                    <select id="createQuizTypeSelect">
+                      <option value="multiple_choice">Multiple Choice</option>
+                      <option value="flashcard">Flashcard</option>
+                    </select>
+                  </label>
 
                   <div class="studio-question-list-panel">
                     <div class="studio-question-list-header">
@@ -392,7 +399,7 @@ MODIFICATION RULES FOR THIS APP
                         <button id="studioDeleteQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Delete Question</button>
                       </div>
                     </div>
-                    <div class="creator-note">Each quiz can now contain multiple multiple-choice questions. Select a question to edit it, add a new question, or change the order.</div>
+                    <div class="creator-note">Each quiz can now contain multiple multiple-choice questions or flashcards. Select an item to edit it, add a new item, or change the order.</div>
                     <div id="studioQuestionList" class="studio-question-list"></div>
                     <div class="studio-question-order-actions">
                       <button id="studioMoveQuestionUpBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Up</button>
@@ -400,18 +407,75 @@ MODIFICATION RULES FOR THIS APP
                     </div>
                   </div>
 
-                  <label class="auth-field">
-                    <span>Question prompt</span>
-                    <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
-                  </label>
+                  <div id="multipleChoiceEditorFields">
+                    <label class="auth-field">
+                      <span>Question prompt</span>
+                      <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
+                    </label>
 
-                  <label class="auth-field">
-                    <span>Question image (optional)</span>
-                    <input id="createQuestionImageFile" type="file" accept="image/*">
-                  </label>
-                  <div class="studio-file-row">
-                    <div id="createQuestionImageName" class="studio-file-name">No question image selected.</div>
-                    <button id="createQuestionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                    <label class="auth-field">
+                      <span>Question image (optional)</span>
+                      <input id="createQuestionImageFile" type="file" accept="image/*">
+                    </label>
+                    <div class="studio-file-row">
+                      <div id="createQuestionImageName" class="studio-file-name">No question image selected.</div>
+                      <button id="createQuestionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                    </div>
+
+                    <div class="studio-options-toolbar">
+                      <div class="creator-note studio-options-note">Add or remove options as needed. Each option includes its own explanation field automatically.</div>
+                      <div class="studio-options-toolbar-actions">
+                        <button id="addOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Option</button>
+                        <button id="removeOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Option</button>
+                      </div>
+                    </div>
+
+                    <div id="createOptionFieldsContainer" class="studio-options-grid"></div>
+
+                    <label class="auth-field">
+                      <span>Correct option</span>
+                      <select id="createCorrectOptionSelect">
+                        <option value="1">Option 1</option>
+                        <option value="2">Option 2</option>
+                        <option value="3">Option 3</option>
+                        <option value="4">Option 4</option>
+                      </select>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Correct answer explanation fallback (optional)</span>
+                      <textarea id="createCorrectExplanation" rows="3" placeholder="Used if the correct option explanation is left blank"></textarea>
+                    </label>
+                  </div>
+
+                  <div id="flashcardEditorFields" class="hidden">
+                    <label class="auth-field">
+                      <span>Term</span>
+                      <textarea id="createFlashcardTerm" rows="3" placeholder="Type the flashcard term here"></textarea>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Definition</span>
+                      <textarea id="createFlashcardDefinition" rows="4" placeholder="Type the flashcard definition here"></textarea>
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Term image (optional)</span>
+                      <input id="createFlashcardTermImageFile" type="file" accept="image/*">
+                    </label>
+                    <div class="studio-file-row">
+                      <div id="createFlashcardTermImageName" class="studio-file-name">No term image selected.</div>
+                      <button id="createFlashcardTermImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                    </div>
+
+                    <label class="auth-field">
+                      <span>Definition image (optional)</span>
+                      <input id="createFlashcardDefinitionImageFile" type="file" accept="image/*">
+                    </label>
+                    <div class="studio-file-row">
+                      <div id="createFlashcardDefinitionImageName" class="studio-file-name">No definition image selected.</div>
+                      <button id="createFlashcardDefinitionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                    </div>
                   </div>
 
                   <label class="auth-field">
@@ -427,31 +491,6 @@ MODIFICATION RULES FOR THIS APP
                     <div id="createLearningResourcesImageName" class="studio-file-name">No learning resources image selected.</div>
                     <button id="createLearningResourcesImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
                   </div>
-
-                  <div class="studio-options-toolbar">
-                    <div class="creator-note studio-options-note">Add or remove options as needed. Each option includes its own explanation field automatically.</div>
-                    <div class="studio-options-toolbar-actions">
-                      <button id="addOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Option</button>
-                      <button id="removeOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Option</button>
-                    </div>
-                  </div>
-
-                  <div id="createOptionFieldsContainer" class="studio-options-grid"></div>
-
-                  <label class="auth-field">
-                    <span>Correct option</span>
-                    <select id="createCorrectOptionSelect">
-                      <option value="1">Option 1</option>
-                      <option value="2">Option 2</option>
-                      <option value="3">Option 3</option>
-                      <option value="4">Option 4</option>
-                    </select>
-                  </label>
-
-                  <label class="auth-field">
-                    <span>Correct answer explanation fallback (optional)</span>
-                    <textarea id="createCorrectExplanation" rows="3" placeholder="Used if the correct option explanation is left blank"></textarea>
-                  </label>
 
                   <div class="studio-editor-actions">
                     <button id="createQuizBtn" type="button" class="auth-action-btn">Create Quiz</button>

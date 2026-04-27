@@ -4050,6 +4050,13 @@ body.fullscreen-mode.active-question-classify {
   gap: 10px;
 }
 
+
+.studio-editor-type-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .studio-editor-actions {
   display: flex;
   gap: 10px;
