@@ -3236,7 +3236,7 @@ input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -3658,7 +3658,7 @@ body.fullscreen-mode.active-question-classify {
 }
 
 .auth-field span {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-text-muted);
 }
 
@@ -3666,6 +3666,7 @@ body.fullscreen-mode.active-question-classify {
 .auth-field select,
 .auth-field textarea {
   width: 100%;
+  font-size: 15px;
   box-sizing: border-box;
   padding: 9px 10px;
   background: var(--color-bg-control);
@@ -3673,7 +3674,7 @@ body.fullscreen-mode.active-question-classify {
   border: 1px solid var(--color-bg-control-hover);
   border-radius: 8px;
   outline: none;
-  font: inherit;
+  font-family: inherit;
 }
 
 .auth-field textarea {
@@ -3696,6 +3697,7 @@ body.fullscreen-mode.active-question-classify {
 
 .auth-action-btn {
   padding: 9px 10px;
+  font-size: 15px;
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
@@ -3732,13 +3734,13 @@ body.fullscreen-mode.active-question-classify {
 
 .auth-management-title,
 .creator-subsection-title {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--color-text-main);
 }
 
 .creator-status {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--color-text-muted);
   background: rgba(255, 255, 255, 0.04);
@@ -3770,13 +3772,13 @@ body.fullscreen-mode.active-question-classify {
 }
 
 .creator-note {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--color-text-muted);
 }
 
 .auth-source-note {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--color-text-muted);
 }
@@ -3848,7 +3850,7 @@ body.fullscreen-mode.active-question-classify {
 }
 
 .quiz-studio-eyebrow {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3862,7 +3864,7 @@ body.fullscreen-mode.active-question-classify {
 }
 
 .quiz-studio-subtitle {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.5;
   color: var(--color-text-muted);
 }
@@ -3877,6 +3879,7 @@ body.fullscreen-mode.active-question-classify {
 
 .quiz-studio-nav-btn {
   padding: 9px 14px;
+  font-size: 15px;
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
@@ -4032,14 +4035,14 @@ body.fullscreen-mode.active-question-classify {
   padding: 0 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .studio-question-label {
   min-width: 0;
   flex: 1;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.45;
   word-break: break-word;
 }
@@ -4073,7 +4076,7 @@ body.fullscreen-mode.active-question-classify {
 .studio-file-name {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--color-text-muted);
   word-break: break-word;
@@ -4090,7 +4093,7 @@ body.fullscreen-mode.active-question-classify {
 }
 
 .studio-list-empty {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--color-text-muted);
 }
@@ -4112,13 +4115,13 @@ body.fullscreen-mode.active-question-classify {
 }
 
 .studio-list-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--color-text-main);
 }
 
 .studio-list-subtitle {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--color-text-muted);
 }
@@ -4133,22 +4136,24 @@ body.fullscreen-mode.active-question-classify {
 .studio-inline-input {
   flex: 1;
   min-width: 0;
+  font-size: 15px;
   padding: 8px 10px;
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
   border-radius: 8px;
-  font: inherit;
+  font-family: inherit;
 }
 
 .studio-inline-select {
   min-width: 140px;
+  font-size: 15px;
   padding: 8px 10px;
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
   border-radius: 8px;
-  font: inherit;
+  font-family: inherit;
 }
 
 .auth-popup .auth-action-btn {

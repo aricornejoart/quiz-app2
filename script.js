@@ -141,7 +141,9 @@ MODIFICATION RULES FOR THIS APP
         createQuestionImageFile: document.getElementById('createQuestionImageFile'),
         createQuestionImageName: document.getElementById('createQuestionImageName'),
         createQuestionImageClearBtn: document.getElementById('createQuestionImageClearBtn'),
+        sharedQuestionEditorFields: document.getElementById('sharedQuestionEditorFields'),
         multipleChoiceEditorFields: document.getElementById('multipleChoiceEditorFields'),
+        hierarchyEditorFields: document.getElementById('hierarchyEditorFields'),
         flashcardEditorFields: document.getElementById('flashcardEditorFields'),
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
@@ -158,6 +160,9 @@ MODIFICATION RULES FOR THIS APP
         createOptionFieldsContainer: document.getElementById('createOptionFieldsContainer'),
         addOptionFieldBtn: document.getElementById('addOptionFieldBtn'),
         removeOptionFieldBtn: document.getElementById('removeOptionFieldBtn'),
+        createHierarchyFieldsContainer: document.getElementById('createHierarchyFieldsContainer'),
+        addHierarchyItemBtn: document.getElementById('addHierarchyItemBtn'),
+        removeHierarchyItemBtn: document.getElementById('removeHierarchyItemBtn'),
         createCorrectOptionSelect: document.getElementById('createCorrectOptionSelect'),
         createCorrectExplanation: document.getElementById('createCorrectExplanation'),
         createQuizModeNote: document.getElementById('createQuizModeNote'),
@@ -312,12 +317,21 @@ MODIFICATION RULES FOR THIS APP
         return getStudioCurrentQuizType() === 'flashcard';
     }
 
+    function isStudioHierarchyMode() {
+        return getStudioCurrentQuizType() === 'hierarchy';
+    }
+
     function updateStudioEditorTypeUI() {
-        const isFlashcard = isStudioFlashcardMode();
-        if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', isFlashcard);
+        const quizType = getStudioCurrentQuizType();
+        const isFlashcard = quizType === 'flashcard';
+        const isHierarchy = quizType === 'hierarchy';
+        const isMultipleChoice = quizType === 'multiple_choice';
+        if (elements.sharedQuestionEditorFields) elements.sharedQuestionEditorFields.classList.toggle('hidden', isFlashcard);
+        if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', !isMultipleChoice);
+        if (elements.hierarchyEditorFields) elements.hierarchyEditorFields.classList.toggle('hidden', !isHierarchy);
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
         if (elements.createQuizTypeSelect) {
-            elements.createQuizTypeSelect.value = isFlashcard ? 'flashcard' : 'multiple_choice';
+            elements.createQuizTypeSelect.value = quizType;
             elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
         }
     }
@@ -507,14 +521,32 @@ MODIFICATION RULES FOR THIS APP
     function updateCreateQuizModeUI() {
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
-        const isFlashcard = isStudioFlashcardMode();
-        const itemLabel = isFlashcard ? 'flashcard' : 'question';
-        const quizLabel = isFlashcard ? 'flashcard quiz' : 'multiple-choice quiz';
+        const quizType = getStudioCurrentQuizType();
+        const itemLabelMap = {
+            multiple_choice: 'question',
+            flashcard: 'flashcard',
+            hierarchy: 'hierarchy question'
+        };
+        const itemPluralMap = {
+            multiple_choice: 'questions',
+            flashcard: 'flashcards',
+            hierarchy: 'hierarchy questions'
+        };
+        const quizLabelMap = {
+            multiple_choice: 'multiple-choice quiz',
+            flashcard: 'flashcard quiz',
+            hierarchy: 'hierarchy quiz'
+        };
+        const itemLabel = itemLabelMap[quizType] || 'question';
+        const itemPlural = itemPluralMap[quizType] || 'questions';
+        const quizLabel = quizLabelMap[quizType] || 'quiz';
+        const itemDisplayMap = { multiple_choice: 'Question', flashcard: 'Flashcard', hierarchy: 'Hierarchy Question' };
+        const itemDisplay = itemDisplayMap[quizType] || 'Question';
 
         if (elements.createQuizBtn) {
             elements.createQuizBtn.textContent = !isEditingQuiz
                 ? 'Create Quiz'
-                : (isEditingQuestion ? `Save ${isFlashcard ? 'Flashcard' : 'Question'} Changes` : `Add ${isFlashcard ? 'Flashcard' : 'Question'} To Quiz`);
+                : (isEditingQuestion ? `Save ${itemDisplay} Changes` : `Add ${itemDisplay} To Quiz`);
         }
 
         if (elements.createQuizCancelEditBtn) {
@@ -524,7 +556,7 @@ MODIFICATION RULES FOR THIS APP
 
         if (elements.createQuizModeNote) {
             elements.createQuizModeNote.textContent = !isEditingQuiz
-                ? `Creates a ${quizLabel} and saves the current ${itemLabel} into it. After that, you can keep adding, selecting, deleting, and reordering ${isFlashcard ? 'flashcards' : 'questions'} inside that same quiz.`
+                ? `Creates a ${quizLabel} and saves the current ${itemLabel} into it. After that, you can keep adding, selecting, deleting, and reordering ${itemPlural} inside that same quiz.`
                 : (isEditingQuestion
                     ? `Editing the selected ${itemLabel} inside this quiz. Quiz name and folder changes save at the same time.`
                     : `This quiz is open in the editor. Fill in the fields below to add a new ${itemLabel} to it.`);
@@ -630,6 +662,118 @@ MODIFICATION RULES FOR THIS APP
         drafts.pop();
         renderStudioOptionFields(drafts);
     }
+    function normalizeHierarchyDrafts(hierarchyDrafts = null) {
+        const source = (Array.isArray(hierarchyDrafts) && hierarchyDrafts.length ? hierarchyDrafts : Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })))
+            .map((draft, index) => ({
+                text: normalizeSheetText(draft?.text),
+                position: Number(draft?.position || index + 1)
+            }));
+
+        while (source.length < 2) {
+            source.push({ text: '', position: source.length + 1 });
+        }
+
+        const used = new Set();
+        source.forEach((draft, index) => {
+            let nextPosition = Number(draft.position);
+            if (!Number.isInteger(nextPosition) || nextPosition < 1 || nextPosition > source.length || used.has(nextPosition)) {
+                nextPosition = 1;
+                while (used.has(nextPosition) && nextPosition <= source.length) nextPosition += 1;
+            }
+            if (nextPosition > source.length) {
+                nextPosition = index + 1;
+                while (used.has(nextPosition) && nextPosition <= source.length) nextPosition += 1;
+            }
+            draft.position = Math.min(Math.max(nextPosition, 1), source.length);
+            used.add(draft.position);
+        });
+
+        return source;
+    }
+
+    function createStudioHierarchyFieldRow(index, itemData = {}, totalCount = 2) {
+        const itemText = normalizeSheetText(itemData.text);
+        const positionValue = String(Math.min(Math.max(Number(itemData.position || index + 1), 1), totalCount));
+        const wrapper = document.createElement('div');
+        wrapper.className = 'studio-option-pair studio-hierarchy-pair';
+        wrapper.dataset.hierarchyIndex = String(index + 1);
+        wrapper.innerHTML = `
+            <label class="auth-field">
+              <span>Item ${index + 1}</span>
+              <input type="text" autocomplete="off" placeholder="Hierarchy item ${index + 1}" data-hierarchy-text>
+            </label>
+            <label class="auth-field">
+              <span>Correct position</span>
+              <select data-hierarchy-position></select>
+            </label>
+        `;
+        const textInput = wrapper.querySelector('[data-hierarchy-text]');
+        const positionSelect = wrapper.querySelector('[data-hierarchy-position]');
+        if (textInput) textInput.value = itemText;
+        if (positionSelect) {
+            for (let i = 1; i <= totalCount; i += 1) {
+                const option = document.createElement('option');
+                option.value = String(i);
+                option.textContent = `Position ${i}`;
+                positionSelect.appendChild(option);
+            }
+            positionSelect.value = positionValue;
+        }
+        return wrapper;
+    }
+
+    function renderStudioHierarchyFields(hierarchyDrafts = null) {
+        if (!elements.createHierarchyFieldsContainer) return;
+        const drafts = normalizeHierarchyDrafts(hierarchyDrafts);
+        elements.createHierarchyFieldsContainer.innerHTML = '';
+        drafts.forEach((draft, index) => {
+            elements.createHierarchyFieldsContainer.appendChild(createStudioHierarchyFieldRow(index, draft, drafts.length));
+        });
+        updateCreatorUI();
+    }
+
+    function getStudioHierarchyDraftsFromDOM() {
+        if (!elements.createHierarchyFieldsContainer) return [];
+        return Array.from(elements.createHierarchyFieldsContainer.querySelectorAll('[data-hierarchy-index]')).map((row, index) => ({
+            text: normalizeSheetText(row.querySelector('[data-hierarchy-text]')?.value),
+            position: Number(row.querySelector('[data-hierarchy-position]')?.value || index + 1)
+        }));
+    }
+
+    function addStudioHierarchyField() {
+        const drafts = getStudioHierarchyDraftsFromDOM();
+        if (drafts.length >= 10) {
+            setCreatorStatus('Hierarchy quizzes support up to 10 items.', 'error');
+            return;
+        }
+        drafts.push({ text: '', position: drafts.length + 1 });
+        renderStudioHierarchyFields(drafts);
+    }
+
+    function removeStudioHierarchyField() {
+        const drafts = getStudioHierarchyDraftsFromDOM();
+        if (drafts.length <= 2) {
+            setCreatorStatus('Hierarchy quizzes need at least 2 items.', 'error');
+            return;
+        }
+        drafts.pop();
+        renderStudioHierarchyFields(drafts);
+    }
+
+    function getHierarchyDraftsFromDetailRow(detailRow) {
+        const itemTexts = Array.from({ length: 10 }, (_, index) => normalizeSheetText(detailRow?.[`item_${index + 1}_text`])).filter(Boolean);
+        const correctOrder = Array.isArray(detailRow?.correct_order_json) ? detailRow.correct_order_json.map(value => Number(value)).filter(value => Number.isInteger(value) && value >= 1) : [];
+        const positionMap = new Map();
+        correctOrder.forEach((originalIndex, finalIndex) => {
+            positionMap.set(originalIndex, finalIndex + 1);
+        });
+        const drafts = itemTexts.map((text, index) => ({
+            text,
+            position: positionMap.get(index + 1) || index + 1
+        }));
+        return normalizeHierarchyDrafts(drafts);
+    }
+
 
     function getMultipleChoiceDraftsFromDetailRow(detailRow) {
         const rawOptions = Array.isArray(detailRow?.options_json)
@@ -672,11 +816,11 @@ MODIFICATION RULES FOR THIS APP
         const prompt = questionType === 'flashcard'
             ? normalizeSheetText(questionRow?.term_plain || questionRow?.prompt_plain || '')
             : normalizeSheetText(questionRow?.prompt_plain || '');
-        const prefix = questionType === 'flashcard' ? `Card ${index + 1}` : `Q${index + 1}`;
+        const prefix = questionType === 'flashcard' ? `Card ${index + 1}` : (questionType === 'hierarchy' ? `H${index + 1}` : `Q${index + 1}`);
         if (prompt) {
             return `${prefix}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
         }
-        return questionType === 'flashcard' ? `Flashcard ${index + 1}` : `Question ${index + 1}`;
+        return questionType === 'flashcard' ? `Flashcard ${index + 1}` : (questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : `Question ${index + 1}`);
     }
 
     function renderStudioQuestionList() {
@@ -699,6 +843,9 @@ MODIFICATION RULES FOR THIS APP
 
         elements.studioQuestionList.innerHTML = state.auth.studioQuizQuestions.map((questionRow, index) => {
             const isActive = questionRow.id === state.auth.editingQuestionId;
+            const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
+            const chipPrefix = questionType === 'flashcard' ? 'Card' : (questionType === 'hierarchy' ? 'H' : 'Q');
+            const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
             return `
                 <button
                   type="button"
@@ -706,8 +853,8 @@ MODIFICATION RULES FOR THIS APP
                   data-studio-question-id="${escapeHtml(questionRow.id)}"
                   aria-pressed="${isActive ? 'true' : 'false'}"
                 >
-                  <span class="studio-question-chip">Q${index + 1}</span>
-                  <span class="studio-question-label">${escapeHtml(getStudioQuestionPreviewLabel(questionRow, index).replace(/^Q\d+:\s*/, ''))}</span>
+                  <span class="studio-question-chip">${escapeHtml(`${chipPrefix}${index + 1}`)}</span>
+                  <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
                 </button>
             `;
         }).join('');
@@ -719,6 +866,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
         if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+        renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         state.auth.editingQuestionId = null;
@@ -824,7 +972,28 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
             renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+            renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+        } else if (state.auth.editingQuizType === 'hierarchy') {
+            const detailRow = await loadHierarchyDetailByQuestionId(questionId);
+            if (!detailRow) {
+                throw new Error('Could not load that hierarchy question into the editor.');
+            }
+
+            if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
+            renderStudioHierarchyFields(getHierarchyDraftsFromDetailRow(detailRow));
+            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+            if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
+
+            setStudioQuestionImageState(
+                normalizeSheetText(questionRow.image_url),
+                normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
+            );
+            setStudioFlashcardTermImageState('', 'No term image selected.');
+            setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
+            if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
+            if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         } else {
             const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId);
             if (!detailRow) {
@@ -835,6 +1004,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
             renderStudioOptionFields(optionDrafts);
+            renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             const correctIndex = Math.max(0, optionDrafts.findIndex(option => option.text === normalizeSheetText(detailRow.correct_answer)));
             if (elements.createCorrectOptionSelect) {
                 elements.createCorrectOptionSelect.value = String(correctIndex + 1);
@@ -853,7 +1023,8 @@ MODIFICATION RULES FOR THIS APP
         renderStudioQuestionList();
         updateCreateQuizModeUI();
         if (!suppressStatus) {
-            setCreatorStatus(state.auth.editingQuizType === 'flashcard' ? 'Flashcard loaded into the editor.' : 'Question loaded into the editor.', 'success');
+            const statusLabel = state.auth.editingQuizType === 'flashcard' ? 'Flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'Hierarchy question' : 'Question');
+            setCreatorStatus(`${statusLabel} loaded into the editor.`, 'success');
         }
     }
 
@@ -866,7 +1037,8 @@ MODIFICATION RULES FOR THIS APP
         clearStudioQuestionInputs();
         updateCreateQuizModeUI();
         setQuizStudioSection('editor');
-        setCreatorStatus('Ready to add a new question to this quiz. Fill in the fields below and save.', 'success');
+        const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : 'question');
+        setCreatorStatus(`Ready to add a new ${nextItemLabel} to this quiz. Fill in the fields below and save.`, 'success');
     }
 
     async function handleDeleteStudioQuestion() {
@@ -996,6 +1168,25 @@ MODIFICATION RULES FOR THIS APP
         return rows[0] || null;
     }
 
+    async function loadHierarchyDetailsByQuestionIds(questionIds) {
+        if (!state.auth.client || !Array.isArray(questionIds) || !questionIds.length) {
+            return [];
+        }
+
+        const { data, error } = await state.auth.client
+            .from('hierarchy_questions')
+            .select('question_id, item_1_text, item_2_text, item_3_text, item_4_text, item_5_text, item_6_text, item_7_text, item_8_text, item_9_text, item_10_text, correct_order_json')
+            .in('question_id', questionIds);
+
+        if (error) throw error;
+        return data || [];
+    }
+
+    async function loadHierarchyDetailByQuestionId(questionId) {
+        const rows = await loadHierarchyDetailsByQuestionIds([questionId]);
+        return rows[0] || null;
+    }
+
     function setQuizStudioSection(sectionName = 'folders') {
         const nextSection = ['folders', 'manage', 'editor'].includes(sectionName)
             ? sectionName
@@ -1034,6 +1225,8 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuestionPrompt,
             elements.createQuestionImageFile,
             elements.createQuestionImageClearBtn,
+            elements.addHierarchyItemBtn,
+            elements.removeHierarchyItemBtn,
             elements.createFlashcardTerm,
             elements.createFlashcardDefinition,
             elements.createFlashcardTermImageFile,
@@ -1057,6 +1250,12 @@ MODIFICATION RULES FOR THIS APP
 
         if (elements.createOptionFieldsContainer) {
             elements.createOptionFieldsContainer.querySelectorAll('input, textarea').forEach(el => {
+                el.disabled = !creatorEnabled;
+            });
+        }
+
+        if (elements.createHierarchyFieldsContainer) {
+            elements.createHierarchyFieldsContainer.querySelectorAll('input, select').forEach(el => {
                 el.disabled = !creatorEnabled;
             });
         }
@@ -1614,8 +1813,81 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    async function handleSaveHierarchyQuiz() {
+        if (!state.auth.client || !state.auth.user?.id) return void setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
+        const quizName = normalizeSheetText(elements.createQuizName?.value);
+        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
+        const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        const hierarchyDrafts = getStudioHierarchyDraftsFromDOM();
+        const itemTexts = hierarchyDrafts.map(draft => draft.text).filter(Boolean);
+        if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
+        if (!prompt) return void setCreatorStatus('Enter a hierarchy prompt first.', 'error');
+        if (itemTexts.length < 2) return void setCreatorStatus('Hierarchy quizzes need at least 2 filled items.', 'error');
+        if (new Set(itemTexts).size !== itemTexts.length) return void setCreatorStatus('Hierarchy item texts must be unique.', 'error');
+        const positions = hierarchyDrafts.map(draft => Number(draft.position));
+        if (positions.some(position => !Number.isInteger(position) || position < 1 || position > hierarchyDrafts.length)) return void setCreatorStatus('Each hierarchy item needs a valid position.', 'error');
+        if (new Set(positions).size !== positions.length) return void setCreatorStatus('Hierarchy positions must be unique.', 'error');
+        const isEditingQuiz = !!state.auth.editingQuizId;
+        const isEditingQuestion = !!state.auth.editingQuestionId;
+        setCreatorStatus(!isEditingQuiz ? 'Creating hierarchy quiz...' : (isEditingQuestion ? 'Saving hierarchy changes...' : 'Adding hierarchy question to quiz...'));
+        try {
+            let quizId = state.auth.editingQuizId;
+            let questionId = state.auth.editingQuestionId;
+            if (quizId) {
+                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+                if (error) throw error;
+            } else {
+                const quizSortOrder = await getNextQuizSortOrder(folderId);
+                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                if (error) throw error;
+                quizId = data.id;
+            }
+            if (!questionId) {
+                const questionSortOrder = await getNextQuestionSortOrder(quizId);
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'hierarchy', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                if (error) throw error;
+                questionId = data.id;
+            } else {
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', question_type: 'hierarchy' }).eq('id', questionId);
+                if (error) throw error;
+            }
+            const filledDrafts = hierarchyDrafts.filter(draft => draft.text);
+            const correctOrder = filledDrafts
+                .map((draft, index) => ({ position: Number(draft.position), originalIndex: index + 1 }))
+                .sort((a, b) => a.position - b.position)
+                .map(item => item.originalIndex);
+            const detailPayload = {
+                question_id: questionId,
+                correct_order_json: correctOrder,
+                item_1_text: filledDrafts[0]?.text || '',
+                item_2_text: filledDrafts[1]?.text || '',
+                item_3_text: filledDrafts[2]?.text || '',
+                item_4_text: filledDrafts[3]?.text || '',
+                item_5_text: filledDrafts[4]?.text || '',
+                item_6_text: filledDrafts[5]?.text || '',
+                item_7_text: filledDrafts[6]?.text || '',
+                item_8_text: filledDrafts[7]?.text || '',
+                item_9_text: filledDrafts[8]?.text || '',
+                item_10_text: filledDrafts[9]?.text || ''
+            };
+            const { error: detailError } = await state.auth.client.from('hierarchy_questions').upsert(detailPayload, { onConflict: 'question_id' });
+            if (detailError) throw detailError;
+            state.auth.editingQuizType = 'hierarchy';
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
+            await loadQuizIntoEditor(quizId, questionId);
+            setCreatorStatus(!isEditingQuiz ? 'Hierarchy quiz created and first question saved.' : (isEditingQuestion ? 'Hierarchy question updated.' : 'New hierarchy question added to the quiz.'), 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not save the hierarchy quiz.', 'error');
+        }
+    }
+
     async function handleSaveStudioQuiz() {
-        return isStudioFlashcardMode() ? handleSaveFlashcardQuiz() : handleSaveMultipleChoiceQuiz();
+        if (isStudioFlashcardMode()) return handleSaveFlashcardQuiz();
+        if (isStudioHierarchyMode()) return handleSaveHierarchyQuiz();
+        return handleSaveMultipleChoiceQuiz();
     }
 
     async function handleRenameFolder(folderId, nextName) {
@@ -1705,7 +1977,8 @@ MODIFICATION RULES FOR THIS APP
 
             updateCreateQuizModeUI();
             openQuizStudioPage('editor');
-            setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${state.auth.editingQuizType === 'flashcard' ? 'flashcard' : 'question'} below.`, 'success');
+            const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : 'question');
+            setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${nextItemTypeLabel} below.`, 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not load the quiz editor.', 'error');
@@ -2518,7 +2791,7 @@ async function loadQuizListFromSupabase() {
         return (quizzes || [])
             .filter(quiz => {
                 const types = quizTypeMap.get(quiz.id) || [];
-                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard');
+                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard' || type === 'hierarchy');
             })
             .map(quiz => {
                 const types = quizTypeMap.get(quiz.id) || [];
@@ -2585,6 +2858,33 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     definitionText: getStoredTextForDisplay(detail.definition_plain, detail.definition_html),
                     termImage: normalizeSheetText(detail.term_image_url),
                     definitionImage: normalizeSheetText(detail.definition_image_url),
+                    learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                    learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+                };
+            }).filter(Boolean);
+        }
+        if (quizType === 'hierarchy') {
+            const detailRows = await loadHierarchyDetailsByQuestionIds(questionIds);
+            const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
+            return rows.map(row => {
+                const detail = detailMap.get(row.id);
+                if (!detail) return null;
+                const itemDrafts = getHierarchyDraftsFromDetailRow(detail);
+                const sortedByOriginalIndex = itemDrafts
+                    .map((draft, index) => ({ ...draft, originalIndex: index + 1 }))
+                    .sort((a, b) => a.originalIndex - b.originalIndex);
+                const correctOrder = itemDrafts
+                    .map((draft, index) => ({ position: Number(draft.position || index + 1), originalIndex: index + 1 }))
+                    .sort((a, b) => a.position - b.position)
+                    .map(item => item.originalIndex);
+                return {
+                    id: `q_${state.questionIdCounter++}`,
+                    sourceQuestionId: row.id,
+                    question: getStoredTextForDisplay(row.prompt_plain, row.prompt_html),
+                    type: 'hierarchy',
+                    options: sortedByOriginalIndex.map(item => item.text),
+                    correctOrder,
+                    image: normalizeSheetText(row.image_url),
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
@@ -4925,6 +5225,18 @@ if (elements.addOptionFieldBtn) {
 if (elements.removeOptionFieldBtn) {
     elements.removeOptionFieldBtn.addEventListener('click', () => {
         removeStudioOptionField();
+    });
+}
+
+if (elements.addHierarchyItemBtn) {
+    elements.addHierarchyItemBtn.addEventListener('click', () => {
+        addStudioHierarchyField();
+    });
+}
+
+if (elements.removeHierarchyItemBtn) {
+    elements.removeHierarchyItemBtn.addEventListener('click', () => {
+        removeStudioHierarchyField();
     });
 }
 
