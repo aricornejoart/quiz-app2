@@ -408,6 +408,7 @@ body.fullscreen-mode .bottom-controls {
   position: relative;
   flex: 2;
   min-width: 0;
+  padding-bottom: 56px;
 }
 
 .question-star-btn {
@@ -890,9 +891,8 @@ body.active-question-classify .question-container {
 }
 
 body.active-question-classify .question-star-btn {
-  bottom: auto;
-  top: 0;
-  right: 130px;
+  right: 8px;
+  bottom: 8px;
 }
 
 body.active-question-classify #questionText {
@@ -4356,10 +4356,13 @@ body.active-question-flashcard .question-star-btn {
     width: 40px;
     height: 40px;
     font-size: 22px;
+    right: 6px;
+    bottom: 6px;
   }
 
-  body.active-question-classify .question-star-btn {
-    right: 0;
-    top: 46px;
+  body.active-question-classify .question-star-btn,
+  body.active-question-flashcard .question-star-btn {
+    right: 6px;
+    bottom: 6px;
   }
 }

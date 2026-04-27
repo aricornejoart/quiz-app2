@@ -474,7 +474,10 @@ MODIFICATION RULES FOR THIS APP
 
                   <div class="studio-question-list-panel">
                     <div class="studio-question-list-header">
-                      <div class="creator-subsection-title studio-inline-title">Questions</div>
+                      <div class="studio-question-list-title-wrap">
+                        <div class="creator-subsection-title studio-inline-title">Questions</div>
+                        <div id="studioUnsavedChangesIndicator" class="studio-unsaved-indicator hidden">Unsaved changes</div>
+                      </div>
                       <div class="studio-question-header-actions">
                         <button id="studioAddQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Question</button>
                         <button id="studioDuplicateQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Duplicate Question</button>
@@ -482,6 +485,19 @@ MODIFICATION RULES FOR THIS APP
                       </div>
                     </div>
                     <div class="creator-note">Each quiz can now contain multiple multiple-choice questions, flashcards, hierarchy questions, or classify questions. Select an item to edit it, add a new item, or change the order.</div>
+                    <div class="studio-question-tools">
+                      <label class="auth-field studio-question-search-field">
+                        <span>Search questions</span>
+                        <input id="studioQuestionSearchInput" type="text" autocomplete="off" placeholder="Search term, definition, or prompt">
+                      </label>
+                      <div class="studio-question-jump-group">
+                        <label class="auth-field studio-question-jump-field">
+                          <span>Jump to #</span>
+                          <input id="studioQuestionJumpInput" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
+                        </label>
+                        <button id="studioQuestionJumpBtn" type="button" class="auth-action-btn auth-secondary-btn">Jump</button>
+                      </div>
+                    </div>
                     <div id="studioQuestionList" class="studio-question-list"></div>
                     <div class="studio-question-order-actions">
                       <button id="studioMoveQuestionUpBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Up</button>

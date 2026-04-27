@@ -103,7 +103,9 @@ MODIFICATION RULES FOR THIS APP
             pendingInsertAfterQuestionId: null,
             currentStudioSection: 'folders',
             lastError: '',
-            starringInFlight: false
+            starringInFlight: false,
+            studioQuestionSearchQuery: '',
+            studioHasUnsavedChanges: false
         }
     };
 
@@ -144,6 +146,10 @@ MODIFICATION RULES FOR THIS APP
         createQuizName: document.getElementById('createQuizName'),
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
         studioQuestionList: document.getElementById('studioQuestionList'),
+        studioQuestionSearchInput: document.getElementById('studioQuestionSearchInput'),
+        studioQuestionJumpInput: document.getElementById('studioQuestionJumpInput'),
+        studioQuestionJumpBtn: document.getElementById('studioQuestionJumpBtn'),
+        studioUnsavedChangesIndicator: document.getElementById('studioUnsavedChangesIndicator'),
         studioAddQuestionBtn: document.getElementById('studioAddQuestionBtn'),
         studioDuplicateQuestionBtn: document.getElementById('studioDuplicateQuestionBtn'),
         studioDeleteQuestionBtn: document.getElementById('studioDeleteQuestionBtn'),
@@ -1223,6 +1229,34 @@ MODIFICATION RULES FOR THIS APP
         return questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : (questionType === 'classify' ? `Classify ${index + 1}` : `Question ${index + 1}`);
     }
 
+
+    function updateStudioUnsavedChangesIndicator() {
+        if (!elements.studioUnsavedChangesIndicator) return;
+        elements.studioUnsavedChangesIndicator.classList.toggle('hidden', !state.auth.studioHasUnsavedChanges);
+    }
+
+    function setStudioDirtyState(isDirty) {
+        state.auth.studioHasUnsavedChanges = !!isDirty;
+        updateStudioUnsavedChangesIndicator();
+    }
+
+    function confirmDiscardStudioChanges(actionLabel = 'continue') {
+        if (!state.auth.studioHasUnsavedChanges) return true;
+        return window.confirm(`You have unsaved Quiz Studio changes. Discard them and ${actionLabel}?`);
+    }
+
+    function getFilteredStudioQuizQuestions() {
+        const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '').toLowerCase();
+        if (!query) {
+            return state.auth.studioQuizQuestions;
+        }
+
+        return state.auth.studioQuizQuestions.filter((questionRow, index) => {
+            const preview = getStudioQuestionPreviewLabel(questionRow, index).toLowerCase();
+            return preview.includes(query);
+        });
+    }
+
     function renderStudioQuestionList() {
         if (!elements.studioQuestionList) return;
 
@@ -1241,7 +1275,14 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        elements.studioQuestionList.innerHTML = state.auth.studioQuizQuestions.map((questionRow, index) => {
+        const filteredQuestions = getFilteredStudioQuizQuestions();
+        if (!filteredQuestions.length) {
+            elements.studioQuestionList.innerHTML = '<div class="studio-list-empty">No questions match your search.</div>';
+            return;
+        }
+
+        elements.studioQuestionList.innerHTML = filteredQuestions.map((questionRow) => {
+            const index = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
             const isActive = questionRow.id === state.auth.editingQuestionId;
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
@@ -1292,6 +1333,7 @@ MODIFICATION RULES FOR THIS APP
         setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
         renderStudioQuestionList();
         updateCreateQuizModeUI();
+        setStudioDirtyState(false);
     }
 
     async function getNextQuestionSortOrder(quizId) {
@@ -1344,6 +1386,9 @@ MODIFICATION RULES FOR THIS APP
         const suppressStatus = !!options.suppressStatus;
         if (!state.auth.client || !questionId) {
             clearStudioQuestionInputs();
+            return;
+        }
+        if (!options.force && questionId !== state.auth.editingQuestionId && !confirmDiscardStudioChanges('switch questions')) {
             return;
         }
 
@@ -1463,6 +1508,7 @@ MODIFICATION RULES FOR THIS APP
 
         renderStudioQuestionList();
         updateCreateQuizModeUI();
+        setStudioDirtyState(false);
         if (!suppressStatus) {
             const statusLabel = state.auth.editingQuizType === 'flashcard' ? 'Flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'Hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'Classify question' : 'Question'));
             setCreatorStatus(`${statusLabel} loaded into the editor.`, 'success');
@@ -1470,6 +1516,9 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function beginStudioNewQuestion(insertAfterQuestionId = null) {
+        if (!confirmDiscardStudioChanges('start a new question')) {
+            return;
+        }
         if (!state.auth.editingQuizId) {
             setCreatorStatus('Create a quiz first, then you can add more questions to it.', 'error');
             return;
@@ -1483,6 +1532,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.pendingInsertAfterQuestionId = validInsertAfterQuestionId;
         renderStudioQuestionList();
         updateCreateQuizModeUI();
+        setStudioDirtyState(false);
         setQuizStudioSection('editor');
         const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : (getStudioCurrentQuizType() === 'classify' ? 'classify question' : 'question'));
         if (validInsertAfterQuestionId) {
@@ -1688,10 +1738,14 @@ MODIFICATION RULES FOR THIS APP
         return rows[0] || null;
     }
 
-    function setQuizStudioSection(sectionName = 'folders') {
+    function setQuizStudioSection(sectionName = 'folders', options = {}) {
         const nextSection = ['folders', 'manage', 'import', 'editor'].includes(sectionName)
             ? sectionName
             : 'folders';
+
+        if (!options.force && nextSection !== state.auth.currentStudioSection && state.auth.currentStudioSection === 'editor' && !confirmDiscardStudioChanges(`switch to the ${nextSection} section`)) {
+            return false;
+        }
 
         state.auth.currentStudioSection = nextSection;
 
@@ -1706,6 +1760,7 @@ MODIFICATION RULES FOR THIS APP
             button.classList.toggle('active', isActive);
             button.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
+        return true;
     }
 
     function updateCreatorUI() {
@@ -1726,6 +1781,9 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizFolderSelect,
             elements.createQuizName,
             elements.createQuizTypeSelect,
+            elements.studioQuestionSearchInput,
+            elements.studioQuestionJumpInput,
+            elements.studioQuestionJumpBtn,
             elements.studioAddQuestionBtn,
             elements.studioDuplicateQuestionBtn,
             elements.studioDeleteQuestionBtn,
@@ -1811,6 +1869,9 @@ MODIFICATION RULES FOR THIS APP
         if (!keepFolderSelection && elements.createQuizFolderSelect) {
             elements.createQuizFolderSelect.value = '';
         }
+        state.auth.studioQuestionSearchQuery = '';
+        if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+        if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
 
         state.auth.editingQuizId = null;
         state.auth.editingQuizType = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
@@ -1937,13 +1998,17 @@ MODIFICATION RULES FOR THIS APP
         elements.quizStudioPage.classList.remove('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'false');
         state.auth.quizStudioOpen = true;
-        setQuizStudioSection(sectionName);
+        setQuizStudioSection(sectionName, { force: true });
         syncBodyScrollLock();
         updateCreatorUI();
+        updateStudioUnsavedChangesIndicator();
     }
 
-    function closeQuizStudioPage() {
+    function closeQuizStudioPage(force = false) {
         if (!elements.quizStudioPage) return;
+        if (!force && !confirmDiscardStudioChanges('close Quiz Studio')) {
+            return;
+        }
         elements.quizStudioPage.classList.add('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'true');
         state.auth.quizStudioOpen = false;
@@ -2539,8 +2604,11 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function loadQuizIntoEditor(quizId, preferredQuestionId = null) {
+    async function loadQuizIntoEditor(quizId, preferredQuestionId = null, options = {}) {
         try {
+            if (!options.force && !confirmDiscardStudioChanges('load a different quiz')) {
+                return;
+            }
             const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
             if (!managedQuiz) {
                 setCreatorStatus('Could not find that quiz.', 'error');
@@ -2566,6 +2634,9 @@ MODIFICATION RULES FOR THIS APP
             state.auth.editingQuizId = quizRow.id;
             state.auth.pendingInsertAfterQuestionId = null;
             state.auth.editingQuizType = managedQuiz.quizType || 'multiple_choice';
+            state.auth.studioQuestionSearchQuery = '';
+            if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+            if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
             if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
@@ -6985,6 +7056,82 @@ if (elements.importSourceFolderBtn) {
         });
     });
 }
+
+
+const studioDirtyInputSelector = [
+    '#createQuizName',
+    '#createQuizFolderSelect',
+    '#createQuestionPrompt',
+    '#createCorrectOptionSelect',
+    '#createCorrectExplanation',
+    '#createLearningResources',
+    '#createFlashcardTerm',
+    '#createFlashcardDefinition',
+    '#studioQuestionSearchInput',
+    '#studioQuestionJumpInput'
+].join(', ');
+
+function handleStudioDirtyInput(event) {
+    if (!state.auth.quizStudioOpen) return;
+    const target = event.target;
+    if (target && target.matches('#studioQuestionSearchInput, #studioQuestionJumpInput')) {
+        return;
+    }
+    setStudioDirtyState(true);
+}
+
+document.addEventListener('input', event => {
+    if (event.target.matches(studioDirtyInputSelector) || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row')) {
+        handleStudioDirtyInput(event);
+    }
+});
+
+document.addEventListener('change', event => {
+    if (event.target.matches('#createQuizTypeSelect, #createQuestionImageFile, #createLearningResourcesImageFile, #createFlashcardTermImageFile, #createFlashcardDefinitionImageFile') || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row')) {
+        handleStudioDirtyInput(event);
+    }
+});
+
+if (elements.studioQuestionSearchInput) {
+    elements.studioQuestionSearchInput.addEventListener('input', () => {
+        state.auth.studioQuestionSearchQuery = normalizeSheetText(elements.studioQuestionSearchInput.value || '');
+        renderStudioQuestionList();
+    });
+}
+
+if (elements.studioQuestionJumpBtn) {
+    elements.studioQuestionJumpBtn.addEventListener('click', () => {
+        const targetIndex = Math.max(1, Number(elements.studioQuestionJumpInput?.value || 0));
+        if (!Number.isInteger(targetIndex) || targetIndex < 1) {
+            setCreatorStatus('Enter a valid question number to jump to.', 'error');
+            return;
+        }
+        const targetQuestion = state.auth.studioQuizQuestions[targetIndex - 1];
+        if (!targetQuestion) {
+            setCreatorStatus('That question number does not exist in this quiz.', 'error');
+            return;
+        }
+        loadStudioQuestionIntoEditor(targetQuestion.id).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not jump to that question.', 'error');
+        });
+    });
+}
+
+if (elements.studioQuestionJumpInput) {
+    elements.studioQuestionJumpInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            elements.studioQuestionJumpBtn?.click();
+        }
+    });
+}
+
+window.addEventListener('beforeunload', event => {
+    if (!state.auth.studioHasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+});
 
 elements.fullscreenBtn.addEventListener('click', () => {
     toggleFullscreenMode();
