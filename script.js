@@ -100,6 +100,7 @@ MODIFICATION RULES FOR THIS APP
             editingQuestionId: null,
             editingQuizType: 'multiple_choice',
             studioQuizQuestions: [],
+            pendingInsertAfterQuestionId: null,
             currentStudioSection: 'folders',
             lastError: '',
             starringInFlight: false
@@ -1196,14 +1197,30 @@ MODIFICATION RULES FOR THIS APP
 
     function getStudioQuestionPreviewLabel(questionRow, index) {
         const questionType = normalizeSheetText(questionRow?.question_type || 'multiple_choice');
-        const prompt = questionType === 'flashcard'
-            ? normalizeSheetText(questionRow?.term_plain || questionRow?.prompt_plain || '')
-            : normalizeSheetText(questionRow?.prompt_plain || '');
-        const prefix = questionType === 'flashcard' ? `Card ${index + 1}` : (questionType === 'hierarchy' ? `H${index + 1}` : (questionType === 'classify' ? `C${index + 1}` : `Q${index + 1}`));
+        const truncatePreview = value => {
+            const normalized = normalizeSheetText(value || '');
+            if (!normalized) return '';
+            return normalized.length > 60 ? `${normalized.slice(0, 60)}…` : normalized;
+        };
+
+        if (questionType === 'flashcard') {
+            const term = truncatePreview(questionRow?.term_plain || questionRow?.prompt_plain || '');
+            const definition = truncatePreview(questionRow?.definition_plain || '');
+            const parts = [];
+            if (term) parts.push(`Term: ${term}`);
+            if (definition) parts.push(`Definition: ${definition}`);
+            if (parts.length) {
+                return `Card ${index + 1}: ${parts.join(' • ')}`;
+            }
+            return `Flashcard ${index + 1}`;
+        }
+
+        const prompt = normalizeSheetText(questionRow?.prompt_plain || '');
+        const prefix = questionType === 'hierarchy' ? `H${index + 1}` : (questionType === 'classify' ? `C${index + 1}` : `Q${index + 1}`);
         if (prompt) {
             return `${prefix}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
         }
-        return questionType === 'flashcard' ? `Flashcard ${index + 1}` : (questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : (questionType === 'classify' ? `Classify ${index + 1}` : `Question ${index + 1}`));
+        return questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : (questionType === 'classify' ? `Classify ${index + 1}` : `Question ${index + 1}`);
     }
 
     function renderStudioQuestionList() {
@@ -1226,24 +1243,36 @@ MODIFICATION RULES FOR THIS APP
 
         elements.studioQuestionList.innerHTML = state.auth.studioQuizQuestions.map((questionRow, index) => {
             const isActive = questionRow.id === state.auth.editingQuestionId;
+            const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
             const chipPrefix = questionType === 'flashcard' ? 'Card' : (questionType === 'hierarchy' ? 'H' : (questionType === 'classify' ? 'C' : 'Q'));
             const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
             return `
-                <button
-                  type="button"
-                  class="studio-question-list-item${isActive ? ' active' : ''}"
-                  data-studio-question-id="${escapeHtml(questionRow.id)}"
-                  aria-pressed="${isActive ? 'true' : 'false'}"
-                >
-                  <span class="studio-question-chip">${escapeHtml(`${chipPrefix}${index + 1}`)}</span>
-                  <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
-                </button>
+                <div class="studio-question-list-row">
+                  <button
+                    type="button"
+                    class="studio-question-list-item${isActive ? ' active' : ''}"
+                    data-studio-question-id="${escapeHtml(questionRow.id)}"
+                    aria-pressed="${isActive ? 'true' : 'false'}"
+                  >
+                    <span class="studio-question-chip">${escapeHtml(`${chipPrefix}${index + 1}`)}</span>
+                    <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
+                  </button>
+                  <div class="studio-question-insert-row">
+                    <button
+                      type="button"
+                      class="studio-question-insert-btn${isInsertTarget ? ' active' : ''}"
+                      data-studio-insert-after-question-id="${escapeHtml(questionRow.id)}"
+                      aria-label="Add a new question after ${escapeHtml(`${chipPrefix}${index + 1}`)}"
+                      title="Add a new question after this one"
+                    >+</button>
+                  </div>
+                </div>
             `;
         }).join('');
     }
 
-    function clearStudioQuestionInputs() {
+    function clearStudioQuestionInputs(options = {}) {
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
         if (elements.createLearningResources) elements.createLearningResources.value = '';
         if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
@@ -1254,6 +1283,9 @@ MODIFICATION RULES FOR THIS APP
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         state.auth.editingQuestionId = null;
+        if (!options.keepPendingInsert) {
+            state.auth.pendingInsertAfterQuestionId = null;
+        }
         setStudioQuestionImageState('', 'No question image selected.');
         setStudioLearningResourcesImageState('', 'No learning resources image selected.');
         setStudioFlashcardTermImageState('', 'No term image selected.');
@@ -1300,6 +1332,7 @@ MODIFICATION RULES FOR THIS APP
             id: row.id,
             prompt_plain: normalizeSheetText(row.prompt_plain),
             term_plain: normalizeSheetText(flashcardMap.get(row.id)?.term_plain),
+            definition_plain: normalizeSheetText(flashcardMap.get(row.id)?.definition_plain),
             question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
             sort_order: Number(row.sort_order ?? 0)
         }));
@@ -1326,6 +1359,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         state.auth.editingQuestionId = questionRow.id;
+        state.auth.pendingInsertAfterQuestionId = null;
         state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
 
         if (elements.createLearningResources) {
@@ -1435,17 +1469,57 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    function beginStudioNewQuestion() {
+    function beginStudioNewQuestion(insertAfterQuestionId = null) {
         if (!state.auth.editingQuizId) {
             setCreatorStatus('Create a quiz first, then you can add more questions to it.', 'error');
             return;
         }
 
-        clearStudioQuestionInputs();
+        const validInsertAfterQuestionId = insertAfterQuestionId && state.auth.studioQuizQuestions.some(question => question.id === insertAfterQuestionId)
+            ? insertAfterQuestionId
+            : null;
+
+        clearStudioQuestionInputs({ keepPendingInsert: !!validInsertAfterQuestionId });
+        state.auth.pendingInsertAfterQuestionId = validInsertAfterQuestionId;
+        renderStudioQuestionList();
         updateCreateQuizModeUI();
         setQuizStudioSection('editor');
         const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : (getStudioCurrentQuizType() === 'classify' ? 'classify question' : 'question'));
-        setCreatorStatus(`Ready to add a new ${nextItemLabel} to this quiz. Fill in the fields below and save.`, 'success');
+        if (validInsertAfterQuestionId) {
+            setCreatorStatus(`Ready to insert a new ${nextItemLabel} between existing items. Fill in the fields below and save.`, 'success');
+        } else {
+            setCreatorStatus(`Ready to add a new ${nextItemLabel} to this quiz. Fill in the fields below and save.`, 'success');
+        }
+    }
+
+    async function reorderStudioQuizQuestionIds(orderedQuestionIds) {
+        if (!state.auth.client || !Array.isArray(orderedQuestionIds) || !orderedQuestionIds.length) return;
+
+        const results = await Promise.all(
+            orderedQuestionIds.map((questionId, index) => state.auth.client
+                .from('questions')
+                .update({ sort_order: index })
+                .eq('id', questionId))
+        );
+
+        for (const result of results) {
+            if (result.error) throw result.error;
+        }
+    }
+
+    async function applyPendingStudioInsertOrder(quizId, newQuestionId) {
+        const insertAfterQuestionId = state.auth.pendingInsertAfterQuestionId;
+        state.auth.pendingInsertAfterQuestionId = null;
+
+        if (!quizId || !newQuestionId || !insertAfterQuestionId) return;
+
+        const existingIds = state.auth.studioQuizQuestions.map(question => question.id);
+        const insertAfterIndex = existingIds.indexOf(insertAfterQuestionId);
+        if (insertAfterIndex === -1) return;
+
+        const orderedQuestionIds = [...existingIds];
+        orderedQuestionIds.splice(insertAfterIndex + 1, 0, newQuestionId);
+        await reorderStudioQuizQuestionIds(orderedQuestionIds);
     }
 
     async function handleDeleteStudioQuestion() {
@@ -1514,6 +1588,7 @@ MODIFICATION RULES FOR THIS APP
         if (currentUpdate.error) throw currentUpdate.error;
         if (otherUpdate.error) throw otherUpdate.error;
 
+        state.auth.pendingInsertAfterQuestionId = null;
         await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
         await refreshStudioManagementData();
         await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
@@ -2200,6 +2275,7 @@ MODIFICATION RULES FOR THIS APP
             } else {
                 const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '' }).eq('id', questionId);
                 if (error) throw error;
+                state.auth.pendingInsertAfterQuestionId = null;
             }
             const optionPayload = optionDrafts.map(draft => ({ text: draft.text, explanation_html: buildStoredHtmlFromPlain(draft.explanation) }));
             const detailPayload = { question_id: questionId, correct_answer: correctAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionPayload, option_1_text: options[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''), option_2_text: options[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1] || ''), option_3_text: options[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2] || ''), option_4_text: options[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3] || '') };
@@ -2208,6 +2284,9 @@ MODIFICATION RULES FOR THIS APP
                 const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
                 if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
                 throw detailError;
+            }
+            if (!isEditingQuestion) {
+                await applyPendingStudioInsertOrder(quizId, questionId);
             }
             state.auth.editingQuizType = 'multiple_choice';
             await refreshStudioManagementData();
@@ -2253,10 +2332,14 @@ MODIFICATION RULES FOR THIS APP
             } else {
                 const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '' }).eq('id', questionId);
                 if (error) throw error;
+                state.auth.pendingInsertAfterQuestionId = null;
             }
             const detailPayload = { question_id: questionId, term_html: buildStoredHtmlFromPlain(term), definition_html: buildStoredHtmlFromPlain(definition), term_plain: term, definition_plain: definition, term_image_url: state.auth.studioFlashcardTermImageDataUrl || '', definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || '' };
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
+            if (!isEditingQuestion) {
+                await applyPendingStudioInsertOrder(quizId, questionId);
+            }
             state.auth.editingQuizType = 'flashcard';
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
@@ -2306,6 +2389,7 @@ MODIFICATION RULES FOR THIS APP
             } else {
                 const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', question_type: 'hierarchy' }).eq('id', questionId);
                 if (error) throw error;
+                state.auth.pendingInsertAfterQuestionId = null;
             }
             const filledDrafts = hierarchyDrafts.filter(draft => draft.text);
             const correctOrder = filledDrafts
@@ -2328,6 +2412,9 @@ MODIFICATION RULES FOR THIS APP
             };
             const { error: detailError } = await state.auth.client.from('hierarchy_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
+            if (!isEditingQuestion) {
+                await applyPendingStudioInsertOrder(quizId, questionId);
+            }
             state.auth.editingQuizType = 'hierarchy';
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
@@ -2379,11 +2466,15 @@ MODIFICATION RULES FOR THIS APP
             } else {
                 const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', question_type: 'classify' }).eq('id', questionId);
                 if (error) throw error;
+                state.auth.pendingInsertAfterQuestionId = null;
             }
             const classificationsJson = categories.map((category, index) => ({ label: category.label, imageUrl: category.imageUrl || '', id: category.id }));
             const itemsJson = items.map((item, index) => ({ kind: item.imageUrl ? 'image' : 'text', raw: item.text || `classify_item_${index + 1}`, imageUrl: item.imageUrl || '', text: item.text, dragLabel: item.text || `Image item ${index + 1}`, ariaLabel: item.text ? `Classify item ${item.text}` : `Classify image item ${index + 1}`, correctClassificationId: item.categoryId }));
             const { error: detailError } = await state.auth.client.from('classify_questions').upsert({ question_id: questionId, items_json: itemsJson, classifications_json: classificationsJson }, { onConflict: 'question_id' });
             if (detailError) throw detailError;
+            if (!isEditingQuestion) {
+                await applyPendingStudioInsertOrder(quizId, questionId);
+            }
             state.auth.editingQuizType = 'classify';
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
@@ -2473,6 +2564,7 @@ MODIFICATION RULES FOR THIS APP
             }
 
             state.auth.editingQuizId = quizRow.id;
+            state.auth.pendingInsertAfterQuestionId = null;
             state.auth.editingQuizType = managedQuiz.quizType || 'multiple_choice';
             if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
@@ -6737,6 +6829,12 @@ if (elements.studioMoveQuestionDownBtn) {
 
 if (elements.studioQuestionList) {
     elements.studioQuestionList.addEventListener('click', e => {
+        const insertButton = e.target.closest('[data-studio-insert-after-question-id]');
+        if (insertButton) {
+            beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId);
+            return;
+        }
+
         const button = e.target.closest('[data-studio-question-id]');
         if (!button) return;
 
