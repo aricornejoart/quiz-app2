@@ -142,6 +142,11 @@ MODIFICATION RULES FOR THIS APP
         importEntireFolderSourceSelect: document.getElementById('importEntireFolderSourceSelect'),
         importEntireFolderTargetSelect: document.getElementById('importEntireFolderTargetSelect'),
         importSourceFolderBtn: document.getElementById('importSourceFolderBtn'),
+        importTemplateSheetInput: document.getElementById('importTemplateSheetInput'),
+        importTemplateTabInput: document.getElementById('importTemplateTabInput'),
+        importTemplateQuizNameInput: document.getElementById('importTemplateQuizNameInput'),
+        importTemplateTargetFolderSelect: document.getElementById('importTemplateTargetFolderSelect'),
+        importTemplateSheetBtn: document.getElementById('importTemplateSheetBtn'),
         createFolderName: document.getElementById('createFolderName'),
         createFolderBtn: document.getElementById('createFolderBtn'),
         createQuizFolderSelect: document.getElementById('createQuizFolderSelect'),
@@ -624,6 +629,7 @@ MODIFICATION RULES FOR THIS APP
         populateSelectWithFolderOptions(elements.importEntireFolderSourceSelect, sourceFolders, 'Choose Google Sheets folder');
         populateSelectWithSupabaseFolderTargets(elements.importTargetFolderSelect, 'Use or create source folder name');
         populateSelectWithSupabaseFolderTargets(elements.importEntireFolderTargetSelect, 'Use or create source folder name');
+        populateSelectWithSupabaseFolderTargets(elements.importTemplateTargetFolderSelect, 'No folder');
 
         if (elements.importSourceQuizSelect) {
             const selectedFolder = elements.importSourceFolderSelect?.value || '';
@@ -652,6 +658,19 @@ MODIFICATION RULES FOR THIS APP
             el.disabled = !creatorEnabled || !sourceFolders.length;
         });
 
+        if (elements.importTemplateSheetInput) {
+            elements.importTemplateSheetInput.disabled = !creatorEnabled;
+        }
+        if (elements.importTemplateTabInput) {
+            elements.importTemplateTabInput.disabled = !creatorEnabled;
+        }
+        if (elements.importTemplateQuizNameInput) {
+            elements.importTemplateQuizNameInput.disabled = !creatorEnabled;
+        }
+        if (elements.importTemplateTargetFolderSelect) {
+            elements.importTemplateTargetFolderSelect.disabled = !creatorEnabled;
+        }
+
         if (elements.importSourceQuizBtn) {
             const canImportSingle = creatorEnabled && !!elements.importSourceFolderSelect?.value && !!elements.importSourceQuizSelect?.value;
             elements.importSourceQuizBtn.disabled = !canImportSingle;
@@ -660,6 +679,12 @@ MODIFICATION RULES FOR THIS APP
         if (elements.importSourceFolderBtn) {
             const canImportFolder = creatorEnabled && !!elements.importEntireFolderSourceSelect?.value;
             elements.importSourceFolderBtn.disabled = !canImportFolder;
+        }
+
+        if (elements.importTemplateSheetBtn) {
+            const hasSheetInput = !!normalizeSheetText(elements.importTemplateSheetInput?.value);
+            const hasTabInput = !!normalizeSheetText(elements.importTemplateTabInput?.value);
+            elements.importTemplateSheetBtn.disabled = !(creatorEnabled && hasSheetInput && hasTabInput);
         }
     }
 
@@ -1990,6 +2015,11 @@ MODIFICATION RULES FOR THIS APP
             elements.importEntireFolderSourceSelect,
             elements.importEntireFolderTargetSelect,
             elements.importSourceFolderBtn,
+            elements.importTemplateSheetInput,
+            elements.importTemplateTabInput,
+            elements.importTemplateQuizNameInput,
+            elements.importTemplateTargetFolderSelect,
+            elements.importTemplateSheetBtn,
             elements.createQuizFolderSelect,
             elements.createQuizName,
             elements.createQuizTypeSelect,
@@ -3347,6 +3377,53 @@ MODIFICATION RULES FOR THIS APP
         return { quizId: quizRow.id, quizName: descriptor.name, questionCount: sourceQuestions.length, quizType, folderId };
     }
 
+
+    async function importGoogleSheetTemplateToSupabase(sheetInput, sheetTabName, quizName, targetFolderId = '') {
+        const sheetId = extractGoogleSheetId(sheetInput);
+        if (!sheetId) {
+            throw new Error('Paste a valid Google Sheets URL or sheet ID.');
+        }
+
+        const resolvedTabName = normalizeSheetText(sheetTabName);
+        if (!resolvedTabName) {
+            throw new Error('Enter the Google Sheets tab name from your template.');
+        }
+
+        const sourceQuestions = await loadQuestionsFromGoogleSheetDocument(sheetId, resolvedTabName);
+        if (!sourceQuestions.length) {
+            throw new Error('That Google Sheet tab does not have importable questions.');
+        }
+
+        const quizType = getQuestionTypeForImport(sourceQuestions[0]);
+        const invalidMixedTypes = sourceQuestions.some(question => getQuestionTypeForImport(question) !== quizType);
+        if (invalidMixedTypes) {
+            throw new Error('Mixed-type Google Sheet tabs are not supported for direct import yet.');
+        }
+
+        const folderId = normalizeSheetText(targetFolderId);
+        const nextSortOrder = state.auth.managedQuizzes
+            .filter(quiz => (quiz.folderId || '') === (folderId || ''))
+            .reduce((maxValue, quiz) => Math.max(maxValue, Number(quiz.sortOrder ?? 0)), -1) + 1;
+        const finalQuizName = normalizeSheetText(quizName) || resolvedTabName;
+
+        const { data: quizRow, error: quizError } = await state.auth.client
+            .from('quizzes')
+            .insert({
+                user_id: state.auth.user.id,
+                folder_id: folderId || null,
+                name: finalQuizName,
+                description: '',
+                sort_order: nextSortOrder,
+                is_archived: false
+            })
+            .select('id')
+            .single();
+        if (quizError) throw quizError;
+
+        await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, sourceQuestions);
+        return { quizId: quizRow.id, quizName: finalQuizName, questionCount: sourceQuestions.length, quizType, folderId };
+    }
+
     async function handleImportGoogleSheetsQuiz() {
         if (!state.auth.client || !state.auth.user?.id) {
             setCreatorStatus('Sign in before importing Google Sheets quizzes.', 'error');
@@ -3408,6 +3485,31 @@ MODIFICATION RULES FOR THIS APP
             setCreatorStatus(error.message || 'Could not import that Google Sheets folder.', 'error');
         }
     }
+
+
+    async function handleImportGoogleSheetTemplate() {
+        if (!state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before importing a Google Sheet template.', 'error');
+            return;
+        }
+
+        try {
+            const result = await importGoogleSheetTemplateToSupabase(
+                elements.importTemplateSheetInput?.value,
+                elements.importTemplateTabInput?.value,
+                elements.importTemplateQuizNameInput?.value,
+                normalizeSheetText(elements.importTemplateTargetFolderSelect?.value)
+            );
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
+            renderGoogleSheetsImportControls();
+            setQuizStudioSection('manage');
+            setCreatorStatus(`Imported "${result.quizName}" from the Google Sheet template.`, 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not import that Google Sheet template.', 'error');
+        }
+    }
 function parseGoogleSheetResponse(text) {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
@@ -3415,6 +3517,34 @@ function parseGoogleSheetResponse(text) {
         throw new Error('Could not parse Google Sheets response');
     }
     return JSON.parse(text.substring(start, end + 1));
+}
+
+function extractGoogleSheetId(value) {
+    const raw = normalizeSheetText(value);
+    if (!raw) return '';
+
+    const urlMatch = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/i) || raw.match(/\/d\/([a-zA-Z0-9-_]+)/i);
+    if (urlMatch?.[1]) {
+        return urlMatch[1];
+    }
+
+    if (/^[a-zA-Z0-9-_]{20,}$/.test(raw)) {
+        return raw;
+    }
+
+    return '';
+}
+
+async function fetchGoogleSheetRows(sheetId, sheetName) {
+    const resolvedSheetId = normalizeSheetText(sheetId);
+    const resolvedSheetName = normalizeSheetText(sheetName);
+    if (!resolvedSheetId || !resolvedSheetName) {
+        throw new Error('Enter a valid Google Sheet ID/URL and sheet tab name.');
+    }
+
+    const response = await fetch(`https://docs.google.com/spreadsheets/d/${resolvedSheetId}/gviz/tq?sheet=${encodeURIComponent(resolvedSheetName)}`);
+    const text = await response.text();
+    return parseGoogleSheetResponse(text).table.rows || [];
 }
 
 // ================= SHEETS CELL HELPERS =================
@@ -4517,12 +4647,7 @@ async function loadSelectedQuiz(selectorValue) {
 }
 
 // ================= LOAD QUESTIONS =================
-async function loadQuestionsFromGoogleSheets(sheetName) {
-    const res = await fetch(`https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}`);
-    const text = await res.text();
-    const json = parseGoogleSheetResponse(text);
-    const rows = json.table.rows;
-
+function parseQuestionsFromGoogleSheetRows(rows) {
     const type = getCellValue(rows[0]?.c?.[1]).toLowerCase();
 
     if (type === 'hierarchy') {
@@ -4649,6 +4774,15 @@ async function loadQuestionsFromGoogleSheets(sheetName) {
             learningResourcesImage: getCellValue(c[13])
         };
     }).filter(q => q.question && q.question.toLowerCase() !== 'question');
+}
+
+async function loadQuestionsFromGoogleSheetDocument(sheetId, sheetName) {
+    const rows = await fetchGoogleSheetRows(sheetId, sheetName);
+    return parseQuestionsFromGoogleSheetRows(rows);
+}
+
+async function loadQuestionsFromGoogleSheets(sheetName) {
+    return loadQuestionsFromGoogleSheetDocument(CONFIG.sheetId, sheetName);
 }
 
 // ================= SHUFFLE =================
@@ -7295,6 +7429,27 @@ if (elements.importSourceFolderBtn) {
         });
     });
 }
+
+if (elements.importTemplateSheetBtn) {
+    elements.importTemplateSheetBtn.addEventListener('click', () => {
+        handleImportGoogleSheetTemplate().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not import that Google Sheet template.', 'error');
+        });
+    });
+}
+
+[
+    elements.importTemplateSheetInput,
+    elements.importTemplateTabInput,
+    elements.importTemplateTargetFolderSelect
+].forEach(el => {
+    if (!el) return;
+    const eventName = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(eventName, () => {
+        renderGoogleSheetsImportControls();
+    });
+});
 
 
 const studioDirtyInputSelector = [

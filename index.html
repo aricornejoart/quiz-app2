@@ -427,6 +427,35 @@ MODIFICATION RULES FOR THIS APP
 
                     <button id="importSourceFolderBtn" type="button" class="auth-action-btn">Import Entire Folder</button>
                   </section>
+
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Import Google Sheet Template</div>
+                    <div class="creator-note">Paste a Google Sheet URL or sheet ID from your template, enter the tab name, choose where it should go in Supabase, and optionally set the quiz name now instead of importing from the shared catalog first.</div>
+
+                    <label class="auth-field">
+                      <span>Google Sheet URL or ID</span>
+                      <input id="importTemplateSheetInput" type="text" placeholder="https://docs.google.com/spreadsheets/d/... or sheet ID">
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Sheet tab name</span>
+                      <input id="importTemplateTabInput" type="text" placeholder="Sheet1">
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Quiz name in Supabase</span>
+                      <input id="importTemplateQuizNameInput" type="text" placeholder="Leave blank to use the sheet tab name">
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Destination folder</span>
+                      <select id="importTemplateTargetFolderSelect">
+                        <option value="">No folder</option>
+                      </select>
+                    </label>
+
+                    <button id="importTemplateSheetBtn" type="button" class="auth-action-btn">Import Sheet Template</button>
+                  </section>
                 </div>
               </section>
 
