@@ -26,6 +26,11 @@ MODIFICATION RULES FOR THIS APP
         supabase: {
             url: String(window.STUDY_BUNNY_SUPABASE_CONFIG?.url || '').trim(),
             publishableKey: String(window.STUDY_BUNNY_SUPABASE_CONFIG?.publishableKey || '').trim()
+        },
+        mediaAssets: {
+            bucketName: 'study-bunny-media',
+            referencePrefix: 'sb-media:',
+            signedUrlExpiresIn: 3600
         }
     };
 
@@ -109,7 +114,8 @@ MODIFICATION RULES FOR THIS APP
             studioQuestionSearchQuery: '',
             studioHasUnsavedChanges: false,
             studioDraggingQuestionId: null,
-            studioPendingNewQuestionRow: null
+            studioPendingNewQuestionRow: null,
+            mediaSignedUrlCache: new Map()
         }
     };
 
@@ -245,8 +251,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     // ================= SUPABASE FRONTEND BOOTSTRAP =================
-    // This phase keeps Google Sheets as a working source while moving account,
-    // folder, and multiple-choice quiz authoring onto Supabase.
+    // Google Sheets remains available while Supabase owns signed-in authoring,
+    // study data, and private media storage for new image uploads.
     function getSupabaseConfig() {
         const url = CONFIG.supabase.url;
         const publishableKey = CONFIG.supabase.publishableKey;
@@ -300,6 +306,481 @@ MODIFICATION RULES FOR THIS APP
         const plain = normalizeSheetText(value);
         if (!plain) return '';
         return plain.split('\n').map(escapeHtml).join('<br>');
+    }
+
+    // ================= SUPABASE PRIVATE MEDIA ASSETS =================
+    // New uploads are stored in a private Supabase Storage bucket. Existing
+    // external URLs and older data URLs still render so old decks remain usable.
+    function isDataUrl(value) {
+        return /^data:/i.test(normalizeSheetText(value));
+    }
+
+    function isSupabaseMediaReference(value) {
+        return normalizeSheetText(value).startsWith(CONFIG.mediaAssets.referencePrefix);
+    }
+
+    function buildSupabaseMediaReference(assetId) {
+        const normalizedId = normalizeSheetText(assetId);
+        return normalizedId ? `${CONFIG.mediaAssets.referencePrefix}${normalizedId}` : '';
+    }
+
+    function getSupabaseMediaAssetId(value) {
+        const normalizedValue = normalizeSheetText(value);
+        if (!isSupabaseMediaReference(normalizedValue)) return '';
+        return normalizedValue.slice(CONFIG.mediaAssets.referencePrefix.length);
+    }
+
+    function createMediaAssetId() {
+        if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
+            const randomValue = Math.random() * 16 | 0;
+            const value = character === 'x' ? randomValue : ((randomValue & 0x3) | 0x8);
+            return value.toString(16);
+        });
+    }
+
+    function collectSupabaseMediaReferences(value, refs = new Set()) {
+        if (!value) return refs;
+        if (typeof value === 'string') {
+            if (isSupabaseMediaReference(value)) refs.add(value);
+            return refs;
+        }
+        if (Array.isArray(value)) {
+            value.forEach(item => collectSupabaseMediaReferences(item, refs));
+            return refs;
+        }
+        if (typeof value === 'object') {
+            Object.values(value).forEach(item => collectSupabaseMediaReferences(item, refs));
+        }
+        return refs;
+    }
+
+    function replaceSupabaseMediaReferences(value, replacementMap) {
+        if (!value) return value;
+        if (typeof value === 'string') {
+            return isSupabaseMediaReference(value) ? (replacementMap.get(value) || '') : value;
+        }
+        if (Array.isArray(value)) {
+            return value.map(item => replaceSupabaseMediaReferences(item, replacementMap));
+        }
+        if (typeof value === 'object') {
+            return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceSupabaseMediaReferences(item, replacementMap)]));
+        }
+        return value;
+    }
+
+    function getDataUrlBlob(dataUrl) {
+        const normalizedDataUrl = normalizeSheetText(dataUrl);
+        const match = normalizedDataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/i);
+        if (!match) {
+            throw new Error('Could not read that image file.');
+        }
+
+        const mimeType = normalizeSheetText(match[1] || 'application/octet-stream');
+        const isBase64 = !!match[2];
+        const rawData = match[3] || '';
+        const byteString = isBase64 ? window.atob(rawData) : decodeURIComponent(rawData);
+        const bytes = new Uint8Array(byteString.length);
+        for (let index = 0; index < byteString.length; index += 1) {
+            bytes[index] = byteString.charCodeAt(index);
+        }
+        return new Blob([bytes], { type: mimeType });
+    }
+
+    function getMediaExtensionFromMime(mimeType) {
+        const normalizedMime = normalizeSheetText(mimeType).toLowerCase();
+        const extensionMap = {
+            'image/jpeg': 'jpg',
+            'image/jpg': 'jpg',
+            'image/png': 'png',
+            'image/gif': 'gif',
+            'image/webp': 'webp',
+            'image/svg+xml': 'svg',
+            'image/bmp': 'bmp',
+            'image/avif': 'avif'
+        };
+        return extensionMap[normalizedMime] || 'bin';
+    }
+
+    function sanitizeStorageFileName(value, fallback = 'image') {
+        const normalizedName = normalizeSheetText(value)
+            .replace(/^Selected:\s*/i, '')
+            .replace(/[^a-z0-9._-]+/gi, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80);
+        return normalizedName || fallback;
+    }
+
+    function getSafeMediaFileName(originalName, mimeType, usageContext = 'image') {
+        const sanitizedOriginal = sanitizeStorageFileName(originalName, '');
+        if (sanitizedOriginal && /\.[a-z0-9]+$/i.test(sanitizedOriginal)) {
+            return sanitizedOriginal;
+        }
+        const baseName = sanitizeStorageFileName(sanitizedOriginal || usageContext || 'image', 'image').replace(/\.[a-z0-9]+$/i, '');
+        return `${baseName}.${getMediaExtensionFromMime(mimeType)}`;
+    }
+
+    function getPhase18StorageErrorMessage(error) {
+        const message = normalizeSheetText(error?.message || error?.details || error);
+        if (/media_assets|study-bunny-media|bucket|storage/i.test(message)) {
+            return 'Run the Phase 18 Supabase Storage migration before saving private images.';
+        }
+        return message || 'Could not save the image to Supabase Storage.';
+    }
+
+    async function uploadDataUrlToPrivateMediaAsset(dataUrl, options = {}) {
+        const normalizedDataUrl = normalizeSheetText(dataUrl);
+        if (!normalizedDataUrl || !isDataUrl(normalizedDataUrl)) return normalizedDataUrl;
+        if (!state.auth.client || !state.auth.user?.id) {
+            throw new Error('Sign in before saving images.');
+        }
+
+        const blob = getDataUrlBlob(normalizedDataUrl);
+        const mimeType = blob.type || 'application/octet-stream';
+        const assetId = createMediaAssetId();
+        const fileName = getSafeMediaFileName(options.originalName || options.label || '', mimeType, options.usageContext || 'image');
+        const objectPath = `${state.auth.user.id}/${assetId}/${fileName}`;
+        const bucketName = CONFIG.mediaAssets.bucketName;
+
+        const { error: uploadError } = await state.auth.client.storage
+            .from(bucketName)
+            .upload(objectPath, blob, {
+                contentType: mimeType,
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (uploadError) {
+            throw new Error(getPhase18StorageErrorMessage(uploadError));
+        }
+
+        const mediaPayload = {
+            id: assetId,
+            user_id: state.auth.user.id,
+            bucket_name: bucketName,
+            object_path: objectPath,
+            original_name: fileName,
+            mime_type: mimeType,
+            size_bytes: blob.size,
+            quiz_id: options.quizId || null,
+            question_id: options.questionId || null,
+            usage_context: normalizeSheetText(options.usageContext || '')
+        };
+
+        const { error: assetError } = await state.auth.client
+            .from('media_assets')
+            .insert(mediaPayload);
+
+        if (assetError) {
+            await state.auth.client.storage.from(bucketName).remove([objectPath]);
+            throw new Error(getPhase18StorageErrorMessage(assetError));
+        }
+
+        return buildSupabaseMediaReference(assetId);
+    }
+
+    async function savePrivateMediaValue(value, options = {}) {
+        const normalizedValue = normalizeSheetText(value);
+        if (!normalizedValue || !isDataUrl(normalizedValue)) return normalizedValue;
+        return uploadDataUrlToPrivateMediaAsset(normalizedValue, options);
+    }
+
+    async function savePrivateMediaValues(valueMap, options = {}) {
+        const entries = Object.entries(valueMap || {});
+        const savedEntries = [];
+        for (const [key, value] of entries) {
+            savedEntries.push([
+                key,
+                await savePrivateMediaValue(value, {
+                    ...options,
+                    usageContext: key,
+                    label: options.labels?.[key] || key
+                })
+            ]);
+        }
+        return Object.fromEntries(savedEntries);
+    }
+
+    async function createSignedMediaUrlMap(refs) {
+        if (!state.auth.client || !refs?.length) return new Map();
+
+        const uniqueRefs = Array.from(new Set(refs.filter(isSupabaseMediaReference)));
+        const now = Date.now();
+        const resolvedMap = new Map();
+        const idsToLoad = [];
+
+        uniqueRefs.forEach(ref => {
+            const assetId = getSupabaseMediaAssetId(ref);
+            const cached = state.auth.mediaSignedUrlCache?.get(assetId);
+            if (cached?.url && cached.expiresAt > now + 60000) {
+                resolvedMap.set(ref, cached.url);
+            } else if (assetId) {
+                idsToLoad.push(assetId);
+            }
+        });
+
+        if (!idsToLoad.length) return resolvedMap;
+
+        const { data: assets, error } = await state.auth.client
+            .from('media_assets')
+            .select('id, bucket_name, object_path')
+            .in('id', idsToLoad);
+
+        if (error || !assets?.length) {
+            if (error) console.error('Failed to load media asset metadata:', error);
+            return resolvedMap;
+        }
+
+        const assetsByBucket = new Map();
+        assets.forEach(asset => {
+            const bucketName = asset.bucket_name || CONFIG.mediaAssets.bucketName;
+            if (!assetsByBucket.has(bucketName)) assetsByBucket.set(bucketName, []);
+            assetsByBucket.get(bucketName).push(asset);
+        });
+
+        for (const [bucketName, bucketAssets] of assetsByBucket.entries()) {
+            const paths = bucketAssets.map(asset => asset.object_path).filter(Boolean);
+            if (!paths.length) continue;
+            const { data: signedUrls, error: signedError } = await state.auth.client.storage
+                .from(bucketName)
+                .createSignedUrls(paths, CONFIG.mediaAssets.signedUrlExpiresIn);
+
+            if (signedError) {
+                console.error('Failed to create signed media URLs:', signedError);
+                continue;
+            }
+
+            (signedUrls || []).forEach((signedItem, index) => {
+                const asset = bucketAssets[index];
+                const signedUrl = signedItem?.signedUrl || signedItem?.signedURL || '';
+                if (!asset?.id || !signedUrl) return;
+                const ref = buildSupabaseMediaReference(asset.id);
+                resolvedMap.set(ref, signedUrl);
+                state.auth.mediaSignedUrlCache?.set(asset.id, {
+                    url: signedUrl,
+                    expiresAt: now + (CONFIG.mediaAssets.signedUrlExpiresIn * 1000)
+                });
+            });
+        }
+
+        return resolvedMap;
+    }
+
+    async function resolveSupabaseMediaValue(value) {
+        const normalizedValue = normalizeSheetText(value);
+        if (!isSupabaseMediaReference(normalizedValue)) return normalizedValue;
+        const urlMap = await createSignedMediaUrlMap([normalizedValue]);
+        return urlMap.get(normalizedValue) || '';
+    }
+
+    async function resolveSupabaseMediaReferences(value) {
+        const refs = Array.from(collectSupabaseMediaReferences(value));
+        if (!refs.length) return value;
+        const urlMap = await createSignedMediaUrlMap(refs);
+        return replaceSupabaseMediaReferences(value, urlMap);
+    }
+
+    function setPreviewImageSource(previewEl, sourceValue) {
+        if (!previewEl) return;
+        const normalizedSource = normalizeSheetText(sourceValue);
+        previewEl.dataset.mediaPreviewSource = normalizedSource;
+        previewEl.src = '';
+        previewEl.classList.add('hidden');
+
+        if (!normalizedSource) return;
+
+        if (!isSupabaseMediaReference(normalizedSource)) {
+            previewEl.src = normalizedSource;
+            previewEl.classList.remove('hidden');
+            return;
+        }
+
+        resolveSupabaseMediaValue(normalizedSource).then(signedUrl => {
+            if (previewEl.dataset.mediaPreviewSource !== normalizedSource || !signedUrl) return;
+            previewEl.src = signedUrl;
+            previewEl.classList.remove('hidden');
+        }).catch(error => {
+            console.error('Could not load private image preview:', error);
+        });
+    }
+
+    async function replaceMediaRefsForCopiedValue(value, options = {}) {
+        const normalizedValue = normalizeSheetText(value);
+        if (!isSupabaseMediaReference(normalizedValue)) return normalizedValue;
+        const sourceAssetId = getSupabaseMediaAssetId(normalizedValue);
+        if (!sourceAssetId || !state.auth.client || !state.auth.user?.id) return normalizedValue;
+
+        const { data: sourceAsset, error: sourceError } = await state.auth.client
+            .from('media_assets')
+            .select('id, bucket_name, object_path, original_name, mime_type, size_bytes, usage_context')
+            .eq('id', sourceAssetId)
+            .maybeSingle();
+
+        if (sourceError || !sourceAsset?.object_path) {
+            if (sourceError) console.error('Could not load source media asset for duplication:', sourceError);
+            return normalizedValue;
+        }
+
+        const bucketName = sourceAsset.bucket_name || CONFIG.mediaAssets.bucketName;
+        const newAssetId = createMediaAssetId();
+        const fileName = getSafeMediaFileName(sourceAsset.original_name || '', sourceAsset.mime_type || '', options.usageContext || sourceAsset.usage_context || 'image');
+        const newObjectPath = `${state.auth.user.id}/${newAssetId}/${fileName}`;
+        const { error: copyError } = await state.auth.client.storage
+            .from(bucketName)
+            .copy(sourceAsset.object_path, newObjectPath);
+
+        if (copyError) {
+            console.error('Could not copy media asset for duplication:', copyError);
+            return normalizedValue;
+        }
+
+        const { error: insertError } = await state.auth.client
+            .from('media_assets')
+            .insert({
+                id: newAssetId,
+                user_id: state.auth.user.id,
+                bucket_name: bucketName,
+                object_path: newObjectPath,
+                original_name: fileName,
+                mime_type: sourceAsset.mime_type || '',
+                size_bytes: sourceAsset.size_bytes || null,
+                quiz_id: options.quizId || null,
+                question_id: options.questionId || null,
+                usage_context: normalizeSheetText(options.usageContext || sourceAsset.usage_context || '')
+            });
+
+        if (insertError) {
+            await state.auth.client.storage.from(bucketName).remove([newObjectPath]);
+            console.error('Could not save duplicated media asset metadata:', insertError);
+            return normalizedValue;
+        }
+
+        return buildSupabaseMediaReference(newAssetId);
+    }
+
+    async function cloneMediaRefsInObject(value, options = {}) {
+        if (!value) return value;
+        if (typeof value === 'string') {
+            return replaceMediaRefsForCopiedValue(value, options);
+        }
+        if (Array.isArray(value)) {
+            const clonedItems = [];
+            for (const item of value) {
+                clonedItems.push(await cloneMediaRefsInObject(item, options));
+            }
+            return clonedItems;
+        }
+        if (typeof value === 'object') {
+            const clonedEntries = [];
+            for (const [key, item] of Object.entries(value)) {
+                clonedEntries.push([key, await cloneMediaRefsInObject(item, { ...options, usageContext: key })]);
+            }
+            return Object.fromEntries(clonedEntries);
+        }
+        return value;
+    }
+
+    async function getQuestionMediaReferences(questionId) {
+        if (!state.auth.client || !questionId) return new Set();
+        const refs = new Set();
+        const { data: questionRow, error: questionError } = await state.auth.client
+            .from('questions')
+            .select('id, question_type, image_url, learning_resources_image_url')
+            .eq('id', questionId)
+            .maybeSingle();
+
+        if (questionError || !questionRow) {
+            if (questionError) console.error('Could not load question media before delete:', questionError);
+            return refs;
+        }
+
+        collectSupabaseMediaReferences(questionRow.image_url, refs);
+        collectSupabaseMediaReferences(questionRow.learning_resources_image_url, refs);
+
+        if (questionRow.question_type === 'flashcard') {
+            const detail = await loadFlashcardDetailByQuestionId(questionId);
+            collectSupabaseMediaReferences(detail?.term_image_url, refs);
+            collectSupabaseMediaReferences(detail?.definition_image_url, refs);
+        } else if (questionRow.question_type === 'classify') {
+            const detail = await loadClassifyDetailByQuestionId(questionId);
+            collectSupabaseMediaReferences(detail?.items_json, refs);
+            collectSupabaseMediaReferences(detail?.classifications_json, refs);
+        }
+
+        return refs;
+    }
+
+    async function deleteSupabaseMediaReferences(refs) {
+        const assetIds = Array.from(new Set(Array.from(refs || []).map(getSupabaseMediaAssetId).filter(Boolean)));
+        if (!state.auth.client || !assetIds.length) return;
+
+        const { data: assets, error } = await state.auth.client
+            .from('media_assets')
+            .select('id, bucket_name, object_path')
+            .in('id', assetIds);
+
+        if (error) {
+            console.error('Could not load media assets for deletion:', error);
+            return;
+        }
+
+        const assetsByBucket = new Map();
+        (assets || []).forEach(asset => {
+            const bucketName = asset.bucket_name || CONFIG.mediaAssets.bucketName;
+            if (!assetsByBucket.has(bucketName)) assetsByBucket.set(bucketName, []);
+            assetsByBucket.get(bucketName).push(asset.object_path);
+            state.auth.mediaSignedUrlCache?.delete(asset.id);
+        });
+
+        for (const [bucketName, paths] of assetsByBucket.entries()) {
+            const safePaths = paths.filter(Boolean);
+            if (!safePaths.length) continue;
+            const { error: removeError } = await state.auth.client.storage.from(bucketName).remove(safePaths);
+            if (removeError) console.error('Could not delete media files:', removeError);
+        }
+
+        const { error: deleteError } = await state.auth.client
+            .from('media_assets')
+            .delete()
+            .in('id', assetIds);
+        if (deleteError) console.error('Could not delete media asset rows:', deleteError);
+    }
+
+    async function deleteMediaForQuestion(questionId) {
+        const refs = await getQuestionMediaReferences(questionId);
+        await deleteSupabaseMediaReferences(refs);
+    }
+
+    async function getQuizMediaReferences(quizId) {
+        const refs = new Set();
+        if (!state.auth.client || !quizId) return refs;
+        const { data: questionRows, error } = await state.auth.client
+            .from('questions')
+            .select('id')
+            .eq('quiz_id', quizId);
+        if (error) {
+            console.error('Could not load quiz media before delete:', error);
+            return refs;
+        }
+
+        for (const question of questionRows || []) {
+            const questionRefs = await getQuestionMediaReferences(question.id);
+            questionRefs.forEach(ref => refs.add(ref));
+        }
+        return refs;
+    }
+
+    async function deleteMediaForQuiz(quizId) {
+        const refs = await getQuizMediaReferences(quizId);
+        await deleteSupabaseMediaReferences(refs);
+    }
+
+    async function deleteReplacedMediaReferences(previousRefs, nextValue) {
+        const oldRefs = Array.from(previousRefs || []);
+        if (!oldRefs.length) return;
+        const nextRefs = collectSupabaseMediaReferences(nextValue);
+        const refsToDelete = new Set(oldRefs.filter(ref => !nextRefs.has(ref)));
+        await deleteSupabaseMediaReferences(refsToDelete);
     }
 
     function setStudioQuestionImageState(dataUrl = '', label = 'No question image selected.') {
@@ -997,15 +1478,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const previewEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-preview]' : '[data-classify-item-image-preview]');
-        if (previewEl) {
-            if (normalizedDataUrl) {
-                previewEl.src = normalizedDataUrl;
-                previewEl.classList.remove('hidden');
-            } else {
-                previewEl.src = '';
-                previewEl.classList.add('hidden');
-            }
-        }
+        setPreviewImageSource(previewEl, normalizedDataUrl);
 
         const inputEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-file]' : '[data-classify-item-image-file]');
         if (!normalizedDataUrl && inputEl) {
@@ -1818,12 +2291,15 @@ MODIFICATION RULES FOR THIS APP
         const deletedQuestionId = questionId;
         const currentIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === deletedQuestionId);
 
+        const mediaRefsToDelete = await getQuestionMediaReferences(deletedQuestionId);
+
         const { error } = await state.auth.client
             .from('questions')
             .delete()
             .eq('id', deletedQuestionId);
 
         if (error) throw error;
+        await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
         await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
         await refreshStudioManagementData();
@@ -2537,6 +3013,68 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    async function saveSharedQuestionMediaValues(quizId, questionId, values = {}) {
+        const saved = await savePrivateMediaValues({
+            image_url: values.image_url || '',
+            learning_resources_image_url: values.learning_resources_image_url || ''
+        }, {
+            quizId,
+            questionId,
+            labels: {
+                image_url: state.auth.studioQuestionImageLabel,
+                learning_resources_image_url: state.auth.studioLearningResourcesImageLabel
+            }
+        });
+        return saved;
+    }
+
+    async function saveFlashcardMediaValues(quizId, questionId, values = {}) {
+        const saved = await savePrivateMediaValues({
+            term_image_url: values.term_image_url || '',
+            definition_image_url: values.definition_image_url || ''
+        }, {
+            quizId,
+            questionId,
+            labels: {
+                term_image_url: state.auth.studioFlashcardTermImageLabel,
+                definition_image_url: state.auth.studioFlashcardDefinitionImageLabel
+            }
+        });
+        return saved;
+    }
+
+    async function saveClassifyDraftMediaValues(quizId, questionId, categories, items) {
+        const savedCategories = [];
+        for (let index = 0; index < categories.length; index += 1) {
+            const category = categories[index];
+            savedCategories.push({
+                ...category,
+                imageUrl: await savePrivateMediaValue(category.imageUrl, {
+                    quizId,
+                    questionId,
+                    usageContext: `classify_category_${index + 1}_image`,
+                    label: category.label || `category-${index + 1}`
+                })
+            });
+        }
+
+        const savedItems = [];
+        for (let index = 0; index < items.length; index += 1) {
+            const item = items[index];
+            savedItems.push({
+                ...item,
+                imageUrl: await savePrivateMediaValue(item.imageUrl, {
+                    quizId,
+                    questionId,
+                    usageContext: `classify_item_${index + 1}_image`,
+                    label: item.text || `classify-item-${index + 1}`
+                })
+            });
+        }
+
+        return { categories: savedCategories, items: savedItems };
+    }
+
     async function handleSaveMultipleChoiceQuiz() {
         if (!state.auth.client || !state.auth.user?.id) {
             setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
@@ -2565,6 +3103,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
+            const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
                 const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
                 if (error) throw error;
@@ -2576,14 +3115,24 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'multiple_choice', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'multiple_choice', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '' }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: buildStoredHtmlFromPlain(learningResources) }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
+            const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
+                image_url: state.auth.studioQuestionImageDataUrl || '',
+                learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
+            });
+            const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+                image_url: savedSharedMedia.image_url || '',
+                learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+            }).eq('id', questionId);
+            if (mediaUpdateError) throw mediaUpdateError;
+
             const optionPayload = optionDrafts.map(draft => ({ text: draft.text, explanation_html: buildStoredHtmlFromPlain(draft.explanation) }));
             const detailPayload = { question_id: questionId, correct_answer: correctAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionPayload, option_1_text: options[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''), option_2_text: options[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1] || ''), option_3_text: options[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2] || ''), option_4_text: options[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
@@ -2592,6 +3141,7 @@ MODIFICATION RULES FOR THIS APP
                 if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
                 throw detailError;
             }
+            await deleteReplacedMediaReferences(previousMediaRefs, savedSharedMedia);
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
@@ -2624,6 +3174,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
+            const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
                 const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
                 if (error) throw error;
@@ -2635,17 +3186,30 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'flashcard', prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'flashcard', prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '' }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources) }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
-            const detailPayload = { question_id: questionId, term_html: buildStoredHtmlFromPlain(term), definition_html: buildStoredHtmlFromPlain(definition), term_plain: term, definition_plain: definition, term_image_url: state.auth.studioFlashcardTermImageDataUrl || '', definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || '' };
+            const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
+                image_url: '',
+                learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
+            });
+            const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+                learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+            }).eq('id', questionId);
+            if (mediaUpdateError) throw mediaUpdateError;
+            const savedFlashcardMedia = await saveFlashcardMediaValues(quizId, questionId, {
+                term_image_url: state.auth.studioFlashcardTermImageDataUrl || '',
+                definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || ''
+            });
+            const detailPayload = { question_id: questionId, term_html: buildStoredHtmlFromPlain(term), definition_html: buildStoredHtmlFromPlain(definition), term_plain: term, definition_plain: definition, term_image_url: savedFlashcardMedia.term_image_url || '', definition_image_url: savedFlashcardMedia.definition_image_url || '' };
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
+            await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, ...savedFlashcardMedia });
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
@@ -2683,6 +3247,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
+            const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
                 const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
                 if (error) throw error;
@@ -2694,14 +3259,24 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'hierarchy', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'hierarchy', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', question_type: 'hierarchy' }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: buildStoredHtmlFromPlain(learningResources), question_type: 'hierarchy' }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
+            const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
+                image_url: state.auth.studioQuestionImageDataUrl || '',
+                learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
+            });
+            const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+                image_url: savedSharedMedia.image_url || '',
+                learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+            }).eq('id', questionId);
+            if (mediaUpdateError) throw mediaUpdateError;
+
             const filledDrafts = hierarchyDrafts.filter(draft => draft.text);
             const correctOrder = filledDrafts
                 .map((draft, index) => ({ position: Number(draft.position), originalIndex: index + 1 }))
@@ -2723,6 +3298,7 @@ MODIFICATION RULES FOR THIS APP
             };
             const { error: detailError } = await state.auth.client.from('hierarchy_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
+            await deleteReplacedMediaReferences(previousMediaRefs, savedSharedMedia);
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
@@ -2762,6 +3338,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
+            const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
                 const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
                 if (error) throw error;
@@ -2773,18 +3350,29 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'classify', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'classify', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: state.auth.studioQuestionImageDataUrl || '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '', question_type: 'classify' }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: buildStoredHtmlFromPlain(learningResources), question_type: 'classify' }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
-            const classificationsJson = categories.map((category, index) => ({ label: category.label, imageUrl: category.imageUrl || '', id: category.id }));
-            const itemsJson = items.map((item, index) => ({ kind: item.imageUrl ? 'image' : 'text', raw: item.text || `classify_item_${index + 1}`, imageUrl: item.imageUrl || '', text: item.text, dragLabel: item.text || `Image item ${index + 1}`, ariaLabel: item.text ? `Classify item ${item.text}` : `Classify image item ${index + 1}`, correctClassificationId: item.categoryId }));
+            const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
+                image_url: state.auth.studioQuestionImageDataUrl || '',
+                learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
+            });
+            const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+                image_url: savedSharedMedia.image_url || '',
+                learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+            }).eq('id', questionId);
+            if (mediaUpdateError) throw mediaUpdateError;
+            const classifyMediaDrafts = await saveClassifyDraftMediaValues(quizId, questionId, categories, items);
+            const classificationsJson = classifyMediaDrafts.categories.map((category, index) => ({ label: category.label, imageUrl: category.imageUrl || '', id: category.id }));
+            const itemsJson = classifyMediaDrafts.items.map((item, index) => ({ kind: item.imageUrl ? 'image' : 'text', raw: item.text || `classify_item_${index + 1}`, imageUrl: item.imageUrl || '', text: item.text, dragLabel: item.text || `Image item ${index + 1}`, ariaLabel: item.text ? `Classify item ${item.text}` : `Classify image item ${index + 1}`, correctClassificationId: item.categoryId }));
             const { error: detailError } = await state.auth.client.from('classify_questions').upsert({ question_id: questionId, items_json: itemsJson, classifications_json: classificationsJson }, { onConflict: 'question_id' });
             if (detailError) throw detailError;
+            await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, classificationsJson, itemsJson });
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
@@ -2958,9 +3546,9 @@ MODIFICATION RULES FOR THIS APP
                 question_type: questionRow.question_type,
                 prompt_html: questionRow.prompt_html || '',
                 prompt_plain: questionRow.prompt_plain || '',
-                image_url: questionRow.image_url || '',
+                image_url: '',
                 learning_resources_html: questionRow.learning_resources_html || '',
-                learning_resources_image_url: questionRow.learning_resources_image_url || '',
+                learning_resources_image_url: '',
                 sort_order: targetSortOrder
             })
             .select('id')
@@ -2969,17 +3557,31 @@ MODIFICATION RULES FOR THIS APP
         if (insertQuestionError) throw insertQuestionError;
         const newQuestionId = insertedQuestion.id;
 
+        const clonedQuestionMedia = await cloneMediaRefsInObject({
+            image_url: questionRow.image_url || '',
+            learning_resources_image_url: questionRow.learning_resources_image_url || ''
+        }, { quizId: targetQuizId, questionId: newQuestionId });
+        const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+            image_url: clonedQuestionMedia.image_url || '',
+            learning_resources_image_url: clonedQuestionMedia.learning_resources_image_url || ''
+        }).eq('id', newQuestionId);
+        if (mediaUpdateError) throw mediaUpdateError;
+
         if (questionRow.question_type === 'flashcard') {
             const detail = await loadFlashcardDetailByQuestionId(sourceQuestionId);
             if (!detail) throw new Error('Could not load the source flashcard details.');
+            const clonedFlashcardMedia = await cloneMediaRefsInObject({
+                term_image_url: detail.term_image_url || '',
+                definition_image_url: detail.definition_image_url || ''
+            }, { quizId: targetQuizId, questionId: newQuestionId });
             const { error } = await state.auth.client.from('flashcard_questions').insert({
                 question_id: newQuestionId,
                 term_html: detail.term_html || '',
                 definition_html: detail.definition_html || '',
                 term_plain: detail.term_plain || '',
                 definition_plain: detail.definition_plain || '',
-                term_image_url: detail.term_image_url || '',
-                definition_image_url: detail.definition_image_url || ''
+                term_image_url: clonedFlashcardMedia.term_image_url || '',
+                definition_image_url: clonedFlashcardMedia.definition_image_url || ''
             });
             if (error) throw error;
             return newQuestionId;
@@ -3009,10 +3611,14 @@ MODIFICATION RULES FOR THIS APP
         if (questionRow.question_type === 'classify') {
             const detail = await loadClassifyDetailByQuestionId(sourceQuestionId);
             if (!detail) throw new Error('Could not load the source classify details.');
-            const { error } = await state.auth.client.from('classify_questions').insert({
-                question_id: newQuestionId,
+            const clonedClassifyMedia = await cloneMediaRefsInObject({
                 items_json: Array.isArray(detail.items_json) ? detail.items_json : (detail.items_json || []),
                 classifications_json: Array.isArray(detail.classifications_json) ? detail.classifications_json : (detail.classifications_json || [])
+            }, { quizId: targetQuizId, questionId: newQuestionId });
+            const { error } = await state.auth.client.from('classify_questions').insert({
+                question_id: newQuestionId,
+                items_json: clonedClassifyMedia.items_json || [],
+                classifications_json: clonedClassifyMedia.classifications_json || []
             });
             if (error) throw error;
             return newQuestionId;
@@ -3129,12 +3735,15 @@ MODIFICATION RULES FOR THIS APP
         }
 
         try {
+            const mediaRefsToDelete = await getQuizMediaReferences(quizId);
+
             const { error } = await state.auth.client
                 .from('quizzes')
                 .delete()
                 .eq('id', quizId);
 
             if (error) throw error;
+            await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
             if (state.auth.editingQuizId === quizId) {
                 clearCreatorInputs();
@@ -3189,15 +3798,24 @@ MODIFICATION RULES FOR THIS APP
                 question_type: 'multiple_choice',
                 prompt_html: buildStoredHtmlFromPlain(question.question),
                 prompt_plain: normalizeSheetText(question.question),
-                image_url: normalizeSheetText(question.image),
+                image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
-                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                learning_resources_image_url: '',
                 sort_order: sortOrder
             })
             .select('id')
             .single();
         if (error) throw error;
         const questionId = data?.id;
+        const savedSharedMedia = await savePrivateMediaValues({
+            image_url: normalizeSheetText(question.image),
+            learning_resources_image_url: normalizeSheetText(question.learningResourcesImage)
+        }, { quizId, questionId });
+        const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+            image_url: savedSharedMedia.image_url || '',
+            learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+        }).eq('id', questionId);
+        if (mediaUpdateError) throw mediaUpdateError;
         const options = Array.isArray(question.options) ? question.options.map(option => normalizeSheetText(option)).filter(Boolean) : [];
         const explanations = Array.isArray(question.explanations) ? question.explanations.map(value => normalizeSheetText(value)) : [];
         const correctAnswer = normalizeSheetText(question.correct);
@@ -3240,20 +3858,32 @@ MODIFICATION RULES FOR THIS APP
                 prompt_plain: term,
                 image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
-                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                learning_resources_image_url: '',
                 sort_order: sortOrder
             })
             .select('id')
             .single();
         if (error) throw error;
+        const questionId = data.id;
+        const savedSharedMedia = await savePrivateMediaValues({
+            learning_resources_image_url: normalizeSheetText(question.learningResourcesImage)
+        }, { quizId, questionId });
+        const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+            learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+        }).eq('id', questionId);
+        if (mediaUpdateError) throw mediaUpdateError;
+        const savedFlashcardMedia = await savePrivateMediaValues({
+            term_image_url: normalizeSheetText(question.termImage),
+            definition_image_url: normalizeSheetText(question.definitionImage)
+        }, { quizId, questionId });
         const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert({
-            question_id: data.id,
+            question_id: questionId,
             term_html: buildStoredHtmlFromPlain(term),
             definition_html: buildStoredHtmlFromPlain(definition),
             term_plain: term,
             definition_plain: definition,
-            term_image_url: normalizeSheetText(question.termImage),
-            definition_image_url: normalizeSheetText(question.definitionImage)
+            term_image_url: savedFlashcardMedia.term_image_url || '',
+            definition_image_url: savedFlashcardMedia.definition_image_url || ''
         }, { onConflict: 'question_id' });
         if (detailError) throw detailError;
     }
@@ -3266,16 +3896,26 @@ MODIFICATION RULES FOR THIS APP
                 question_type: 'hierarchy',
                 prompt_html: buildStoredHtmlFromPlain(question.question),
                 prompt_plain: normalizeSheetText(question.question),
-                image_url: normalizeSheetText(question.image),
+                image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
-                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                learning_resources_image_url: '',
                 sort_order: sortOrder
             })
             .select('id')
             .single();
         if (error) throw error;
+        const questionId = data.id;
+        const savedSharedMedia = await savePrivateMediaValues({
+            image_url: normalizeSheetText(question.image),
+            learning_resources_image_url: normalizeSheetText(question.learningResourcesImage)
+        }, { quizId, questionId });
+        const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+            image_url: savedSharedMedia.image_url || '',
+            learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+        }).eq('id', questionId);
+        if (mediaUpdateError) throw mediaUpdateError;
         const itemTexts = Array.isArray(question.options) ? question.options.map(value => normalizeSheetText(value)).slice(0, 10) : [];
-        const detailPayload = { question_id: data.id, correct_order_json: Array.isArray(question.correctOrder) ? question.correctOrder : [] };
+        const detailPayload = { question_id: questionId, correct_order_json: Array.isArray(question.correctOrder) ? question.correctOrder : [] };
         Array.from({ length: 10 }, (_, index) => {
             detailPayload[`item_${index + 1}_text`] = itemTexts[index] || '';
         });
@@ -3291,20 +3931,30 @@ MODIFICATION RULES FOR THIS APP
                 question_type: 'classify',
                 prompt_html: buildStoredHtmlFromPlain(question.question),
                 prompt_plain: normalizeSheetText(question.question),
-                image_url: normalizeSheetText(question.image),
+                image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
-                learning_resources_image_url: normalizeSheetText(question.learningResourcesImage),
+                learning_resources_image_url: '',
                 sort_order: sortOrder
             })
             .select('id')
             .single();
         if (error) throw error;
-        const classificationsJson = Array.isArray(question.classifications) ? question.classifications.map(classification => ({
+        const questionId = data.id;
+        const savedSharedMedia = await savePrivateMediaValues({
+            image_url: normalizeSheetText(question.image),
+            learning_resources_image_url: normalizeSheetText(question.learningResourcesImage)
+        }, { quizId, questionId });
+        const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+            image_url: savedSharedMedia.image_url || '',
+            learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+        }).eq('id', questionId);
+        if (mediaUpdateError) throw mediaUpdateError;
+        const sourceClassifications = Array.isArray(question.classifications) ? question.classifications.map(classification => ({
             label: normalizeSheetText(classification?.label),
             imageUrl: normalizeSheetText(classification?.imageUrl),
             id: normalizeSheetText(classification?.id)
         })).filter(classification => classification.id && (classification.label || classification.imageUrl)) : [];
-        const itemsJson = Array.isArray(question.items) ? question.items.map((item, index) => ({
+        const sourceItems = Array.isArray(question.items) ? question.items.map((item, index) => ({
             kind: normalizeSheetText(item?.kind || (item?.imageUrl ? 'image' : 'text')) || 'text',
             raw: normalizeSheetText(item?.raw || item?.text || `classify_item_${index + 1}`),
             imageUrl: normalizeSheetText(item?.imageUrl),
@@ -3313,8 +3963,11 @@ MODIFICATION RULES FOR THIS APP
             ariaLabel: normalizeSheetText(item?.ariaLabel || (item?.text ? `Classify item ${item.text}` : `Classify image item ${index + 1}`)),
             correctClassificationId: normalizeSheetText(item?.correctClassificationId)
         })) : [];
+        const classifyMediaDrafts = await saveClassifyDraftMediaValues(quizId, questionId, sourceClassifications, sourceItems);
+        const classificationsJson = classifyMediaDrafts.categories;
+        const itemsJson = classifyMediaDrafts.items;
         const { error: detailError } = await state.auth.client.from('classify_questions').upsert({
-            question_id: data.id,
+            question_id: questionId,
             items_json: itemsJson,
             classifications_json: classificationsJson
         }, { onConflict: 'question_id' });
@@ -4446,7 +5099,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         if (quizType === 'flashcard') {
             const detailRows = await loadFlashcardDetailsByQuestionIds(questionIds);
             const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-            return rows.map(row => {
+            return resolveSupabaseMediaReferences(rows.map(row => {
                 const detail = detailMap.get(row.id);
                 if (!detail) return null;
                 return {
@@ -4460,12 +5113,12 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
-            }).filter(Boolean);
+            }).filter(Boolean));
         }
         if (quizType === 'hierarchy') {
             const detailRows = await loadHierarchyDetailsByQuestionIds(questionIds);
             const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-            return rows.map(row => {
+            return resolveSupabaseMediaReferences(rows.map(row => {
                 const detail = detailMap.get(row.id);
                 if (!detail) return null;
                 const itemDrafts = getHierarchyDraftsFromDetailRow(detail);
@@ -4487,12 +5140,12 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
-            }).filter(Boolean);
+            }).filter(Boolean));
         }
         if (quizType === 'classify') {
             const detailRows = await loadClassifyDetailsByQuestionIds(questionIds);
             const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-            return rows.map(row => {
+            return resolveSupabaseMediaReferences(rows.map(row => {
                 const detail = detailMap.get(row.id);
                 if (!detail) return null;
                 const items = Array.isArray(detail.items_json) ? detail.items_json.map(item => ({
@@ -4520,11 +5173,11 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
-            }).filter(Boolean);
+            }).filter(Boolean));
         }
         const detailRows = await loadMultipleChoiceDetailsByQuestionIds(questionIds);
         const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-        return rows.map(row => {
+        return resolveSupabaseMediaReferences(rows.map(row => {
             const detail = detailMap.get(row.id);
             if (!detail) return null;
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
@@ -4547,7 +5200,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                 learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
             };
-        }).filter(Boolean);
+        }).filter(Boolean));
     } catch (error) {
         console.error('Failed to load Supabase quiz questions:', error);
         return [];
