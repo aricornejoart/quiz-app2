@@ -50,17 +50,7 @@ MODIFICATION RULES FOR THIS APP
             </select>
           </div>
 
-          <div class="mix-group">
-            <input
-              type="text"
-              id="mixInput"
-              placeholder="Mix"
-              autocomplete="off"
-              spellcheck="false"
-              aria-label="Mix quizzes"
-            >
-            <button id="mixGoBtn" type="button">Go</button>
-          </div>
+          <button id="questionStarBtn" class="question-star-btn hidden" type="button" aria-label="Star question" title="Star question">☆</button>
         </div>
 
         <div class="bottom-controls">
@@ -287,12 +277,6 @@ MODIFICATION RULES FOR THIS APP
                 </div>
               </div>
 
-              <div class="mix-help-card settings-full-span">
-                <div class="mix-help-title">Mix</div>
-                <div class="mix-help-text">Mix lets you study multiple quizzes together by entering quiz numbers.</div>
-                <div class="mix-help-text">Use commas to select individual quizzes and hyphens for ranges.</div>
-                <div class="mix-help-text">Example: 1, 2, 4-7 then press Go to mix those quizzes together.</div>
-              </div>
             </div>
           </div>
         </div>
@@ -641,7 +625,6 @@ MODIFICATION RULES FOR THIS APP
   <div class="quiz-area">
     <div class="question-container">
       <div id="feedback"></div>
-      <button id="questionStarBtn" class="question-star-btn hidden" type="button" aria-label="Star question" title="Star question">☆</button>
       <div id="questionText">Loading...</div>
 
       <div class="options">

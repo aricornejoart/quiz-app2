@@ -103,6 +103,14 @@ body.hint-open {
   flex-wrap: wrap;
 }
 
+.folder-quiz-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 #quizSelector {
   padding: 6px 10px;
   background: var(--color-bg-control);
@@ -114,59 +122,6 @@ body.hint-open {
   max-width: 170px;
 }
 
-.mix-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-#mixInput {
-  width: 105px;
-  padding: 6px 10px;
-  background: var(--color-bg-control);
-  color: var(--color-text-main);
-  border: 1px solid var(--color-bg-control-hover);
-  border-radius: 5px;
-  outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
-}
-
-#mixInput::placeholder {
-  color: #d6d2ff;
-}
-
-#mixInput:focus {
-  border-color: var(--color-border-strong);
-  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
-}
-
-#mixInput.invalid {
-  border-color: var(--color-danger);
-  color: #ff8f8f;
-  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.12);
-}
-
-#mixInput.invalid::placeholder {
-  color: #ff8f8f;
-}
-
-#mixGoBtn {
-  padding: 6px 10px;
-  background: var(--color-bg-control);
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.15s ease;
-}
-
-#mixGoBtn:hover {
-  background: var(--color-bg-control-hover);
-}
-
-#mixGoBtn:active {
-  transform: scale(0.98);
-}
 
 .bottom-controls {
   display: flex;
@@ -408,28 +363,30 @@ body.fullscreen-mode .bottom-controls {
   position: relative;
   flex: 2;
   min-width: 0;
-  padding-bottom: 56px;
 }
 
 .question-star-btn {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 4;
-  width: 42px;
-  height: 42px;
+  position: static;
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  background: rgba(42, 37, 64, 0.96);
+  background: var(--color-bg-control);
   color: var(--color-text-main);
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.26);
+  flex-shrink: 0;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.22);
   transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.quiz-select-group .question-star-btn {
+  align-self: center;
 }
 
 .question-star-btn:hover {
@@ -888,11 +845,6 @@ body.fullscreen-mode .bottom-controls {
 
 body.active-question-classify .question-container {
   position: relative;
-}
-
-body.active-question-classify .question-star-btn {
-  right: 8px;
-  bottom: 8px;
 }
 
 body.active-question-classify #questionText {
@@ -4446,24 +4398,11 @@ body.fullscreen-mode.active-question-classify {
 }
 
 
-body.active-question-flashcard .question-star-btn {
-  right: 8px;
-  bottom: 8px;
-}
-
 @media screen and (max-width: 767px) {
   .question-star-btn {
-    width: 40px;
-    height: 40px;
-    font-size: 22px;
-    right: 6px;
-    bottom: 6px;
-  }
-
-  body.active-question-classify .question-star-btn,
-  body.active-question-flashcard .question-star-btn {
-    right: 6px;
-    bottom: 6px;
+    width: 34px;
+    height: 34px;
+    font-size: 20px;
   }
 }
 

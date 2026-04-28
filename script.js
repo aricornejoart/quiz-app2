@@ -116,8 +116,6 @@ MODIFICATION RULES FOR THIS APP
     const elements = {
         folderSelector: document.getElementById('folderSelector'),
         quizSelector: document.getElementById('quizSelector'),
-        mixInput: document.getElementById('mixInput'),
-        mixGoBtn: document.getElementById('mixGoBtn'),
         authBtn: document.getElementById('authBtn'),
         authPopup: document.getElementById('authPopup'),
         closeAuthBtn: document.getElementById('closeAuthBtn'),
@@ -3938,83 +3936,13 @@ function closeFlashcardImageOverlay() {
     updateNavigationButtons();
 }
 
-// ================= MIX HELPERS =================
-function setMixValidState(isValid) {
-    elements.mixInput.classList.toggle('invalid', !isValid);
-}
-
-function normalizeMixInput(value) {
-    return value.replace(/\s+/g, '');
-}
-
-function parseMixRange(rawValue) {
-    const cleaned = normalizeMixInput(rawValue);
-
-    if (!cleaned) {
-        return { valid: false, numbers: [] };
-    }
-
-    const parts = cleaned.split(',');
-    const numbers = [];
-    const seen = new Set();
-
-    for (const part of parts) {
-        if (!part) {
-            return { valid: false, numbers: [] };
-        }
-
-        if (/^\d+$/.test(part)) {
-            const num = Number(part);
-            if (num <= 0) return { valid: false, numbers: [] };
-            if (!seen.has(num)) {
-                seen.add(num);
-                numbers.push(num);
-            }
-            continue;
-        }
-
-        if (/^\d+-\d+$/.test(part)) {
-            const [startRaw, endRaw] = part.split('-');
-            const start = Number(startRaw);
-            const end = Number(endRaw);
-
-            if (start <= 0 || end <= 0 || start > end) {
-                return { valid: false, numbers: [] };
-            }
-
-            for (let n = start; n <= end; n++) {
-                if (!seen.has(n)) {
-                    seen.add(n);
-                    numbers.push(n);
-                }
-            }
-            continue;
-        }
-
-        return { valid: false, numbers: [] };
-    }
-
-    return { valid: true, numbers };
-}
-
-function getQuizMapByRangeNumber() {
-    const map = new Map();
-
-    state.quizListCache.forEach(q => {
-        if (q.rangeNumber !== null && q.rangeNumber !== undefined && q.rangeNumber !== '') {
-            map.set(Number(q.rangeNumber), q);
-        }
-    });
-
-    return map;
-}
-
+// ================= QUESTION LOADING HELPERS =================
 function isQuizDescriptor(value) {
-    return !!value && typeof value === 'object' && typeof value.source === 'string' && typeof value.id === 'string';
+    return !!value && typeof value === "object" && typeof value.source === "string" && typeof value.id === "string";
 }
 
 function encodeQuizSelectorValue(quizDescriptor) {
-    return isQuizDescriptor(quizDescriptor) ? quizDescriptor.id : '';
+    return isQuizDescriptor(quizDescriptor) ? quizDescriptor.id : "";
 }
 
 function getQuizBySelectorValue(selectorValue) {
@@ -4062,30 +3990,6 @@ async function loadQuestionsForQuizDescriptor(quizDescriptor) {
     }
 
     return loadQuestions(quizDescriptor);
-}
-
-async function loadMixedQuestionsFromInput(rawValue) {
-    const parsed = parseMixRange(rawValue);
-    if (!parsed.valid || parsed.numbers.length === 0) {
-        throw new Error('Invalid mix input');
-    }
-
-    const quizMap = getQuizMapByRangeNumber();
-    const selectedQuizzes = [];
-
-    for (const num of parsed.numbers) {
-        const match = quizMap.get(num);
-        if (!match) {
-            throw new Error(`Range number ${num} not found`);
-        }
-        selectedQuizzes.push(match);
-    }
-
-    const results = await Promise.all(
-        selectedQuizzes.map(q => loadQuestionsForQuizDescriptor(q))
-    );
-
-    return results.flat();
 }
 
 async function hydrateStarredQuestionState(questions) {
@@ -6778,43 +6682,10 @@ if (elements.questionStarBtn) {
     });
 }
 
-elements.mixInput.addEventListener('input', () => {
-    setMixValidState(true);
-});
 
-elements.mixInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        elements.mixGoBtn.click();
-    }
-});
 
-elements.mixGoBtn.addEventListener('click', async () => {
-    const rawValue = elements.mixInput.value.trim();
-
-    if (!rawValue) {
-        setMixValidState(true);
-        return;
-    }
-
-    try {
-        const mixedQuestions = await loadMixedQuestionsFromInput(rawValue);
-
-        if (!mixedQuestions.length) {
-            throw new Error('No state.questions found');
-        }
-
-        setMixValidState(true);
-        await applyLoadedQuestions(mixedQuestions);
-    } catch (err) {
-        console.error(err);
-        setMixValidState(false);
-    }
-});
 
 elements.folderSelector.addEventListener('change', e => {
-    setMixValidState(true);
-
     const selectedFolder = e.target.value;
     populateQuizDropdown(selectedFolder);
 
@@ -6827,8 +6698,6 @@ elements.folderSelector.addEventListener('change', e => {
 });
 
 elements.quizSelector.addEventListener('change', async e => {
-    setMixValidState(true);
-
     const selectedQuiz = e.target.value;
 
     if (!selectedQuiz) {
@@ -6836,7 +6705,6 @@ elements.quizSelector.addEventListener('change', async e => {
         return;
     }
 
-    elements.mixInput.value = '';
 
     try {
         await loadSelectedQuiz(selectedQuiz);
