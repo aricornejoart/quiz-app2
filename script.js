@@ -1,4 +1,4 @@
- /*
+/*
 MODIFICATION RULES FOR THIS APP
 - Preserve existing behavior and visuals unless the request explicitly says otherwise.
 - Keep code modular by feature even though this build uses a single JS file.
@@ -48,6 +48,7 @@ MODIFICATION RULES FOR THIS APP
         currentIndex: 0,
         questionIdCounter: 0,
         quizListCache: [],
+        googleSheetsImportQuizzes: [],
         sourceQuestions: [],
         emptyQuizMessage: '',
         isAppFullscreen: false,
@@ -108,7 +109,7 @@ MODIFICATION RULES FOR THIS APP
             editingQuizType: 'multiple_choice',
             studioQuizQuestions: [],
             pendingInsertAfterQuestionId: null,
-            currentStudioSection: 'folders',
+            currentStudioSection: 'home',
             lastError: '',
             starringInFlight: false,
             studioQuestionSearchQuery: '',
@@ -127,12 +128,6 @@ MODIFICATION RULES FOR THIS APP
         closeAuthBtn: document.getElementById('closeAuthBtn'),
         authStatus: document.getElementById('authStatus'),
         authSessionSummary: document.getElementById('authSessionSummary'),
-        authProfileSummary: document.getElementById('authProfileSummary'),
-        authFolderCount: document.getElementById('authFolderCount'),
-        authQuizCount: document.getElementById('authQuizCount'),
-        authQuestionCount: document.getElementById('authQuestionCount'),
-        authDisplayName: document.getElementById('authDisplayName'),
-        authSaveProfileBtn: document.getElementById('authSaveProfileBtn'),
         authEmail: document.getElementById('authEmail'),
         authPassword: document.getElementById('authPassword'),
         authSignInBtn: document.getElementById('authSignInBtn'),
@@ -144,6 +139,9 @@ MODIFICATION RULES FOR THIS APP
         quizStudioSectionButtons: Array.from(document.querySelectorAll('[data-studio-section-target]')),
         quizStudioSections: Array.from(document.querySelectorAll('[data-studio-section]')),
         creatorStatus: document.getElementById('creatorStatus'),
+        studioRecentQuizList: document.getElementById('studioRecentQuizList'),
+        studioRecentFolderList: document.getElementById('studioRecentFolderList'),
+        studioProgressPanel: document.getElementById('studioProgressPanel'),
         studioFolderList: document.getElementById('studioFolderList'),
         studioQuizList: document.getElementById('studioQuizList'),
         importSourceFolderSelect: document.getElementById('importSourceFolderSelect'),
@@ -256,8 +254,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     // ================= SUPABASE FRONTEND BOOTSTRAP =================
-    // Google Sheets remains available while Supabase owns signed-in authoring,
-    // study data, and private media storage for new image uploads.
+    // Supabase owns signed-in study data, authoring, starred state,
+    // and private media. Google Sheets remains an import source only.
     function getSupabaseConfig() {
         const url = CONFIG.supabase.url;
         const publishableKey = CONFIG.supabase.publishableKey;
@@ -947,7 +945,7 @@ MODIFICATION RULES FOR THIS APP
                     <input class="studio-inline-input" type="text" value="${escapeHtml(quiz.name)}" data-quiz-rename-input>
                     <select class="studio-inline-select" data-quiz-folder-select>${folderOptions}</select>
                     <button type="button" class="auth-action-btn" data-action="save-quiz">Save</button>
-                    <button type="button" class="auth-action-btn" data-action="load-quiz">Load</button>
+                    <button type="button" class="auth-action-btn" data-action="load-quiz">Study</button>
                     <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
                     <button type="button" class="auth-action-btn auth-secondary-btn" data-action="duplicate-quiz">Duplicate</button>
                     <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-quiz">Delete</button>
@@ -957,35 +955,180 @@ MODIFICATION RULES FOR THIS APP
         }).join('');
     }
 
+    function getStudioUpdatedTime(value) {
+        const timestamp = Date.parse(value || '');
+        return Number.isFinite(timestamp) ? timestamp : 0;
+    }
+
+    function formatStudioUpdatedLabel(value) {
+        const timestamp = getStudioUpdatedTime(value);
+        if (!timestamp) return 'No update date yet';
+        return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(timestamp));
+    }
+
+    function sortStudioRecentItems(a, b) {
+        const updatedDelta = getStudioUpdatedTime(b.updatedAt) - getStudioUpdatedTime(a.updatedAt);
+        if (updatedDelta) return updatedDelta;
+
+        const sortDelta = Number(b.sortOrder ?? b.sort_order ?? 0) - Number(a.sortOrder ?? a.sort_order ?? 0);
+        if (sortDelta) return sortDelta;
+
+        return String(a.name || '').localeCompare(String(b.name || ''));
+    }
+
+    function getStudioQuizTypeCounts() {
+        return state.auth.managedQuizzes.reduce((counts, quiz) => {
+            const key = quiz.quizType || 'mixed';
+            counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, { multiple_choice: 0, flashcard: 0, hierarchy: 0, classify: 0, mixed: 0 });
+    }
+
+    function renderStudioHomeDashboard() {
+        const signedIn = !!state.auth.user;
+
+        if (elements.studioRecentQuizList) {
+            if (!signedIn) {
+                elements.studioRecentQuizList.innerHTML = '<div class="studio-list-empty">Sign in to see recent quizzes.</div>';
+            } else if (!state.auth.managedQuizzes.length) {
+                elements.studioRecentQuizList.innerHTML = '<div class="studio-list-empty">No Supabase quizzes yet.</div>';
+            } else {
+                elements.studioRecentQuizList.innerHTML = [...state.auth.managedQuizzes]
+                    .sort(sortStudioRecentItems)
+                    .slice(0, 5)
+                    .map(quiz => {
+                        const folderLabel = quiz.folderName || 'No folder';
+                        const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
+                        const typeLabel = quiz.typeLabel || 'Mixed types';
+                        return `
+                            <div class="studio-list-item studio-dashboard-item" data-home-quiz-id="${escapeHtml(quiz.id)}">
+                              <div class="studio-list-meta">
+                                <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
+                                <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)} · Updated ${escapeHtml(formatStudioUpdatedLabel(quiz.updatedAt))}</div>
+                              </div>
+                              <div class="studio-list-controls">
+                                <button type="button" class="auth-action-btn" data-home-action="edit-quiz">Edit</button>
+                                <button type="button" class="auth-action-btn auth-secondary-btn" data-home-action="study-quiz">Study</button>
+                              </div>
+                            </div>
+                        `;
+                    }).join('');
+            }
+        }
+
+        if (elements.studioRecentFolderList) {
+            if (!signedIn) {
+                elements.studioRecentFolderList.innerHTML = '<div class="studio-list-empty">Sign in to see recent folders.</div>';
+            } else if (!state.auth.supabaseFolders.length) {
+                elements.studioRecentFolderList.innerHTML = '<div class="studio-list-empty">No Supabase folders yet.</div>';
+            } else {
+                const folderRows = state.auth.supabaseFolders.map(folder => {
+                    const quizzes = state.auth.managedQuizzes.filter(quiz => quiz.folderId === folder.id);
+                    const quizCount = quizzes.length;
+                    const questionCount = quizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0);
+                    const mostRecentQuizTime = quizzes.reduce((maxValue, quiz) => Math.max(maxValue, getStudioUpdatedTime(quiz.updatedAt)), 0);
+                    const folderTime = Math.max(getStudioUpdatedTime(folder.updatedAt), mostRecentQuizTime);
+                    return {
+                        ...folder,
+                        quizCount,
+                        questionCount,
+                        updatedAt: folderTime ? new Date(folderTime).toISOString() : folder.updatedAt
+                    };
+                });
+
+                elements.studioRecentFolderList.innerHTML = folderRows
+                    .sort(sortStudioRecentItems)
+                    .slice(0, 5)
+                    .map(folder => {
+                        const quizLabel = folder.quizCount === 1 ? '1 quiz' : `${folder.quizCount} quizzes`;
+                        const questionLabel = folder.questionCount === 1 ? '1 question' : `${folder.questionCount} questions`;
+                        return `
+                            <div class="studio-list-item studio-dashboard-item" data-home-folder-id="${escapeHtml(folder.id)}">
+                              <div class="studio-list-meta">
+                                <div class="studio-list-title">${escapeHtml(folder.name)}</div>
+                                <div class="studio-list-subtitle">${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)} · Updated ${escapeHtml(formatStudioUpdatedLabel(folder.updatedAt))}</div>
+                              </div>
+                              <div class="studio-list-controls">
+                                <button type="button" class="auth-action-btn" data-home-action="open-folder">Open Folders</button>
+                              </div>
+                            </div>
+                        `;
+                    }).join('');
+            }
+        }
+
+        if (elements.studioProgressPanel) {
+            if (!signedIn) {
+                elements.studioProgressPanel.innerHTML = '<div class="studio-list-empty">Sign in to see your library overview.</div>';
+                return;
+            }
+
+            const folderCount = state.auth.supabaseFolders.length;
+            const quizCount = state.auth.managedQuizzes.length;
+            const questionCount = state.auth.managedQuizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0);
+            const typeCounts = getStudioQuizTypeCounts();
+            const cards = [
+                ['Folders', folderCount],
+                ['Quizzes', quizCount],
+                ['Questions', questionCount],
+                ['Multiple Choice', typeCounts.multiple_choice || 0],
+                ['Flashcards', typeCounts.flashcard || 0],
+                ['Hierarchy', typeCounts.hierarchy || 0],
+                ['Classify', typeCounts.classify || 0],
+                ['Mixed Type', typeCounts.mixed || 0]
+            ];
+
+            elements.studioProgressPanel.innerHTML = cards.map(([label, value]) => `
+                <div class="studio-progress-card">
+                  <span>${escapeHtml(label)}</span>
+                  <strong>${escapeHtml(value)}</strong>
+                </div>
+            `).join('');
+        }
+    }
+
     async function loadCreatorFolders() {
         if (!state.auth.client || !state.auth.user?.id) {
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
             renderFolderManagementList();
+            renderStudioHomeDashboard();
             return [];
         }
 
-        const { data, error } = await state.auth.client
+        let folderResult = await state.auth.client
             .from('folders')
-            .select('id, name, sort_order')
+            .select('id, name, sort_order, updated_at')
             .order('sort_order', { ascending: true })
             .order('name', { ascending: true });
 
+        if (folderResult.error && /updated_at/i.test(folderResult.error.message || '')) {
+            folderResult = await state.auth.client
+                .from('folders')
+                .select('id, name, sort_order')
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true });
+        }
+
+        const { data, error } = folderResult;
         if (error) {
             console.error('Failed to load creator folders:', error);
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
             renderFolderManagementList();
+            renderStudioHomeDashboard();
             return [];
         }
 
         state.auth.supabaseFolders = (data || []).map(folder => ({
             id: folder.id,
             name: normalizeFolderName(folder.name),
-            sort_order: Number(folder.sort_order ?? 0)
+            sort_order: Number(folder.sort_order ?? 0),
+            updatedAt: normalizeSheetText(folder.updated_at)
         }));
         populateCreatorFolderSelect();
         renderFolderManagementList();
+        renderStudioHomeDashboard();
         return state.auth.supabaseFolders;
     }
 
@@ -993,14 +1136,15 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.client || !state.auth.user?.id) {
             state.auth.managedQuizzes = [];
             renderQuizManagementList();
+            renderStudioHomeDashboard();
             return [];
         }
 
         try {
-            const [{ data: quizzes, error: quizzesError }, { data: questionRows, error: questionsError }] = await Promise.all([
+            let [{ data: quizzes, error: quizzesError }, { data: questionRows, error: questionsError }] = await Promise.all([
                 state.auth.client
                     .from('quizzes')
-                    .select('id, folder_id, name, sort_order, is_archived')
+                    .select('id, folder_id, name, sort_order, is_archived, updated_at')
                     .order('sort_order', { ascending: true })
                     .order('name', { ascending: true }),
                 state.auth.client
@@ -1009,7 +1153,17 @@ MODIFICATION RULES FOR THIS APP
                     .order('sort_order', { ascending: true })
             ]);
 
-            if (quizzesError) throw quizzesError;
+            if (quizzesError && /updated_at/i.test(quizzesError.message || '')) {
+                const { data: fallbackQuizzes, error: fallbackQuizzesError } = await state.auth.client
+                    .from('quizzes')
+                    .select('id, folder_id, name, sort_order, is_archived')
+                    .order('sort_order', { ascending: true })
+                    .order('name', { ascending: true });
+                if (fallbackQuizzesError) throw fallbackQuizzesError;
+                quizzes = fallbackQuizzes;
+            } else if (quizzesError) {
+                throw quizzesError;
+            }
             if (questionsError) throw questionsError;
 
             const questionMap = new Map();
@@ -1042,16 +1196,19 @@ MODIFICATION RULES FOR THIS APP
                     quizType,
                     typeLabel: typeLabelMap[quizType] || 'Mixed types',
                     sortOrder: Number(quiz.sort_order ?? 0),
+                    updatedAt: normalizeSheetText(quiz.updated_at),
                     firstQuestionId: rows[0]?.id || ''
                 };
             });
 
             renderQuizManagementList();
+            renderStudioHomeDashboard();
             return state.auth.managedQuizzes;
         } catch (error) {
             console.error('Failed to load managed Supabase quizzes:', error);
             state.auth.managedQuizzes = [];
             renderQuizManagementList();
+            renderStudioHomeDashboard();
             return [];
         }
     }
@@ -1059,11 +1216,18 @@ MODIFICATION RULES FOR THIS APP
     async function refreshStudioManagementData() {
         await loadCreatorFolders();
         await loadManagedSupabaseQuizzes();
-        updateAuthProfileSummary();
+        await loadGoogleSheetsImportCatalog();
+        renderStudioHomeDashboard();
     }
 
     function getGoogleSheetsQuizDescriptors() {
-        return state.quizListCache.filter(item => isQuizDescriptor(item) && item.source === DATA_SOURCES.GOOGLE_SHEETS);
+        return (state.googleSheetsImportQuizzes || []).filter(item => isQuizDescriptor(item) && item.source === DATA_SOURCES.GOOGLE_SHEETS);
+    }
+
+    function getGoogleSheetsQuizDescriptorById(selectorValue = '') {
+        const normalizedValue = normalizeSheetText(selectorValue);
+        if (!normalizedValue) return null;
+        return getGoogleSheetsQuizDescriptors().find(item => item.id === normalizedValue || encodeQuizSelectorValue(item) === normalizedValue) || null;
     }
 
     function getGoogleSheetsFolderNames() {
@@ -2457,10 +2621,10 @@ MODIFICATION RULES FOR THIS APP
         return rows[0] || null;
     }
 
-    function setQuizStudioSection(sectionName = 'folders', options = {}) {
-        const nextSection = ['folders', 'manage', 'import', 'editor'].includes(sectionName)
+    function setQuizStudioSection(sectionName = 'home', options = {}) {
+        const nextSection = ['home', 'folders', 'manage', 'import', 'editor'].includes(sectionName)
             ? sectionName
-            : 'folders';
+            : 'home';
 
         if (!options.force && nextSection !== state.auth.currentStudioSection && state.auth.currentStudioSection === 'editor' && !confirmDiscardStudioChanges(`switch to the ${nextSection} section`)) {
             return false;
@@ -2638,31 +2802,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getUserDisplayName() {
-        const profileName = normalizeSheetText(state.auth.profile?.display_name);
-        if (profileName) return profileName;
-
-        const metadataName = normalizeSheetText(state.auth.user?.user_metadata?.display_name);
-        if (metadataName) return metadataName;
-
         const email = normalizeSheetText(state.auth.user?.email);
         return email || 'Signed in';
-    }
-
-    function updateAuthProfileSummary() {
-        const signedIn = !!state.auth.user;
-        if (elements.authProfileSummary) {
-            elements.authProfileSummary.classList.toggle('hidden', !signedIn);
-        }
-
-        const folderCount = signedIn ? state.auth.supabaseFolders.length : 0;
-        const quizCount = signedIn ? state.auth.managedQuizzes.length : 0;
-        const questionCount = signedIn
-            ? state.auth.managedQuizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0)
-            : 0;
-
-        if (elements.authFolderCount) elements.authFolderCount.textContent = String(folderCount);
-        if (elements.authQuizCount) elements.authQuizCount.textContent = String(quizCount);
-        if (elements.authQuestionCount) elements.authQuestionCount.textContent = String(questionCount);
     }
 
     function updateAuthUI() {
@@ -2685,11 +2826,7 @@ MODIFICATION RULES FOR THIS APP
         } else if (signedIn) {
             setAuthStatus('Supabase connected. Session is active.', 'success');
         } else if (state.auth.initialized) {
-            setAuthStatus('Supabase connected. Sign in or create an account to continue setup.');
-        }
-
-        if (elements.authDisplayName && signedIn) {
-            elements.authDisplayName.value = getUserDisplayName();
+            setAuthStatus('Supabase connected. Sign in to use Study Bunny or create an account.');
         }
 
         if (elements.authEmail) {
@@ -2702,14 +2839,6 @@ MODIFICATION RULES FOR THIS APP
             if (signedIn) elements.authPassword.value = '';
         }
 
-        if (elements.authDisplayName) {
-            elements.authDisplayName.disabled = !configured;
-        }
-
-        if (elements.authSaveProfileBtn) {
-            elements.authSaveProfileBtn.disabled = !configured || !signedIn;
-        }
-
         [elements.authSignInBtn, elements.authSignUpBtn].forEach(el => {
             if (!el) return;
             el.disabled = !configured || signedIn;
@@ -2719,7 +2848,7 @@ MODIFICATION RULES FOR THIS APP
             elements.authSignOutBtn.disabled = !configured || !signedIn;
         }
 
-        updateAuthProfileSummary();
+        renderStudioHomeDashboard();
         updateCreatorUI();
     }
 
@@ -2827,6 +2956,28 @@ MODIFICATION RULES FOR THIS APP
         return targetQuiz;
     }
 
+    async function studySupabaseQuizFromStudio(quizId) {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        if (!normalizedQuizId) return null;
+
+        if (!state.auth.user?.id) {
+            setCreatorStatus('Sign in before studying a quiz.', 'error');
+            return null;
+        }
+
+        if (state.auth.studioHasUnsavedChanges && !confirmDiscardStudioChanges('study this quiz')) {
+            return null;
+        }
+
+        const targetQuiz = await refreshQuizCatalog({ selectQuizId: `sb:${normalizedQuizId}`, loadSelectedQuiz: true });
+        if (!targetQuiz) {
+            throw new Error('Quiz not found');
+        }
+
+        closeQuizStudioPage(true);
+        return targetQuiz;
+    }
+
     async function syncAuthFromSession(session) {
         state.auth.session = session || null;
         state.auth.user = session?.user || null;
@@ -2838,15 +2989,22 @@ MODIFICATION RULES FOR THIS APP
             state.auth.profile = null;
             state.auth.supabaseFolders = [];
             state.auth.managedQuizzes = [];
-            state.auth.currentStudioSection = 'folders';
+            state.googleSheetsImportQuizzes = [];
+            state.auth.currentStudioSection = 'home';
             clearCreatorInputs();
             populateCreatorFolderSelect();
             renderFolderManagementList();
             renderQuizManagementList();
+            renderStudioHomeDashboard();
         }
 
         updateAuthUI();
         await refreshQuizCatalog();
+
+        if (!state.auth.user?.id) {
+            clearActiveQuizSelection('Sign in to load your quizzes.');
+            return;
+        }
 
         if (state.sourceQuestions.length) {
             if (state.auth.user?.id) {
@@ -2900,69 +3058,14 @@ MODIFICATION RULES FOR THIS APP
     function getAuthFormValues() {
         return {
             email: normalizeSheetText(elements.authEmail?.value).toLowerCase(),
-            password: String(elements.authPassword?.value || ''),
-            displayName: normalizeSheetText(elements.authDisplayName?.value)
+            password: String(elements.authPassword?.value || '')
         };
-    }
-
-    async function handleAuthSaveProfile() {
-        if (!state.auth.client || !state.auth.user?.id) return;
-
-        const displayName = normalizeSheetText(elements.authDisplayName?.value);
-        if (displayName.length > 80) {
-            setAuthStatus('Display name must be 80 characters or fewer.', 'error');
-            return;
-        }
-
-        setAuthStatus('Saving profile...');
-
-        const { error: metadataError } = await state.auth.client.auth.updateUser({
-            data: { display_name: displayName }
-        });
-
-        if (metadataError) {
-            setAuthStatus(metadataError.message || 'Could not update account metadata.', 'error');
-            return;
-        }
-
-        const { data: profileRow, error: profileError } = await state.auth.client
-            .from('profiles')
-            .upsert({
-                id: state.auth.user.id,
-                email: normalizeSheetText(state.auth.user.email),
-                display_name: displayName
-            }, { onConflict: 'id' })
-            .select('id, email, display_name')
-            .maybeSingle();
-
-        if (profileError) {
-            console.error('Could not save profile row:', profileError);
-            setAuthStatus('Account metadata saved, but the profile table update failed. Run the Phase 19 Supabase SQL, then try Save Profile again.', 'error');
-            const { data } = await state.auth.client.auth.getSession();
-            state.auth.session = data?.session || state.auth.session;
-            state.auth.user = data?.session?.user || state.auth.user;
-            updateAuthUI();
-            return;
-        }
-
-        state.auth.profile = profileRow || {
-            id: state.auth.user.id,
-            email: normalizeSheetText(state.auth.user.email),
-            display_name: displayName
-        };
-
-        const { data } = await state.auth.client.auth.getSession();
-        state.auth.session = data?.session || state.auth.session;
-        state.auth.user = data?.session?.user || state.auth.user;
-
-        setAuthStatus('Profile saved.', 'success');
-        updateAuthUI();
     }
 
     async function handleAuthSignUp() {
         if (!state.auth.client) return;
 
-        const { email, password, displayName } = getAuthFormValues();
+        const { email, password } = getAuthFormValues();
         if (!email || !password) {
             setAuthStatus('Enter an email and password to create an account.', 'error');
             return;
@@ -2972,12 +3075,7 @@ MODIFICATION RULES FOR THIS APP
 
         const { data, error } = await state.auth.client.auth.signUp({
             email,
-            password,
-            options: {
-                data: {
-                    display_name: displayName
-                }
-            }
+            password
         });
 
         if (error) {
@@ -4179,7 +4277,7 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const quizDescriptor = getQuizBySelectorValue(elements.importSourceQuizSelect?.value || '');
+        const quizDescriptor = getGoogleSheetsQuizDescriptorById(elements.importSourceQuizSelect?.value || '');
         if (!quizDescriptor || quizDescriptor.source !== DATA_SOURCES.GOOGLE_SHEETS) {
             setCreatorStatus('Choose a Google Sheets quiz to import.', 'error');
             return;
@@ -5099,6 +5197,24 @@ async function loadQuizListFromGoogleSheets() {
         .filter(Boolean);
 }
 
+async function loadGoogleSheetsImportCatalog() {
+    if (!state.auth.user?.id) {
+        state.googleSheetsImportQuizzes = [];
+        renderGoogleSheetsImportControls();
+        return [];
+    }
+
+    try {
+        state.googleSheetsImportQuizzes = await loadQuizListFromGoogleSheets();
+    } catch (error) {
+        console.error('Failed to load Google Sheets import catalog:', error);
+        state.googleSheetsImportQuizzes = [];
+    }
+
+    renderGoogleSheetsImportControls();
+    return state.googleSheetsImportQuizzes;
+}
+
 async function loadQuizListFromSupabase() {
     if (!state.auth.client || !state.auth.user?.id) {
         return [];
@@ -5304,15 +5420,14 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
 }
 
 async function loadQuizList() {
-    const [googleSheetsQuizzes, supabaseQuizzes] = await Promise.all([
-        loadQuizListFromGoogleSheets(),
-        loadQuizListFromSupabase()
-    ]);
+    if (!state.auth.user?.id) {
+        return [];
+    }
 
-    const quizDescriptors = [...supabaseQuizzes, ...googleSheetsQuizzes];
-    const folderDeckDescriptors = buildFolderDeckDescriptors(quizDescriptors);
+    const supabaseQuizzes = await loadQuizListFromSupabase();
+    const folderDeckDescriptors = buildFolderDeckDescriptors(supabaseQuizzes);
 
-    return [...quizDescriptors, ...folderDeckDescriptors];
+    return [...supabaseQuizzes, ...folderDeckDescriptors];
 }
 
 async function loadQuestions(quizReference) {
@@ -5336,6 +5451,16 @@ async function populateFolderDropdown() {
     state.quizListCache = await loadQuizList();
     elements.folderSelector.innerHTML = '<option value="">Choose folder</option>';
 
+    if (!state.auth.user?.id) {
+        elements.folderSelector.innerHTML = '<option value="">Sign in required</option>';
+        elements.folderSelector.value = '';
+        elements.folderSelector.disabled = true;
+        resetQuizSelector();
+        renderGoogleSheetsImportControls();
+        return state.quizListCache;
+    }
+
+    elements.folderSelector.disabled = false;
     getFolderNames().forEach(folderName => {
         const opt = document.createElement('option');
         opt.value = folderName;
@@ -5380,10 +5505,18 @@ function populateQuizDropdown(folderName) {
 }
 
 async function loadSelectedQuiz(selectorValue) {
+    if (!state.auth.user?.id) {
+        throw new Error('Sign in required');
+    }
+
     const selectedQuiz = getQuizBySelectorValue(selectorValue);
 
     if (!selectedQuiz) {
         throw new Error('Quiz not found');
+    }
+
+    if (selectedQuiz.source !== DATA_SOURCES.SUPABASE && selectedQuiz.source !== DATA_SOURCES.FOLDER_DECK) {
+        throw new Error('Only signed-in Supabase quizzes can be studied from the app. Import Google Sheets quizzes into Supabase first.');
     }
 
     const loadedQuestions = await loadQuestionsForQuizDescriptor(selectedQuiz);
@@ -7569,6 +7702,11 @@ if (elements.questionStarBtn) {
 
 
 elements.folderSelector.addEventListener('change', e => {
+    if (!state.auth.user?.id) {
+        clearActiveQuizSelection('Sign in to load your quizzes.');
+        return;
+    }
+
     const selectedFolder = e.target.value;
     populateQuizDropdown(selectedFolder);
 
@@ -7581,6 +7719,11 @@ elements.folderSelector.addEventListener('change', e => {
 });
 
 elements.quizSelector.addEventListener('change', async e => {
+    if (!state.auth.user?.id) {
+        clearActiveQuizSelection('Sign in to load your quizzes.');
+        return;
+    }
+
     const selectedQuiz = e.target.value;
 
     if (!selectedQuiz) {
@@ -7659,14 +7802,6 @@ if (elements.authSignUpBtn) {
     });
 }
 
-if (elements.authSaveProfileBtn) {
-    elements.authSaveProfileBtn.addEventListener('click', () => {
-        handleAuthSaveProfile().catch(err => {
-            console.error(err);
-            setAuthStatus('Profile save failed.', 'error');
-        });
-    });
-}
 
 if (elements.authSignOutBtn) {
     elements.authSignOutBtn.addEventListener('click', () => {
@@ -7688,13 +7823,13 @@ if (elements.createFolderBtn) {
 
 if (elements.openQuizStudioBtn) {
     elements.openQuizStudioBtn.addEventListener('click', () => {
-        openQuizStudioPage('folders');
+        openQuizStudioPage('home');
     });
 }
 
 elements.quizStudioSectionButtons.forEach(button => {
     button.addEventListener('click', () => {
-        setQuizStudioSection(button.dataset.studioSectionTarget || 'folders');
+        setQuizStudioSection(button.dataset.studioSectionTarget || 'home');
     });
 });
 
@@ -8090,6 +8225,43 @@ if (elements.createFlashcardDefinitionImageClearBtn) {
     });
 }
 
+function handleStudioHomeQuizAction(e) {
+    const item = e.target.closest('[data-home-quiz-id]');
+    if (!item) return;
+
+    const quizId = item.dataset.homeQuizId;
+    if (e.target.matches('[data-home-action="edit-quiz"]')) {
+        loadQuizIntoEditor(quizId).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the quiz editor.', 'error');
+        });
+    }
+
+    if (e.target.matches('[data-home-action="study-quiz"]')) {
+        studySupabaseQuizFromStudio(quizId).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the quiz into the study view.', 'error');
+        });
+    }
+}
+
+function handleStudioHomeFolderAction(e) {
+    const item = e.target.closest('[data-home-folder-id]');
+    if (!item) return;
+
+    if (e.target.matches('[data-home-action="open-folder"]')) {
+        setQuizStudioSection('folders');
+    }
+}
+
+if (elements.studioRecentQuizList) {
+    elements.studioRecentQuizList.addEventListener('click', handleStudioHomeQuizAction);
+}
+
+if (elements.studioRecentFolderList) {
+    elements.studioRecentFolderList.addEventListener('click', handleStudioHomeFolderAction);
+}
+
 if (elements.studioFolderList) {
     elements.studioFolderList.addEventListener('click', e => {
         const item = e.target.closest('[data-folder-id]');
@@ -8150,7 +8322,7 @@ if (elements.studioQuizList) {
         }
 
         if (e.target.matches('[data-action="load-quiz"]')) {
-            refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true }).catch(err => {
+            studySupabaseQuizFromStudio(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not load the quiz into the study view.', 'error');
             });
@@ -8432,8 +8604,13 @@ window.addEventListener('orientationchange', handleViewportChange);
 
         const list = await populateFolderDropdown();
 
+        if (!state.auth.user?.id) {
+            clearActiveQuizSelection('Sign in to load your quizzes.');
+            return;
+        }
+
         if (!list.length) {
-            elements.questionTextEl.innerText = 'No quizzes found.';
+            elements.questionTextEl.innerText = 'No Supabase quizzes found for this account yet.';
             return;
         }
 

@@ -289,29 +289,8 @@ MODIFICATION RULES FOR THIS APP
             <div id="authStatus" class="auth-status">Supabase not configured yet.</div>
             <div id="authSessionSummary" class="auth-session-summary">Signed out</div>
 
-            <div id="authProfileSummary" class="auth-profile-summary hidden" aria-live="polite">
-              <div class="auth-profile-stat">
-                <span>Folders</span>
-                <strong id="authFolderCount">0</strong>
-              </div>
-              <div class="auth-profile-stat">
-                <span>Quizzes</span>
-                <strong id="authQuizCount">0</strong>
-              </div>
-              <div class="auth-profile-stat">
-                <span>Questions</span>
-                <strong id="authQuestionCount">0</strong>
-              </div>
-            </div>
 
             <div class="auth-form">
-              <label class="auth-field">
-                <span>Display name</span>
-                <input id="authDisplayName" type="text" autocomplete="name" placeholder="Optional">
-              </label>
-
-              <button id="authSaveProfileBtn" type="button" class="auth-action-btn auth-profile-save-btn">Save Profile</button>
-
               <label class="auth-field">
                 <span>Email</span>
                 <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
@@ -338,7 +317,7 @@ MODIFICATION RULES FOR THIS APP
             </div>
 
             <div class="auth-source-note">
-              Google Sheets quizzes still work, and signed-in Supabase quizzes support multiple choice, flashcard, hierarchy, classify, stars, imports, and private media.
+              Sign-in is required before studying or managing quizzes. Your Supabase folders, quizzes, questions, stars, and private media stay tied to your account. Google Sheets remains available only as an import source inside Quiz Studio.
             </div>
           </div>
         </div>
@@ -358,14 +337,37 @@ MODIFICATION RULES FOR THIS APP
             <div id="creatorStatus" class="creator-status">Sign in to create and manage Supabase quiz content.</div>
 
             <div class="quiz-studio-section-nav" role="tablist" aria-label="Quiz Studio sections">
-              <button id="quizStudioFoldersTab" type="button" class="quiz-studio-nav-btn active" data-studio-section-target="folders" role="tab" aria-selected="true">Folders</button>
+              <button id="quizStudioHomeTab" type="button" class="quiz-studio-nav-btn active" data-studio-section-target="home" role="tab" aria-selected="true">Home</button>
+              <button id="quizStudioFoldersTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="folders" role="tab" aria-selected="false">Folders</button>
               <button id="quizStudioManageTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="manage" role="tab" aria-selected="false">Manage Quizzes</button>
               <button id="quizStudioImportTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="import" role="tab" aria-selected="false">Import</button>
               <button id="quizStudioEditorTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="editor" role="tab" aria-selected="false">Quiz Editor</button>
             </div>
 
             <div class="quiz-studio-sections">
-              <section id="quizStudioFoldersSection" class="quiz-studio-section is-active" data-studio-section="folders" role="tabpanel">
+              <section id="quizStudioHomeSection" class="quiz-studio-section is-active" data-studio-section="home" role="tabpanel">
+                <div class="studio-dashboard-grid">
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Recent Quizzes</div>
+                    <div class="creator-note">Quickly reopen or study the quizzes you edited most recently.</div>
+                    <div id="studioRecentQuizList" class="studio-list studio-dashboard-list"></div>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Recent Folders</div>
+                    <div class="creator-note">Jump back into folder management for your most recently updated folders.</div>
+                    <div id="studioRecentFolderList" class="studio-list studio-dashboard-list"></div>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
+                    <div class="creator-subsection-title">Library Progress</div>
+                    <div class="creator-note">A simple content overview for now. Study-session history can come later in the optional stats phase.</div>
+                    <div id="studioProgressPanel" class="studio-progress-grid"></div>
+                  </section>
+                </div>
+              </section>
+
+              <section id="quizStudioFoldersSection" class="quiz-studio-section hidden" data-studio-section="folders" role="tabpanel">
                 <div class="studio-section-grid studio-section-grid-folders">
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Create Folder</div>
