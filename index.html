@@ -289,11 +289,28 @@ MODIFICATION RULES FOR THIS APP
             <div id="authStatus" class="auth-status">Supabase not configured yet.</div>
             <div id="authSessionSummary" class="auth-session-summary">Signed out</div>
 
+            <div id="authProfileSummary" class="auth-profile-summary hidden" aria-live="polite">
+              <div class="auth-profile-stat">
+                <span>Folders</span>
+                <strong id="authFolderCount">0</strong>
+              </div>
+              <div class="auth-profile-stat">
+                <span>Quizzes</span>
+                <strong id="authQuizCount">0</strong>
+              </div>
+              <div class="auth-profile-stat">
+                <span>Questions</span>
+                <strong id="authQuestionCount">0</strong>
+              </div>
+            </div>
+
             <div class="auth-form">
               <label class="auth-field">
                 <span>Display name</span>
                 <input id="authDisplayName" type="text" autocomplete="name" placeholder="Optional">
               </label>
+
+              <button id="authSaveProfileBtn" type="button" class="auth-action-btn auth-profile-save-btn">Save Profile</button>
 
               <label class="auth-field">
                 <span>Email</span>
@@ -321,7 +338,7 @@ MODIFICATION RULES FOR THIS APP
             </div>
 
             <div class="auth-source-note">
-              Google Sheets quizzes still work, and Supabase multiple-choice, flashcard, and hierarchy quizzes load when you are signed in.
+              Google Sheets quizzes still work, and signed-in Supabase quizzes support multiple choice, flashcard, hierarchy, classify, stars, imports, and private media.
             </div>
           </div>
         </div>

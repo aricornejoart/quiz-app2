@@ -1,4 +1,4 @@
-/*
+ /*
 MODIFICATION RULES FOR THIS APP
 - Preserve existing behavior and visuals unless the request explicitly says otherwise.
 - Keep code modular by feature even though this build uses a single JS file.
@@ -127,7 +127,12 @@ MODIFICATION RULES FOR THIS APP
         closeAuthBtn: document.getElementById('closeAuthBtn'),
         authStatus: document.getElementById('authStatus'),
         authSessionSummary: document.getElementById('authSessionSummary'),
+        authProfileSummary: document.getElementById('authProfileSummary'),
+        authFolderCount: document.getElementById('authFolderCount'),
+        authQuizCount: document.getElementById('authQuizCount'),
+        authQuestionCount: document.getElementById('authQuestionCount'),
         authDisplayName: document.getElementById('authDisplayName'),
+        authSaveProfileBtn: document.getElementById('authSaveProfileBtn'),
         authEmail: document.getElementById('authEmail'),
         authPassword: document.getElementById('authPassword'),
         authSignInBtn: document.getElementById('authSignInBtn'),
@@ -1054,6 +1059,7 @@ MODIFICATION RULES FOR THIS APP
     async function refreshStudioManagementData() {
         await loadCreatorFolders();
         await loadManagedSupabaseQuizzes();
+        updateAuthProfileSummary();
     }
 
     function getGoogleSheetsQuizDescriptors() {
@@ -2642,6 +2648,23 @@ MODIFICATION RULES FOR THIS APP
         return email || 'Signed in';
     }
 
+    function updateAuthProfileSummary() {
+        const signedIn = !!state.auth.user;
+        if (elements.authProfileSummary) {
+            elements.authProfileSummary.classList.toggle('hidden', !signedIn);
+        }
+
+        const folderCount = signedIn ? state.auth.supabaseFolders.length : 0;
+        const quizCount = signedIn ? state.auth.managedQuizzes.length : 0;
+        const questionCount = signedIn
+            ? state.auth.managedQuizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0)
+            : 0;
+
+        if (elements.authFolderCount) elements.authFolderCount.textContent = String(folderCount);
+        if (elements.authQuizCount) elements.authQuizCount.textContent = String(quizCount);
+        if (elements.authQuestionCount) elements.authQuestionCount.textContent = String(questionCount);
+    }
+
     function updateAuthUI() {
         const configured = state.auth.configured;
         const signedIn = !!state.auth.user;
@@ -2665,19 +2688,38 @@ MODIFICATION RULES FOR THIS APP
             setAuthStatus('Supabase connected. Sign in or create an account to continue setup.');
         }
 
-        if (elements.authDisplayName && signedIn && !elements.authDisplayName.value) {
+        if (elements.authDisplayName && signedIn) {
             elements.authDisplayName.value = getUserDisplayName();
         }
 
-        [elements.authEmail, elements.authPassword, elements.authDisplayName, elements.authSignInBtn, elements.authSignUpBtn].forEach(el => {
+        if (elements.authEmail) {
+            elements.authEmail.disabled = !configured || signedIn;
+            if (signedIn) elements.authEmail.value = normalizeSheetText(state.auth.user?.email);
+        }
+
+        if (elements.authPassword) {
+            elements.authPassword.disabled = !configured || signedIn;
+            if (signedIn) elements.authPassword.value = '';
+        }
+
+        if (elements.authDisplayName) {
+            elements.authDisplayName.disabled = !configured;
+        }
+
+        if (elements.authSaveProfileBtn) {
+            elements.authSaveProfileBtn.disabled = !configured || !signedIn;
+        }
+
+        [elements.authSignInBtn, elements.authSignUpBtn].forEach(el => {
             if (!el) return;
-            el.disabled = !configured;
+            el.disabled = !configured || signedIn;
         });
 
         if (elements.authSignOutBtn) {
             elements.authSignOutBtn.disabled = !configured || !signedIn;
         }
 
+        updateAuthProfileSummary();
         updateCreatorUI();
     }
 
@@ -2861,6 +2903,60 @@ MODIFICATION RULES FOR THIS APP
             password: String(elements.authPassword?.value || ''),
             displayName: normalizeSheetText(elements.authDisplayName?.value)
         };
+    }
+
+    async function handleAuthSaveProfile() {
+        if (!state.auth.client || !state.auth.user?.id) return;
+
+        const displayName = normalizeSheetText(elements.authDisplayName?.value);
+        if (displayName.length > 80) {
+            setAuthStatus('Display name must be 80 characters or fewer.', 'error');
+            return;
+        }
+
+        setAuthStatus('Saving profile...');
+
+        const { error: metadataError } = await state.auth.client.auth.updateUser({
+            data: { display_name: displayName }
+        });
+
+        if (metadataError) {
+            setAuthStatus(metadataError.message || 'Could not update account metadata.', 'error');
+            return;
+        }
+
+        const { data: profileRow, error: profileError } = await state.auth.client
+            .from('profiles')
+            .upsert({
+                id: state.auth.user.id,
+                email: normalizeSheetText(state.auth.user.email),
+                display_name: displayName
+            }, { onConflict: 'id' })
+            .select('id, email, display_name')
+            .maybeSingle();
+
+        if (profileError) {
+            console.error('Could not save profile row:', profileError);
+            setAuthStatus('Account metadata saved, but the profile table update failed. Run the Phase 19 Supabase SQL, then try Save Profile again.', 'error');
+            const { data } = await state.auth.client.auth.getSession();
+            state.auth.session = data?.session || state.auth.session;
+            state.auth.user = data?.session?.user || state.auth.user;
+            updateAuthUI();
+            return;
+        }
+
+        state.auth.profile = profileRow || {
+            id: state.auth.user.id,
+            email: normalizeSheetText(state.auth.user.email),
+            display_name: displayName
+        };
+
+        const { data } = await state.auth.client.auth.getSession();
+        state.auth.session = data?.session || state.auth.session;
+        state.auth.user = data?.session?.user || state.auth.user;
+
+        setAuthStatus('Profile saved.', 'success');
+        updateAuthUI();
     }
 
     async function handleAuthSignUp() {
@@ -7559,6 +7655,15 @@ if (elements.authSignUpBtn) {
         handleAuthSignUp().catch(err => {
             console.error(err);
             setAuthStatus('Sign up failed.', 'error');
+        });
+    });
+}
+
+if (elements.authSaveProfileBtn) {
+    elements.authSaveProfileBtn.addEventListener('click', () => {
+        handleAuthSaveProfile().catch(err => {
+            console.error(err);
+            setAuthStatus('Profile save failed.', 'error');
         });
     });
 }

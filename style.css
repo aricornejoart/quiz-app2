@@ -3679,6 +3679,35 @@ body.fullscreen-mode.active-question-classify {
   color: var(--color-text-soft);
 }
 
+.auth-profile-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.auth-profile-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.auth-profile-stat span {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.auth-profile-stat strong {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-text-main);
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -3727,6 +3756,10 @@ body.fullscreen-mode.active-question-classify {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.auth-profile-save-btn {
+  align-self: start;
 }
 
 .auth-action-btn {
@@ -3823,8 +3856,13 @@ body.fullscreen-mode.active-question-classify {
     width: min(360px, calc(100vw - 24px));
   }
 
+  .auth-profile-summary,
   .auth-actions {
     grid-template-columns: 1fr;
+  }
+
+  .auth-profile-stat {
+    text-align: left;
   }
 }
 
