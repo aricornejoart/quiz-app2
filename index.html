@@ -330,7 +330,7 @@ MODIFICATION RULES FOR THIS APP
               <div class="quiz-studio-title-group">
                 <div class="quiz-studio-eyebrow">Supabase</div>
                 <h2 class="quiz-studio-title">Quiz Studio</h2>
-                <div class="quiz-studio-subtitle">Create folders, create quizzes, load entire folders as study decks, and manage Supabase quiz content.</div>
+                <div class="quiz-studio-subtitle">Create folders, create quizzes, study decks, manage Supabase quiz content, and export JSON backups.</div>
               </div>
             </div>
 
@@ -340,6 +340,7 @@ MODIFICATION RULES FOR THIS APP
               <button id="quizStudioHomeTab" type="button" class="quiz-studio-nav-btn active" data-studio-section-target="home" role="tab" aria-selected="true">Home</button>
               <button id="quizStudioFoldersTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="folders" role="tab" aria-selected="false">Folders</button>
               <button id="quizStudioManageTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="manage" role="tab" aria-selected="false">Manage Quizzes</button>
+              <button id="quizStudioBackupTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="backup" role="tab" aria-selected="false">Backup</button>
               <button id="quizStudioImportTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="import" role="tab" aria-selected="false">Import</button>
               <button id="quizStudioEditorTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="editor" role="tab" aria-selected="false">Quiz Editor</button>
             </div>
@@ -392,6 +393,40 @@ MODIFICATION RULES FOR THIS APP
                   <div class="creator-note">Edit quiz name, move a quiz to another folder, delete it, or open it in the editor to manage multiple questions or cards. In study mode, the quiz dropdown also includes a Study Entire Folder option.</div>
                   <div id="studioQuizList" class="studio-list"></div>
                 </section>
+              </section>
+
+              <section id="quizStudioBackupSection" class="quiz-studio-section hidden" data-studio-section="backup" role="tabpanel">
+                <div class="studio-section-grid">
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Export Quiz</div>
+                    <div class="creator-note">Download one Supabase quiz as a JSON backup file. This reads your data only and does not change Supabase.</div>
+                    <label class="auth-field">
+                      <span>Quiz</span>
+                      <select id="exportQuizSelect">
+                        <option value="">Choose quiz</option>
+                      </select>
+                    </label>
+                    <button id="exportQuizBtn" type="button" class="auth-action-btn">Export Quiz JSON</button>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Export Folder</div>
+                    <div class="creator-note">Download one folder and every quiz inside it as a JSON backup file.</div>
+                    <label class="auth-field">
+                      <span>Folder</span>
+                      <select id="exportFolderSelect">
+                        <option value="">Choose folder</option>
+                      </select>
+                    </label>
+                    <button id="exportFolderBtn" type="button" class="auth-action-btn">Export Folder JSON</button>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
+                    <div class="creator-subsection-title">Export Full Library</div>
+                    <div class="creator-note">Download all your Supabase folders, quizzes, questions, starred-question state, and private-media references as one JSON backup. Private Storage files are represented by metadata/references, not copied as image files.</div>
+                    <button id="exportAllBtn" type="button" class="auth-action-btn">Export All JSON Backup</button>
+                  </section>
+                </div>
               </section>
 
               
