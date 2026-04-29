@@ -3725,7 +3725,7 @@ body.fullscreen-mode.active-question-classify {
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
-  border-radius: 8px;
+  border-radius: 0 0 8px 8px;
   outline: none;
   font-family: inherit;
 }
@@ -4527,5 +4527,225 @@ body.fullscreen-mode.active-question-classify {
 @media (max-width: 900px) {
   .studio-flashcard-inline-fields {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Phase 21 Template Downloads + Learning Resources Rich Text ===== */
+.studio-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.studio-rich-text-field {
+  gap: 7px;
+}
+
+.studio-rich-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: nowrap;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px;
+  overflow: visible;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px 10px 0 0;
+}
+
+.studio-rich-icon-btn {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  box-sizing: border-box;
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-bg-control-hover);
+  border-radius: 7px;
+  cursor: pointer;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  flex: 0 0 28px;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.studio-rich-size-btn {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.studio-rich-icon-btn:hover {
+  background: var(--color-bg-control-hover);
+  border-color: var(--color-border-strong);
+}
+
+.studio-rich-icon-btn:active {
+  transform: scale(0.98);
+}
+
+.studio-rich-menu-wrap {
+  position: relative;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.studio-rich-menu-wrap > .studio-rich-icon-btn {
+  position: relative;
+  z-index: 2;
+}
+
+.studio-rich-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  min-width: 136px;
+  max-height: 190px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--color-bg-hover-soft);
+  border: 1px solid var(--color-bg-control-hover);
+  border-radius: 9px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+  z-index: 4600;
+  -webkit-overflow-scrolling: touch;
+}
+
+.studio-rich-size-menu {
+  min-width: 68px;
+  max-height: 174px;
+}
+
+.studio-rich-align-menu {
+  min-width: 110px;
+}
+
+.studio-rich-menu button {
+  width: 100%;
+  padding: 7px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  color: var(--color-text-main);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.15;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.studio-rich-menu button:hover {
+  background: var(--color-bg-control-hover);
+}
+
+.studio-rich-color-wrap {
+  position: relative;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.studio-rich-color-wrap .studio-rich-icon-btn {
+  pointer-events: none;
+}
+
+.studio-rich-hidden-color {
+  position: absolute;
+  inset: 0;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.studio-rich-color-icon {
+  font-weight: 900;
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 3px;
+}
+
+.studio-rich-highlight-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.studio-rich-editor {
+  width: 100%;
+  min-height: 118px;
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: 15px;
+  line-height: 1.45;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-bg-control-hover);
+  border-radius: 0 0 8px 8px;
+  outline: none;
+  font-family: inherit;
+  -webkit-overflow-scrolling: touch;
+}
+
+.studio-rich-editor:focus {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+}
+
+.studio-rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(224, 224, 255, 0.55);
+  pointer-events: none;
+}
+
+.studio-rich-editor.disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+#learningResourcesContent ul,
+#learningResourcesContent ol {
+  padding-left: 1.35em;
+  margin: 0.4em 0;
+}
+
+#learningResourcesContent li {
+  margin: 0.25em 0;
+}
+
+#learningResourcesContent p,
+#learningResourcesContent div {
+  margin: 0.35em 0;
+}
+
+@media (max-width: 640px) {
+  .studio-template-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-rich-toolbar {
+    gap: 3px;
   }
 }

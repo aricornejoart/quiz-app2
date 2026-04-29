@@ -153,6 +153,7 @@ MODIFICATION RULES FOR THIS APP
         previewBackupImportBtn: document.getElementById('previewBackupImportBtn'),
         importBackupBtn: document.getElementById('importBackupBtn'),
         importBackupPreview: document.getElementById('importBackupPreview'),
+        studioTemplateDownloadButtons: Array.from(document.querySelectorAll('[data-template-download]')),
         studioFolderList: document.getElementById('studioFolderList'),
         studioQuizList: document.getElementById('studioQuizList'),
         importSourceFolderSelect: document.getElementById('importSourceFolderSelect'),
@@ -200,6 +201,18 @@ MODIFICATION RULES FOR THIS APP
         createFlashcardDefinitionImageName: document.getElementById('createFlashcardDefinitionImageName'),
         createFlashcardDefinitionImageClearBtn: document.getElementById('createFlashcardDefinitionImageClearBtn'),
         createLearningResources: document.getElementById('createLearningResources'),
+        createLearningResourcesFontFamilyBtn: document.getElementById('createLearningResourcesFontFamilyBtn'),
+        createLearningResourcesFontSizeBtn: document.getElementById('createLearningResourcesFontSizeBtn'),
+        createLearningResourcesJustifyBtn: document.getElementById('createLearningResourcesJustifyBtn'),
+        createLearningResourcesColorBtn: document.getElementById('createLearningResourcesColorBtn'),
+        createLearningResourcesHighlightColorBtn: document.getElementById('createLearningResourcesHighlightColorBtn'),
+        createLearningResourcesColor: document.getElementById('createLearningResourcesColor'),
+        createLearningResourcesHighlightColor: document.getElementById('createLearningResourcesHighlightColor'),
+        createLearningResourcesRichControls: Array.from(document.querySelectorAll('[data-learning-rich-control]')),
+        createLearningResourcesRichMenuTriggers: Array.from(document.querySelectorAll('[data-rich-menu-trigger]')),
+        createLearningResourcesRichMenus: Array.from(document.querySelectorAll('[data-rich-menu]')),
+        createLearningResourcesRichStyleButtons: Array.from(document.querySelectorAll('[data-rich-style]')),
+        createLearningResourcesRichCommandChoices: Array.from(document.querySelectorAll('[data-rich-command-choice]')),
         createLearningResourcesImageFile: document.getElementById('createLearningResourcesImageFile'),
         createLearningResourcesImageName: document.getElementById('createLearningResourcesImageName'),
         createLearningResourcesImageClearBtn: document.getElementById('createLearningResourcesImageClearBtn'),
@@ -321,6 +334,293 @@ MODIFICATION RULES FOR THIS APP
         if (!plain) return '';
         return plain.split('\n').map(escapeHtml).join('<br>');
     }
+
+    // ================= RICH LEARNING RESOURCES HELPERS =================
+    // Learning Resources may store safe, limited HTML. All other authored text
+    // keeps the existing plain-text-to-HTML behavior.
+    const LEARNING_RESOURCES_ALLOWED_FONTS = new Set(['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS']);
+    const LEARNING_RESOURCES_ALLOWED_ALIGNMENTS = new Set(['left', 'center', 'right']);
+    const LEARNING_RESOURCES_FONT_SIZE_MAP = {
+        '1': '10px',
+        '2': '12px',
+        '3': '15px',
+        '4': '18px',
+        '5': '22px',
+        '6': '26px',
+        '7': '32px'
+    };
+    const LEARNING_RESOURCES_ALLOWED_FONT_SIZES = new Set(['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '28', '32']);
+
+    function isSafeLearningResourceColor(value) {
+        const color = normalizeSheetText(value);
+        if (!color) return false;
+        return /^#[0-9a-f]{3,8}$/i.test(color)
+            || /^rgba?\(\s*[0-9.]+%?\s*,\s*[0-9.]+%?\s*,\s*[0-9.]+%?(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(color)
+            || /^hsla?\(\s*[0-9.]+(?:deg)?\s*,\s*[0-9.]+%\s*,\s*[0-9.]+%(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(color)
+            || /^[a-z]+$/i.test(color);
+    }
+
+    function normalizeLearningResourcesFontSize(value) {
+        const raw = normalizeSheetText(value).replace(/px$/i, '');
+        return LEARNING_RESOURCES_ALLOWED_FONT_SIZES.has(raw) ? raw + 'px' : '';
+    }
+
+    function sanitizeLearningResourcesHtml(value) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return '';
+
+        const template = document.createElement('template');
+        template.innerHTML = raw;
+        const allowedTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'DIV', 'P', 'UL', 'OL', 'LI', 'SPAN', 'FONT']);
+
+        const sanitizeNode = node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                return document.createTextNode(node.textContent || '');
+            }
+            if (node.nodeType !== Node.ELEMENT_NODE) {
+                return document.createDocumentFragment();
+            }
+
+            const sourceTag = node.tagName.toUpperCase();
+            const targetTag = allowedTags.has(sourceTag)
+                ? (sourceTag === 'FONT' ? 'span' : sourceTag.toLowerCase())
+                : 'span';
+            const el = document.createElement(targetTag);
+            const styleParts = [];
+            const sourceStyle = node.style || {};
+
+            const sourceColor = sourceStyle.color || node.getAttribute('color') || '';
+            if (isSafeLearningResourceColor(sourceColor)) {
+                styleParts.push(`color: ${sourceColor}`);
+            }
+
+            const sourceBackgroundColor = sourceStyle.backgroundColor || '';
+            if (isSafeLearningResourceColor(sourceBackgroundColor)) {
+                styleParts.push(`background-color: ${sourceBackgroundColor}`);
+            }
+
+            const sourceAlign = normalizeSheetText(sourceStyle.textAlign || node.getAttribute('align')).toLowerCase();
+            if (LEARNING_RESOURCES_ALLOWED_ALIGNMENTS.has(sourceAlign)) {
+                styleParts.push(`text-align: ${sourceAlign}`);
+            }
+
+            const sourceWeight = normalizeSheetText(sourceStyle.fontWeight).toLowerCase();
+            if (sourceWeight === 'bold' || Number(sourceWeight) >= 600) {
+                styleParts.push('font-weight: bold');
+            }
+
+            const sourceItalic = normalizeSheetText(sourceStyle.fontStyle).toLowerCase();
+            if (sourceItalic === 'italic') {
+                styleParts.push('font-style: italic');
+            }
+
+            const sourceDecoration = normalizeSheetText(sourceStyle.textDecoration || sourceStyle.textDecorationLine).toLowerCase();
+            if (sourceDecoration.includes('underline')) {
+                styleParts.push('text-decoration: underline');
+            }
+
+            const sourceFontFamily = normalizeSheetText((sourceStyle.fontFamily || node.getAttribute('face') || '').replace(/["']/g, ''));
+            if (LEARNING_RESOURCES_ALLOWED_FONTS.has(sourceFontFamily)) {
+                styleParts.push(`font-family: ${sourceFontFamily}`);
+            }
+
+            const sourceSize = normalizeSheetText(node.getAttribute('size')) || normalizeSheetText(sourceStyle.fontSize);
+            const mappedSize = LEARNING_RESOURCES_FONT_SIZE_MAP[sourceSize] || normalizeLearningResourcesFontSize(sourceSize);
+            if (mappedSize) {
+                styleParts.push(`font-size: ${mappedSize}`);
+            }
+
+            if (styleParts.length) {
+                el.setAttribute('style', styleParts.join('; '));
+            }
+
+            Array.from(node.childNodes).forEach(child => {
+                el.appendChild(sanitizeNode(child));
+            });
+            return el;
+        };
+
+        const wrapper = document.createElement('div');
+        Array.from(template.content.childNodes).forEach(node => wrapper.appendChild(sanitizeNode(node)));
+        return wrapper.innerHTML.trim();
+    }
+
+    function getLearningResourcesEditorHtml() {
+        if (!elements.createLearningResources) return '';
+        const sanitizedHtml = sanitizeLearningResourcesHtml(elements.createLearningResources.innerHTML || '');
+        return htmlToDisplayText(sanitizedHtml) ? sanitizedHtml : '';
+    }
+
+    function getLearningResourcesEditorPlain() {
+        return htmlToDisplayText(getLearningResourcesEditorHtml());
+    }
+
+    function setLearningResourcesEditorHtml(htmlValue = '', plainFallback = '') {
+        if (!elements.createLearningResources) return;
+        const sanitizedHtml = sanitizeLearningResourcesHtml(htmlValue);
+        elements.createLearningResources.innerHTML = sanitizedHtml || buildStoredHtmlFromPlain(plainFallback);
+    }
+
+    let learningResourcesSavedRange = null;
+
+    function saveLearningResourcesSelection() {
+        if (!elements.createLearningResources) return;
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        const container = elements.createLearningResources;
+        if (container.contains(range.commonAncestorContainer) || container === range.commonAncestorContainer) {
+            learningResourcesSavedRange = range.cloneRange();
+        }
+    }
+
+    function restoreLearningResourcesSelection() {
+        if (!learningResourcesSavedRange) return;
+        const selection = window.getSelection();
+        if (!selection) return;
+        selection.removeAllRanges();
+        selection.addRange(learningResourcesSavedRange);
+    }
+
+    function applyLearningResourcesFormat(command, value = null) {
+        if (!elements.createLearningResources || elements.createLearningResources.getAttribute('contenteditable') === 'false') return;
+        elements.createLearningResources.focus();
+        restoreLearningResourcesSelection();
+        document.execCommand(command, false, value);
+        saveLearningResourcesSelection();
+        elements.createLearningResources.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function applyLearningResourcesInlineStyle(styleDraft = {}) {
+        if (!elements.createLearningResources || elements.createLearningResources.getAttribute('contenteditable') === 'false') return;
+        elements.createLearningResources.focus();
+        restoreLearningResourcesSelection();
+
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const container = elements.createLearningResources;
+        if (!(container.contains(range.commonAncestorContainer) || container === range.commonAncestorContainer)) return;
+
+        const safeStyles = {};
+        const fontFamily = normalizeSheetText(styleDraft.fontFamily || '').replace(/["']/g, '');
+        if (fontFamily && LEARNING_RESOURCES_ALLOWED_FONTS.has(fontFamily)) {
+            safeStyles.fontFamily = fontFamily;
+        }
+
+        const fontSize = normalizeLearningResourcesFontSize(styleDraft.fontSize || '');
+        if (fontSize) {
+            safeStyles.fontSize = fontSize;
+        }
+
+        const color = normalizeSheetText(styleDraft.color || '');
+        if (color && isSafeLearningResourceColor(color)) {
+            safeStyles.color = color;
+        }
+
+        const backgroundColor = normalizeSheetText(styleDraft.backgroundColor || '');
+        if (backgroundColor && isSafeLearningResourceColor(backgroundColor)) {
+            safeStyles.backgroundColor = backgroundColor;
+        }
+
+        if (!Object.keys(safeStyles).length) return;
+
+        const span = document.createElement('span');
+        Object.entries(safeStyles).forEach(([property, value]) => {
+            span.style[property] = value;
+        });
+
+        const nextRange = document.createRange();
+
+        if (range.collapsed) {
+            span.appendChild(document.createTextNode('​'));
+            range.insertNode(span);
+            nextRange.setStartAfter(span);
+            nextRange.collapse(true);
+        } else {
+            span.appendChild(range.extractContents());
+            range.insertNode(span);
+            nextRange.selectNodeContents(span);
+        }
+
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        saveLearningResourcesSelection();
+        elements.createLearningResources.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function downloadTextFile(content, filename, mimeType = 'text/plain;charset=utf-8') {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function csvCell(value) {
+        return `"${String(value ?? '').replace(/"/g, '""')}"`;
+    }
+
+    function rowsToCsv(rows) {
+        return rows.map(row => row.map(csvCell).join(',')).join('\n');
+    }
+
+    function buildStudyBunnyTemplateRows(type, variant = 'blank') {
+        const isExample = variant === 'example';
+        if (type === 'flashcard') {
+            const rows = [['Term', 'flashcard', 'Definition', 'Term image URL', 'Definition image URL', 'Learning resources', 'Learning resources image URL']];
+            if (isExample) rows.push(['Cell membrane', '', 'A selectively permeable barrier around the cell.', '', '', 'Review phospholipid bilayer structure and membrane proteins.', '']);
+            return rows;
+        }
+        if (type === 'hierarchy') {
+            const rows = [[
+                'Question', 'hierarchy',
+                ...Array.from({ length: 10 }, (_, index) => `Item ${index + 1}`),
+                ...Array.from({ length: 10 }, (_, index) => `Correct position ${index + 1}`),
+                'Question image URL', 'Learning resources', 'Learning resources image URL'
+            ]];
+            if (isExample) rows.push(['Put these biological organization levels in order from smallest to largest.', '', 'Cell', 'Tissue', 'Organ', 'Organ system', 'Organism', '', '', '', '', '', 1, 2, 3, 4, 5, '', '', '', '', '', '', 'Remember: cells build tissues, tissues build organs, organs build systems.', '']);
+            return rows;
+        }
+        if (type === 'classify') {
+            const itemHeaders = Array.from({ length: CONFIG.classifyItemCount }, (_, index) => [`Item ${index + 1}`, `Item ${index + 1} class ID`]).flat();
+            const classLabelHeaders = Array.from({ length: CONFIG.classifyClassCount }, (_, index) => `Class ${index + 1} label`);
+            const classIdHeaders = Array.from({ length: CONFIG.classifyClassCount }, (_, index) => `Class ${index + 1} ID`);
+            const rows = [['Question', 'classify', ...itemHeaders, ...classLabelHeaders, ...classIdHeaders, 'Question image URL', 'Learning resources', 'Learning resources image URL']];
+            if (isExample) {
+                const itemValues = Array.from({ length: CONFIG.classifyItemCount }, () => ['', '']);
+                itemValues[0] = 'Mitochondria'; itemValues[1] = 'organelle';
+                itemValues[2] = 'Nucleus'; itemValues[3] = 'organelle';
+                itemValues[4] = 'Diffusion'; itemValues[5] = 'process';
+                itemValues[6] = 'Osmosis'; itemValues[7] = 'process';
+                const classLabels = Array.from({ length: CONFIG.classifyClassCount }, () => '');
+                const classIds = Array.from({ length: CONFIG.classifyClassCount }, () => '');
+                classLabels[0] = 'Organelle'; classLabels[1] = 'Process';
+                classIds[0] = 'organelle'; classIds[1] = 'process';
+                rows.push(['Classify each item.', '', ...itemValues, ...classLabels, ...classIds, '', 'Match each item to the best category.', '']);
+            }
+            return rows;
+        }
+        const rows = [['Question', 'multiple choice', 'Option 1', 'Option 2', 'Option 3', 'Option 4', 'Correct answer', 'Option 1 explanation', 'Option 2 explanation', 'Option 3 explanation', 'Option 4 explanation', 'Question image URL', 'Learning resources', 'Learning resources image URL']];
+        if (isExample) rows.push(['Which organelle makes most cellular ATP?', '', 'Nucleus', 'Mitochondria', 'Ribosome', 'Golgi apparatus', 'Mitochondria', 'The nucleus stores DNA.', 'Mitochondria produce most ATP during cellular respiration.', 'Ribosomes build proteins.', 'The Golgi modifies and packages molecules.', '', 'Review cellular respiration and organelle functions.', '']);
+        return rows;
+    }
+
+    function downloadStudyBunnyTemplate(type, variant = 'blank') {
+        const safeType = ['multiple_choice', 'flashcard', 'hierarchy', 'classify'].includes(type) ? type : 'multiple_choice';
+        const safeVariant = variant === 'example' ? 'example' : 'blank';
+        const rows = buildStudyBunnyTemplateRows(safeType, safeVariant);
+        const csv = rowsToCsv(rows);
+        const label = safeType.replace(/_/g, '-');
+        downloadTextFile(csv, `study-bunny-${safeVariant}-${label}-template.csv`, 'text/csv;charset=utf-8');
+        setCreatorStatus(`Downloaded ${safeVariant} ${label.replace(/-/g, ' ')} template.`, 'success');
+    }
+
 
     // ================= SUPABASE PRIVATE MEDIA ASSETS =================
     // New uploads are stored in a private Supabase Storage bucket. Existing
@@ -2008,7 +2308,7 @@ MODIFICATION RULES FOR THIS APP
     function isStudioFlashcardEditorBlank() {
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
-        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        const learningResources = getLearningResourcesEditorPlain();
         return !term
             && !definition
             && !learningResources
@@ -2218,7 +2518,7 @@ MODIFICATION RULES FOR THIS APP
 
     function clearStudioQuestionInputs(options = {}) {
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
-        if (elements.createLearningResources) elements.createLearningResources.value = '';
+        setLearningResourcesEditorHtml('', '');
         if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
         if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
@@ -2314,9 +2614,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
 
-        if (elements.createLearningResources) {
-            elements.createLearningResources.value = getStoredTextForDisplay('', questionRow.learning_resources_html);
-        }
+        setLearningResourcesEditorHtml(questionRow.learning_resources_html, '');
         setStudioLearningResourcesImageState(
             normalizeSheetText(questionRow.learning_resources_image_url),
             normalizeSheetText(questionRow.learning_resources_image_url) ? 'Existing learning resources image saved.' : 'No learning resources image selected.'
@@ -2786,6 +3084,19 @@ MODIFICATION RULES FOR THIS APP
             if (!el) return;
             el.disabled = !creatorEnabled && el !== elements.openQuizStudioBtn;
         });
+
+        elements.studioTemplateDownloadButtons.forEach(button => {
+            button.disabled = !creatorEnabled;
+        });
+
+        elements.createLearningResourcesRichControls.forEach(control => {
+            control.disabled = !creatorEnabled;
+        });
+
+        if (elements.createLearningResources) {
+            elements.createLearningResources.setAttribute('contenteditable', creatorEnabled ? 'true' : 'false');
+            elements.createLearningResources.classList.toggle('disabled', !creatorEnabled);
+        }
 
         if (elements.createOptionFieldsContainer) {
             elements.createOptionFieldsContainer.querySelectorAll('input, textarea').forEach(el => {
@@ -4121,7 +4432,8 @@ MODIFICATION RULES FOR THIS APP
         }
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
-        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        const learningResourcesHtml = getLearningResourcesEditorHtml();
+        const learningResources = getLearningResourcesEditorPlain();
         const optionDrafts = getStudioOptionDraftsFromDOM();
         const options = optionDrafts.map(draft => draft.text);
         const explanations = optionDrafts.map(draft => draft.explanation);
@@ -4154,11 +4466,11 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'multiple_choice', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'multiple_choice', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: buildStoredHtmlFromPlain(learningResources) }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: learningResourcesHtml }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
@@ -4203,7 +4515,8 @@ MODIFICATION RULES FOR THIS APP
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
-        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        const learningResourcesHtml = getLearningResourcesEditorHtml();
+        const learningResources = getLearningResourcesEditorPlain();
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         if (!term) return void setCreatorStatus('Enter a flashcard term first.', 'error');
         if (!definition) return void setCreatorStatus('Enter a flashcard definition first.', 'error');
@@ -4225,11 +4538,11 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'flashcard', prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'flashcard', prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources) }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: learningResourcesHtml }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
@@ -4270,7 +4583,8 @@ MODIFICATION RULES FOR THIS APP
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
-        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        const learningResourcesHtml = getLearningResourcesEditorHtml();
+        const learningResources = getLearningResourcesEditorPlain();
         const hierarchyDrafts = getStudioHierarchyDraftsFromDOM();
         const itemTexts = hierarchyDrafts.map(draft => draft.text).filter(Boolean);
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
@@ -4298,11 +4612,11 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'hierarchy', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'hierarchy', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: buildStoredHtmlFromPlain(learningResources), question_type: 'hierarchy' }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: learningResourcesHtml, question_type: 'hierarchy' }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
@@ -4358,7 +4672,8 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.client || !state.auth.user?.id) return void setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
-        const learningResources = normalizeSheetText(elements.createLearningResources?.value);
+        const learningResourcesHtml = getLearningResourcesEditorHtml();
+        const learningResources = getLearningResourcesEditorPlain();
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const categories = getStudioClassifyCategoriesDraftsFromDOM();
         const items = getStudioClassifyItemsDraftsFromDOM(categories);
@@ -4389,11 +4704,11 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'classify', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: buildStoredHtmlFromPlain(learningResources), learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'classify', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: buildStoredHtmlFromPlain(learningResources), question_type: 'classify' }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: learningResourcesHtml, question_type: 'classify' }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
@@ -4829,6 +5144,81 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(question?.type).replace(/\s+/g, '_') || 'multiple_choice';
     }
 
+    function validateGoogleSheetImportQuestions(sourceQuestions, contextLabel = 'Google Sheet tab') {
+        if (!Array.isArray(sourceQuestions) || !sourceQuestions.length) {
+            throw new Error(`${contextLabel} does not have importable questions.`);
+        }
+
+        const quizType = getQuestionTypeForImport(sourceQuestions[0]);
+        const invalidMixedTypes = sourceQuestions.some(question => getQuestionTypeForImport(question) !== quizType);
+        if (invalidMixedTypes) {
+            throw new Error('Mixed-type Google Sheet tabs are not supported yet. Keep one quiz type per tab.');
+        }
+
+        sourceQuestions.forEach((question, index) => {
+            const rowLabel = `Row ${index + 2}`;
+            if (quizType === 'flashcard') {
+                if (!normalizeSheetText(question.termText) || !normalizeSheetText(question.definitionText)) {
+                    throw new Error(`${rowLabel}: flashcards need both a term and a definition.`);
+                }
+                return;
+            }
+
+            if (!normalizeSheetText(question.question)) {
+                throw new Error(`${rowLabel}: enter a question prompt.`);
+            }
+
+            if (quizType === 'hierarchy') {
+                const options = Array.isArray(question.options) ? question.options.map(normalizeSheetText).filter(Boolean) : [];
+                const order = Array.isArray(question.correctOrder) ? question.correctOrder : [];
+                if (options.length < 2) {
+                    throw new Error(`${rowLabel}: hierarchy questions need at least 2 items.`);
+                }
+                if (order.length !== options.length) {
+                    throw new Error(`${rowLabel}: hierarchy correct-order columns must include one position for each item.`);
+                }
+                if (order.some(value => !Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > options.length)) {
+                    throw new Error(`${rowLabel}: hierarchy positions must be whole numbers from 1 to ${options.length}.`);
+                }
+                if (new Set(order.map(Number)).size !== order.length) {
+                    throw new Error(`${rowLabel}: hierarchy positions must be unique.`);
+                }
+                return;
+            }
+
+            if (quizType === 'classify') {
+                const classifications = Array.isArray(question.classifications) ? question.classifications : [];
+                const items = Array.isArray(question.items) ? question.items : [];
+                const classIds = new Set(classifications.map(item => normalizeClassificationId(item.id)).filter(Boolean));
+                if (!classifications.length || !classIds.size) {
+                    throw new Error(`${rowLabel}: classify questions need at least one class label and class ID.`);
+                }
+                if (!items.length) {
+                    throw new Error(`${rowLabel}: classify questions need at least one item.`);
+                }
+                const missingClass = items.find(item => !classIds.has(normalizeClassificationId(item.correctClassificationId)));
+                if (missingClass) {
+                    throw new Error(`${rowLabel}: each classify item needs a class ID that matches one of the class ID columns.`);
+                }
+                return;
+            }
+
+            const options = Array.isArray(question.options) ? question.options.map(normalizeSheetText).filter(Boolean) : [];
+            const correctAnswer = normalizeSheetText(question.correct);
+            if (options.length < 2) {
+                throw new Error(`${rowLabel}: multiple-choice questions need at least 2 answer options.`);
+            }
+            if (!correctAnswer) {
+                throw new Error(`${rowLabel}: choose a correct answer.`);
+            }
+            if (!options.includes(correctAnswer)) {
+                throw new Error(`${rowLabel}: correct answer must exactly match one of the options.`);
+            }
+        });
+
+        return quizType;
+    }
+
     async function importMultipleChoiceQuestionToSupabase(quizId, question, sortOrder) {
         const { data, error } = await state.auth.client
             .from('questions')
@@ -5036,15 +5426,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const sourceQuestions = await loadQuestionsFromGoogleSheets(descriptor.sheet);
-        if (!sourceQuestions.length) {
-            throw new Error('The selected Google Sheets quiz does not have importable questions.');
-        }
-
-        const quizType = getQuestionTypeForImport(sourceQuestions[0]);
-        const invalidMixedTypes = sourceQuestions.some(question => getQuestionTypeForImport(question) !== quizType);
-        if (invalidMixedTypes) {
-            throw new Error('Mixed-type Google Sheets quizzes are not supported for import yet.');
-        }
+        const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'The selected Google Sheets quiz');
 
         const folderId = await ensureImportTargetFolderId(targetFolderId, descriptor.folder);
         const nextSortOrder = state.auth.managedQuizzes
@@ -5082,15 +5464,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const sourceQuestions = await loadQuestionsFromGoogleSheetDocument(sheetId, resolvedTabName);
-        if (!sourceQuestions.length) {
-            throw new Error('That Google Sheet tab does not have importable questions.');
-        }
-
-        const quizType = getQuestionTypeForImport(sourceQuestions[0]);
-        const invalidMixedTypes = sourceQuestions.some(question => getQuestionTypeForImport(question) !== quizType);
-        if (invalidMixedTypes) {
-            throw new Error('Mixed-type Google Sheet tabs are not supported for direct import yet.');
-        }
+        const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'That Google Sheet tab');
 
         const folderId = normalizeSheetText(targetFolderId);
         const nextSortOrder = state.auth.managedQuizzes
@@ -5664,15 +6038,18 @@ function clearPendingLearningResource() {
 
 function queueLearningResourceIfEligible(question) {
     const text = normalizeSheetText(question?.learningResources);
+    const html = sanitizeLearningResourcesHtml(question?.learningResourcesHtml);
     const imageUrl = normalizeSheetText(question?.learningResourcesImage);
+    const hasText = !!(htmlToDisplayText(html) || text);
 
-    if (!canUseLearningResources() || (!text && !imageUrl)) {
+    if (!canUseLearningResources() || (!hasText && !imageUrl)) {
         state.pendingLearningResource = null;
         return;
     }
 
     state.pendingLearningResource = {
         text,
+        html,
         imageUrl
     };
 }
@@ -5681,13 +6058,15 @@ function openLearningResourcesOverlay(hintData) {
     if (!hintData) return;
 
     const text = normalizeSheetText(hintData.text);
+    const html = sanitizeLearningResourcesHtml(hintData.html);
     const imageUrl = normalizeSheetText(hintData.imageUrl);
-    const hasText = !!text;
+    const renderedHtml = html || buildStoredHtmlFromPlain(text);
+    const hasText = !!(htmlToDisplayText(renderedHtml) || text);
     const hasImage = !!imageUrl;
 
     if (!hasText && !hasImage) return;
 
-    elements.learningResourcesContent.innerText = text;
+    elements.learningResourcesContent.innerHTML = renderedHtml;
     elements.learningResourcesImageEl.src = '';
     elements.learningResourcesImageEl.alt = 'Learning resource image';
     elements.learningResourcesImagePanel.classList.add('hidden');
@@ -5724,7 +6103,7 @@ function openLearningResourcesOverlay(hintData) {
 function closeLearningResourcesOverlay() {
     elements.learningResourcesOverlay.classList.add('hidden');
     elements.learningResourcesOverlay.setAttribute('aria-hidden', 'true');
-    elements.learningResourcesContent.innerText = '';
+    elements.learningResourcesContent.innerHTML = '';
     elements.learningResourcesImageEl.src = '';
     elements.learningResourcesTextPanel.classList.remove('hidden');
     elements.learningResourcesImagePanel.classList.add('hidden');
@@ -6182,6 +6561,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     termImage: normalizeSheetText(detail.term_image_url),
                     definitionImage: normalizeSheetText(detail.definition_image_url),
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                    learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
             }).filter(Boolean));
@@ -6209,6 +6589,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     correctOrder,
                     image: normalizeSheetText(row.image_url),
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                    learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
             }).filter(Boolean));
@@ -6242,6 +6623,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     classifications,
                     image: normalizeSheetText(row.image_url),
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                    learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
             }).filter(Boolean));
@@ -6269,6 +6651,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 explanations,
                 image: normalizeSheetText(row.image_url),
                 learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                 learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
             };
         }).filter(Boolean));
@@ -9071,6 +9454,154 @@ if (elements.createLearningResourcesImageClearBtn) {
     });
 }
 
+if (elements.createLearningResources) {
+    ['keyup', 'mouseup', 'focus', 'input'].forEach(eventName => {
+        elements.createLearningResources.addEventListener(eventName, saveLearningResourcesSelection);
+    });
+    elements.createLearningResources.addEventListener('paste', event => {
+        event.preventDefault();
+        const text = event.clipboardData?.getData('text/plain') || '';
+        document.execCommand('insertText', false, text);
+    });
+}
+
+function closeLearningResourcesRichMenus(exceptMenu = '') {
+    elements.createLearningResourcesRichMenus.forEach(menu => {
+        const menuName = normalizeSheetText(menu.dataset.richMenu);
+        if (menuName !== exceptMenu) {
+            menu.classList.add('hidden');
+        }
+    });
+}
+
+function toggleLearningResourcesRichMenu(menuName) {
+    const normalizedName = normalizeSheetText(menuName);
+    const menu = elements.createLearningResourcesRichMenus.find(item => normalizeSheetText(item.dataset.richMenu) === normalizedName);
+    if (!menu) return;
+    const willOpen = menu.classList.contains('hidden');
+    closeLearningResourcesRichMenus(normalizedName);
+    menu.classList.toggle('hidden', !willOpen);
+}
+
+function updateLearningResourcesToolbarChoice(styleName, value) {
+    const normalizedStyle = normalizeSheetText(styleName);
+    const normalizedValue = normalizeSheetText(value);
+    if (normalizedStyle === 'fontFamily' && elements.createLearningResourcesFontFamilyBtn) {
+        elements.createLearningResourcesFontFamilyBtn.title = normalizedValue ? `Font family: ${normalizedValue}` : 'Font family';
+    }
+    if (normalizedStyle === 'fontSize' && elements.createLearningResourcesFontSizeBtn) {
+        const numericValue = normalizedValue.replace(/px$/i, '') || '15';
+        elements.createLearningResourcesFontSizeBtn.textContent = numericValue;
+        elements.createLearningResourcesFontSizeBtn.title = `Font size: ${numericValue}`;
+    }
+}
+
+function applyLearningResourcesStyleChoice(styleName, value) {
+    const normalizedStyle = normalizeSheetText(styleName);
+    const normalizedValue = normalizeSheetText(value);
+    if (normalizedStyle === 'fontFamily') {
+        applyLearningResourcesInlineStyle({ fontFamily: normalizedValue });
+        updateLearningResourcesToolbarChoice(normalizedStyle, normalizedValue);
+    } else if (normalizedStyle === 'fontSize') {
+        applyLearningResourcesInlineStyle({ fontSize: normalizedValue });
+        updateLearningResourcesToolbarChoice(normalizedStyle, normalizedValue);
+    }
+}
+
+if (elements.createLearningResourcesRichControls.length) {
+    elements.createLearningResourcesRichControls.forEach(control => {
+        if (!control.classList.contains('studio-rich-hidden-color')) {
+            control.addEventListener('mousedown', event => {
+                event.preventDefault();
+                saveLearningResourcesSelection();
+            });
+        }
+
+        if (control.matches('[data-rich-command]')) {
+            control.addEventListener('click', () => {
+                closeLearningResourcesRichMenus();
+                applyLearningResourcesFormat(control.dataset.richCommand);
+            });
+        }
+    });
+}
+
+elements.createLearningResourcesRichMenuTriggers.forEach(trigger => {
+    trigger.addEventListener('click', event => {
+        event.stopPropagation();
+        saveLearningResourcesSelection();
+        toggleLearningResourcesRichMenu(trigger.dataset.richMenuTrigger);
+    });
+});
+
+elements.createLearningResourcesRichStyleButtons.forEach(button => {
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        applyLearningResourcesStyleChoice(button.dataset.richStyle, button.dataset.richValue);
+        closeLearningResourcesRichMenus();
+    });
+});
+
+elements.createLearningResourcesRichCommandChoices.forEach(button => {
+    const alignmentIconMap = {
+        justifyLeft: '☰',
+        justifyCenter: '☷',
+        justifyRight: '☱'
+    };
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        const command = normalizeSheetText(button.dataset.richCommandChoice) || 'justifyLeft';
+        applyLearningResourcesFormat(command);
+        if (elements.createLearningResourcesJustifyBtn) {
+            elements.createLearningResourcesJustifyBtn.textContent = alignmentIconMap[command] || '☰';
+            elements.createLearningResourcesJustifyBtn.title = `Text alignment: ${button.textContent.trim()}`;
+        }
+        closeLearningResourcesRichMenus();
+    });
+});
+
+function prepareLearningResourcesColorPicker(inputEl) {
+    if (!inputEl) return;
+    ['pointerdown', 'mousedown', 'focus'].forEach(eventName => {
+        inputEl.addEventListener(eventName, event => {
+            event.stopPropagation();
+            saveLearningResourcesSelection();
+            closeLearningResourcesRichMenus();
+        });
+    });
+}
+
+function handleLearningResourcesColorInput(inputEl, styleName, fallbackColor) {
+    if (!inputEl) return;
+    const applySelectedColor = () => {
+        const selectedColor = inputEl.value || fallbackColor;
+        const styleDraft = styleName === 'backgroundColor'
+            ? { backgroundColor: selectedColor }
+            : { color: selectedColor };
+        applyLearningResourcesInlineStyle(styleDraft);
+    };
+    inputEl.addEventListener('input', applySelectedColor);
+    inputEl.addEventListener('change', applySelectedColor);
+}
+
+prepareLearningResourcesColorPicker(elements.createLearningResourcesColor);
+prepareLearningResourcesColorPicker(elements.createLearningResourcesHighlightColor);
+handleLearningResourcesColorInput(elements.createLearningResourcesColor, 'color', '#e0e0ff');
+handleLearningResourcesColorInput(elements.createLearningResourcesHighlightColor, 'backgroundColor', '#fff59d');
+
+document.addEventListener('click', event => {
+    if (!event.target.closest('#learningResourcesRichToolbar')) {
+        closeLearningResourcesRichMenus();
+    }
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        closeLearningResourcesRichMenus();
+    }
+});
 
 if (elements.createFlashcardTermImageClearBtn) {
     elements.createFlashcardTermImageClearBtn.addEventListener('click', () => {
@@ -9306,6 +9837,14 @@ if (elements.importTemplateSheetBtn) {
         renderGoogleSheetsImportControls();
     });
 });
+
+if (elements.studioTemplateDownloadButtons.length) {
+    elements.studioTemplateDownloadButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            downloadStudyBunnyTemplate(button.dataset.templateDownload, button.dataset.templateVariant);
+        });
+    });
+}
 
 
 const studioDirtyInputSelector = [
