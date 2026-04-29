@@ -4033,6 +4033,47 @@ body.fullscreen-mode.active-question-classify {
   color: var(--color-text-main);
 }
 
+.studio-backup-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.studio-backup-preview {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.studio-backup-preview.is-error {
+  color: #ffb3b3;
+  border-color: rgba(255, 107, 107, 0.35);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.studio-backup-preview.is-success {
+  border-color: rgba(76, 175, 80, 0.26);
+}
+
+.studio-backup-preview-title {
+  font-weight: 700;
+  color: var(--color-text-main);
+  margin-bottom: 6px;
+}
+
+.studio-backup-preview-note {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+}
+
+.studio-backup-summary-grid {
+  margin-top: 10px;
+}
+
 .quiz-studio-panel {
   min-height: 0;
 }

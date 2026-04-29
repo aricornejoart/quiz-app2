@@ -116,6 +116,8 @@ MODIFICATION RULES FOR THIS APP
             studioHasUnsavedChanges: false,
             studioDraggingQuestionId: null,
             studioPendingNewQuestionRow: null,
+            backupImportPayload: null,
+            backupImportFileName: '',
             mediaSignedUrlCache: new Map()
         }
     };
@@ -147,6 +149,10 @@ MODIFICATION RULES FOR THIS APP
         exportQuizBtn: document.getElementById('exportQuizBtn'),
         exportFolderBtn: document.getElementById('exportFolderBtn'),
         exportAllBtn: document.getElementById('exportAllBtn'),
+        importBackupFile: document.getElementById('importBackupFile'),
+        previewBackupImportBtn: document.getElementById('previewBackupImportBtn'),
+        importBackupBtn: document.getElementById('importBackupBtn'),
+        importBackupPreview: document.getElementById('importBackupPreview'),
         studioFolderList: document.getElementById('studioFolderList'),
         studioQuizList: document.getElementById('studioQuizList'),
         importSourceFolderSelect: document.getElementById('importSourceFolderSelect'),
@@ -1035,6 +1041,15 @@ MODIFICATION RULES FOR THIS APP
         }
         if (elements.exportAllBtn) {
             elements.exportAllBtn.disabled = !creatorEnabled || (!state.auth.supabaseFolders.length && !state.auth.managedQuizzes.length);
+        }
+        if (elements.importBackupFile) {
+            elements.importBackupFile.disabled = !creatorEnabled;
+        }
+        if (elements.previewBackupImportBtn) {
+            elements.previewBackupImportBtn.disabled = !creatorEnabled || !elements.importBackupFile?.files?.length;
+        }
+        if (elements.importBackupBtn) {
+            elements.importBackupBtn.disabled = !creatorEnabled || !state.auth.backupImportPayload;
         }
     }
 
@@ -2728,6 +2743,9 @@ MODIFICATION RULES FOR THIS APP
             elements.exportQuizBtn,
             elements.exportFolderBtn,
             elements.exportAllBtn,
+            elements.importBackupFile,
+            elements.previewBackupImportBtn,
+            elements.importBackupBtn,
             elements.createQuizFolderSelect,
             elements.createQuizName,
             elements.createQuizTypeSelect,
@@ -3042,9 +3060,9 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
-    // ================= QUIZ STUDIO BACKUP EXPORTS =================
-    // Phase 20A is export-only. It reads Supabase rows and downloads JSON;
-    // restore/import-from-backup should be designed as a separate safer phase.
+    // ================= QUIZ STUDIO BACKUP EXPORTS / SAFE IMPORTS =================
+    // Phase 20A exports read-only JSON backups. Phase 20B imports those backups
+    // as new copies only; it must not overwrite, merge, or delete existing rows.
     function getBackupDateStamp() {
         return new Date().toISOString().slice(0, 10);
     }
@@ -3369,6 +3387,440 @@ MODIFICATION RULES FOR THIS APP
         setCreatorStatus('Full library backup downloaded.', 'success');
     }
 
+    function getBackupImportArrays(payload = {}) {
+        return {
+            folders: Array.isArray(payload.folders) ? payload.folders : [],
+            quizzes: Array.isArray(payload.quizzes) ? payload.quizzes : [],
+            mediaAssets: Array.isArray(payload.media_assets) ? payload.media_assets : []
+        };
+    }
+
+    function normalizeBackupJsonArray(value) {
+        if (Array.isArray(value)) return cloneJsonSafe(value);
+        if (typeof value === 'string' && normalizeSheetText(value)) {
+            try {
+                const parsed = JSON.parse(value);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+                return [];
+            }
+        }
+        return [];
+    }
+
+    function validateBackupImportPayload(payload) {
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            throw new Error('Choose a valid Study Bunny JSON backup file.');
+        }
+        if (normalizeSheetText(payload.format) !== 'study-bunny-supabase-json') {
+            throw new Error('This does not look like a Study Bunny Supabase JSON backup.');
+        }
+        const version = Number(payload.version || 0);
+        if (!Number.isFinite(version) || version < 1) {
+            throw new Error('This backup version is not supported.');
+        }
+        const { folders, quizzes } = getBackupImportArrays(payload);
+        if (!folders.length && !quizzes.length) {
+            throw new Error('This backup does not contain any folders or quizzes to import.');
+        }
+        quizzes.forEach((quiz, quizIndex) => {
+            if (!quiz || typeof quiz !== 'object') {
+                throw new Error(`Quiz backup item ${quizIndex + 1} is invalid.`);
+            }
+            if (!Array.isArray(quiz.questions)) {
+                throw new Error(`The quiz "${normalizeSheetText(quiz.name) || quizIndex + 1}" is missing its questions array.`);
+            }
+        });
+        return payload;
+    }
+
+    function getBackupImportSummary(payload = {}) {
+        const { folders, quizzes, mediaAssets } = getBackupImportArrays(payload);
+        const questionCount = quizzes.reduce((total, quiz) => total + (Array.isArray(quiz.questions) ? quiz.questions.length : 0), 0);
+        const starredCount = quizzes.reduce((total, quiz) => {
+            const questions = Array.isArray(quiz.questions) ? quiz.questions : [];
+            return total + questions.filter(question => !!question?.question_state?.is_starred).length;
+        }, 0);
+        const mediaRefs = collectSupabaseMediaReferences(payload);
+        return {
+            folderCount: folders.length,
+            quizCount: quizzes.length,
+            questionCount,
+            starredCount,
+            mediaReferenceCount: mediaRefs.size,
+            mediaAssetCount: mediaAssets.length
+        };
+    }
+
+    function resetBackupImportState(message = 'Choose a backup file to preview before importing.') {
+        state.auth.backupImportPayload = null;
+        state.auth.backupImportFileName = '';
+        if (elements.importBackupPreview) {
+            elements.importBackupPreview.textContent = message;
+            elements.importBackupPreview.classList.remove('is-error', 'is-success');
+        }
+        populateExportBackupControls();
+    }
+
+    function renderBackupImportPreview(payload, fileName = '') {
+        const summary = getBackupImportSummary(payload);
+        if (!elements.importBackupPreview) return;
+        elements.importBackupPreview.classList.remove('is-error');
+        elements.importBackupPreview.classList.add('is-success');
+        elements.importBackupPreview.innerHTML = `
+            <div class="studio-backup-preview-title">Ready to import as a new copy</div>
+            <div class="studio-backup-preview-note">${escapeHtml(fileName || 'Selected backup')} will create new folders/quizzes only. Existing content will not be overwritten or deleted.</div>
+            <div class="studio-progress-grid studio-backup-summary-grid">
+              <div class="studio-progress-card"><span>Folders</span><strong>${summary.folderCount}</strong></div>
+              <div class="studio-progress-card"><span>Quizzes</span><strong>${summary.quizCount}</strong></div>
+              <div class="studio-progress-card"><span>Questions</span><strong>${summary.questionCount}</strong></div>
+              <div class="studio-progress-card"><span>Starred</span><strong>${summary.starredCount}</strong></div>
+              <div class="studio-progress-card"><span>Media refs</span><strong>${summary.mediaReferenceCount}</strong></div>
+              <div class="studio-progress-card"><span>Media metadata</span><strong>${summary.mediaAssetCount}</strong></div>
+            </div>
+            <div class="studio-backup-preview-note">Private image files are cloned when the original <code>sb-media</code> references still exist in this Supabase project. Missing private media references may remain as references but cannot recreate deleted Storage files.</div>
+        `;
+    }
+
+    async function readAndPreviewBackupImportFile() {
+        if (!state.auth.client || !state.auth.user?.id) {
+            throw new Error('Sign in before importing a backup.');
+        }
+        const file = elements.importBackupFile?.files?.[0];
+        if (!file) {
+            throw new Error('Choose a Study Bunny JSON backup file first.');
+        }
+        const text = await readFileAsText(file);
+        let payload;
+        try {
+            payload = JSON.parse(text);
+        } catch (error) {
+            throw new Error('Could not read that JSON file. Choose an exported Study Bunny backup.');
+        }
+        validateBackupImportPayload(payload);
+        state.auth.backupImportPayload = payload;
+        state.auth.backupImportFileName = file.name || 'backup.json';
+        renderBackupImportPreview(payload, state.auth.backupImportFileName);
+        populateExportBackupControls();
+        setCreatorStatus('Backup preview ready. Review it, then import as a new copy.', 'success');
+        return payload;
+    }
+
+    function getBackupFoldersForImport(payload = {}) {
+        const { folders, quizzes } = getBackupImportArrays(payload);
+        const folderMap = new Map();
+        folders.forEach(folder => {
+            const id = normalizeSheetText(folder?.id);
+            const name = normalizeSheetText(folder?.name);
+            if (id || name) {
+                folderMap.set(id || `name:${name}`, { id, name: name || 'Imported Folder', sort_order: Number(folder?.sort_order ?? 0) });
+            }
+        });
+        quizzes.forEach(quiz => {
+            const id = normalizeSheetText(quiz?.folder_id);
+            if (id && !folderMap.has(id)) {
+                folderMap.set(id, { id, name: normalizeSheetText(quiz?.folder_name) || 'Imported Folder', sort_order: 0 });
+            }
+        });
+        return Array.from(folderMap.values()).sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || String(a.name || '').localeCompare(String(b.name || '')));
+    }
+
+    function reserveImportedCopyName(rawName, usedNames, fallback = 'Imported Item') {
+        const baseName = normalizeSheetText(rawName) || fallback;
+        const lower = value => normalizeSheetText(value).toLowerCase();
+        const needsPrefix = usedNames.has(lower(baseName));
+        const preferred = needsPrefix ? `Imported - ${baseName}` : baseName;
+        let candidate = preferred;
+        let suffix = 2;
+        while (usedNames.has(lower(candidate))) {
+            candidate = `${preferred} (${suffix})`;
+            suffix += 1;
+        }
+        usedNames.add(lower(candidate));
+        return candidate;
+    }
+
+    async function importBackupFoldersAsCopies(payload = {}) {
+        const folderRows = getBackupFoldersForImport(payload);
+        const folderIdMap = new Map();
+        if (!folderRows.length) return { folderIdMap, createdCount: 0 };
+
+        const usedFolderNames = new Set(state.auth.supabaseFolders.map(folder => normalizeSheetText(folder.name).toLowerCase()).filter(Boolean));
+        let sortOrder = await getNextSortOrderForFolder();
+        let createdCount = 0;
+
+        for (const folder of folderRows) {
+            const folderName = reserveImportedCopyName(folder.name, usedFolderNames, 'Imported Folder');
+            const { data, error } = await state.auth.client
+                .from('folders')
+                .insert({
+                    user_id: state.auth.user.id,
+                    name: folderName,
+                    sort_order: sortOrder
+                })
+                .select('id')
+                .single();
+            if (error) throw error;
+            sortOrder += 1;
+            createdCount += 1;
+            const oldId = normalizeSheetText(folder.id);
+            if (oldId) folderIdMap.set(oldId, data.id);
+        }
+        return { folderIdMap, createdCount };
+    }
+
+    function createImportQuizSortOrderGetter() {
+        const nextByFolder = new Map();
+        return folderId => {
+            const key = normalizeSheetText(folderId);
+            if (!nextByFolder.has(key)) {
+                const currentMax = state.auth.managedQuizzes
+                    .filter(quiz => normalizeSheetText(quiz.folderId) === key)
+                    .reduce((maxValue, quiz) => Math.max(maxValue, Number(quiz.sortOrder ?? -1)), -1);
+                nextByFolder.set(key, currentMax + 1);
+            }
+            const next = nextByFolder.get(key);
+            nextByFolder.set(key, next + 1);
+            return next;
+        };
+    }
+
+    async function restoreBackupMediaValue(value, options = {}) {
+        const normalizedValue = normalizeSheetText(value);
+        if (!normalizedValue) return '';
+        if (isDataUrl(normalizedValue)) {
+            return savePrivateMediaValue(normalizedValue, options);
+        }
+        if (isSupabaseMediaReference(normalizedValue)) {
+            return replaceMediaRefsForCopiedValue(normalizedValue, options);
+        }
+        return normalizedValue;
+    }
+
+    async function restoreBackupMediaRefsInObject(value, options = {}) {
+        if (!value) return value;
+        if (typeof value === 'string') {
+            if (isDataUrl(value) || isSupabaseMediaReference(value)) {
+                return restoreBackupMediaValue(value, options);
+            }
+            return normalizeSheetText(value);
+        }
+        if (Array.isArray(value)) {
+            const restoredItems = [];
+            for (let index = 0; index < value.length; index += 1) {
+                restoredItems.push(await restoreBackupMediaRefsInObject(value[index], { ...options, usageContext: `${options.usageContext || 'backup_media'}_${index + 1}` }));
+            }
+            return restoredItems;
+        }
+        if (typeof value === 'object') {
+            const restoredEntries = [];
+            for (const [key, item] of Object.entries(value)) {
+                restoredEntries.push([key, await restoreBackupMediaRefsInObject(item, { ...options, usageContext: key })]);
+            }
+            return Object.fromEntries(restoredEntries);
+        }
+        return value;
+    }
+
+    async function insertBackupMultipleChoiceDetail(questionId, detail = {}) {
+        const optionJson = Array.isArray(detail.options_json)
+            ? detail.options_json.map(option => ({
+                text: normalizeSheetText(option?.text),
+                explanation_html: normalizeSheetText(option?.explanation_html)
+            }))
+            : [];
+        const payload = {
+            question_id: questionId,
+            correct_answer: normalizeSheetText(detail.correct_answer),
+            correct_explanation_html: normalizeSheetText(detail.correct_explanation_html),
+            option_1_text: normalizeSheetText(detail.option_1_text),
+            option_1_explanation_html: normalizeSheetText(detail.option_1_explanation_html),
+            option_2_text: normalizeSheetText(detail.option_2_text),
+            option_2_explanation_html: normalizeSheetText(detail.option_2_explanation_html),
+            option_3_text: normalizeSheetText(detail.option_3_text),
+            option_3_explanation_html: normalizeSheetText(detail.option_3_explanation_html),
+            option_4_text: normalizeSheetText(detail.option_4_text),
+            option_4_explanation_html: normalizeSheetText(detail.option_4_explanation_html)
+        };
+        if (Object.prototype.hasOwnProperty.call(detail, 'options_json')) {
+            payload.options_json = optionJson;
+        }
+        const { error } = await state.auth.client.from('multiple_choice_questions').insert(payload);
+        if (error) {
+            const missingColumn = /options_json/i.test(error.message || '') || /options_json/i.test(error.details || '');
+            if (!missingColumn) throw error;
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.options_json;
+            const { error: fallbackError } = await state.auth.client.from('multiple_choice_questions').insert(fallbackPayload);
+            if (fallbackError) throw fallbackError;
+        }
+    }
+
+    async function insertBackupFlashcardDetail(quizId, questionId, question = {}, detail = {}) {
+        const termImageUrl = await restoreBackupMediaValue(detail.term_image_url, { quizId, questionId, usageContext: 'term_image_url' });
+        const definitionImageUrl = await restoreBackupMediaValue(detail.definition_image_url, { quizId, questionId, usageContext: 'definition_image_url' });
+        const { error } = await state.auth.client.from('flashcard_questions').insert({
+            question_id: questionId,
+            term_html: normalizeSheetText(detail.term_html || question.prompt_html),
+            definition_html: normalizeSheetText(detail.definition_html),
+            term_plain: normalizeSheetText(detail.term_plain || question.prompt_plain),
+            definition_plain: normalizeSheetText(detail.definition_plain),
+            term_image_url: termImageUrl || '',
+            definition_image_url: definitionImageUrl || ''
+        });
+        if (error) throw error;
+    }
+
+    async function insertBackupHierarchyDetail(questionId, detail = {}) {
+        const payload = {
+            question_id: questionId,
+            item_1_text: normalizeSheetText(detail.item_1_text),
+            item_2_text: normalizeSheetText(detail.item_2_text),
+            item_3_text: normalizeSheetText(detail.item_3_text),
+            item_4_text: normalizeSheetText(detail.item_4_text),
+            item_5_text: normalizeSheetText(detail.item_5_text),
+            item_6_text: normalizeSheetText(detail.item_6_text),
+            item_7_text: normalizeSheetText(detail.item_7_text),
+            item_8_text: normalizeSheetText(detail.item_8_text),
+            item_9_text: normalizeSheetText(detail.item_9_text),
+            item_10_text: normalizeSheetText(detail.item_10_text),
+            correct_order_json: Array.isArray(detail.correct_order_json) ? detail.correct_order_json : []
+        };
+        const { error } = await state.auth.client.from('hierarchy_questions').insert(payload);
+        if (error) throw error;
+    }
+
+    async function insertBackupClassifyDetail(quizId, questionId, detail = {}) {
+        const restored = await restoreBackupMediaRefsInObject({
+            items_json: normalizeBackupJsonArray(detail.items_json),
+            classifications_json: normalizeBackupJsonArray(detail.classifications_json)
+        }, { quizId, questionId, usageContext: 'classify_media' });
+        const { error } = await state.auth.client.from('classify_questions').insert({
+            question_id: questionId,
+            items_json: restored.items_json || [],
+            classifications_json: restored.classifications_json || []
+        });
+        if (error) throw error;
+    }
+
+    async function importBackupQuestionAsCopy(quizId, backupQuestion = {}, sortOrder = 0, stats = {}) {
+        const questionType = normalizeSheetText(backupQuestion.question_type || 'multiple_choice') || 'multiple_choice';
+        const supportedTypes = new Set(['multiple_choice', 'flashcard', 'hierarchy', 'classify']);
+        if (!supportedTypes.has(questionType)) {
+            throw new Error(`Unsupported backup question type: ${questionType}`);
+        }
+
+        const { data: questionRow, error: questionError } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: quizId,
+                question_type: questionType,
+                prompt_html: normalizeSheetText(backupQuestion.prompt_html),
+                prompt_plain: normalizeSheetText(backupQuestion.prompt_plain),
+                image_url: '',
+                learning_resources_html: normalizeSheetText(backupQuestion.learning_resources_html),
+                learning_resources_image_url: '',
+                sort_order: sortOrder
+            })
+            .select('id')
+            .single();
+        if (questionError) throw questionError;
+        const questionId = questionRow.id;
+
+        const sharedMedia = {
+            image_url: await restoreBackupMediaValue(backupQuestion.image_url, { quizId, questionId, usageContext: 'image_url' }),
+            learning_resources_image_url: await restoreBackupMediaValue(backupQuestion.learning_resources_image_url, { quizId, questionId, usageContext: 'learning_resources_image_url' })
+        };
+        const { error: mediaUpdateError } = await state.auth.client.from('questions').update(sharedMedia).eq('id', questionId);
+        if (mediaUpdateError) throw mediaUpdateError;
+
+        const detail = backupQuestion.detail && typeof backupQuestion.detail === 'object' ? backupQuestion.detail : {};
+        if (questionType === 'flashcard') {
+            await insertBackupFlashcardDetail(quizId, questionId, backupQuestion, detail);
+        } else if (questionType === 'hierarchy') {
+            await insertBackupHierarchyDetail(questionId, detail);
+        } else if (questionType === 'classify') {
+            await insertBackupClassifyDetail(quizId, questionId, detail);
+        } else {
+            await insertBackupMultipleChoiceDetail(questionId, detail);
+        }
+
+        if (backupQuestion.question_state?.is_starred) {
+            const { error: stateError } = await state.auth.client
+                .from('user_question_state')
+                .upsert({ user_id: state.auth.user.id, question_id: questionId, is_starred: true }, { onConflict: 'user_id,question_id' });
+            if (stateError) {
+                console.error('Could not restore starred state for imported question:', stateError);
+            } else {
+                stats.starredQuestions = (stats.starredQuestions || 0) + 1;
+            }
+        }
+        stats.questions = (stats.questions || 0) + 1;
+        return questionId;
+    }
+
+    async function importBackupAsNewCopy() {
+        if (!state.auth.client || !state.auth.user?.id) {
+            throw new Error('Sign in before importing a backup.');
+        }
+        let payload = state.auth.backupImportPayload;
+        if (!payload) {
+            payload = await readAndPreviewBackupImportFile();
+        }
+        validateBackupImportPayload(payload);
+        const { quizzes } = getBackupImportArrays(payload);
+        const stats = { folders: 0, quizzes: 0, questions: 0, starredQuestions: 0 };
+        if (elements.importBackupBtn) elements.importBackupBtn.disabled = true;
+        setCreatorStatus('Importing backup as new copies...', 'neutral');
+
+        const { folderIdMap, createdCount } = await importBackupFoldersAsCopies(payload);
+        stats.folders = createdCount;
+        const nextQuizSortOrder = createImportQuizSortOrderGetter();
+        const usedQuizNames = new Set(state.auth.managedQuizzes.map(quiz => normalizeSheetText(quiz.name).toLowerCase()).filter(Boolean));
+        const importedQuizIds = [];
+
+        for (const backupQuiz of quizzes) {
+            const sourceFolderId = normalizeSheetText(backupQuiz.folder_id);
+            const targetFolderId = sourceFolderId ? (folderIdMap.get(sourceFolderId) || null) : null;
+            const quizName = reserveImportedCopyName(backupQuiz.name, usedQuizNames, 'Imported Quiz');
+            const { data: quizRow, error: quizError } = await state.auth.client
+                .from('quizzes')
+                .insert({
+                    user_id: state.auth.user.id,
+                    folder_id: targetFolderId,
+                    name: quizName,
+                    description: '',
+                    sort_order: nextQuizSortOrder(targetFolderId),
+                    is_archived: false
+                })
+                .select('id')
+                .single();
+            if (quizError) throw quizError;
+            const newQuizId = quizRow.id;
+            importedQuizIds.push(newQuizId);
+            stats.quizzes += 1;
+
+            const questions = Array.isArray(backupQuiz.questions) ? [...backupQuiz.questions] : [];
+            questions.sort((a, b) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0));
+            for (let index = 0; index < questions.length; index += 1) {
+                await importBackupQuestionAsCopy(newQuizId, questions[index], index, stats);
+            }
+        }
+
+        await refreshStudioManagementData();
+        await refreshQuizCatalog({ selectQuizId: importedQuizIds[0] ? `sb:${importedQuizIds[0]}` : undefined, loadSelectedQuiz: false });
+        state.auth.backupImportPayload = null;
+        state.auth.backupImportFileName = '';
+        if (elements.importBackupFile) elements.importBackupFile.value = '';
+        populateExportBackupControls();
+        renderStudioHomeDashboard();
+        setCreatorStatus(`Imported backup as new copies: ${stats.folders} folders, ${stats.quizzes} quizzes, ${stats.questions} questions.`, 'success');
+        if (elements.importBackupPreview) {
+            elements.importBackupPreview.classList.add('is-success');
+            elements.importBackupPreview.insertAdjacentHTML('beforeend', `<div class="studio-backup-preview-note">Import complete. Restored starred questions: ${stats.starredQuestions || 0}.</div>`);
+        }
+    }
+
     async function syncAuthFromSession(session) {
         state.auth.session = session || null;
         state.auth.user = session?.user || null;
@@ -3382,6 +3834,8 @@ MODIFICATION RULES FOR THIS APP
             state.auth.managedQuizzes = [];
             state.googleSheetsImportQuizzes = [];
             state.auth.currentStudioSection = 'home';
+            state.auth.backupImportPayload = null;
+            state.auth.backupImportFileName = '';
             clearCreatorInputs();
             populateCreatorFolderSelect();
             renderFolderManagementList();
@@ -4823,6 +5277,20 @@ function readFileAsDataUrl(file) {
         reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
         reader.onerror = () => reject(reader.error || new Error('Could not read file.'));
         reader.readAsDataURL(file);
+    });
+}
+
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        if (!file) {
+            resolve('');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => reject(reader.error || new Error('Could not read file.'));
+        reader.readAsText(file);
     });
 }
 
@@ -8753,6 +9221,37 @@ if (elements.exportAllBtn) {
         exportAllBackup().catch(err => {
             console.error(err);
             setCreatorStatus(err.message || 'Could not export the full library backup.', 'error');
+        });
+    });
+}
+
+if (elements.importBackupFile) {
+    elements.importBackupFile.addEventListener('change', () => {
+        resetBackupImportState(elements.importBackupFile.files?.length ? 'Backup file selected. Click Preview Backup before importing.' : 'Choose a backup file to preview before importing.');
+    });
+}
+
+if (elements.previewBackupImportBtn) {
+    elements.previewBackupImportBtn.addEventListener('click', () => {
+        readAndPreviewBackupImportFile().catch(err => {
+            console.error(err);
+            state.auth.backupImportPayload = null;
+            if (elements.importBackupPreview) {
+                elements.importBackupPreview.textContent = err.message || 'Could not preview that backup file.';
+                elements.importBackupPreview.classList.add('is-error');
+                elements.importBackupPreview.classList.remove('is-success');
+            }
+            populateExportBackupControls();
+            setCreatorStatus(err.message || 'Could not preview that backup file.', 'error');
+        });
+    });
+}
+
+if (elements.importBackupBtn) {
+    elements.importBackupBtn.addEventListener('click', () => {
+        importBackupAsNewCopy().catch(err => {
+            console.error(err);
+            setCreatorStatus(err.message || 'Could not import that backup.', 'error');
         });
     });
 }

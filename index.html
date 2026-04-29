@@ -330,7 +330,7 @@ MODIFICATION RULES FOR THIS APP
               <div class="quiz-studio-title-group">
                 <div class="quiz-studio-eyebrow">Supabase</div>
                 <h2 class="quiz-studio-title">Quiz Studio</h2>
-                <div class="quiz-studio-subtitle">Create folders, create quizzes, study decks, manage Supabase quiz content, and export JSON backups.</div>
+                <div class="quiz-studio-subtitle">Create folders, create quizzes, study decks, manage Supabase quiz content, and export/import JSON backups.</div>
               </div>
             </div>
 
@@ -421,10 +421,24 @@ MODIFICATION RULES FOR THIS APP
                     <button id="exportFolderBtn" type="button" class="auth-action-btn">Export Folder JSON</button>
                   </section>
 
-                  <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
+                  <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Export Full Library</div>
                     <div class="creator-note">Download all your Supabase folders, quizzes, questions, starred-question state, and private-media references as one JSON backup. Private Storage files are represented by metadata/references, not copied as image files.</div>
                     <button id="exportAllBtn" type="button" class="auth-action-btn">Export All JSON Backup</button>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
+                    <div class="creator-subsection-title">Import JSON Backup As New Copy</div>
+                    <div class="creator-note">Choose a Study Bunny JSON backup, preview it, then import it as new folders/quizzes. This does not overwrite, delete, or merge existing content. Private media is cloned only when the referenced Storage objects still exist in this Supabase project.</div>
+                    <label class="auth-field">
+                      <span>Backup JSON file</span>
+                      <input id="importBackupFile" type="file" accept="application/json,.json">
+                    </label>
+                    <div class="studio-backup-actions">
+                      <button id="previewBackupImportBtn" type="button" class="auth-action-btn">Preview Backup</button>
+                      <button id="importBackupBtn" type="button" class="auth-action-btn auth-secondary-btn" disabled>Import As New Copy</button>
+                    </div>
+                    <div id="importBackupPreview" class="studio-backup-preview">Choose a backup file to preview before importing.</div>
                   </section>
                 </div>
               </section>
