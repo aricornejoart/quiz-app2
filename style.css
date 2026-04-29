@@ -1814,6 +1814,15 @@ body.fullscreen-mode .hint-overlay {
     display: contents;
   }
 
+  .question-star-btn:not(.hidden) {
+    position: fixed;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+    z-index: 1500;
+    display: inline-flex !important;
+    margin-left: 0;
+  }
+
   body.fullscreen-mode .folder-quiz-group {
     display: none !important;
   }
