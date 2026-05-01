@@ -1541,13 +1541,15 @@ body.fullscreen-mode .folder-quiz-group {
   display: none;
 }
 
+body.fullscreen-mode .quiz-select-group {
+  width: 100%;
+  justify-content: flex-end;
+}
+
 body.fullscreen-mode .question-star-btn:not(.hidden) {
-  position: fixed;
-  right: max(16px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom));
-  z-index: 1500;
+  position: static;
   display: inline-flex !important;
-  margin-left: 0;
+  margin-left: auto;
 }
 
 body.fullscreen-mode .container {
