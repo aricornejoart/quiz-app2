@@ -3900,6 +3900,16 @@ body.fullscreen-mode.active-question-classify {
 
 /* ===== Quiz Studio Page ===== */
 .quiz-studio-page {
+  /* Phase 22G: darken Quiz Studio purple surfaces for stronger white-text contrast without changing the main study screen. */
+  --color-bg-surface: #211d34;
+  --color-bg-surface-alt: #1d1830;
+  --color-bg-control: #2c2548;
+  --color-bg-control-hover: #3a3063;
+  --color-bg-hover-soft: #221d36;
+  --color-border: #4f438a;
+  --color-border-strong: #8274ff;
+  --color-text-muted: #d8d3ff;
+
   position: fixed;
   inset: 0;
   z-index: 2300;
@@ -3927,6 +3937,18 @@ body.fullscreen-mode.active-question-classify {
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.4);
   padding: 18px 18px 16px;
   box-sizing: border-box;
+}
+
+.quiz-studio-page .quiz-studio-panel,
+.quiz-studio-page .creator-subsection,
+.quiz-studio-page .studio-question-list-panel,
+.quiz-studio-page .studio-list-item,
+.quiz-studio-page .studio-progress-card,
+.quiz-studio-page .studio-backup-preview,
+.quiz-studio-page .studio-classify-row,
+.quiz-studio-page .studio-rich-toolbar {
+  background: rgba(10, 8, 22, 0.28);
+  border-color: rgba(190, 180, 255, 0.14);
 }
 
 .close-quiz-studio-btn {
@@ -4241,21 +4263,21 @@ body.fullscreen-mode.active-question-classify {
   align-items: stretch;
   gap: 10px;
   padding: 10px 12px;
-  background: var(--color-bg-control);
+  background: #2c2548;
   color: var(--color-text-main);
-  border: 1px solid var(--color-bg-control-hover);
+  border: 1px solid #42386e;
   border-radius: 10px;
   transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, opacity 0.15s ease;
 }
 
 .studio-question-list-item:hover {
-  background: var(--color-bg-control-hover);
+  background: #332b58;
 }
 
 .studio-question-list-item.active {
-  border-color: var(--color-border-strong);
-  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
-  background: var(--color-bg-control-hover);
+  border-color: #8a7dff;
+  box-shadow: 0 0 0 2px rgba(138, 125, 255, 0.18);
+  background: #362d5d;
 }
 
 .studio-question-list-item.dragging {
@@ -4535,6 +4557,40 @@ body.fullscreen-mode.active-question-classify {
 
 .auth-popup .auth-action-btn {
   width: 100%;
+}
+
+/* Phase 22G desktop-only Quiz Studio readability bump. Touch/tablet/phone font sizes stay unchanged. */
+@media screen and (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  .quiz-studio-page .auth-field span,
+  .quiz-studio-page .studio-list-subtitle,
+  .quiz-studio-page .studio-file-name {
+    font-size: 15px;
+  }
+
+  .quiz-studio-page .auth-field input,
+  .quiz-studio-page .auth-field select,
+  .quiz-studio-page .auth-field textarea,
+  .quiz-studio-page .studio-inline-input,
+  .quiz-studio-page .studio-inline-select,
+  .quiz-studio-page .studio-flashcard-inline-field textarea,
+  .quiz-studio-page .studio-rich-editor {
+    font-size: 18px;
+  }
+
+  .quiz-studio-page .auth-action-btn,
+  .quiz-studio-page .quiz-studio-nav-btn,
+  .quiz-studio-page .studio-question-label,
+  .quiz-studio-page .studio-list-title {
+    font-size: 18px;
+  }
+
+  .quiz-studio-page .studio-rich-icon-btn,
+  .quiz-studio-page .studio-rich-color-swatch {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    font-size: 16px;
+  }
 }
 
 @media screen and (max-width: 900px) {
