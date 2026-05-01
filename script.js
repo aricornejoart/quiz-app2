@@ -320,6 +320,22 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function createStudioEmptyState(title, message, actions = []) {
+        const actionMarkup = actions.length
+            ? `<div class="studio-empty-actions">${actions.map(action => `
+                <button type="button" class="auth-action-btn${action.secondary ? ' auth-secondary-btn' : ''}" data-studio-empty-action="${escapeHtml(action.action)}">${escapeHtml(action.label)}</button>
+            `).join('')}</div>`
+            : '';
+
+        return `
+            <div class="studio-empty-state">
+              <div class="studio-empty-title">${escapeHtml(title)}</div>
+              <div class="studio-empty-message">${escapeHtml(message)}</div>
+              ${actionMarkup}
+            </div>
+        `;
+    }
+
     function escapeHtml(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -1193,12 +1209,12 @@ MODIFICATION RULES FOR THIS APP
         if (!elements.studioFolderList) return;
 
         if (!state.auth.client || !state.auth.user?.id) {
-            elements.studioFolderList.innerHTML = '<div class="studio-list-empty">Sign in to manage folders.</div>';
+            elements.studioFolderList.innerHTML = createStudioEmptyState('Sign in required', 'Sign in before managing your private folders.', [{ label: 'Open Account', action: 'open-auth' }]);
             return;
         }
 
         if (!state.auth.supabaseFolders.length) {
-            elements.studioFolderList.innerHTML = '<div class="studio-list-empty">No Supabase folders yet.</div>';
+            elements.studioFolderList.innerHTML = createStudioEmptyState('No folders yet', 'Create your first folder to organize quizzes by class, unit, or chapter.', [{ label: 'Create Folder', action: 'focus-create-folder' }, { label: 'Import Templates', action: 'open-import', secondary: true }]);
             return;
         }
 
@@ -1232,12 +1248,12 @@ MODIFICATION RULES FOR THIS APP
         if (!elements.studioQuizList) return;
 
         if (!state.auth.client || !state.auth.user?.id) {
-            elements.studioQuizList.innerHTML = '<div class="studio-list-empty">Sign in to manage Supabase quizzes.</div>';
+            elements.studioQuizList.innerHTML = createStudioEmptyState('Sign in required', 'Sign in before managing your private Supabase quizzes.', [{ label: 'Open Account', action: 'open-auth' }]);
             return;
         }
 
         if (!state.auth.managedQuizzes.length) {
-            elements.studioQuizList.innerHTML = '<div class="studio-list-empty">No Supabase quizzes yet.</div>';
+            elements.studioQuizList.innerHTML = createStudioEmptyState('No quizzes yet', 'Create a quiz in the editor or import a Google Sheet/template to get started.', [{ label: 'Create Quiz', action: 'open-editor' }, { label: 'Import Templates', action: 'open-import', secondary: true }]);
             return;
         }
 
@@ -1358,9 +1374,9 @@ MODIFICATION RULES FOR THIS APP
 
         if (elements.studioRecentQuizList) {
             if (!signedIn) {
-                elements.studioRecentQuizList.innerHTML = '<div class="studio-list-empty">Sign in to see recent quizzes.</div>';
+                elements.studioRecentQuizList.innerHTML = createStudioEmptyState('Sign in required', 'Sign in to see recent quizzes from your private library.', [{ label: 'Open Account', action: 'open-auth' }]);
             } else if (!state.auth.managedQuizzes.length) {
-                elements.studioRecentQuizList.innerHTML = '<div class="studio-list-empty">No Supabase quizzes yet.</div>';
+                elements.studioRecentQuizList.innerHTML = createStudioEmptyState('No recent quizzes yet', 'Create or import a quiz and it will appear here for quick access.', [{ label: 'Create Quiz', action: 'open-editor' }, { label: 'Import Templates', action: 'open-import', secondary: true }]);
             } else {
                 elements.studioRecentQuizList.innerHTML = [...state.auth.managedQuizzes]
                     .sort(sortStudioRecentItems)
@@ -1387,9 +1403,9 @@ MODIFICATION RULES FOR THIS APP
 
         if (elements.studioRecentFolderList) {
             if (!signedIn) {
-                elements.studioRecentFolderList.innerHTML = '<div class="studio-list-empty">Sign in to see recent folders.</div>';
+                elements.studioRecentFolderList.innerHTML = createStudioEmptyState('Sign in required', 'Sign in to see folders from your private library.', [{ label: 'Open Account', action: 'open-auth' }]);
             } else if (!state.auth.supabaseFolders.length) {
-                elements.studioRecentFolderList.innerHTML = '<div class="studio-list-empty">No Supabase folders yet.</div>';
+                elements.studioRecentFolderList.innerHTML = createStudioEmptyState('No folders yet', 'Create folders to organize your quizzes and improve the Studio dashboard.', [{ label: 'Create Folder', action: 'open-folders' }, { label: 'Import Templates', action: 'open-import', secondary: true }]);
             } else {
                 const folderRows = state.auth.supabaseFolders.map(folder => {
                     const quizzes = state.auth.managedQuizzes.filter(quiz => quiz.folderId === folder.id);
@@ -1418,7 +1434,7 @@ MODIFICATION RULES FOR THIS APP
                                 <div class="studio-list-subtitle">${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)} · Updated ${escapeHtml(formatStudioUpdatedLabel(folder.updatedAt))}</div>
                               </div>
                               <div class="studio-list-controls">
-                                <button type="button" class="auth-action-btn" data-home-action="open-folder">Open Folders</button>
+                                <button type="button" class="auth-action-btn" data-home-action="open-folder">Manage</button>
                               </div>
                             </div>
                         `;
@@ -1428,7 +1444,7 @@ MODIFICATION RULES FOR THIS APP
 
         if (elements.studioProgressPanel) {
             if (!signedIn) {
-                elements.studioProgressPanel.innerHTML = '<div class="studio-list-empty">Sign in to see your library overview.</div>';
+                elements.studioProgressPanel.innerHTML = createStudioEmptyState('Sign in required', 'Sign in to see your library overview.', [{ label: 'Open Account', action: 'open-auth' }]);
                 return;
             }
 
@@ -9741,6 +9757,44 @@ if (elements.createFlashcardDefinitionImageClearBtn) {
     });
 }
 
+function handleStudioEmptyStateAction(e) {
+    const actionButton = e.target.closest('[data-studio-empty-action]');
+    if (!actionButton) return;
+
+    const action = actionButton.dataset.studioEmptyAction;
+    if (action === 'open-auth') {
+        closeQuizStudioPage(true);
+        openAuthPopup();
+        return;
+    }
+
+    if (action === 'open-folders') {
+        setQuizStudioSection('folders');
+        return;
+    }
+
+    if (action === 'focus-create-folder') {
+        setQuizStudioSection('folders');
+        elements.createFolderName?.focus();
+        return;
+    }
+
+    if (action === 'open-editor') {
+        setQuizStudioSection('editor');
+        elements.createQuizName?.focus();
+        return;
+    }
+
+    if (action === 'open-import') {
+        setQuizStudioSection('import');
+        return;
+    }
+
+    if (action === 'open-backup') {
+        setQuizStudioSection('backup');
+    }
+}
+
 function handleStudioHomeQuizAction(e) {
     const item = e.target.closest('[data-home-quiz-id]');
     if (!item) return;
@@ -9768,6 +9822,10 @@ function handleStudioHomeFolderAction(e) {
     if (e.target.matches('[data-home-action="open-folder"]')) {
         setQuizStudioSection('folders');
     }
+}
+
+if (elements.quizStudioPage) {
+    elements.quizStudioPage.addEventListener('click', handleStudioEmptyStateAction);
 }
 
 if (elements.studioRecentQuizList) {
