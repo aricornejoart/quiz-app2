@@ -20,6 +20,7 @@ MODIFICATION RULES FOR THIS APP
     const CONFIG = {
         sheetId: '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E',
         speedDelay: 300,
+        studioAutosaveDelayMs: 5 * 60 * 1000,
         classifyItemCount: 20,
         classifyClassCount: 20,
         dataSource: 'google_sheets',
@@ -116,6 +117,9 @@ MODIFICATION RULES FOR THIS APP
             starringInFlight: false,
             studioQuestionSearchQuery: '',
             studioHasUnsavedChanges: false,
+            studioAutosaveTimerId: null,
+            studioAutosaveInFlight: false,
+            studioAutosaveQuiet: false,
             studioDraggingQuestionId: null,
             studioPendingNewQuestionRow: null,
             backupImportPayload: null,
@@ -309,6 +313,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function setCreatorStatus(message, variant = 'neutral') {
+        if (state.auth.studioAutosaveQuiet && variant !== 'error') return;
         if (!elements.creatorStatus) return;
         elements.creatorStatus.textContent = message;
         elements.creatorStatus.classList.remove('is-error', 'is-success');
@@ -2293,14 +2298,103 @@ MODIFICATION RULES FOR THIS APP
         elements.studioUnsavedChangesIndicator.classList.toggle('hidden', !state.auth.studioHasUnsavedChanges);
     }
 
+    function clearStudioAutosaveTimer() {
+        if (!state.auth.studioAutosaveTimerId) return;
+        clearTimeout(state.auth.studioAutosaveTimerId);
+        state.auth.studioAutosaveTimerId = null;
+    }
+
+    function canRunTimedStudioAutosave() {
+        return !!(
+            state.auth.quizStudioOpen &&
+            state.auth.currentStudioSection === 'editor' &&
+            state.auth.studioHasUnsavedChanges &&
+            state.auth.client &&
+            state.auth.user?.id &&
+            state.auth.editingQuizId &&
+            state.auth.editingQuestionId
+        );
+    }
+
+    function scheduleStudioAutosave() {
+        clearStudioAutosaveTimer();
+        if (!state.auth.studioHasUnsavedChanges || !state.auth.quizStudioOpen) return;
+
+        state.auth.studioAutosaveTimerId = window.setTimeout(() => {
+            state.auth.studioAutosaveTimerId = null;
+            if (!canRunTimedStudioAutosave()) {
+                if (state.auth.studioHasUnsavedChanges) scheduleStudioAutosave();
+                return;
+            }
+
+            autosaveStudioChanges({ reason: 'timer', allowCreate: false, quiet: true }).catch(error => {
+                console.error('Timed Quiz Studio autosave failed:', error);
+                if (state.auth.studioHasUnsavedChanges) scheduleStudioAutosave();
+            });
+        }, CONFIG.studioAutosaveDelayMs);
+    }
+
     function setStudioDirtyState(isDirty) {
         state.auth.studioHasUnsavedChanges = !!isDirty;
         updateStudioUnsavedChangesIndicator();
+
+        if (state.auth.studioHasUnsavedChanges) {
+            scheduleStudioAutosave();
+        } else {
+            clearStudioAutosaveTimer();
+        }
     }
 
     function confirmDiscardStudioChanges(actionLabel = 'continue') {
         if (!state.auth.studioHasUnsavedChanges) return true;
         return window.confirm(`You have unsaved Quiz Studio changes. Discard them and ${actionLabel}?`);
+    }
+
+    async function autosaveStudioChanges(options = {}) {
+        if (!state.auth.studioHasUnsavedChanges) return true;
+        if (state.auth.studioAutosaveInFlight) return false;
+
+        const allowCreate = options.allowCreate !== false;
+        if (!allowCreate && (!state.auth.editingQuizId || !state.auth.editingQuestionId)) {
+            scheduleStudioAutosave();
+            return false;
+        }
+
+        if (!state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before saving Quiz Studio changes.', 'error');
+            return false;
+        }
+
+        state.auth.studioAutosaveInFlight = true;
+        state.auth.studioAutosaveQuiet = !!options.quiet;
+        clearStudioAutosaveTimer();
+
+        try {
+            if (!options.quiet) {
+                setCreatorStatus('Autosaving Quiz Studio changes...');
+            }
+
+            await handleSaveStudioQuiz();
+            const saved = !state.auth.studioHasUnsavedChanges;
+
+            if (!saved && !options.quiet) {
+                setCreatorStatus('Fix the editor fields before leaving this quiz.', 'error');
+            }
+
+            return saved;
+        } catch (error) {
+            console.error('Quiz Studio autosave failed:', error);
+            if (!options.quiet) {
+                setCreatorStatus(error.message || 'Could not autosave Quiz Studio changes.', 'error');
+            }
+            return false;
+        } finally {
+            state.auth.studioAutosaveQuiet = false;
+            state.auth.studioAutosaveInFlight = false;
+            if (state.auth.studioHasUnsavedChanges) {
+                scheduleStudioAutosave();
+            }
+        }
     }
 
     function getStudioPendingFlashcardRow() {
@@ -2335,7 +2429,7 @@ MODIFICATION RULES FOR THIS APP
 
     async function handleStudioFlashcardAddCard() {
         if (!isStudioFlashcardMode()) {
-            beginStudioNewQuestion();
+            await beginStudioNewQuestion();
             return;
         }
 
@@ -2346,7 +2440,7 @@ MODIFICATION RULES FOR THIS APP
 
         if (hasUnsavedChanges && !isBlank) {
             await handleSaveFlashcardQuiz();
-            beginStudioNewQuestion();
+            await beginStudioNewQuestion();
             focusStudioPendingFlashcardTerm();
             return;
         }
@@ -2356,7 +2450,7 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        beginStudioNewQuestion();
+        await beginStudioNewQuestion();
         focusStudioPendingFlashcardTerm();
     }
 
@@ -2610,8 +2704,9 @@ MODIFICATION RULES FOR THIS APP
             clearStudioQuestionInputs();
             return;
         }
-        if (!options.force && questionId !== state.auth.editingQuestionId && !confirmDiscardStudioChanges('switch questions')) {
-            return;
+        if (!options.force && questionId !== state.auth.editingQuestionId && state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'switch questions', allowCreate: true });
+            if (!saved) return false;
         }
 
         const { data: questionRow, error: questionError } = await state.auth.client
@@ -2736,9 +2831,10 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    function beginStudioNewQuestion(insertAfterQuestionId = null) {
-        if (!confirmDiscardStudioChanges('start a new question')) {
-            return;
+    async function beginStudioNewQuestion(insertAfterQuestionId = null) {
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'start a new question', allowCreate: true });
+            if (!saved) return;
         }
         if (!state.auth.editingQuizId) {
             setCreatorStatus('Create a quiz first, then you can add more questions to it.', 'error');
@@ -2757,7 +2853,7 @@ MODIFICATION RULES FOR THIS APP
         renderStudioQuestionList();
         updateCreateQuizModeUI();
         setStudioDirtyState(false);
-        setQuizStudioSection('editor');
+        await setQuizStudioSection('editor');
         const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : (getStudioCurrentQuizType() === 'classify' ? 'classify question' : 'question'));
         if (validInsertAfterQuestionId) {
             setCreatorStatus(`Ready to insert a new ${nextItemLabel} between existing items. Fill in the fields below and save.`, 'success');
@@ -2788,6 +2884,10 @@ MODIFICATION RULES FOR THIS APP
 
     async function reorderStudioQuestionBeforeTarget(draggedQuestionId, targetQuestionId) {
         if (!state.auth.client || !draggedQuestionId || !targetQuestionId || draggedQuestionId === targetQuestionId) return;
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'reorder questions', allowCreate: true });
+            if (!saved) return;
+        }
 
         const orderedQuestionIds = state.auth.studioQuizQuestions.map(question => question.id);
         const draggedIndex = orderedQuestionIds.indexOf(draggedQuestionId);
@@ -2840,6 +2940,12 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
+        const isDeletingCurrentQuestion = questionId === state.auth.editingQuestionId;
+        if (state.auth.studioHasUnsavedChanges && !isDeletingCurrentQuestion) {
+            const saved = await autosaveStudioChanges({ reason: 'delete another question', allowCreate: true });
+            if (!saved) return;
+        }
+
         if (!confirm('Delete this question from the quiz?')) {
             return;
         }
@@ -2880,6 +2986,10 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.client || !state.auth.editingQuizId || !state.auth.editingQuestionId) {
             setCreatorStatus('Select a saved question first.', 'error');
             return;
+        }
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'move this question', allowCreate: true });
+            if (!saved) return;
         }
 
         const rows = state.auth.studioQuizQuestions;
@@ -3007,13 +3117,14 @@ MODIFICATION RULES FOR THIS APP
         return rows[0] || null;
     }
 
-    function setQuizStudioSection(sectionName = 'home', options = {}) {
+    async function setQuizStudioSection(sectionName = 'home', options = {}) {
         const nextSection = ['home', 'folders', 'manage', 'backup', 'import', 'editor'].includes(sectionName)
             ? sectionName
             : 'home';
 
-        if (!options.force && nextSection !== state.auth.currentStudioSection && state.auth.currentStudioSection === 'editor' && !confirmDiscardStudioChanges(`switch to the ${nextSection} section`)) {
-            return false;
+        if (!options.force && nextSection !== state.auth.currentStudioSection && state.auth.currentStudioSection === 'editor' && state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: `switch to the ${nextSection} section`, allowCreate: true });
+            if (!saved) return false;
         }
 
         state.auth.currentStudioSection = nextSection;
@@ -3295,21 +3406,26 @@ MODIFICATION RULES FOR THIS APP
         elements.quizStudioPage.classList.remove('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'false');
         state.auth.quizStudioOpen = true;
-        setQuizStudioSection(sectionName, { force: true });
+        setQuizStudioSection(sectionName, { force: true }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open Quiz Studio section.', 'error');
+        });
         syncBodyScrollLock();
         updateCreatorUI();
         updateStudioUnsavedChangesIndicator();
     }
 
-    function closeQuizStudioPage(force = false) {
-        if (!elements.quizStudioPage) return;
-        if (!force && !confirmDiscardStudioChanges('close Quiz Studio')) {
-            return;
+    async function closeQuizStudioPage(force = false) {
+        if (!elements.quizStudioPage) return true;
+        if (!force && state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'close Quiz Studio', allowCreate: true });
+            if (!saved) return false;
         }
         elements.quizStudioPage.classList.add('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'true');
         state.auth.quizStudioOpen = false;
         syncBodyScrollLock();
+        return true;
     }
 
     async function loadAuthProfile(userId) {
@@ -3373,8 +3489,9 @@ MODIFICATION RULES FOR THIS APP
             return null;
         }
 
-        if (state.auth.studioHasUnsavedChanges && !confirmDiscardStudioChanges('study this quiz')) {
-            return null;
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'study this quiz', allowCreate: true });
+            if (!saved) return null;
         }
 
         const targetQuiz = await refreshQuizCatalog({ selectQuizId: `sb:${normalizedQuizId}`, loadSelectedQuiz: true });
@@ -3382,7 +3499,7 @@ MODIFICATION RULES FOR THIS APP
             throw new Error('Quiz not found');
         }
 
-        closeQuizStudioPage(true);
+        await closeQuizStudioPage(true);
         return targetQuiz;
     }
 
@@ -3661,6 +3778,10 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function exportQuizBackup() {
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'export this quiz backup', allowCreate: true });
+            if (!saved) return;
+        }
         const quizId = normalizeSheetText(elements.exportQuizSelect?.value);
         if (!quizId) {
             setCreatorStatus('Choose a quiz to export.', 'error');
@@ -3679,6 +3800,10 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function exportFolderBackup() {
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'export this folder backup', allowCreate: true });
+            if (!saved) return;
+        }
         const folderId = normalizeSheetText(elements.exportFolderSelect?.value);
         if (!folderId) {
             setCreatorStatus('Choose a folder to export.', 'error');
@@ -3701,6 +3826,10 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function exportAllBackup() {
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'export the full backup', allowCreate: true });
+            if (!saved) return;
+        }
         const quizIds = state.auth.managedQuizzes.map(quiz => quiz.id);
         const folderIds = state.auth.supabaseFolders.map(folder => folder.id);
         if (!quizIds.length && !folderIds.length) {
@@ -3810,6 +3939,10 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function readAndPreviewBackupImportFile() {
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'preview a backup import', allowCreate: true });
+            if (!saved) return;
+        }
         if (!state.auth.client || !state.auth.user?.id) {
             throw new Error('Sign in before importing a backup.');
         }
@@ -4087,6 +4220,10 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function importBackupAsNewCopy() {
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'import a backup', allowCreate: true });
+            if (!saved) return;
+        }
         if (!state.auth.client || !state.auth.user?.id) {
             throw new Error('Sign in before importing a backup.');
         }
@@ -4293,6 +4430,16 @@ MODIFICATION RULES FOR THIS APP
     async function handleAuthSignOut() {
         if (!state.auth.client) return;
 
+        if (state.auth.studioHasUnsavedChanges) {
+            const closed = await closeQuizStudioPage();
+            if (!closed) {
+                setAuthStatus('Save your Quiz Studio changes before signing out.', 'error');
+                return;
+            }
+        } else {
+            await closeQuizStudioPage(true);
+        }
+
         setAuthStatus('Signing out...');
         const { error } = await state.auth.client.auth.signOut();
 
@@ -4302,7 +4449,6 @@ MODIFICATION RULES FOR THIS APP
         }
 
         state.auth.profile = null;
-        closeQuizStudioPage();
         closeAuthPopup();
         setAuthStatus('Signed out.', 'success');
     }
@@ -4814,8 +4960,9 @@ MODIFICATION RULES FOR THIS APP
 
     async function loadQuizIntoEditor(quizId, preferredQuestionId = null, options = {}) {
         try {
-            if (!options.force && !confirmDiscardStudioChanges('load a different quiz')) {
-                return;
+            if (!options.force && state.auth.studioHasUnsavedChanges) {
+                const saved = await autosaveStudioChanges({ reason: 'load a different quiz', allowCreate: true });
+                if (!saved) return;
             }
             const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
             if (!managedQuiz) {
@@ -5028,6 +5175,10 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.client || !state.auth.editingQuizId || !state.auth.editingQuestionId) {
             setCreatorStatus('Select a saved question first.', 'error');
             return;
+        }
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'duplicate this question', allowCreate: true });
+            if (!saved) return;
         }
 
         try {
@@ -5524,7 +5675,7 @@ MODIFICATION RULES FOR THIS APP
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
             renderGoogleSheetsImportControls();
-            setQuizStudioSection('manage');
+            await setQuizStudioSection('manage');
             setCreatorStatus(`Imported "${result.quizName}" into Supabase.`, 'success');
         } catch (error) {
             console.error(error);
@@ -5560,7 +5711,7 @@ MODIFICATION RULES FOR THIS APP
             await refreshStudioManagementData();
             await refreshQuizCatalog();
             renderGoogleSheetsImportControls();
-            setQuizStudioSection('manage');
+            await setQuizStudioSection('manage');
             setCreatorStatus(`Imported ${importedCount} Google Sheets ${importedCount === 1 ? 'quiz' : 'quizzes'} into Supabase.`, 'success');
         } catch (error) {
             console.error(error);
@@ -5585,7 +5736,7 @@ MODIFICATION RULES FOR THIS APP
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
             renderGoogleSheetsImportControls();
-            setQuizStudioSection('manage');
+            await setQuizStudioSection('manage');
             setCreatorStatus(`Imported "${result.quizName}" from the Google Sheet template.`, 'success');
         } catch (error) {
             console.error(error);
@@ -9215,20 +9366,29 @@ if (elements.openQuizStudioBtn) {
 
 elements.quizStudioSectionButtons.forEach(button => {
     button.addEventListener('click', () => {
-        setQuizStudioSection(button.dataset.studioSectionTarget || 'home');
+        setQuizStudioSection(button.dataset.studioSectionTarget || 'home').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not switch Quiz Studio sections.', 'error');
+        });
     });
 });
 
 if (elements.closeQuizStudioBtn) {
     elements.closeQuizStudioBtn.addEventListener('click', () => {
-        closeQuizStudioPage();
+        closeQuizStudioPage().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not close Quiz Studio.', 'error');
+        });
     });
 }
 
 if (elements.quizStudioPage) {
     elements.quizStudioPage.addEventListener('click', e => {
         if (e.target === elements.quizStudioPage) {
-            closeQuizStudioPage();
+            closeQuizStudioPage().catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not close Quiz Studio.', 'error');
+            });
         }
     });
 }
@@ -9354,14 +9514,20 @@ if (elements.createQuizBtn) {
 if (elements.createQuizCancelEditBtn) {
     elements.createQuizCancelEditBtn.addEventListener('click', () => {
         clearCreatorInputs();
-        setQuizStudioSection('editor');
+        setQuizStudioSection('editor', { force: true }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open the editor.', 'error');
+        });
         setCreatorStatus('Ready to create a new quiz.');
     });
 }
 
 if (elements.studioAddQuestionBtn) {
     elements.studioAddQuestionBtn.addEventListener('click', () => {
-        beginStudioNewQuestion();
+        beginStudioNewQuestion().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not add a new question.', 'error');
+        });
     });
 }
 
@@ -9428,7 +9594,10 @@ if (elements.studioQuestionList) {
 
         const insertButton = e.target.closest('[data-studio-insert-after-question-id]');
         if (insertButton) {
-            beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId);
+            beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not insert a new question.', 'error');
+            });
             return;
         }
 
@@ -9763,36 +9932,57 @@ function handleStudioEmptyStateAction(e) {
 
     const action = actionButton.dataset.studioEmptyAction;
     if (action === 'open-auth') {
-        closeQuizStudioPage(true);
+        closeQuizStudioPage(true).catch(err => console.error(err));
         openAuthPopup();
         return;
     }
 
     if (action === 'open-folders') {
-        setQuizStudioSection('folders');
+        setQuizStudioSection('folders').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open folders.', 'error');
+        });
         return;
     }
 
     if (action === 'focus-create-folder') {
-        setQuizStudioSection('folders');
-        elements.createFolderName?.focus();
+        setQuizStudioSection('folders').then(() => {
+            elements.createFolderName?.focus();
+        }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open folders.', 'error');
+        });
         return;
     }
 
     if (action === 'open-editor') {
-        setQuizStudioSection('editor');
-        elements.createQuizName?.focus();
+        setQuizStudioSection('editor').then(() => {
+            elements.createQuizName?.focus();
+        }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open the editor.', 'error');
+        });
         return;
     }
 
     if (action === 'open-import') {
-        setQuizStudioSection('import');
+        setQuizStudioSection('import').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open import tools.', 'error');
+        });
         return;
     }
 
     if (action === 'open-backup') {
-        setQuizStudioSection('backup');
+        setQuizStudioSection('backup').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open backup tools.', 'error');
+        });
     }
+}
+
+if (elements.quizStudioPage) {
+    elements.quizStudioPage.addEventListener('click', handleStudioEmptyStateAction);
 }
 
 function handleStudioHomeQuizAction(e) {
@@ -9820,12 +10010,11 @@ function handleStudioHomeFolderAction(e) {
     if (!item) return;
 
     if (e.target.matches('[data-home-action="open-folder"]')) {
-        setQuizStudioSection('folders');
+        setQuizStudioSection('folders').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open folders.', 'error');
+        });
     }
-}
-
-if (elements.quizStudioPage) {
-    elements.quizStudioPage.addEventListener('click', handleStudioEmptyStateAction);
 }
 
 if (elements.studioRecentQuizList) {
