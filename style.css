@@ -1777,10 +1777,7 @@ body.fullscreen-mode .hint-overlay {
   }
 }
 
-/* ===== Narrow/Large iPhone Layout =====
-   Phone portrait rules intentionally cover up to 480px CSS viewport width.
-   This keeps larger Pro Max iPhone viewports in the same unscaled mobile layout
-   as iPhone 12 Pro instead of falling back to the desktop 1.5x app scale. */
+/* ===== Narrow iPhone Layout ===== */
 @media screen and (max-width: 480px) and (orientation: portrait) {
   body {
     padding: 0;
@@ -2994,9 +2991,7 @@ input {
   }
 }
 
-/* ===== Final iPhone safe-area containment override =====
-   Keep this paired with the 480px phone breakpoint so larger Pro Max viewports
-   do not re-enter the scaled desktop layout. */
+/* ===== Final iPhone safe-area containment override ===== */
 @media screen and (max-width: 480px),
        screen and (max-height: 480px) and (orientation: landscape) {
   html,
@@ -4545,6 +4540,211 @@ body.fullscreen-mode.active-question-classify {
   .studio-question-order-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+
+/* ===== Phase 22B Quiz Studio Mobile/iPad Polish ===== */
+@media screen and (max-width: 900px) {
+  .quiz-studio-shell {
+    width: 100%;
+  }
+
+  .studio-dashboard-list,
+  .studio-list,
+  .studio-question-list {
+    min-width: 0;
+  }
+
+  .studio-list-item,
+  .studio-question-list-item,
+  .quiz-studio-panel {
+    min-width: 0;
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .quiz-studio-title {
+    font-size: 21px;
+    line-height: 1.15;
+  }
+
+  .quiz-studio-subtitle {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .quiz-studio-section-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .quiz-studio-nav-btn {
+    width: auto;
+    min-width: 0;
+    padding: 8px 9px;
+    font-size: 14px;
+    line-height: 1.2;
+    white-space: normal;
+  }
+
+  .studio-section-grid,
+  .studio-dashboard-grid {
+    gap: 12px;
+  }
+
+  .quiz-studio-section {
+    gap: 12px;
+  }
+
+  .quiz-studio-panel,
+  .studio-question-list-panel,
+  .studio-empty-state,
+  .studio-list-item,
+  .studio-progress-card,
+  .studio-backup-preview {
+    padding: 11px;
+    border-radius: 12px;
+  }
+
+  .studio-list-title,
+  .studio-empty-title {
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .studio-list-subtitle,
+  .studio-empty-message,
+  .creator-note,
+  .studio-backup-preview {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .studio-backup-actions,
+  .studio-empty-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .studio-list-controls > *,
+  .studio-editor-actions > *,
+  .studio-options-toolbar-actions > *,
+  .studio-question-header-actions > *,
+  .studio-question-order-actions > *,
+  .studio-file-row > *,
+  .studio-backup-actions > *,
+  .studio-empty-actions > * {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .studio-inline-input,
+  .studio-inline-select,
+  .studio-file-name {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .studio-template-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .studio-template-grid .auth-action-btn {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .studio-question-list-item {
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .studio-question-row-handle,
+  .studio-question-row-delete {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+  }
+
+  .studio-question-chip {
+    min-width: 44px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .studio-question-label {
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .studio-flashcard-inline-field textarea {
+    min-height: 56px;
+  }
+
+  .studio-rich-toolbar {
+    overflow-x: auto;
+    overflow-y: visible;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .studio-rich-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .studio-rich-menu {
+    max-width: calc(100vw - 40px);
+  }
+
+  .studio-rich-menu-wrap:nth-of-type(n + 3) .studio-rich-menu {
+    left: auto;
+    right: 0;
+  }
+
+  .studio-rich-editor {
+    min-height: 110px;
+    max-height: 220px;
+    font-size: 14px;
+  }
+}
+
+@media screen and (max-width: 360px) {
+  .quiz-studio-section-nav {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media screen and (min-width: 641px) and (max-width: 1024px) {
+  .quiz-studio-shell {
+    padding: 18px;
+  }
+
+  .quiz-studio-section-nav {
+    gap: 8px;
+  }
+
+  .quiz-studio-nav-btn {
+    padding: 9px 12px;
+  }
+
+  .studio-progress-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .studio-list-controls,
+  .studio-editor-actions,
+  .studio-backup-actions,
+  .studio-options-toolbar-actions,
+  .studio-question-header-actions {
+    gap: 8px;
   }
 }
 
