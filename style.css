@@ -5007,3 +5007,88 @@ body.fullscreen-mode.active-question-classify {
 body.fullscreen-mode .progress-mode-summary {
   max-width: var(--content-width-fullscreen);
 }
+
+/* ===== Phase 22F: Multiple Choice Split Layout =====
+   Desktop and landscape-only layout for multiple choice. Portrait iPhone/iPad
+   remains stacked to preserve the confirmed mobile behavior.
+   The image is mounted with the question text in a left-column wrapper so it
+   sits immediately under the prompt instead of inheriting right-column option height. */
+@media screen and (hover: hover) and (pointer: fine) and (min-width: 700px),
+       screen and (orientation: landscape) {
+  body.active-question-multiple-choice .quiz-area {
+    display: block;
+    width: 100%;
+  }
+
+  body.active-question-multiple-choice .question-container {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(280px, 1.05fr);
+    align-items: start;
+    column-gap: 28px;
+    width: 100%;
+  }
+
+  body.active-question-multiple-choice .mc-split-question-column {
+    grid-column: 1;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  body.active-question-multiple-choice #questionText {
+    width: 100%;
+    max-width: none;
+  }
+
+  body.active-question-multiple-choice .image-container {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    align-self: flex-start;
+    flex: 0 0 auto;
+  }
+
+  body.active-question-multiple-choice .options {
+    grid-column: 2;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  body.active-question-multiple-choice .optionBtn,
+  body.active-question-multiple-choice .explanation {
+    width: 100%;
+    max-width: none;
+  }
+
+  body.active-question-multiple-choice .image-container img,
+  body.active-question-multiple-choice #questionImage {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    margin-top: 0;
+  }
+}
+
+@media screen and (orientation: landscape) and (max-height: 480px) {
+  body.active-question-multiple-choice .question-container {
+    grid-template-columns: minmax(0, 0.9fr) minmax(260px, 1.1fr);
+    column-gap: 14px;
+  }
+
+  body.active-question-multiple-choice .mc-split-question-column {
+    gap: 6px;
+  }
+
+  body.active-question-multiple-choice .options {
+    gap: 8px;
+  }
+
+  body.active-question-multiple-choice .option-block {
+    gap: 4px;
+  }
+}

@@ -262,6 +262,7 @@ MODIFICATION RULES FOR THIS APP
         imageContainer: document.querySelector('.image-container'),
         optionsContainer: document.querySelector('.options'),
         questionContainer: document.querySelector('.question-container'),
+        quizArea: document.querySelector('.quiz-area'),
 
         flashcardFrontSetting: document.getElementById('flashcardFrontSetting'),
         termFrontBtn: document.getElementById('termFrontBtn'),
@@ -6133,10 +6134,62 @@ function isNarrowIPhoneViewport() {
     return window.matchMedia('(max-width: 440px), (max-height: 440px) and (orientation: landscape)').matches;
 }
 
+function isMultipleChoiceSplitLayoutViewport() {
+    return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 700px), (orientation: landscape)').matches;
+}
+
+function getMultipleChoiceSplitQuestionColumn() {
+    let wrapper = document.getElementById('mcSplitQuestionColumn');
+    if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.id = 'mcSplitQuestionColumn';
+        wrapper.className = 'mc-split-question-column';
+    }
+    return wrapper;
+}
+
+function syncMultipleChoiceSplitLayoutMount() {
+    const shouldUseSplitMount = state.currentQuestionType === 'multiple choice' && isMultipleChoiceSplitLayoutViewport();
+    const quizArea = elements.quizArea;
+    const questionContainer = elements.questionContainer;
+    const questionText = elements.questionTextEl;
+    const imageContainer = elements.imageContainer;
+    const optionsContainer = elements.optionsContainer;
+
+    if (!quizArea || !questionContainer || !questionText || !imageContainer || !optionsContainer) return;
+
+    if (shouldUseSplitMount) {
+        const wrapper = getMultipleChoiceSplitQuestionColumn();
+        if (wrapper.parentElement !== questionContainer) {
+            questionContainer.insertBefore(wrapper, optionsContainer);
+        }
+        if (questionText.parentElement !== wrapper) {
+            wrapper.appendChild(questionText);
+        }
+        if (imageContainer.parentElement !== wrapper) {
+            wrapper.appendChild(imageContainer);
+        }
+        return;
+    }
+
+    const wrapper = document.getElementById('mcSplitQuestionColumn');
+    if (questionText.parentElement !== questionContainer) {
+        questionContainer.insertBefore(questionText, optionsContainer);
+    }
+    if (imageContainer.parentElement !== quizArea) {
+        quizArea.insertBefore(imageContainer, questionContainer.nextSibling);
+    }
+    if (wrapper && wrapper.parentElement && !wrapper.contains(questionText) && !wrapper.contains(imageContainer)) {
+        wrapper.remove();
+    }
+}
+
 function updateViewportClasses() {
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
+    document.body.classList.toggle('active-question-multiple-choice', state.currentQuestionType === 'multiple choice');
     document.body.classList.toggle('active-question-flashcard', state.currentQuestionType === 'flashcard');
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
+    syncMultipleChoiceSplitLayoutMount();
 }
 
 function applyResponsiveControlText() {
