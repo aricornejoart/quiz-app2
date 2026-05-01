@@ -1777,8 +1777,11 @@ body.fullscreen-mode .hint-overlay {
   }
 }
 
-/* ===== Narrow iPhone Layout ===== */
-@media screen and (max-width: 430px) and (orientation: portrait) {
+/* ===== Narrow/Large iPhone Layout =====
+   Phone portrait rules intentionally cover up to 480px CSS viewport width.
+   This keeps larger Pro Max iPhone viewports in the same unscaled mobile layout
+   as iPhone 12 Pro instead of falling back to the desktop 1.5x app scale. */
+@media screen and (max-width: 480px) and (orientation: portrait) {
   body {
     padding: 0;
   }
@@ -2056,7 +2059,7 @@ body.fullscreen-mode .hint-overlay {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   body {
     padding: 0;
   }
@@ -2460,7 +2463,7 @@ input {
   }
 }
 
-@media screen and (max-width: 430px) and (orientation: portrait) {
+@media screen and (max-width: 480px) and (orientation: portrait) {
   .container {
     display: flex;
     flex-direction: column;
@@ -2576,7 +2579,7 @@ input {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   .container {
     display: flex;
     flex-direction: column;
@@ -2696,7 +2699,7 @@ input {
   }
 }
 
-@media screen and (max-width: 430px) and (orientation: portrait) {
+@media screen and (max-width: 480px) and (orientation: portrait) {
   .container {
     padding-right: max(12px, env(safe-area-inset-right));
     padding-left: max(10px, env(safe-area-inset-left));
@@ -2734,7 +2737,7 @@ input {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   .top-row {
     gap: 6px 6px;
   }
@@ -2791,7 +2794,7 @@ input {
 }
 
 /* ===== iPhone portrait/landscape alignment + question width patch ===== */
-@media screen and (max-width: 430px) and (orientation: portrait) {
+@media screen and (max-width: 480px) and (orientation: portrait) {
   .top-row {
     grid-template-columns: minmax(0, 1fr) 74px;
     gap: 8px 8px;
@@ -2862,7 +2865,7 @@ input {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   .top-row {
     grid-template-columns: minmax(0, 1fr) 72px;
     gap: 6px 8px;
@@ -2927,7 +2930,7 @@ input {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   body.fullscreen-mode #progressContainer {
     flex: 0 1 auto;
     justify-content: flex-start;
@@ -2991,9 +2994,11 @@ input {
   }
 }
 
-/* ===== Final iPhone safe-area containment override ===== */
-@media screen and (max-width: 430px),
-       screen and (max-height: 430px) and (orientation: landscape) {
+/* ===== Final iPhone safe-area containment override =====
+   Keep this paired with the 480px phone breakpoint so larger Pro Max viewports
+   do not re-enter the scaled desktop layout. */
+@media screen and (max-width: 480px),
+       screen and (max-height: 480px) and (orientation: landscape) {
   html,
   body {
     width: 100%;
@@ -3045,7 +3050,7 @@ input {
   }
 }
 
-@media screen and (max-width: 430px) and (orientation: portrait) {
+@media screen and (max-width: 480px) and (orientation: portrait) {
   .top-row,
   body.fullscreen-mode .top-row {
     grid-template-columns: minmax(0, 1fr) auto !important;
@@ -3082,7 +3087,7 @@ input {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   .top-row,
   body.fullscreen-mode .top-row {
     grid-template-columns: minmax(0, 1fr) auto !important;
@@ -3176,8 +3181,8 @@ input {
   opacity: 0.7;
 }
 
-@media screen and (max-width: 430px) and (orientation: portrait),
-       screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-width: 480px) and (orientation: portrait),
+       screen and (max-height: 480px) and (orientation: landscape) {
   .folder-quiz-group {
     grid-column: 1;
     grid-row: 1;
@@ -3443,7 +3448,7 @@ input {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   .settings-popup {
     width: min(640px, calc(100vw - 18px));
     max-height: calc(100vh - 18px);
@@ -3479,7 +3484,7 @@ input {
   }
 }
 
-@media screen and (max-width: 430px) and (orientation: portrait) {
+@media screen and (max-width: 480px) and (orientation: portrait) {
   .settings-popup {
     width: min(292px, calc(100vw - 34px));
     max-height: min(84vh, calc(100vh - 24px));
@@ -3516,7 +3521,7 @@ input {
 
 /* ===== Classify full-width responsive expansion (leave iPhone portrait unchanged) ===== */
 @media screen and (orientation: landscape),
-       screen and (min-width: 431px) and (orientation: portrait) {
+       screen and (min-width: 481px) and (orientation: portrait) {
   body.active-question-classify {
     --classify-layout-gap: 14px;
     --classify-column-padding: 16px 18px;
@@ -3601,7 +3606,7 @@ body.fullscreen-mode.active-question-classify {
   --classify-classes-max-height: min(700px, 64vh);
 }
 
-@media screen and (max-width: 430px) and (orientation: portrait) {
+@media screen and (max-width: 480px) and (orientation: portrait) {
   body.fullscreen-mode.active-question-classify {
     --classify-layout-gap: 12px;
     --classify-bank-min-height: 160px;
@@ -3619,7 +3624,7 @@ body.fullscreen-mode.active-question-classify {
   }
 }
 
-@media screen and (max-height: 430px) and (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   body.fullscreen-mode.active-question-classify {
     --classify-bank-min-height: min(72svh, 440px);
     --classify-bank-max-height: min(72svh, 440px);
