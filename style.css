@@ -1541,15 +1541,41 @@ body.fullscreen-mode .folder-quiz-group {
   display: none;
 }
 
+body.fullscreen-mode .top-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 8px 10px;
+}
+
+body.fullscreen-mode .left-controls {
+  display: contents;
+}
+
+body.fullscreen-mode .bottom-controls {
+  grid-column: 1;
+  grid-row: 1;
+  margin-top: 0;
+}
+
 body.fullscreen-mode .quiz-select-group {
-  width: 100%;
+  grid-column: 2;
+  grid-row: 1;
+  width: auto;
   justify-content: flex-end;
+  align-self: start;
+}
+
+body.fullscreen-mode .utility-controls {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
 }
 
 body.fullscreen-mode .question-star-btn:not(.hidden) {
   position: static;
   display: inline-flex !important;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 body.fullscreen-mode .container {
@@ -1559,10 +1585,6 @@ body.fullscreen-mode .container {
 body.fullscreen-mode .top-bar {
   gap: 8px;
   margin-bottom: 12px;
-}
-
-body.fullscreen-mode .left-controls {
-  gap: 6px;
 }
 
 body.fullscreen-mode .quiz-area {
@@ -2990,6 +3012,31 @@ input {
   .hierarchy-arrow:active,
   .close-settings-btn:active {
     color: var(--color-border-strong) !important;
+  }
+}
+
+/* Keep fullscreen top controls, star, and utility buttons on one row in short landscape. */
+@media screen and (max-height: 480px) and (orientation: landscape) {
+  body.fullscreen-mode .top-row {
+    grid-template-columns: minmax(0, 1fr) auto auto !important;
+  }
+
+  body.fullscreen-mode .bottom-controls {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body.fullscreen-mode .quiz-select-group {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    width: auto;
+    justify-self: end;
+  }
+
+  body.fullscreen-mode .utility-controls {
+    grid-column: 3;
+    grid-row: 1;
   }
 }
 
