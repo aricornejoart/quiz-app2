@@ -627,8 +627,20 @@ MODIFICATION RULES FOR THIS APP
             }
             return rows;
         }
-        const rows = [['Question', 'multiple choice', 'Option 1', 'Option 2', 'Option 3', 'Option 4', 'Correct answer', 'Option 1 explanation', 'Option 2 explanation', 'Option 3 explanation', 'Option 4 explanation', 'Question image URL', 'Learning resources', 'Learning resources image URL']];
-        if (isExample) rows.push(['Which organelle makes most cellular ATP?', '', 'Nucleus', 'Mitochondria', 'Ribosome', 'Golgi apparatus', 'Mitochondria', 'The nucleus stores DNA.', 'Mitochondria produce most ATP during cellular respiration.', 'Ribosomes build proteins.', 'The Golgi modifies and packages molecules.', '', 'Review cellular respiration and organelle functions.', '']);
+        const rows = [[
+            'Question', 'multiple choice',
+            'option_1', 'option_2', 'option_3', 'option_4', 'option_5', 'option_6',
+            'correct_option',
+            'option_1_explanation', 'option_2_explanation', 'option_3_explanation', 'option_4_explanation', 'option_5_explanation', 'option_6_explanation',
+            'Question image URL', 'Learning resources', 'Learning resources image URL'
+        ]];
+        if (isExample) rows.push([
+            'Which organelle makes most cellular ATP?', '',
+            'Nucleus', 'Mitochondria', 'Ribosome', 'Golgi apparatus', 'Chloroplast', 'Lysosome',
+            '2',
+            'The nucleus stores DNA.', 'Mitochondria produce most ATP during cellular respiration.', 'Ribosomes build proteins.', 'The Golgi modifies and packages molecules.', 'Chloroplasts perform photosynthesis in plant cells.', 'Lysosomes digest cellular waste.',
+            '', 'Review cellular respiration and organelle functions. Add more option_7, option_8, etc. columns if needed.', ''
+        ]);
         return rows;
     }
 
@@ -5373,13 +5385,13 @@ MODIFICATION RULES FOR THIS APP
             const options = Array.isArray(question.options) ? question.options.map(normalizeSheetText).filter(Boolean) : [];
             const correctAnswer = normalizeSheetText(question.correct);
             if (options.length < 2) {
-                throw new Error(`${rowLabel}: multiple-choice questions need at least 2 answer options.`);
+                throw new Error(`${rowLabel}: multiple-choice questions need at least 2 filled option columns.`);
             }
             if (!correctAnswer) {
-                throw new Error(`${rowLabel}: choose a correct answer.`);
+                throw new Error(`${rowLabel}: enter a correct answer or a valid correct_option number.`);
             }
             if (!options.includes(correctAnswer)) {
-                throw new Error(`${rowLabel}: correct answer must exactly match one of the options.`);
+                throw new Error(`${rowLabel}: correct answer must exactly match an option, or correct_option must point to a filled option column.`);
             }
         });
 
@@ -6989,6 +7001,135 @@ async function loadSelectedQuiz(selectorValue) {
 }
 
 // ================= LOAD QUESTIONS =================
+
+function normalizeSheetHeaderKey(value) {
+    return normalizeSheetText(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function getSheetHeaderValues(rows) {
+    return (rows[0]?.c || []).map(getCellValue);
+}
+
+function findSheetColumnByHeader(headers, candidateKeys) {
+    const keys = new Set(candidateKeys.map(normalizeSheetHeaderKey));
+    return headers.findIndex(header => keys.has(normalizeSheetHeaderKey(header)));
+}
+
+function parseMultipleChoiceOptionHeader(header) {
+    const key = normalizeSheetHeaderKey(header);
+    const match = key.match(/^option(\d+)$/) || key.match(/^answeroption(\d+)$/);
+    return match ? Number(match[1]) : null;
+}
+
+function parseMultipleChoiceExplanationHeader(header) {
+    const key = normalizeSheetHeaderKey(header);
+    const match = key.match(/^option(\d+)explanation(?:html)?$/) || key.match(/^answeroption(\d+)explanation(?:html)?$/);
+    return match ? Number(match[1]) : null;
+}
+
+function getMultipleChoiceSheetLayout(rows) {
+    const headers = getSheetHeaderValues(rows);
+    const optionColumns = headers
+        .map((header, columnIndex) => ({ optionNumber: parseMultipleChoiceOptionHeader(header), columnIndex }))
+        .filter(item => Number.isInteger(item.optionNumber) && item.optionNumber > 0)
+        .sort((a, b) => a.optionNumber - b.optionNumber);
+
+    const explanationColumns = new Map(headers
+        .map((header, columnIndex) => ({ optionNumber: parseMultipleChoiceExplanationHeader(header), columnIndex }))
+        .filter(item => Number.isInteger(item.optionNumber) && item.optionNumber > 0)
+        .map(item => [item.optionNumber, item.columnIndex]));
+
+    const correctColumn = findSheetColumnByHeader(headers, [
+        'correct_option',
+        'correct option',
+        'correct option number',
+        'correct option index',
+        'correct_answer',
+        'correct answer',
+        'correct'
+    ]);
+    const correctHeaderKey = correctColumn >= 0 ? normalizeSheetHeaderKey(headers[correctColumn]) : '';
+    const correctUsesOptionNumber = /correctoption|correctoptionnumber|correctoptionindex/.test(correctHeaderKey);
+
+    const imageColumn = findSheetColumnByHeader(headers, ['Question image URL', 'Question image', 'Image URL', 'Image']);
+    const learningResourcesColumn = findSheetColumnByHeader(headers, ['Learning resources', 'Learning resource', 'Resources']);
+    const learningResourcesImageColumn = findSheetColumnByHeader(headers, ['Learning resources image URL', 'Learning resource image URL', 'Resources image URL']);
+
+    if (optionColumns.length) {
+        return {
+            usesHeaders: true,
+            optionColumns,
+            explanationColumns,
+            correctColumn,
+            correctUsesOptionNumber,
+            imageColumn,
+            learningResourcesColumn,
+            learningResourcesImageColumn
+        };
+    }
+
+    return {
+        usesHeaders: false,
+        optionColumns: [2, 3, 4, 5].map((columnIndex, index) => ({ optionNumber: index + 1, columnIndex })),
+        explanationColumns: new Map([[1, 7], [2, 8], [3, 9], [4, 10]]),
+        correctColumn: 6,
+        correctUsesOptionNumber: false,
+        imageColumn: 11,
+        learningResourcesColumn: 12,
+        learningResourcesImageColumn: 13
+    };
+}
+
+function resolveMultipleChoiceCorrectAnswer(rawCorrect, optionDrafts, correctUsesOptionNumber = false) {
+    const normalizedCorrect = normalizeSheetText(rawCorrect);
+    if (!normalizedCorrect) return '';
+
+    if (correctUsesOptionNumber) {
+        const optionNumberMatch = normalizedCorrect.match(/^(?:option\s*)?(\d+)$/i);
+        const optionNumber = optionNumberMatch ? Number(optionNumberMatch[1]) : NaN;
+        if (Number.isInteger(optionNumber)) {
+            return optionDrafts.find(option => option.optionNumber === optionNumber)?.text || '';
+        }
+        return '';
+    }
+
+    return normalizedCorrect;
+}
+
+function parseMultipleChoiceQuestionsFromGoogleSheetRows(rows) {
+    const layout = getMultipleChoiceSheetLayout(rows);
+    const dataRows = layout.usesHeaders ? rows.slice(1) : rows;
+
+    return dataRows.map(r => {
+        const c = r.c || [];
+        const optionDrafts = layout.optionColumns.map(({ optionNumber, columnIndex }) => {
+            const text = getCellValue(c[columnIndex]);
+            const explanationColumn = layout.explanationColumns.get(optionNumber);
+            return {
+                optionNumber,
+                text,
+                explanation: Number.isInteger(explanationColumn) ? getCellValue(c[explanationColumn]) : ''
+            };
+        }).filter(option => normalizeSheetText(option.text));
+
+        return {
+            id: `q_${state.questionIdCounter++}`,
+            question: getCellValue(c[0]),
+            type: 'multiple choice',
+            options: optionDrafts.map(option => option.text),
+            correct: resolveMultipleChoiceCorrectAnswer(
+                layout.correctColumn >= 0 ? getCellValue(c[layout.correctColumn]) : '',
+                optionDrafts,
+                layout.correctUsesOptionNumber
+            ),
+            explanations: optionDrafts.map(option => option.explanation),
+            image: layout.imageColumn >= 0 ? getCellValue(c[layout.imageColumn]) : '',
+            learningResources: layout.learningResourcesColumn >= 0 ? getCellValue(c[layout.learningResourcesColumn]) : '',
+            learningResourcesImage: layout.learningResourcesImageColumn >= 0 ? getCellValue(c[layout.learningResourcesImageColumn]) : ''
+        };
+    }).filter(q => q.question && q.question.toLowerCase() !== 'question');
+}
+
 function parseQuestionsFromGoogleSheetRows(rows) {
     const type = getCellValue(rows[0]?.c?.[1]).toLowerCase();
 
@@ -7092,30 +7233,7 @@ function parseQuestionsFromGoogleSheetRows(rows) {
         );
     }
 
-    return rows.map(r => {
-        const c = r.c || [];
-        return {
-            id: `q_${state.questionIdCounter++}`,
-            question: getCellValue(c[0]),
-            type: 'multiple choice',
-            options: [
-                getCellValue(c[2]),
-                getCellValue(c[3]),
-                getCellValue(c[4]),
-                getCellValue(c[5])
-            ].filter(Boolean),
-            correct: getCellValue(c[6]),
-            explanations: [
-                getCellValue(c[7]),
-                getCellValue(c[8]),
-                getCellValue(c[9]),
-                getCellValue(c[10])
-            ],
-            image: getCellValue(c[11]),
-            learningResources: getCellValue(c[12]),
-            learningResourcesImage: getCellValue(c[13])
-        };
-    }).filter(q => q.question && q.question.toLowerCase() !== 'question');
+    return parseMultipleChoiceQuestionsFromGoogleSheetRows(rows);
 }
 
 async function loadQuestionsFromGoogleSheetDocument(sheetId, sheetName) {
