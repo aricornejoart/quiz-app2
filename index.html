@@ -223,6 +223,29 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card" id="progressModeSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="progressMode">Progress</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="progressModeHelp"
+                    aria-label="About Progress"
+                    aria-expanded="false"
+                    aria-controls="progressModeHelp"
+                  >?</button>
+                </div>
+                <div id="progressModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Shows a score at the end and lets you retry only missed questions in the same session. Cannot be used with Retention, Mastery, or Mastery Check.
+                </div>
+                <label class="toggle-switch" for="progressMode" aria-label="Progress toggle">
+                  <input type="checkbox" id="progressMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
               <div class="setting-card" id="excludeStarredQuestionsSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="excludeStarredQuestions">Exclude Starred</label>
@@ -761,10 +784,6 @@ MODIFICATION RULES FOR THIS APP
                       <span class="studio-rich-color-wrap" title="Font color">
                         <button id="createLearningResourcesColorBtn" type="button" class="studio-rich-icon-btn studio-rich-color-btn" aria-label="Font color" tabindex="-1"><span class="studio-rich-color-icon">A</span></button>
                         <input id="createLearningResourcesColor" class="studio-rich-hidden-color" type="color" value="#e0e0ff" data-learning-rich-control aria-label="Font color picker">
-                      </span>
-                      <span class="studio-rich-color-wrap" title="Highlight color">
-                        <button id="createLearningResourcesHighlightColorBtn" type="button" class="studio-rich-icon-btn studio-rich-highlight-btn" aria-label="Highlight color" tabindex="-1"><span class="studio-rich-highlight-icon">▇</span></button>
-                        <input id="createLearningResourcesHighlightColor" class="studio-rich-hidden-color" type="color" value="#fff59d" data-learning-rich-control aria-label="Highlight color picker">
                       </span>
                     </div>
                     <div id="createLearningResources" class="studio-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Paste learning resources or study support here"></div>

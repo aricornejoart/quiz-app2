@@ -75,6 +75,8 @@ MODIFICATION RULES FOR THIS APP
         masteryCheckMasteredIds: new Set(),
 
         normalFinished: false,
+        progressRetryActive: false,
+        progressWrongQuestionMap: new Map(),
         questionAnswered: false,
 
         pendingLearningResource: null,
@@ -205,9 +207,7 @@ MODIFICATION RULES FOR THIS APP
         createLearningResourcesFontSizeBtn: document.getElementById('createLearningResourcesFontSizeBtn'),
         createLearningResourcesJustifyBtn: document.getElementById('createLearningResourcesJustifyBtn'),
         createLearningResourcesColorBtn: document.getElementById('createLearningResourcesColorBtn'),
-        createLearningResourcesHighlightColorBtn: document.getElementById('createLearningResourcesHighlightColorBtn'),
         createLearningResourcesColor: document.getElementById('createLearningResourcesColor'),
-        createLearningResourcesHighlightColor: document.getElementById('createLearningResourcesHighlightColor'),
         createLearningResourcesRichControls: Array.from(document.querySelectorAll('[data-learning-rich-control]')),
         createLearningResourcesRichMenuTriggers: Array.from(document.querySelectorAll('[data-rich-menu-trigger]')),
         createLearningResourcesRichMenus: Array.from(document.querySelectorAll('[data-rich-menu]')),
@@ -5708,6 +5708,10 @@ function isMasteryCheckMode() {
     return document.getElementById('masteryCheckMode').checked;
 }
 
+function isProgressMode() {
+    return document.getElementById('progressMode')?.checked || false;
+}
+
 function isSpeedMode() {
     return document.getElementById('rapidMode').checked;
 }
@@ -5730,6 +5734,51 @@ function isNormalMode() {
 
 function isStructuredMode() {
     return isRetentionMode() || isRetryMode() || isMasteryCheckMode();
+}
+
+function getProgressQuestionKey(question, fallbackIndex = state.currentIndex) {
+    return normalizeSheetText(question?.id || question?.sourceQuestionId || ('progress-question-' + fallbackIndex));
+}
+
+function recordProgressModeOutcome(question, isCorrect) {
+    if (!isProgressMode() || !question) return;
+    const key = getProgressQuestionKey(question);
+    if (!key) return;
+
+    if (isCorrect) {
+        state.progressWrongQuestionMap.delete(key);
+    } else {
+        state.progressWrongQuestionMap.set(key, question);
+    }
+}
+
+function getProgressMissedQuestions() {
+    return Array.from(state.progressWrongQuestionMap.values()).filter(Boolean);
+}
+
+function getProgressScorePercent() {
+    const total = state.questions.length;
+    if (!total) return 0;
+    const missedCount = getProgressMissedQuestions().length;
+    const correctCount = Math.max(0, total - missedCount);
+    return Math.round((correctCount / total) * 100);
+}
+
+function startProgressModeRetry() {
+    const missedQuestions = getProgressMissedQuestions();
+    if (!missedQuestions.length) return;
+
+    state.progressRetryActive = true;
+    state.questionQueue = [...missedQuestions];
+    state.currentIndex = 0;
+    state.normalFinished = false;
+    state.questionAnswered = false;
+    state.flashcardFlipped = false;
+    clearProgressModeFinishUI();
+    clearFeedback();
+    clearExplanations();
+    clearPendingLearningResource();
+    showQuestion();
 }
 
 function canUseLearningResources() {
@@ -5835,10 +5884,12 @@ function updateExclusiveModeAvailability() {
     const retentionActive = isRetentionMode();
     const masteryActive = isRetryMode();
     const masteryCheckActive = isMasteryCheckMode();
+    const progressActive = isProgressMode();
 
-    setSettingDisabled('retentionModeSetting', 'retentionMode', masteryActive || masteryCheckActive);
-    setSettingDisabled('masteryModeSetting', 'masteryMode', retentionActive || masteryCheckActive);
-    setSettingDisabled('masteryCheckModeSetting', 'masteryCheckMode', retentionActive || masteryActive);
+    setSettingDisabled('retentionModeSetting', 'retentionMode', masteryActive || masteryCheckActive || progressActive);
+    setSettingDisabled('masteryModeSetting', 'masteryMode', retentionActive || masteryCheckActive || progressActive);
+    setSettingDisabled('masteryCheckModeSetting', 'masteryCheckMode', retentionActive || masteryActive || progressActive);
+    setSettingDisabled('progressModeSetting', 'progressMode', retentionActive || masteryActive || masteryCheckActive);
 }
 
 function updateRapidLearningResourcesCompatibility() {
@@ -7032,7 +7083,13 @@ function removeFlashcardUI() {
 
 }
 
+function clearProgressModeFinishUI() {
+    if (!elements.optionsContainer) return;
+    elements.optionsContainer.querySelectorAll('.progress-mode-summary').forEach(node => node.remove());
+}
+
 function clearQuestionUI() {
+    clearProgressModeFinishUI();
     clearFeedback();
     clearExplanations();
     clearOptionFeedback();
@@ -7190,6 +7247,7 @@ async function toggleCurrentQuestionStarState() {
 
 function applyQuestionOutcome(q, isCorrect, options = {}) {
     const { useSideFeedback = true } = options;
+    recordProgressModeOutcome(q, isCorrect);
 
     if (isCorrect) {
         clearPendingLearningResource();
@@ -7209,7 +7267,7 @@ function applyQuestionOutcome(q, isCorrect, options = {}) {
         handleWrongAnswer();
     }
 
-    if (isRetryMode()) {
+    if (isRetryMode() || isProgressMode()) {
         updateProgress();
     }
 
@@ -7233,7 +7291,18 @@ function updateProgress() {
     let percent = 0;
     let useReviewProgressAppearance = false;
 
-    if (isRetentionMode()) {
+    if (isProgressMode()) {
+        if (state.normalFinished) {
+            const missedCount = getProgressMissedQuestions().length;
+            remaining = missedCount;
+            completed = total - missedCount;
+            percent = total > 0 ? (completed / total) * 100 : 0;
+        } else {
+            remaining = state.questionQueue.length - state.currentIndex;
+            completed = total - remaining;
+            percent = total > 0 ? (completed / total) * 100 : 0;
+        }
+    } else if (isRetentionMode()) {
         remaining = state.retentionFinished ? 0 : (state.questionQueue.length - state.currentIndex);
         completed = total - remaining;
         percent = total > 0 ? (completed / total) * 100 : 0;
@@ -7282,6 +7351,42 @@ function isQuizFinished() {
     return state.normalFinished;
 }
 
+function renderProgressModeFinishState() {
+    const missedQuestions = getProgressMissedQuestions();
+    const missedCount = missedQuestions.length;
+    const percent = getProgressScorePercent();
+
+    elements.questionTextEl.style.display = 'block';
+    elements.questionTextEl.innerText = percent >= 100 ? 'Progress Complete!' : (percent + '% complete');
+    elements.optionsContainer.style.display = 'flex';
+    elements.optionsContainer.innerHTML = '';
+
+    const summary = document.createElement('div');
+    summary.className = 'progress-mode-summary';
+
+    const message = document.createElement('div');
+    message.className = 'progress-mode-message';
+    if (missedCount > 0) {
+        const questionLabel = missedCount === 1 ? 'question' : 'questions';
+        const retryPrefix = state.progressRetryActive ? 'You still missed ' : 'You missed ';
+        message.innerText = retryPrefix + missedCount + ' ' + questionLabel + '. Try again with only the missed questions.';
+    } else {
+        message.innerText = '100% complete. You finished this Progress Mode session.';
+    }
+    summary.appendChild(message);
+
+    if (missedCount > 0) {
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.className = 'auth-action-btn progress-mode-retry-btn';
+        retryBtn.innerText = 'Try Again';
+        retryBtn.addEventListener('click', startProgressModeRetry);
+        summary.appendChild(retryBtn);
+    }
+
+    elements.optionsContainer.appendChild(summary);
+}
+
 // ================= SHOW QUESTION =================
 function showQuestion() {
     if (!state.questions.length) {
@@ -7298,9 +7403,13 @@ function showQuestion() {
     }
 
     if (isQuizFinished()) {
-        elements.questionTextEl.style.display = 'block';
-        elements.questionTextEl.innerText = 'Quiz Finished!';
-        elements.optionsContainer.style.display = 'none';
+        if (isProgressMode()) {
+            renderProgressModeFinishState();
+        } else {
+            elements.questionTextEl.style.display = 'block';
+            elements.questionTextEl.innerText = 'Quiz Finished!';
+            elements.optionsContainer.style.display = 'none';
+        }
         elements.imageContainer.style.display = '';
         elements.questionImage.style.display = 'none';
         elements.questionImage.src = '';
@@ -8840,6 +8949,9 @@ function resetModeState() {
     state.pendingMasteryAdvance = false;
     resetMasteryCheckState();
 
+    state.progressRetryActive = false;
+    state.progressWrongQuestionMap = new Map();
+
     state.normalFinished = false;
     state.questionAnswered = false;
     state.flashcardFlipped = false;
@@ -8884,6 +8996,8 @@ document.getElementById('retentionMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('masteryMode').checked = false;
         document.getElementById('masteryCheckMode').checked = false;
+        const progressMode = document.getElementById('progressMode');
+        if (progressMode) progressMode.checked = false;
     }
     updateSettingsAvailability();
     restartQuiz();
@@ -8893,6 +9007,8 @@ document.getElementById('masteryMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('retentionMode').checked = false;
         document.getElementById('masteryCheckMode').checked = false;
+        const progressMode = document.getElementById('progressMode');
+        if (progressMode) progressMode.checked = false;
     }
     updateSettingsAvailability();
     restartQuiz();
@@ -8902,6 +9018,18 @@ document.getElementById('masteryCheckMode').onchange = e => {
     if (e.target.checked) {
         document.getElementById('retentionMode').checked = false;
         document.getElementById('masteryMode').checked = false;
+        const progressMode = document.getElementById('progressMode');
+        if (progressMode) progressMode.checked = false;
+    }
+    updateSettingsAvailability();
+    restartQuiz();
+};
+
+document.getElementById('progressMode').onchange = e => {
+    if (e.target.checked) {
+        document.getElementById('retentionMode').checked = false;
+        document.getElementById('masteryMode').checked = false;
+        document.getElementById('masteryCheckMode').checked = false;
     }
     updateSettingsAvailability();
     restartQuiz();
@@ -9587,9 +9715,7 @@ function handleLearningResourcesColorInput(inputEl, styleName, fallbackColor) {
 }
 
 prepareLearningResourcesColorPicker(elements.createLearningResourcesColor);
-prepareLearningResourcesColorPicker(elements.createLearningResourcesHighlightColor);
 handleLearningResourcesColorInput(elements.createLearningResourcesColor, 'color', '#e0e0ff');
-handleLearningResourcesColorInput(elements.createLearningResourcesHighlightColor, 'backgroundColor', '#fff59d');
 
 document.addEventListener('click', event => {
     if (!event.target.closest('#learningResourcesRichToolbar')) {
