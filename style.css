@@ -3951,6 +3951,51 @@ body.fullscreen-mode.active-question-classify {
   border-color: rgba(190, 180, 255, 0.14);
 }
 
+
+/* Phase 22H: keep Quiz Studio's nested panels and draggable rows inside their parent containers. */
+.quiz-studio-page,
+.quiz-studio-page *,
+.quiz-studio-page *::before,
+.quiz-studio-page *::after {
+  box-sizing: border-box;
+}
+
+.quiz-studio-shell,
+.quiz-studio-sections,
+.quiz-studio-section,
+.quiz-studio-panel,
+.creator-subsection,
+.studio-question-list-panel,
+.studio-question-list,
+.studio-question-list-row,
+.studio-question-list-item,
+.studio-question-list-main,
+.studio-flashcard-inline-fields,
+.studio-option-pair,
+.studio-options-grid,
+.studio-section-grid,
+.studio-dashboard-grid,
+.studio-progress-grid,
+.studio-list,
+.studio-list-item,
+.studio-list-controls,
+.studio-editor-actions,
+.studio-backup-actions,
+.studio-file-row,
+.studio-classify-row,
+.studio-rich-toolbar,
+.studio-rich-editor {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.quiz-studio-page input,
+.quiz-studio-page select,
+.quiz-studio-page textarea,
+.quiz-studio-page button {
+  max-width: 100%;
+}
+
 .close-quiz-studio-btn {
   position: absolute;
   top: 12px;
