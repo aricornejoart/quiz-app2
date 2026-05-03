@@ -177,6 +177,11 @@ MODIFICATION RULES FOR THIS APP
         createFolderName: document.getElementById('createFolderName'),
         createFolderBtn: document.getElementById('createFolderBtn'),
         createQuizFolderSelect: document.getElementById('createQuizFolderSelect'),
+        createQuizFolderNewBtn: document.getElementById('createQuizFolderNewBtn'),
+        createQuizFolderInlineCreator: document.getElementById('createQuizFolderInlineCreator'),
+        createQuizNewFolderName: document.getElementById('createQuizNewFolderName'),
+        createQuizNewFolderCreateBtn: document.getElementById('createQuizNewFolderCreateBtn'),
+        createQuizNewFolderCancelBtn: document.getElementById('createQuizNewFolderCancelBtn'),
         createQuizName: document.getElementById('createQuizName'),
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
         studioQuestionList: document.getElementById('studioQuestionList'),
@@ -3185,6 +3190,10 @@ MODIFICATION RULES FOR THIS APP
             elements.previewBackupImportBtn,
             elements.importBackupBtn,
             elements.createQuizFolderSelect,
+            elements.createQuizFolderNewBtn,
+            elements.createQuizNewFolderName,
+            elements.createQuizNewFolderCreateBtn,
+            elements.createQuizNewFolderCancelBtn,
             elements.createQuizName,
             elements.createQuizTypeSelect,
             elements.studioQuestionSearchInput,
@@ -3292,6 +3301,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioQuestionSearchQuery = '';
         if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
         if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
+        setEditorInlineFolderCreatorOpen(false);
 
         state.auth.editingQuizId = null;
         state.auth.editingQuizType = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
@@ -4494,12 +4504,43 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function handleCreateFolder() {
+    async function createSupabaseFolderByName(folderName) {
         if (!state.auth.client || !state.auth.user?.id) {
-            setCreatorStatus('Sign in before creating a folder.', 'error');
-            return;
+            throw new Error('Sign in before creating a folder.');
         }
 
+        const normalizedName = normalizeFolderName(folderName);
+        if (!normalizedName) {
+            throw new Error('Enter a folder name first.');
+        }
+
+        const sortOrder = await getNextSortOrderForFolder();
+        const { data, error } = await state.auth.client
+            .from('folders')
+            .insert({
+                user_id: state.auth.user.id,
+                name: normalizedName,
+                sort_order: sortOrder
+            })
+            .select('id, name, sort_order')
+            .single();
+
+        if (error) throw error;
+        return data;
+    }
+
+    function setEditorInlineFolderCreatorOpen(isOpen = false, options = {}) {
+        if (!elements.createQuizFolderInlineCreator) return;
+        elements.createQuizFolderInlineCreator.classList.toggle('hidden', !isOpen);
+        if (!isOpen && !options.keepValue && elements.createQuizNewFolderName) {
+            elements.createQuizNewFolderName.value = '';
+        }
+        if (isOpen && options.focus !== false && elements.createQuizNewFolderName) {
+            window.requestAnimationFrame(() => elements.createQuizNewFolderName.focus());
+        }
+    }
+
+    async function handleCreateFolder() {
         const folderName = normalizeSheetText(elements.createFolderName?.value);
         if (!folderName) {
             setCreatorStatus('Enter a folder name first.', 'error');
@@ -4509,29 +4550,42 @@ MODIFICATION RULES FOR THIS APP
         setCreatorStatus('Creating folder...');
 
         try {
-            const sortOrder = await getNextSortOrderForFolder();
-            const { error } = await state.auth.client
-                .from('folders')
-                .insert({
-                    user_id: state.auth.user.id,
-                    name: folderName,
-                    sort_order: sortOrder
-                });
-
-            if (error) throw error;
-
+            const createdFolder = await createSupabaseFolderByName(folderName);
             await refreshStudioManagementData();
             await refreshQuizCatalog();
-            if (elements.createQuizFolderSelect) {
-                const createdFolder = state.auth.supabaseFolders.find(folder => folder.name === folderName);
-                if (createdFolder) {
-                    elements.createQuizFolderSelect.value = createdFolder.id;
-                }
+            if (elements.createQuizFolderSelect && createdFolder?.id) {
+                elements.createQuizFolderSelect.value = createdFolder.id;
             }
             if (elements.createFolderName) {
                 elements.createFolderName.value = '';
             }
             setCreatorStatus('Folder created.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not create the folder.', 'error');
+        }
+    }
+
+    async function handleCreateFolderFromEditor() {
+        const folderName = normalizeSheetText(elements.createQuizNewFolderName?.value);
+        if (!folderName) {
+            setCreatorStatus('Enter a new folder name first.', 'error');
+            elements.createQuizNewFolderName?.focus();
+            return;
+        }
+
+        setCreatorStatus('Creating folder...');
+
+        try {
+            const createdFolder = await createSupabaseFolderByName(folderName);
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
+            if (elements.createQuizFolderSelect && createdFolder?.id) {
+                elements.createQuizFolderSelect.value = createdFolder.id;
+                setStudioDirtyState(true);
+            }
+            setEditorInlineFolderCreatorOpen(false);
+            setCreatorStatus('Folder created and selected.', 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not create the folder.', 'error');
@@ -9529,6 +9583,42 @@ if (elements.createFolderBtn) {
     });
 }
 
+if (elements.createQuizFolderNewBtn) {
+    elements.createQuizFolderNewBtn.addEventListener('click', () => {
+        setEditorInlineFolderCreatorOpen(true);
+    });
+}
+
+if (elements.createQuizNewFolderCancelBtn) {
+    elements.createQuizNewFolderCancelBtn.addEventListener('click', () => {
+        setEditorInlineFolderCreatorOpen(false);
+    });
+}
+
+if (elements.createQuizNewFolderCreateBtn) {
+    elements.createQuizNewFolderCreateBtn.addEventListener('click', () => {
+        handleCreateFolderFromEditor().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not create the folder.', 'error');
+        });
+    });
+}
+
+if (elements.createQuizNewFolderName) {
+    elements.createQuizNewFolderName.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            handleCreateFolderFromEditor().catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not create the folder.', 'error');
+            });
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setEditorInlineFolderCreatorOpen(false);
+        }
+    });
+}
+
 if (elements.openQuizStudioBtn) {
     elements.openQuizStudioBtn.addEventListener('click', () => {
         openQuizStudioPage('home');
@@ -10420,7 +10510,7 @@ document.addEventListener('input', event => {
 });
 
 document.addEventListener('change', event => {
-    if (event.target.matches('#createQuizTypeSelect, #createQuestionImageFile, #createLearningResourcesImageFile, #createFlashcardTermImageFile, #createFlashcardDefinitionImageFile') || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row')) {
+    if (event.target.matches('#createQuizFolderSelect, #createQuizTypeSelect, #createQuestionImageFile, #createLearningResourcesImageFile, #createFlashcardTermImageFile, #createFlashcardDefinitionImageFile') || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row')) {
         handleStudioDirtyInput(event);
     }
 });

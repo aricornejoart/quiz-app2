@@ -571,12 +571,20 @@ MODIFICATION RULES FOR THIS APP
                   <div class="creator-subsection-title">Quiz Editor</div>
                   <div id="createQuizModeNote" class="creator-note">Choose a quiz type, then keep adding, selecting, deleting, and reordering questions or cards inside that same quiz.</div>
 
-                  <label class="auth-field">
+                  <div class="auth-field studio-editor-folder-field">
                     <span>Folder</span>
-                    <select id="createQuizFolderSelect">
-                      <option value="">No folder</option>
-                    </select>
-                  </label>
+                    <div class="studio-editor-folder-row">
+                      <select id="createQuizFolderSelect">
+                        <option value="">No folder</option>
+                      </select>
+                      <button id="createQuizFolderNewBtn" type="button" class="auth-action-btn auth-secondary-btn studio-new-folder-toggle-btn">+ New Folder</button>
+                    </div>
+                    <div id="createQuizFolderInlineCreator" class="studio-inline-folder-creator hidden">
+                      <input id="createQuizNewFolderName" type="text" autocomplete="off" placeholder="New folder name">
+                      <button id="createQuizNewFolderCreateBtn" type="button" class="auth-action-btn">Create</button>
+                      <button id="createQuizNewFolderCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
+                    </div>
+                  </div>
 
                   <label class="auth-field">
                     <span>Quiz name</span>

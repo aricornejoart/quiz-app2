@@ -5242,3 +5242,69 @@ body.fullscreen-mode .progress-mode-summary {
     gap: 4px;
   }
 }
+
+/* ===== Phase 22I: Quiz Editor Inline Folder Creator ===== */
+.studio-editor-folder-field {
+  min-width: 0;
+}
+
+.studio-editor-folder-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.studio-editor-folder-row select {
+  min-width: 0;
+}
+
+.studio-new-folder-toggle-btn {
+  white-space: nowrap;
+}
+
+.studio-inline-folder-creator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.studio-inline-folder-creator input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  font-size: 15px;
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-bg-control-hover);
+  border-radius: 8px;
+  font-family: inherit;
+  outline: none;
+}
+
+.studio-inline-folder-creator input:focus {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+}
+
+@media screen and (max-width: 600px) {
+  .studio-editor-folder-row,
+  .studio-inline-folder-creator {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-new-folder-toggle-btn,
+  .studio-inline-folder-creator .auth-action-btn {
+    width: 100%;
+  }
+}
