@@ -568,8 +568,10 @@ MODIFICATION RULES FOR THIS APP
 
               <section id="quizStudioEditorSection" class="quiz-studio-section hidden" data-studio-section="editor" role="tabpanel">
                 <section class="creator-subsection quiz-studio-panel studio-quiz-editor-panel">
-                  <div class="creator-subsection-title">Quiz Editor</div>
-                  <div id="createQuizModeNote" class="creator-note">Choose a quiz type, then keep adding, selecting, deleting, and reordering questions or cards inside that same quiz.</div>
+                  <div class="studio-editor-title-row">
+                    <div class="creator-subsection-title">Quiz Editor</div>
+                    <button id="createQuizCancelEditBtn" type="button" class="auth-action-btn auth-secondary-btn">Create Quiz</button>
+                  </div>
 
                   <div class="auth-field studio-editor-folder-field">
                     <span>Folder</span>
@@ -606,12 +608,7 @@ MODIFICATION RULES FOR THIS APP
                         <div class="creator-subsection-title studio-inline-title">Questions</div>
                         <div id="studioUnsavedChangesIndicator" class="studio-unsaved-indicator hidden">Unsaved changes</div>
                       </div>
-                      <div class="studio-question-header-actions">
-                        <button id="studioAddQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Question</button>
-                        <button id="studioDuplicateQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Duplicate Question</button>
-                      </div>
                     </div>
-                    <div class="creator-note">Each quiz can now contain multiple multiple-choice questions, flashcards, hierarchy questions, or classify questions. Use the list to select, reorder, insert between, duplicate, or delete items. Flashcards also support quick inline term/definition editing in the list.</div>
                     <div class="studio-question-tools">
                       <label class="auth-field studio-question-search-field">
                         <span>Search questions</span>
@@ -644,15 +641,16 @@ MODIFICATION RULES FOR THIS APP
                     </div>
                   </div>
 
-                  <div id="multipleChoiceEditorFields" class="studio-editor-type-fields">
-                    <div class="studio-options-toolbar">
-                      <div class="creator-note studio-options-note">Add or remove options as needed. Each option includes its own explanation field automatically.</div>
-                      <div class="studio-options-toolbar-actions">
-                        <button id="addOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Option</button>
-                        <button id="removeOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Option</button>
-                      </div>
+                  <div class="studio-options-toolbar studio-editor-quick-toolbar">
+                    <div class="studio-options-toolbar-actions">
+                      <button id="studioAddQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Question</button>
+                      <button id="studioDuplicateQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Duplicate Question</button>
+                      <button id="addOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Option</button>
+                      <button id="removeOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Option</button>
                     </div>
+                  </div>
 
+                  <div id="multipleChoiceEditorFields" class="studio-editor-type-fields">
                     <div id="createOptionFieldsContainer" class="studio-options-grid"></div>
 
                     <label class="auth-field">
@@ -795,7 +793,6 @@ MODIFICATION RULES FOR THIS APP
                       </span>
                     </div>
                     <div id="createLearningResources" class="studio-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Paste learning resources or study support here"></div>
-                    <div class="creator-note">Styling applies only to Learning Resources. Question prompts, answers, and imports keep their existing behavior.</div>
                   </div>
 
                   <label class="auth-field">
@@ -808,8 +805,8 @@ MODIFICATION RULES FOR THIS APP
                   </div>
 
                   <div class="studio-editor-actions">
-                    <button id="createQuizBtn" type="button" class="auth-action-btn">Create Quiz</button>
-                    <button id="createQuizCancelEditBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel Edit</button>
+                    <button id="studioAddQuestionBottomBtn" type="button" class="auth-action-btn auth-secondary-btn">New Question</button>
+                    <button id="studioDuplicateQuestionBottomBtn" type="button" class="auth-action-btn auth-secondary-btn">Duplicate Question</button>
                   </div>
                 </section>
               </section>

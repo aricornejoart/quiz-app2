@@ -190,7 +190,9 @@ MODIFICATION RULES FOR THIS APP
         studioQuestionJumpBtn: document.getElementById('studioQuestionJumpBtn'),
         studioUnsavedChangesIndicator: document.getElementById('studioUnsavedChangesIndicator'),
         studioAddQuestionBtn: document.getElementById('studioAddQuestionBtn'),
+        studioAddQuestionBottomBtn: document.getElementById('studioAddQuestionBottomBtn'),
         studioDuplicateQuestionBtn: document.getElementById('studioDuplicateQuestionBtn'),
+        studioDuplicateQuestionBottomBtn: document.getElementById('studioDuplicateQuestionBottomBtn'),
         studioDeleteQuestionBtn: document.getElementById('studioDeleteQuestionBtn'),
         studioMoveQuestionUpBtn: document.getElementById('studioMoveQuestionUpBtn'),
         studioMoveQuestionDownBtn: document.getElementById('studioMoveQuestionDownBtn'),
@@ -239,7 +241,6 @@ MODIFICATION RULES FOR THIS APP
         removeClassifyItemBtn: document.getElementById('removeClassifyItemBtn'),
         createCorrectOptionSelect: document.getElementById('createCorrectOptionSelect'),
         createCorrectExplanation: document.getElementById('createCorrectExplanation'),
-        createQuizModeNote: document.getElementById('createQuizModeNote'),
         createQuizBtn: document.getElementById('createQuizBtn'),
         createQuizCancelEditBtn: document.getElementById('createQuizCancelEditBtn'),
         settingsBtn: document.getElementById('settingsBtn'),
@@ -1204,6 +1205,9 @@ MODIFICATION RULES FOR THIS APP
         if (elements.hierarchyEditorFields) elements.hierarchyEditorFields.classList.toggle('hidden', !isHierarchy);
         if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
+        [elements.addOptionFieldBtn, elements.removeOptionFieldBtn].forEach(button => {
+            if (button) button.classList.toggle('hidden', !isMultipleChoice);
+        });
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
             elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
@@ -1754,27 +1758,6 @@ MODIFICATION RULES FOR THIS APP
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
         const quizType = getStudioCurrentQuizType();
-        const itemLabelMap = {
-            multiple_choice: 'question',
-            flashcard: 'flashcard',
-            hierarchy: 'hierarchy question',
-            classify: 'classify question'
-        };
-        const itemPluralMap = {
-            multiple_choice: 'questions',
-            flashcard: 'flashcards',
-            hierarchy: 'hierarchy questions',
-            classify: 'classify questions'
-        };
-        const quizLabelMap = {
-            multiple_choice: 'multiple-choice quiz',
-            flashcard: 'flashcard quiz',
-            hierarchy: 'hierarchy quiz',
-            classify: 'classify quiz'
-        };
-        const itemLabel = itemLabelMap[quizType] || 'question';
-        const itemPlural = itemPluralMap[quizType] || 'questions';
-        const quizLabel = quizLabelMap[quizType] || 'quiz';
         const itemDisplayMap = { multiple_choice: 'Question', flashcard: 'Flashcard', hierarchy: 'Hierarchy Question', classify: 'Classify Question' };
         const itemDisplay = itemDisplayMap[quizType] || 'Question';
 
@@ -1785,16 +1768,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         if (elements.createQuizCancelEditBtn) {
-            elements.createQuizCancelEditBtn.disabled = !isEditingQuiz;
-            elements.createQuizCancelEditBtn.textContent = 'Start New Quiz';
-        }
-
-        if (elements.createQuizModeNote) {
-            elements.createQuizModeNote.textContent = !isEditingQuiz
-                ? `Creates a ${quizLabel} and saves the current ${itemLabel} into it. After that, you can keep adding, selecting, deleting, and reordering ${itemPlural} inside that same quiz.`
-                : (isEditingQuestion
-                    ? `Editing the selected ${itemLabel} inside this quiz. Quiz name and folder changes save at the same time.`
-                    : `This quiz is open in the editor. Fill in the fields below to add a new ${itemLabel} to it.`);
+            elements.createQuizCancelEditBtn.textContent = 'Create Quiz';
         }
 
         updateStudioEditorTypeUI();
@@ -3200,7 +3174,9 @@ MODIFICATION RULES FOR THIS APP
             elements.studioQuestionJumpInput,
             elements.studioQuestionJumpBtn,
             elements.studioAddQuestionBtn,
+            elements.studioAddQuestionBottomBtn,
             elements.studioDuplicateQuestionBtn,
+            elements.studioDuplicateQuestionBottomBtn,
             elements.studioDeleteQuestionBtn,
             elements.studioMoveQuestionUpBtn,
             elements.studioMoveQuestionDownBtn,
@@ -9783,22 +9759,34 @@ if (elements.createQuizCancelEditBtn) {
     });
 }
 
-if (elements.studioAddQuestionBtn) {
-    elements.studioAddQuestionBtn.addEventListener('click', () => {
-        beginStudioNewQuestion().catch(err => {
-            console.error(err);
-            setCreatorStatus('Could not add a new question.', 'error');
-        });
+const handleStudioAddQuestionClick = () => {
+    beginStudioNewQuestion().catch(err => {
+        console.error(err);
+        setCreatorStatus('Could not add a new question.', 'error');
     });
+};
+
+if (elements.studioAddQuestionBtn) {
+    elements.studioAddQuestionBtn.addEventListener('click', handleStudioAddQuestionClick);
 }
 
-if (elements.studioDuplicateQuestionBtn) {
-    elements.studioDuplicateQuestionBtn.addEventListener('click', () => {
-        handleDuplicateStudioQuestion().catch(err => {
-            console.error(err);
-            setCreatorStatus('Could not duplicate the question.', 'error');
-        });
+if (elements.studioAddQuestionBottomBtn) {
+    elements.studioAddQuestionBottomBtn.addEventListener('click', handleStudioAddQuestionClick);
+}
+
+const handleStudioDuplicateQuestionClick = () => {
+    handleDuplicateStudioQuestion().catch(err => {
+        console.error(err);
+        setCreatorStatus('Could not duplicate the question.', 'error');
     });
+};
+
+if (elements.studioDuplicateQuestionBtn) {
+    elements.studioDuplicateQuestionBtn.addEventListener('click', handleStudioDuplicateQuestionClick);
+}
+
+if (elements.studioDuplicateQuestionBottomBtn) {
+    elements.studioDuplicateQuestionBottomBtn.addEventListener('click', handleStudioDuplicateQuestionClick);
 }
 
 if (elements.studioDeleteQuestionBtn) {
