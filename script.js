@@ -125,7 +125,8 @@ MODIFICATION RULES FOR THIS APP
             backupImportPayload: null,
             backupImportFileName: '',
             mediaSignedUrlCache: new Map(),
-            mathChemToolsExpanded: false
+            mathChemToolsExpanded: false,
+            expandedOptionImageRows: new Set()
         }
     };
 
@@ -1143,6 +1144,112 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+
+    function getOptionAnswerValue(optionDraft = {}) {
+        return normalizeSheetText(optionDraft.text) || normalizeSheetText(optionDraft.imageUrl);
+    }
+
+    function getOptionImageLabel(optionDraft = {}, index = 0) {
+        const label = normalizeSheetText(optionDraft.imageLabel || optionDraft.label);
+        if (label) return label;
+        return normalizeSheetText(optionDraft.imageUrl) ? `Option ${index + 1} image selected.` : 'No option image selected.';
+    }
+
+    function collectOptionImageRows() {
+        if (!elements.createOptionFieldsContainer) return [];
+        return Array.from(elements.createOptionFieldsContainer.querySelectorAll('[data-option-index]'));
+    }
+
+    function updateStudioOptionImageToggle(row) {
+        if (!row) return;
+        const optionIndex = Number(row.dataset.optionIndex || 0) || 0;
+        const panel = row.querySelector('[data-option-image-panel]');
+        const toggle = row.querySelector('[data-option-image-toggle]');
+        const imageInput = row.querySelector('[data-option-image-url]');
+        if (!toggle) return;
+        const isOpen = !!panel && !panel.classList.contains('hidden');
+        const hasImage = !!normalizeSheetText(imageInput?.value || '');
+        toggle.classList.toggle('has-image', hasImage);
+        toggle.textContent = isOpen ? 'Hide Image' : (hasImage ? 'Edit Image' : 'Add Image');
+        toggle.title = isOpen
+            ? `Hide Option ${optionIndex} image controls`
+            : (hasImage ? `Edit Option ${optionIndex} image` : `Add Option ${optionIndex} image`);
+        toggle.setAttribute('aria-label', toggle.title);
+        toggle.setAttribute('aria-expanded', String(isOpen));
+    }
+
+    function setStudioOptionImageState(row, value = '', label = '') {
+        if (!row) return;
+        const optionIndex = Number(row.dataset.optionIndex || 0) || 0;
+        const normalizedValue = normalizeSheetText(value);
+        const nextLabel = label || (normalizedValue ? `Option ${optionIndex} image selected.` : 'No option image selected.');
+        const imageInput = row.querySelector('[data-option-image-url]');
+        const imageLabel = row.querySelector('[data-option-image-name]');
+        const imageFile = row.querySelector('[data-option-image-file]');
+        const imagePreview = row.querySelector('[data-option-image-preview]');
+
+        if (imageInput) {
+            imageInput.value = normalizedValue;
+            imageInput.dataset.optionImageLabel = nextLabel;
+        }
+        if (imageLabel) imageLabel.textContent = nextLabel;
+        if (!normalizedValue && imageFile) imageFile.value = '';
+        updateStudioOptionImageToggle(row);
+        if (imagePreview) setPreviewImageSource(imagePreview, normalizedValue);
+    }
+
+    function setStudioOptionImagePanelOpen(row, forceOpen = null) {
+        if (!row) return;
+        const optionIndex = row.dataset.optionIndex || '';
+        const panel = row.querySelector('[data-option-image-panel]');
+        const toggle = row.querySelector('[data-option-image-toggle]');
+        if (!panel || !toggle) return;
+        const nextOpen = forceOpen === null ? panel.classList.contains('hidden') : !!forceOpen;
+        panel.classList.toggle('hidden', !nextOpen);
+        if (nextOpen) {
+            state.auth.expandedOptionImageRows.add(optionIndex);
+            const imageInput = row.querySelector('[data-option-image-url]');
+            const imagePreview = row.querySelector('[data-option-image-preview]');
+            if (imagePreview) setPreviewImageSource(imagePreview, imageInput?.value || '');
+        } else {
+            state.auth.expandedOptionImageRows.delete(optionIndex);
+        }
+        updateStudioOptionImageToggle(row);
+    }
+
+    async function handleStudioOptionImageFileInput(fileInput) {
+        const row = fileInput?.closest('[data-option-index]');
+        const optionIndex = Number(row?.dataset.optionIndex || 0) || 0;
+        const file = fileInput?.files?.[0];
+        if (!row) return;
+        if (!file) {
+            setStudioOptionImageState(row, '', 'No option image selected.');
+            return;
+        }
+        const dataUrl = await readFileAsDataUrl(file);
+        setStudioOptionImageState(row, dataUrl, `Selected: ${file.name}`);
+        setStudioDirtyState(true);
+        setStudioOptionImagePanelOpen(row, true);
+    }
+
+    async function saveOptionImageValues(quizId, questionId, optionDrafts = []) {
+        const savedDrafts = [];
+        for (let index = 0; index < optionDrafts.length; index += 1) {
+            const draft = optionDrafts[index] || {};
+            const imageUrl = await savePrivateMediaValue(draft.imageUrl || '', {
+                quizId,
+                questionId,
+                usageContext: `multiple_choice_option_${index + 1}_image`,
+                label: draft.imageLabel || draft.text || `option-${index + 1}-image`
+            });
+            savedDrafts.push({
+                ...draft,
+                imageUrl
+            });
+        }
+        return savedDrafts;
+    }
+
     async function replaceMediaRefsForCopiedValue(value, options = {}) {
         const normalizedValue = normalizeSheetText(value);
         if (!isSupabaseMediaReference(normalizedValue)) return normalizedValue;
@@ -1244,6 +1351,9 @@ MODIFICATION RULES FOR THIS APP
             const detail = await loadClassifyDetailByQuestionId(questionId);
             collectSupabaseMediaReferences(detail?.items_json, refs);
             collectSupabaseMediaReferences(detail?.classifications_json, refs);
+        } else if (questionRow.question_type === 'multiple_choice') {
+            const detail = await loadMultipleChoiceDetailByQuestionId(questionId);
+            collectSupabaseMediaReferences(detail?.options_json, refs);
         }
 
         return refs;
@@ -1971,23 +2081,51 @@ MODIFICATION RULES FOR THIS APP
     function createStudioOptionFieldRow(index, optionData = {}) {
         const optionText = normalizeSheetText(optionData.text);
         const optionExplanation = normalizeSheetText(optionData.explanation);
+        const optionImageUrl = normalizeSheetText(optionData.imageUrl);
+        const optionImageLabel = getOptionImageLabel(optionData, index);
+        const optionNumber = index + 1;
+        const isImagePanelOpen = state.auth.expandedOptionImageRows.has(String(optionNumber));
         const wrapper = document.createElement('div');
         wrapper.className = 'studio-option-pair';
-        wrapper.dataset.optionIndex = String(index + 1);
+        wrapper.dataset.optionIndex = String(optionNumber);
         wrapper.innerHTML = `
-            <label class="auth-field">
-              <span>Option ${index + 1}</span>
-              <input type="text" autocomplete="off" placeholder="Answer option ${index + 1}" data-option-text>
+            <label class="auth-field studio-option-text-field">
+              <span class="studio-option-label-row">
+                <span>Option ${optionNumber}</span>
+                <button type="button" class="studio-option-image-toggle${optionImageUrl ? ' has-image' : ''}" data-option-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}" title="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}">${isImagePanelOpen ? 'Hide Image' : (optionImageUrl ? 'Edit Image' : 'Add Image')}</button>
+              </span>
+              <input type="text" autocomplete="off" placeholder="Answer option ${optionNumber}" data-option-text>
             </label>
+            <div class="studio-option-image-panel${isImagePanelOpen ? '' : ' hidden'}" data-option-image-panel>
+              <input type="hidden" data-option-image-url>
+              <label class="auth-field studio-option-image-field">
+                <span>Option ${optionNumber} image</span>
+                <input type="file" accept="image/*" data-option-image-file>
+              </label>
+              <div class="studio-file-row studio-option-image-row">
+                <div class="studio-file-name" data-option-image-name>${escapeHtml(optionImageLabel)}</div>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-option-image-clear>Clear</button>
+              </div>
+              <img class="studio-option-image-preview hidden" alt="Option ${optionNumber} image preview" data-option-image-preview>
+            </div>
             <label class="auth-field">
-              <span>Option ${index + 1} explanation</span>
-              <textarea rows="2" placeholder="Explain option ${index + 1}" data-option-explanation></textarea>
+              <span>Option ${optionNumber} explanation</span>
+              <textarea rows="2" placeholder="Explain option ${optionNumber}" data-option-explanation></textarea>
             </label>
         `;
         const textInput = wrapper.querySelector('[data-option-text]');
         const explanationInput = wrapper.querySelector('[data-option-explanation]');
+        const imageInput = wrapper.querySelector('[data-option-image-url]');
+        const imagePreview = wrapper.querySelector('[data-option-image-preview]');
         if (textInput) textInput.value = optionText;
         if (explanationInput) explanationInput.value = optionExplanation;
+        if (imageInput) {
+            imageInput.value = optionImageUrl;
+            imageInput.dataset.optionImageLabel = optionImageLabel;
+        }
+        if (imagePreview && optionImageUrl && isImagePanelOpen) {
+            setPreviewImageSource(imagePreview, optionImageUrl);
+        }
         return wrapper;
     }
 
@@ -2025,12 +2163,14 @@ MODIFICATION RULES FOR THIS APP
         const normalizedDrafts = (Array.isArray(optionDrafts) && optionDrafts.length ? optionDrafts : Array.from({ length: 4 }, () => ({ text: '', explanation: '' })))
             .map(draft => ({
                 text: normalizeSheetText(draft?.text),
-                explanation: normalizeSheetText(draft?.explanation)
+                explanation: normalizeSheetText(draft?.explanation),
+                imageUrl: normalizeSheetText(draft?.imageUrl),
+                imageLabel: normalizeSheetText(draft?.imageLabel || draft?.label)
             }));
 
         const safeDrafts = normalizedDrafts.length >= 2 ? normalizedDrafts : [
             ...normalizedDrafts,
-            ...Array.from({ length: 2 - normalizedDrafts.length }, () => ({ text: '', explanation: '' }))
+            ...Array.from({ length: 2 - normalizedDrafts.length }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' }))
         ];
 
         elements.createOptionFieldsContainer.innerHTML = '';
@@ -2043,15 +2183,20 @@ MODIFICATION RULES FOR THIS APP
 
     function getStudioOptionDraftsFromDOM() {
         if (!elements.createOptionFieldsContainer) return [];
-        return Array.from(elements.createOptionFieldsContainer.querySelectorAll('[data-option-index]')).map(row => ({
-            text: normalizeSheetText(row.querySelector('[data-option-text]')?.value),
-            explanation: normalizeSheetText(row.querySelector('[data-option-explanation]')?.value)
-        }));
+        return Array.from(elements.createOptionFieldsContainer.querySelectorAll('[data-option-index]')).map(row => {
+            const imageInput = row.querySelector('[data-option-image-url]');
+            return {
+                text: normalizeSheetText(row.querySelector('[data-option-text]')?.value),
+                explanation: normalizeSheetText(row.querySelector('[data-option-explanation]')?.value),
+                imageUrl: normalizeSheetText(imageInput?.value),
+                imageLabel: normalizeSheetText(imageInput?.dataset.optionImageLabel)
+            };
+        });
     }
 
     function addStudioOptionField() {
         const drafts = getStudioOptionDraftsFromDOM();
-        drafts.push({ text: '', explanation: '' });
+        drafts.push({ text: '', explanation: '', imageUrl: '', imageLabel: '' });
         renderStudioOptionFields(drafts);
         syncCorrectOptionSelect(String(drafts.length));
     }
@@ -2422,9 +2567,11 @@ MODIFICATION RULES FOR THIS APP
         const normalizedFromJson = rawOptions
             .map(item => ({
                 text: normalizeSheetText(item?.text),
-                explanation: getStoredTextForDisplay('', item?.explanation_html || '')
+                explanation: getStoredTextForDisplay('', item?.explanation_html || ''),
+                imageUrl: normalizeSheetText(item?.imageUrl || item?.image_url),
+                imageLabel: normalizeSheetText(item?.imageLabel || item?.image_label)
             }))
-            .filter(item => item.text);
+            .filter(item => item.text || item.imageUrl);
 
         if (normalizedFromJson.length) {
             return normalizedFromJson;
@@ -2433,21 +2580,25 @@ MODIFICATION RULES FOR THIS APP
         return [
             {
                 text: normalizeSheetText(detailRow?.option_1_text),
-                explanation: getStoredTextForDisplay('', detailRow?.option_1_explanation_html)
+                explanation: getStoredTextForDisplay('', detailRow?.option_1_explanation_html),
+                imageUrl: ''
             },
             {
                 text: normalizeSheetText(detailRow?.option_2_text),
-                explanation: getStoredTextForDisplay('', detailRow?.option_2_explanation_html)
+                explanation: getStoredTextForDisplay('', detailRow?.option_2_explanation_html),
+                imageUrl: ''
             },
             {
                 text: normalizeSheetText(detailRow?.option_3_text),
-                explanation: getStoredTextForDisplay('', detailRow?.option_3_explanation_html)
+                explanation: getStoredTextForDisplay('', detailRow?.option_3_explanation_html),
+                imageUrl: ''
             },
             {
                 text: normalizeSheetText(detailRow?.option_4_text),
-                explanation: getStoredTextForDisplay('', detailRow?.option_4_explanation_html)
+                explanation: getStoredTextForDisplay('', detailRow?.option_4_explanation_html),
+                imageUrl: ''
             }
-        ].filter(item => item.text);
+        ].filter(item => item.text || item.imageUrl);
     }
 
     function getStudioQuestionPreviewLabel(questionRow, index) {
@@ -2813,11 +2964,12 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function clearStudioQuestionInputs(options = {}) {
+        state.auth.expandedOptionImageRows.clear();
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
         setLearningResourcesEditorHtml('', '');
         if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
         if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
-        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
         renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
@@ -2910,6 +3062,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.pendingInsertAfterQuestionId = null;
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
+        state.auth.expandedOptionImageRows.clear();
 
         setLearningResourcesEditorHtml(questionRow.learning_resources_html, '');
         setStudioLearningResourcesImageState(
@@ -2936,7 +3089,7 @@ MODIFICATION RULES FOR THIS APP
             setStudioQuestionImageState('', 'No question image selected.');
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
-            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         } else if (state.auth.editingQuizType === 'hierarchy') {
@@ -2948,7 +3101,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             renderStudioHierarchyFields(getHierarchyDraftsFromDetailRow(detailRow));
             renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
-            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
 
@@ -2970,7 +3123,7 @@ MODIFICATION RULES FOR THIS APP
             const classifyDrafts = getClassifyDraftsFromDetailRow(detailRow);
             renderStudioClassifyFields(classifyDrafts.categories, classifyDrafts.items);
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
-            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+            renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
 
@@ -2993,7 +3146,8 @@ MODIFICATION RULES FOR THIS APP
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
             renderStudioOptionFields(optionDrafts);
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
-            const correctIndex = Math.max(0, optionDrafts.findIndex(option => option.text === normalizeSheetText(detailRow.correct_answer)));
+            const savedCorrectAnswer = normalizeSheetText(detailRow.correct_answer);
+            const correctIndex = Math.max(0, optionDrafts.findIndex(option => getOptionAnswerValue(option) === savedCorrectAnswer));
             if (elements.createCorrectOptionSelect) {
                 elements.createCorrectOptionSelect.value = String(correctIndex + 1);
             }
@@ -4281,16 +4435,30 @@ MODIFICATION RULES FOR THIS APP
         return value;
     }
 
-    async function insertBackupMultipleChoiceDetail(questionId, detail = {}) {
-        const optionJson = Array.isArray(detail.options_json)
-            ? detail.options_json.map(option => ({
+    async function insertBackupMultipleChoiceDetail(quizId, questionId, detail = {}) {
+        const sourceOptionJson = Array.isArray(detail.options_json) ? detail.options_json : [];
+        const restoredOptionJson = sourceOptionJson.length
+            ? await restoreBackupMediaRefsInObject(sourceOptionJson, { quizId, questionId, usageContext: 'multiple_choice_option_image' })
+            : [];
+        const optionJson = Array.isArray(restoredOptionJson)
+            ? restoredOptionJson.map((option, index) => ({
                 text: normalizeSheetText(option?.text),
-                explanation_html: normalizeSheetText(option?.explanation_html)
+                explanation_html: normalizeSheetText(option?.explanation_html),
+                imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url),
+                imageLabel: normalizeSheetText(option?.imageLabel || option?.image_label) || getOptionImageLabel(option, index)
             }))
             : [];
+        let correctAnswer = normalizeSheetText(detail.correct_answer);
+        const sourceCorrectIndex = sourceOptionJson.findIndex(option => getOptionAnswerValue({
+            text: normalizeSheetText(option?.text),
+            imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url)
+        }) === correctAnswer);
+        if (sourceCorrectIndex >= 0 && optionJson[sourceCorrectIndex]) {
+            correctAnswer = getOptionAnswerValue(optionJson[sourceCorrectIndex]);
+        }
         const payload = {
             question_id: questionId,
-            correct_answer: normalizeSheetText(detail.correct_answer),
+            correct_answer: correctAnswer,
             correct_explanation_html: normalizeSheetText(detail.correct_explanation_html),
             option_1_text: normalizeSheetText(detail.option_1_text),
             option_1_explanation_html: normalizeSheetText(detail.option_1_explanation_html),
@@ -4401,7 +4569,7 @@ MODIFICATION RULES FOR THIS APP
         } else if (questionType === 'classify') {
             await insertBackupClassifyDetail(quizId, questionId, detail);
         } else {
-            await insertBackupMultipleChoiceDetail(questionId, detail);
+            await insertBackupMultipleChoiceDetail(quizId, questionId, detail);
         }
 
         if (backupQuestion.question_state?.is_starred) {
@@ -4842,16 +5010,17 @@ MODIFICATION RULES FOR THIS APP
         const optionDrafts = getStudioOptionDraftsFromDOM();
         const options = optionDrafts.map(draft => draft.text);
         const explanations = optionDrafts.map(draft => draft.explanation);
+        const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const maxOptionIndex = Math.max(0, options.length - 1);
         const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
         const correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
-        const correctAnswer = options[correctIndex];
+        const correctAnswer = optionAnswerValues[correctIndex];
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         if (!prompt) return void setCreatorStatus('Enter a question prompt.', 'error');
-        if (options.length < 2) return void setCreatorStatus('Add at least 2 answer options.', 'error');
-        if (options.some(option => !option)) return void setCreatorStatus('Fill in every answer option before saving.', 'error');
-        if (new Set(options).size !== options.length) return void setCreatorStatus('All answer options must be unique.', 'error');
+        if (optionDrafts.length < 2) return void setCreatorStatus('Add at least 2 answer options.', 'error');
+        if (optionAnswerValues.some(value => !value)) return void setCreatorStatus('Each answer option needs text or an image before saving.', 'error');
+        if (new Set(optionAnswerValues).size !== optionAnswerValues.length) return void setCreatorStatus('All answer options must be unique.', 'error');
         if (!correctAnswer) return void setCreatorStatus('Choose which option is correct.', 'error');
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
@@ -4889,15 +5058,25 @@ MODIFICATION RULES FOR THIS APP
             }).eq('id', questionId);
             if (mediaUpdateError) throw mediaUpdateError;
 
-            const optionPayload = optionDrafts.map(draft => ({ text: draft.text, explanation_html: buildStoredHtmlFromPlain(draft.explanation) }));
-            const detailPayload = { question_id: questionId, correct_answer: correctAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionPayload, option_1_text: options[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''), option_2_text: options[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(explanations[1] || ''), option_3_text: options[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(explanations[2] || ''), option_4_text: options[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(explanations[3] || '') };
+            const savedOptionDrafts = await saveOptionImageValues(quizId, questionId, optionDrafts);
+            const savedOptions = savedOptionDrafts.map(draft => draft.text);
+            const savedExplanations = savedOptionDrafts.map(draft => draft.explanation);
+            const savedOptionAnswerValues = savedOptionDrafts.map(getOptionAnswerValue);
+            const savedCorrectAnswer = savedOptionAnswerValues[correctIndex] || correctAnswer;
+            const optionPayload = savedOptionDrafts.map((draft, index) => ({
+                text: draft.text,
+                explanation_html: buildStoredHtmlFromPlain(draft.explanation),
+                imageUrl: draft.imageUrl || '',
+                imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
+            }));
+            const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) {
                 const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
                 if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
                 throw detailError;
             }
-            await deleteReplacedMediaReferences(previousMediaRefs, savedSharedMedia);
+            await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, options_json: optionPayload });
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
@@ -5400,7 +5579,25 @@ MODIFICATION RULES FOR THIS APP
             option_4_explanation_html: detail.option_4_explanation_html || ''
         };
         if (Object.prototype.hasOwnProperty.call(detail, 'options_json')) {
-            detailPayload.options_json = Array.isArray(detail.options_json) ? detail.options_json : [];
+            const sourceOptionsJson = Array.isArray(detail.options_json) ? detail.options_json : [];
+            const clonedOptionsJson = await cloneMediaRefsInObject(sourceOptionsJson, {
+                quizId: targetQuizId,
+                questionId: newQuestionId,
+                usageContext: 'multiple_choice_option_image'
+            });
+            detailPayload.options_json = clonedOptionsJson;
+            const sourceCorrectAnswer = normalizeSheetText(detail.correct_answer);
+            const sourceCorrectIndex = sourceOptionsJson.findIndex(option => getOptionAnswerValue({
+                text: normalizeSheetText(option?.text),
+                imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url)
+            }) === sourceCorrectAnswer);
+            if (sourceCorrectIndex >= 0) {
+                const clonedCorrectOption = clonedOptionsJson[sourceCorrectIndex] || {};
+                detailPayload.correct_answer = getOptionAnswerValue({
+                    text: normalizeSheetText(clonedCorrectOption?.text),
+                    imageUrl: normalizeSheetText(clonedCorrectOption?.imageUrl || clonedCorrectOption?.image_url)
+                });
+            }
         }
         const { error: detailError } = await state.auth.client.from('multiple_choice_questions').insert(detailPayload);
         if (detailError) {
@@ -7148,9 +7345,11 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             if (!detail) return null;
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
             const options = optionDrafts.map(draft => draft.text);
+            const optionImages = optionDrafts.map(draft => normalizeSheetText(draft.imageUrl));
+            const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
             const explanations = optionDrafts.map(draft => draft.explanation);
             const correctAnswer = normalizeSheetText(detail.correct_answer);
-            const correctIndex = options.findIndex(option => option === correctAnswer);
+            const correctIndex = optionAnswerValues.findIndex(optionValue => optionValue === correctAnswer);
             if (correctIndex >= 0 && !explanations[correctIndex]) {
                 explanations[correctIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
             }
@@ -7160,6 +7359,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 question: getStoredTextForDisplay(row.prompt_plain, row.prompt_html),
                 type: 'multiple choice',
                 options,
+                optionImages,
                 correct: correctAnswer,
                 explanations,
                 image: normalizeSheetText(row.image_url),
@@ -7400,6 +7600,7 @@ function parseMultipleChoiceQuestionsFromGoogleSheetRows(rows) {
             question: getCellValue(c[0]),
             type: 'multiple choice',
             options: optionDrafts.map(option => option.text),
+            optionImages: optionDrafts.map(() => ''),
             correct: resolveMultipleChoiceCorrectAnswer(
                 layout.correctColumn >= 0 ? getCellValue(c[layout.correctColumn]) : '',
                 optionDrafts,
@@ -8060,37 +8261,49 @@ function showMC(q) {
     const container = elements.optionsContainer;
     container.style.display = 'flex';
 
-    let options = [...q.options];
-    let explanations = [...(q.explanations || [])];
+    let optionEntries = (q.options || []).map((optionText, index) => ({
+        text: normalizeSheetText(optionText),
+        image: normalizeSheetText((q.optionImages || [])[index]),
+        explanation: normalizeSheetText((q.explanations || [])[index])
+    })).filter(entry => entry.text || entry.image);
 
     if (document.getElementById('shuffleAnswers').checked) {
-        const combo = options.map((o, i) => ({
-            o,
-            e: explanations[i]
-        }));
-        shuffleArray(combo);
-        options = combo.map(x => x.o);
-        explanations = combo.map(x => x.e);
+        shuffleArray(optionEntries);
     }
 
-    const blocks = ensureMultipleChoiceOptionBlocks(Math.max(options.length, 1));
+    const blocks = ensureMultipleChoiceOptionBlocks(Math.max(optionEntries.length, 1));
 
     blocks.forEach((block, index) => {
         const btn = block.querySelector('.optionBtn');
         const exp = block.querySelector('.explanation');
         const fb = block.querySelector('.option-feedback');
-        const optionValue = options[index] || '';
+        const entry = optionEntries[index] || null;
 
-        if (index < options.length && btn && exp && fb) {
+        if (entry && btn && exp && fb) {
+            const optionValue = entry.text || entry.image;
             block.style.display = '';
-            btn.style.display = 'block';
-            setMathChemFormattedText(btn, optionValue);
+            btn.style.display = entry.image ? 'flex' : 'block';
+            btn.innerHTML = '';
+            if (entry.image) {
+                const image = document.createElement('img');
+                image.className = 'option-image';
+                image.alt = entry.text ? `Image for ${entry.text}` : `Option ${index + 1} image`;
+                image.src = entry.image;
+                btn.appendChild(image);
+            }
+            if (entry.text) {
+                const textEl = document.createElement('span');
+                textEl.className = 'option-text';
+                setMathChemFormattedText(textEl, entry.text);
+                btn.appendChild(textEl);
+            }
             btn.dataset.optionValue = optionValue;
             btn.disabled = false;
             btn.style.pointerEvents = 'auto';
             btn.style.opacity = '1';
+            btn.classList.toggle('option-has-image', !!entry.image);
             btn.classList.remove('option-correct', 'option-incorrect');
-            btn.onclick = () => checkAnswer(optionValue, explanations);
+            btn.onclick = () => checkAnswer(optionValue, optionEntries.map(item => item.explanation));
             exp.innerText = '';
             fb.innerText = '';
             fb.classList.remove('correct-mark', 'incorrect-mark');
@@ -8100,7 +8313,7 @@ function showMC(q) {
                 btn.style.display = 'none';
                 btn.innerText = '';
                 btn.dataset.optionValue = '';
-                btn.classList.remove('option-correct', 'option-incorrect');
+                btn.classList.remove('option-correct', 'option-incorrect', 'option-has-image');
                 btn.onclick = null;
             }
             if (exp) exp.innerText = '';
@@ -9860,6 +10073,34 @@ if (elements.removeOptionFieldBtn) {
     });
 }
 
+if (elements.createOptionFieldsContainer) {
+    elements.createOptionFieldsContainer.addEventListener('click', event => {
+        const toggle = event.target.closest('[data-option-image-toggle]');
+        if (toggle) {
+            event.preventDefault();
+            setStudioOptionImagePanelOpen(toggle.closest('[data-option-index]'));
+            return;
+        }
+
+        const clearBtn = event.target.closest('[data-option-image-clear]');
+        if (clearBtn) {
+            event.preventDefault();
+            const row = clearBtn.closest('[data-option-index]');
+            setStudioOptionImageState(row, '', 'No option image selected.');
+            setStudioDirtyState(true);
+        }
+    });
+
+    elements.createOptionFieldsContainer.addEventListener('change', event => {
+        const fileInput = event.target.closest('[data-option-image-file]');
+        if (!fileInput) return;
+        handleStudioOptionImageFileInput(fileInput).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the option image.', 'error');
+        });
+    });
+}
+
 if (elements.toggleMathChemToolsBtn) {
     elements.toggleMathChemToolsBtn.addEventListener('click', () => {
         setMathChemToolsExpanded(!state.auth.mathChemToolsExpanded);
@@ -10994,7 +11235,7 @@ window.addEventListener('orientationchange', handleViewportChange);
 (async function () {
     try {
         mountFloatingPagesToBody();
-        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '' })));
+        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         applyResponsiveControlText();
         updateViewportClasses();
         updateAuthUI();
