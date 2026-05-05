@@ -5581,3 +5581,42 @@ body.fullscreen-mode .progress-mode-summary {
     width: 100%;
   }
 }
+
+/* ===== Multiple Choice Option Image Zoom ===== */
+.option-image-wrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  align-self: center;
+  max-width: 100%;
+}
+
+.option-image-zoom-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: rgba(42, 37, 64, 0.94);
+  color: var(--color-text-main);
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  touch-action: manipulation;
+  transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.option-image-zoom-btn:hover {
+  background: var(--color-bg-control-hover);
+}
+
+.option-image-zoom-btn:active {
+  transform: scale(0.98);
+}

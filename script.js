@@ -6861,6 +6861,29 @@ function closeFlashcardImageOverlay() {
     updateNavigationButtons();
 }
 
+function createOptionImageZoomButton(src, alt = 'Option image') {
+    const zoomBtn = document.createElement('button');
+    zoomBtn.type = 'button';
+    zoomBtn.className = 'option-image-zoom-btn';
+    zoomBtn.setAttribute('aria-label', 'Zoom option image');
+    zoomBtn.setAttribute('title', 'Zoom image');
+    zoomBtn.innerText = '⤢';
+
+    const stopZoomTrigger = e => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    zoomBtn.addEventListener('pointerdown', stopZoomTrigger);
+    zoomBtn.addEventListener('pointerup', stopZoomTrigger);
+    zoomBtn.addEventListener('click', e => {
+        stopZoomTrigger(e);
+        openFlashcardImageOverlay(src, alt);
+    });
+
+    return zoomBtn;
+}
+
 // ================= QUESTION LOADING HELPERS =================
 function isQuizDescriptor(value) {
     return !!value && typeof value === "object" && typeof value.source === "string" && typeof value.id === "string";
@@ -8285,11 +8308,17 @@ function showMC(q) {
             btn.style.display = entry.image ? 'flex' : 'block';
             btn.innerHTML = '';
             if (entry.image) {
+                const imageWrap = document.createElement('span');
+                imageWrap.className = 'option-image-wrap';
+
                 const image = document.createElement('img');
                 image.className = 'option-image';
                 image.alt = entry.text ? `Image for ${entry.text}` : `Option ${index + 1} image`;
                 image.src = entry.image;
-                btn.appendChild(image);
+
+                imageWrap.appendChild(image);
+                imageWrap.appendChild(createOptionImageZoomButton(entry.image, image.alt));
+                btn.appendChild(imageWrap);
             }
             if (entry.text) {
                 const textEl = document.createElement('span');
