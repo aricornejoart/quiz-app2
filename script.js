@@ -132,6 +132,7 @@ MODIFICATION RULES FOR THIS APP
         folderSelector: document.getElementById('folderSelector'),
         quizSelector: document.getElementById('quizSelector'),
         authBtn: document.getElementById('authBtn'),
+        studioHomeBtn: document.getElementById('studioHomeBtn'),
         authPopup: document.getElementById('authPopup'),
         closeAuthBtn: document.getElementById('closeAuthBtn'),
         authStatus: document.getElementById('authStatus'),
@@ -189,6 +190,7 @@ MODIFICATION RULES FOR THIS APP
         studioQuestionJumpInput: document.getElementById('studioQuestionJumpInput'),
         studioQuestionJumpBtn: document.getElementById('studioQuestionJumpBtn'),
         studioUnsavedChangesIndicator: document.getElementById('studioUnsavedChangesIndicator'),
+        studioStudyQuizBtn: document.getElementById('studioStudyQuizBtn'),
         studioAddQuestionBtn: document.getElementById('studioAddQuestionBtn'),
         studioAddQuestionBottomBtn: document.getElementById('studioAddQuestionBottomBtn'),
         studioDuplicateQuestionBtn: document.getElementById('studioDuplicateQuestionBtn'),
@@ -1771,6 +1773,14 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizCancelEditBtn.textContent = 'Create Quiz';
         }
 
+        if (elements.studioStudyQuizBtn) {
+            const canStudyOpenQuiz = !!state.auth.editingQuizId && !!state.auth.user?.id;
+            elements.studioStudyQuizBtn.disabled = !canStudyOpenQuiz;
+            elements.studioStudyQuizBtn.title = canStudyOpenQuiz
+                ? 'Study the quiz currently open in the editor.'
+                : 'Save or open a quiz before studying it.';
+        }
+
         updateStudioEditorTypeUI();
     }
 
@@ -3173,6 +3183,7 @@ MODIFICATION RULES FOR THIS APP
             elements.studioQuestionSearchInput,
             elements.studioQuestionJumpInput,
             elements.studioQuestionJumpBtn,
+            elements.studioStudyQuizBtn,
             elements.studioAddQuestionBtn,
             elements.studioAddQuestionBottomBtn,
             elements.studioDuplicateQuestionBtn,
@@ -5994,7 +6005,7 @@ function startProgressModeRetry() {
 function canUseLearningResources() {
     if (!isLearningResourcesMode()) return false;
     if (isMasteryCheckMode()) return true;
-    return !isSpeedMode() && (isRetentionMode() || isRetryMode());
+    return !isSpeedMode() && (isRetentionMode() || isRetryMode() || isProgressMode());
 }
 
 function hasFlashcardsInDeck() {
@@ -6004,7 +6015,7 @@ function hasFlashcardsInDeck() {
 function updateLearningResourcesAvailability() {
     const learningResourcesCheckbox = document.getElementById('learningResourcesMode');
     const learningResourcesSetting = document.getElementById('learningResourcesModeSetting');
-    const learningResourcesAllowed = isRetentionMode() || isRetryMode() || isMasteryCheckMode();
+    const learningResourcesAllowed = isRetentionMode() || isRetryMode() || isMasteryCheckMode() || isProgressMode();
     const learningResourcesDisabledForCompatibility = !learningResourcesAllowed || (isSpeedMode() && !isMasteryCheckMode());
 
     learningResourcesCheckbox.disabled = learningResourcesDisabledForCompatibility;
@@ -9436,7 +9447,22 @@ if (elements.questionStarBtn) {
     });
 }
 
+if (elements.studioHomeBtn) {
+    elements.studioHomeBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        if (elements.settingsPopup && !elements.settingsPopup.classList.contains('hidden')) {
+            closeSettingsPopup();
+        }
 
+        if (!state.auth.user?.id) {
+            openAuthPopup();
+            setAuthStatus('Sign in to open Quiz Studio Home.');
+            return;
+        }
+
+        openQuizStudioPage('home');
+    });
+}
 
 
 elements.folderSelector.addEventListener('change', e => {
@@ -9744,6 +9770,20 @@ if (elements.createQuizBtn) {
         handleSaveStudioQuiz().catch(err => {
             console.error(err);
             setCreatorStatus('Could not save the quiz.', 'error');
+        });
+    });
+}
+
+if (elements.studioStudyQuizBtn) {
+    elements.studioStudyQuizBtn.addEventListener('click', () => {
+        if (!state.auth.editingQuizId) {
+            setCreatorStatus('Save or open a quiz before studying it.', 'error');
+            return;
+        }
+
+        studySupabaseQuizFromStudio(state.auth.editingQuizId).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the quiz into the study view.', 'error');
         });
     });
 }

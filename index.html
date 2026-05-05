@@ -74,6 +74,7 @@ MODIFICATION RULES FOR THIS APP
       </div>
 
       <div class="utility-controls">
+        <button id="studioHomeBtn" class="icon-btn studio-home-top-btn" type="button" aria-label="Quiz Studio Home" title="Quiz Studio Home">⌂</button>
         <button id="authBtn" class="icon-btn" type="button" aria-label="Account" title="Account">👤</button>
         <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
         <button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Fullscreen" title="Fullscreen">⛶</button>
@@ -570,7 +571,10 @@ MODIFICATION RULES FOR THIS APP
                 <section class="creator-subsection quiz-studio-panel studio-quiz-editor-panel">
                   <div class="studio-editor-title-row">
                     <div class="creator-subsection-title">Quiz Editor</div>
-                    <button id="createQuizCancelEditBtn" type="button" class="auth-action-btn auth-secondary-btn">Create Quiz</button>
+                    <div class="studio-editor-title-actions">
+                      <button id="studioStudyQuizBtn" type="button" class="auth-action-btn auth-secondary-btn">Study Quiz</button>
+                      <button id="createQuizCancelEditBtn" type="button" class="auth-action-btn auth-secondary-btn">Create Quiz</button>
+                    </div>
                   </div>
 
                   <div class="auth-field studio-editor-folder-field">

@@ -3040,6 +3040,14 @@ input {
   }
 }
 
+/* Hide the top-bar Quiz Studio Home shortcut on iPhone-sized layouts to preserve tight controls. */
+@media screen and (max-width: 480px),
+       screen and (max-height: 480px) and (orientation: landscape) {
+  .studio-home-top-btn {
+    display: none !important;
+  }
+}
+
 /* ===== Final iPhone safe-area containment override ===== */
 @media screen and (max-width: 480px),
        screen and (max-height: 480px) and (orientation: landscape) {
@@ -4206,6 +4214,14 @@ body.fullscreen-mode.active-question-classify {
   flex-wrap: wrap;
 }
 
+.studio-editor-title-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .studio-options-toolbar {
   display: flex;
   align-items: center;
@@ -4697,6 +4713,7 @@ body.fullscreen-mode.active-question-classify {
   .studio-file-row,
   .studio-list-controls,
   .studio-editor-title-row,
+  .studio-editor-title-actions,
   .studio-editor-actions,
   .studio-options-toolbar-actions,
   .studio-question-header-actions,
@@ -4794,6 +4811,7 @@ body.fullscreen-mode.active-question-classify {
 
   .studio-list-controls > *,
   .studio-editor-title-row > *,
+  .studio-editor-title-actions > *,
   .studio-editor-actions > *,
   .studio-options-toolbar-actions > *,
   .studio-question-header-actions > *,
@@ -4905,6 +4923,7 @@ body.fullscreen-mode.active-question-classify {
 
   .studio-list-controls,
   .studio-editor-title-row,
+  .studio-editor-title-actions,
   .studio-editor-actions,
   .studio-backup-actions,
   .studio-options-toolbar-actions,
