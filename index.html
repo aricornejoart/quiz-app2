@@ -654,6 +654,113 @@ MODIFICATION RULES FOR THIS APP
                     </div>
                   </div>
 
+                  <div class="studio-math-chem-toggle-row">
+                    <button id="toggleMathChemToolsBtn" type="button" class="auth-action-btn auth-secondary-btn studio-math-chem-toggle-btn" aria-expanded="false" aria-controls="studioMathChemTools">Show Math/Chem Tools</button>
+                  </div>
+
+                  <section id="studioMathChemTools" class="studio-math-chem-tools hidden" aria-label="Math and chemistry tools">
+                    <div class="studio-math-chem-header">
+                      <div class="studio-math-chem-title">Math/Chem Tools</div>
+                    </div>
+
+                    <div class="studio-math-chem-tabs studio-math-chem-category-row" role="tablist" aria-label="Math, chemistry, statistics, and Greek symbol groups">
+                      <button type="button" class="studio-math-chem-tab active" data-math-chem-tab="common" aria-label="Common math and algebra tools" title="Common math and algebra tools" aria-selected="true">⊕</button>
+                      <button type="button" class="studio-math-chem-tab" data-math-chem-tab="statistics" aria-label="Statistics symbols" title="Statistics symbols" aria-selected="false">Σ</button>
+                      <button type="button" class="studio-math-chem-tab" data-math-chem-tab="chemistry" aria-label="Chemistry tools" title="Chemistry tools" aria-selected="false">⚗</button>
+                      <button type="button" class="studio-math-chem-tab" data-math-chem-tab="greek" aria-label="Greek symbols" title="Greek symbols" aria-selected="false">π</button>
+                    </div>
+
+                    <div class="studio-math-chem-custom-grid">
+                      <label class="studio-math-chem-mini-field">
+                        <span>Fraction top</span>
+                        <input id="mathChemFractionNumerator" type="text" autocomplete="off" placeholder="3x + 1">
+                      </label>
+                      <label class="studio-math-chem-mini-field">
+                        <span>Fraction bottom</span>
+                        <input id="mathChemFractionDenominator" type="text" autocomplete="off" placeholder="x - 2">
+                      </label>
+                      <button id="insertMathChemFractionBtn" type="button" class="studio-math-chem-insert-btn" aria-label="Insert horizontal fraction" title="Insert horizontal fraction">a⁄b</button>
+                      <label class="studio-math-chem-mini-field">
+                        <span>Superscript</span>
+                        <input id="mathChemSuperscriptInput" type="text" autocomplete="off" placeholder="2+">
+                      </label>
+                      <button id="insertMathChemSuperscriptBtn" type="button" class="studio-math-chem-insert-btn" aria-label="Insert superscript" title="Insert superscript">xⁿ</button>
+                      <label class="studio-math-chem-mini-field">
+                        <span>Subscript</span>
+                        <input id="mathChemSubscriptInput" type="text" autocomplete="off" placeholder="12">
+                      </label>
+                      <button id="insertMathChemSubscriptBtn" type="button" class="studio-math-chem-insert-btn" aria-label="Insert subscript" title="Insert subscript">xₙ</button>
+                    </div>
+
+
+                    <div class="studio-math-chem-panel" data-math-chem-panel="common" aria-label="Common math and algebra tools">
+                      <button type="button" data-math-chem-insert="√()" title="Square root">√</button>
+                      <button type="button" data-math-chem-insert="±" title="Plus or minus">±</button>
+                      <button type="button" data-math-chem-insert="≤" title="Less than or equal to">≤</button>
+                      <button type="button" data-math-chem-insert="≥" title="Greater than or equal to">≥</button>
+                      <button type="button" data-math-chem-insert="≠" title="Not equal to">≠</button>
+                      <button type="button" data-math-chem-insert="×" title="Multiply">×</button>
+                      <button type="button" data-math-chem-insert="÷" title="Divide">÷</button>
+                      <button type="button" data-math-chem-insert="()" title="Parentheses">()</button>
+                      <button type="button" data-math-chem-insert="x²" title="x squared">x²</button>
+                      <button type="button" data-math-chem-insert="x³" title="x cubed">x³</button>
+                      <button type="button" data-math-chem-insert="y²" title="y squared">y²</button>
+                      <button type="button" data-math-chem-insert="y³" title="y cubed">y³</button>
+                      <button type="button" data-math-chem-insert="x₁" title="x sub one">x₁</button>
+                      <button type="button" data-math-chem-insert="+" title="Plus sign">+</button>
+                      <button type="button" data-math-chem-insert="−" title="Minus sign">−</button>
+                      <button type="button" data-math-chem-insert="=" title="Equals sign">=</button>
+                      <button type="button" data-math-chem-insert="|x|" title="Absolute value">|x|</button>
+                    </div>
+                    <div class="studio-math-chem-panel hidden" data-math-chem-panel="statistics">
+                      <button type="button" data-math-chem-insert="x̄" title="Sample mean">x̄</button>
+                      <button type="button" data-math-chem-insert="p̂" title="p-hat">p̂</button>
+                      <button type="button" data-math-chem-insert="μ" title="Population mean">μ</button>
+                      <button type="button" data-math-chem-insert="σ" title="Population standard deviation">σ</button>
+                      <button type="button" data-math-chem-insert="σ²" title="Population variance">σ²</button>
+                      <button type="button" data-math-chem-insert="s" title="Sample standard deviation">s</button>
+                      <button type="button" data-math-chem-insert="s²" title="Sample variance">s²</button>
+                      <button type="button" data-math-chem-insert="n" title="Sample size">n</button>
+                      <button type="button" data-math-chem-insert="N" title="Population size">N</button>
+                      <button type="button" data-math-chem-insert="Σ" title="Summation sigma">Σ</button>
+                      <button type="button" data-math-chem-insert="z" title="z score">z</button>
+                      <button type="button" data-math-chem-insert="t" title="t statistic">t</button>
+                      <button type="button" data-math-chem-insert="df" title="Degrees of freedom">df</button>
+                      <button type="button" data-math-chem-insert="SE" title="Standard error">SE</button>
+                      <button type="button" data-math-chem-insert="SD" title="Standard deviation">SD</button>
+                      <button type="button" data-math-chem-insert="CI" title="Confidence interval">CI</button>
+                      <button type="button" data-math-chem-insert="H₀" title="Null hypothesis">H₀</button>
+                      <button type="button" data-math-chem-insert="H₁" title="Alternative hypothesis">H₁</button>
+                      <button type="button" data-math-chem-insert="α" title="Alpha/significance level">α</button>
+                      <button type="button" data-math-chem-insert="β" title="Beta">β</button>
+                    </div>
+                    <div class="studio-math-chem-panel hidden" data-math-chem-panel="chemistry">
+                      <button type="button" data-math-chem-insert="→" title="Reaction arrow">→</button>
+                      <button type="button" data-math-chem-insert="⇌" title="Equilibrium arrow">⇌</button>
+                      <button type="button" data-math-chem-insert="Δ" title="Delta/change/heat">Δ</button>
+                      <button type="button" data-math-chem-insert="+" title="Plus sign">+</button>
+                      <button type="button" data-math-chem-insert="·" title="Hydrate dot">·</button>
+                      <button type="button" data-math-chem-insert="(s)" title="Solid state">(s)</button>
+                      <button type="button" data-math-chem-insert="(l)" title="Liquid state">(l)</button>
+                      <button type="button" data-math-chem-insert="(g)" title="Gas state">(g)</button>
+                      <button type="button" data-math-chem-insert="(aq)" title="Aqueous state">(aq)</button>
+                      <button type="button" data-math-chem-insert="°" title="Degree symbol">°</button>
+                    </div>
+                    <div class="studio-math-chem-panel hidden" data-math-chem-panel="greek">
+                      <button type="button" data-math-chem-insert="π" title="Pi">π</button>
+                      <button type="button" data-math-chem-insert="θ" title="Theta">θ</button>
+                      <button type="button" data-math-chem-insert="Δ" title="Delta">Δ</button>
+                      <button type="button" data-math-chem-insert="α" title="Alpha">α</button>
+                      <button type="button" data-math-chem-insert="β" title="Beta">β</button>
+                      <button type="button" data-math-chem-insert="γ" title="Gamma">γ</button>
+                      <button type="button" data-math-chem-insert="λ" title="Lambda">λ</button>
+                      <button type="button" data-math-chem-insert="μ" title="Mu">μ</button>
+                      <button type="button" data-math-chem-insert="Ω" title="Omega">Ω</button>
+                      <button type="button" data-math-chem-insert="σ" title="Lowercase sigma">σ</button>
+                      <button type="button" data-math-chem-insert="Σ" title="Uppercase sigma">Σ</button>
+                    </div>
+                  </section>
+
                   <div id="multipleChoiceEditorFields" class="studio-editor-type-fields">
                     <div id="createOptionFieldsContainer" class="studio-options-grid"></div>
 

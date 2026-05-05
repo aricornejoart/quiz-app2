@@ -124,7 +124,8 @@ MODIFICATION RULES FOR THIS APP
             studioPendingNewQuestionRow: null,
             backupImportPayload: null,
             backupImportFileName: '',
-            mediaSignedUrlCache: new Map()
+            mediaSignedUrlCache: new Map(),
+            mathChemToolsExpanded: false
         }
     };
 
@@ -230,6 +231,18 @@ MODIFICATION RULES FOR THIS APP
         createLearningResourcesImageName: document.getElementById('createLearningResourcesImageName'),
         createLearningResourcesImageClearBtn: document.getElementById('createLearningResourcesImageClearBtn'),
         createOptionFieldsContainer: document.getElementById('createOptionFieldsContainer'),
+        toggleMathChemToolsBtn: document.getElementById('toggleMathChemToolsBtn'),
+        studioMathChemTools: document.getElementById('studioMathChemTools'),
+        studioMathChemTabButtons: Array.from(document.querySelectorAll('[data-math-chem-tab]')),
+        studioMathChemPanels: Array.from(document.querySelectorAll('[data-math-chem-panel]')),
+        studioMathChemControls: Array.from(document.querySelectorAll('#studioMathChemTools input, #studioMathChemTools button')),
+        mathChemFractionNumerator: document.getElementById('mathChemFractionNumerator'),
+        mathChemFractionDenominator: document.getElementById('mathChemFractionDenominator'),
+        insertMathChemFractionBtn: document.getElementById('insertMathChemFractionBtn'),
+        mathChemSuperscriptInput: document.getElementById('mathChemSuperscriptInput'),
+        insertMathChemSuperscriptBtn: document.getElementById('insertMathChemSuperscriptBtn'),
+        mathChemSubscriptInput: document.getElementById('mathChemSubscriptInput'),
+        insertMathChemSubscriptBtn: document.getElementById('insertMathChemSubscriptBtn'),
         addOptionFieldBtn: document.getElementById('addOptionFieldBtn'),
         removeOptionFieldBtn: document.getElementById('removeOptionFieldBtn'),
         createHierarchyFieldsContainer: document.getElementById('createHierarchyFieldsContainer'),
@@ -363,6 +376,176 @@ MODIFICATION RULES FOR THIS APP
         const plain = normalizeSheetText(value);
         if (!plain) return '';
         return plain.split('\n').map(escapeHtml).join('<br>');
+    }
+
+
+    // ================= MATH/CHEM TEXT HELPERS =================
+    // Phase 22M stores author-entered formulas as plain text, while a small
+    // controlled marker renders horizontal fractions in study mode.
+    const MATH_CHEM_FRACTION_PATTERN = /\{\{frac:([^{}|]*)\|([^{}|]*)\}\}/g;
+    const MATH_CHEM_SUPERSCRIPT_MAP = Object.freeze({
+        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+        '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+        'n': 'ⁿ', 'i': 'ⁱ'
+    });
+    const MATH_CHEM_SUBSCRIPT_MAP = Object.freeze({
+        '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+        '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+        '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+        'a': 'ₐ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ',
+        'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'o': 'ₒ',
+        'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ',
+        'v': 'ᵥ', 'x': 'ₓ'
+    });
+
+    function escapeDisplayText(value) {
+        return escapeHtml(value).replace(/\n/g, '<br>');
+    }
+
+    function normalizeMathChemMarkerPart(value) {
+        return normalizeSheetText(value)
+            .replace(/[{}]/g, '')
+            .replace(/\|/g, '/')
+            .trim();
+    }
+
+    function buildMathChemFractionMarker(numerator, denominator) {
+        const top = normalizeMathChemMarkerPart(numerator);
+        const bottom = normalizeMathChemMarkerPart(denominator);
+        if (!top || !bottom) return '';
+        return `{{frac:${top}|${bottom}}}`;
+    }
+
+    function renderMathChemTextToHtml(value) {
+        const raw = String(value ?? '');
+        if (!raw) return '';
+
+        let html = '';
+        let lastIndex = 0;
+        raw.replace(MATH_CHEM_FRACTION_PATTERN, (match, numerator, denominator, offset) => {
+            html += escapeDisplayText(raw.slice(lastIndex, offset));
+            html += `<span class="math-chem-fraction" aria-label="${escapeHtml(`${numerator} over ${denominator}`)}"><span class="math-chem-fraction-top">${escapeHtml(numerator)}</span><span class="math-chem-fraction-line"></span><span class="math-chem-fraction-bottom">${escapeHtml(denominator)}</span></span>`;
+            lastIndex = offset + match.length;
+            return match;
+        });
+        html += escapeDisplayText(raw.slice(lastIndex));
+        return html;
+    }
+
+    function setMathChemFormattedText(element, value) {
+        if (!element) return;
+        element.innerHTML = renderMathChemTextToHtml(value);
+    }
+
+    function convertMathChemScriptText(value, map) {
+        return String(value ?? '').split('').map(char => map[char] || map[char.toLowerCase()] || char).join('');
+    }
+
+    function convertToMathChemSuperscript(value) {
+        return convertMathChemScriptText(value, MATH_CHEM_SUPERSCRIPT_MAP);
+    }
+
+    function convertToMathChemSubscript(value) {
+        return convertMathChemScriptText(value, MATH_CHEM_SUBSCRIPT_MAP);
+    }
+
+    let lastMathChemInsertTarget = null;
+
+    function isMathChemInsertTarget(target) {
+        return !!target && target.matches?.('#createQuestionPrompt, #createCorrectExplanation, [data-option-text], [data-option-explanation]');
+    }
+
+    function getMathChemInsertTarget() {
+        const active = document.activeElement;
+        if (isMathChemInsertTarget(active)) {
+            lastMathChemInsertTarget = active;
+            return active;
+        }
+        if (isMathChemInsertTarget(lastMathChemInsertTarget) && document.body.contains(lastMathChemInsertTarget) && !lastMathChemInsertTarget.disabled) {
+            return lastMathChemInsertTarget;
+        }
+        return elements.createQuestionPrompt || null;
+    }
+
+    function insertMathChemTextAtTarget(text) {
+        const insertText = String(text ?? '');
+        if (!insertText) return false;
+        const target = getMathChemInsertTarget();
+        if (!target || target.disabled) {
+            setCreatorStatus('Click a multiple-choice field before inserting math or chemistry text.', 'error');
+            return false;
+        }
+
+        target.focus();
+        const start = Number.isInteger(target.selectionStart) ? target.selectionStart : target.value.length;
+        const end = Number.isInteger(target.selectionEnd) ? target.selectionEnd : start;
+        const value = String(target.value ?? '');
+        target.value = value.slice(0, start) + insertText + value.slice(end);
+        const nextCursor = start + insertText.length;
+        if (typeof target.setSelectionRange === 'function') {
+            target.setSelectionRange(nextCursor, nextCursor);
+        }
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        lastMathChemInsertTarget = target;
+        return true;
+    }
+
+    function setActiveMathChemPanel(panelName) {
+        const activePanelName = normalizeSheetText(panelName) || 'common';
+        elements.studioMathChemTabButtons.forEach(button => {
+            const isActive = button.dataset.mathChemTab === activePanelName;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        elements.studioMathChemPanels.forEach(panel => {
+            panel.classList.toggle('hidden', panel.dataset.mathChemPanel !== activePanelName);
+        });
+    }
+
+
+    function updateMathChemToolsVisibility(isMultipleChoice = getStudioCurrentQuizType() === 'multiple_choice') {
+        if (!isMultipleChoice) {
+            state.auth.mathChemToolsExpanded = false;
+        }
+
+        if (elements.toggleMathChemToolsBtn) {
+            elements.toggleMathChemToolsBtn.classList.toggle('hidden', !isMultipleChoice);
+            elements.toggleMathChemToolsBtn.textContent = state.auth.mathChemToolsExpanded ? 'Hide Math/Chem Tools' : 'Show Math/Chem Tools';
+            elements.toggleMathChemToolsBtn.setAttribute('aria-expanded', String(!!state.auth.mathChemToolsExpanded));
+        }
+
+        if (elements.studioMathChemTools) {
+            elements.studioMathChemTools.classList.toggle('hidden', !(isMultipleChoice && state.auth.mathChemToolsExpanded));
+        }
+    }
+
+    function setMathChemToolsExpanded(isExpanded) {
+        state.auth.mathChemToolsExpanded = !!isExpanded;
+        updateMathChemToolsVisibility();
+    }
+
+    function insertMathChemFractionFromControls() {
+        const marker = buildMathChemFractionMarker(elements.mathChemFractionNumerator?.value, elements.mathChemFractionDenominator?.value);
+        if (!marker) {
+            setCreatorStatus('Enter both a fraction top and bottom first.', 'error');
+            return;
+        }
+        if (insertMathChemTextAtTarget(marker)) {
+            if (elements.mathChemFractionNumerator) elements.mathChemFractionNumerator.value = '';
+            if (elements.mathChemFractionDenominator) elements.mathChemFractionDenominator.value = '';
+        }
+    }
+
+    function insertMathChemScriptFromControl(input, converter, label) {
+        const raw = normalizeSheetText(input?.value);
+        if (!raw) {
+            setCreatorStatus(`Enter ${label} text first.`, 'error');
+            return;
+        }
+        if (insertMathChemTextAtTarget(converter(raw)) && input) {
+            input.value = '';
+        }
     }
 
     // ================= RICH LEARNING RESOURCES HELPERS =================
@@ -1210,6 +1393,7 @@ MODIFICATION RULES FOR THIS APP
         [elements.addOptionFieldBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !isMultipleChoice);
         });
+        updateMathChemToolsVisibility(isMultipleChoice);
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
             elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
@@ -3213,6 +3397,7 @@ MODIFICATION RULES FOR THIS APP
             elements.removeOptionFieldBtn,
             elements.createCorrectOptionSelect,
             elements.createCorrectExplanation,
+            elements.toggleMathChemToolsBtn,
             elements.createQuizBtn,
             elements.createQuizCancelEditBtn,
             elements.openQuizStudioBtn
@@ -3226,6 +3411,10 @@ MODIFICATION RULES FOR THIS APP
         });
 
         elements.createLearningResourcesRichControls.forEach(control => {
+            control.disabled = !creatorEnabled;
+        });
+
+        elements.studioMathChemControls.forEach(control => {
             control.disabled = !creatorEnabled;
         });
 
@@ -7822,7 +8011,7 @@ function showQuestion() {
     }
 
     elements.questionTextEl.style.display = 'block';
-    elements.questionTextEl.innerText = q.question;
+    setMathChemFormattedText(elements.questionTextEl, q.question);
     elements.imageContainer.style.display = '';
     elements.questionImage.style.display = q.image ? 'block' : 'none';
     elements.questionImage.src = q.image || '';
@@ -7895,7 +8084,8 @@ function showMC(q) {
         if (index < options.length && btn && exp && fb) {
             block.style.display = '';
             btn.style.display = 'block';
-            btn.innerText = optionValue;
+            setMathChemFormattedText(btn, optionValue);
+            btn.dataset.optionValue = optionValue;
             btn.disabled = false;
             btn.style.pointerEvents = 'auto';
             btn.style.opacity = '1';
@@ -7909,6 +8099,7 @@ function showMC(q) {
             if (btn) {
                 btn.style.display = 'none';
                 btn.innerText = '';
+                btn.dataset.optionValue = '';
                 btn.classList.remove('option-correct', 'option-incorrect');
                 btn.onclick = null;
             }
@@ -8035,20 +8226,21 @@ function checkAnswer(selected, explanations) {
         if (!btn || !explanationEl || !feedbackEl) return;
 
         btn.classList.remove('option-correct', 'option-incorrect');
-        explanationEl.innerText = explanations[i] || '';
+        setMathChemFormattedText(explanationEl, explanations[i] || '');
+        const optionValue = btn.dataset.optionValue || btn.innerText;
 
-        if (btn.innerText === q.correct) {
+        if (optionValue === q.correct) {
             btn.classList.add('option-correct');
-        } else if (btn.innerText === selected && !isCorrect) {
+        } else if (optionValue === selected && !isCorrect) {
             btn.classList.add('option-incorrect');
         }
 
         feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
 
-        if (btn.innerText === q.correct) {
+        if (optionValue === q.correct) {
             feedbackEl.innerText = '✔';
             feedbackEl.classList.add('correct-mark');
-        } else if (btn.innerText === selected && !isCorrect) {
+        } else if (optionValue === selected && !isCorrect) {
             feedbackEl.innerText = '✖';
             feedbackEl.classList.add('incorrect-mark');
         } else {
@@ -9668,6 +9860,77 @@ if (elements.removeOptionFieldBtn) {
     });
 }
 
+if (elements.toggleMathChemToolsBtn) {
+    elements.toggleMathChemToolsBtn.addEventListener('click', () => {
+        setMathChemToolsExpanded(!state.auth.mathChemToolsExpanded);
+    });
+}
+
+if (elements.studioMathChemTools) {
+    elements.studioMathChemTools.addEventListener('mousedown', event => {
+        if (event.target.closest('button')) {
+            event.preventDefault();
+        }
+    });
+
+    elements.studioMathChemTools.addEventListener('click', event => {
+        const tabButton = event.target.closest('[data-math-chem-tab]');
+        if (tabButton) {
+            setActiveMathChemPanel(tabButton.dataset.mathChemTab);
+            return;
+        }
+
+        const insertButton = event.target.closest('[data-math-chem-insert]');
+        if (insertButton) {
+            insertMathChemTextAtTarget(insertButton.dataset.mathChemInsert || '');
+        }
+    });
+}
+
+if (elements.insertMathChemFractionBtn) {
+    elements.insertMathChemFractionBtn.addEventListener('click', insertMathChemFractionFromControls);
+}
+
+if (elements.insertMathChemSuperscriptBtn) {
+    elements.insertMathChemSuperscriptBtn.addEventListener('click', () => {
+        insertMathChemScriptFromControl(elements.mathChemSuperscriptInput, convertToMathChemSuperscript, 'superscript');
+    });
+}
+
+if (elements.insertMathChemSubscriptBtn) {
+    elements.insertMathChemSubscriptBtn.addEventListener('click', () => {
+        insertMathChemScriptFromControl(elements.mathChemSubscriptInput, convertToMathChemSubscript, 'subscript');
+    });
+}
+
+[elements.mathChemFractionNumerator, elements.mathChemFractionDenominator].forEach(input => {
+    if (!input) return;
+    input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            insertMathChemFractionFromControls();
+        }
+    });
+});
+
+if (elements.mathChemSuperscriptInput) {
+    elements.mathChemSuperscriptInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            insertMathChemScriptFromControl(elements.mathChemSuperscriptInput, convertToMathChemSuperscript, 'superscript');
+        }
+    });
+}
+
+if (elements.mathChemSubscriptInput) {
+    elements.mathChemSubscriptInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            insertMathChemScriptFromControl(elements.mathChemSubscriptInput, convertToMathChemSubscript, 'subscript');
+        }
+    });
+}
+
 if (elements.addHierarchyItemBtn) {
     elements.addHierarchyItemBtn.addEventListener('click', () => {
         addStudioHierarchyField();
@@ -10531,7 +10794,15 @@ function handleStudioDirtyInput(event) {
     setStudioDirtyState(true);
 }
 
+document.addEventListener('focusin', event => {
+    if (isMathChemInsertTarget(event.target)) {
+        lastMathChemInsertTarget = event.target;
+    }
+});
+
+// Math/Chem toolbar mini-fields are helper controls, not quiz content fields.
 document.addEventListener('input', event => {
+    if (event.target.closest('#studioMathChemTools')) return;
     if (event.target.matches(studioDirtyInputSelector) || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row')) {
         handleStudioDirtyInput(event);
     }
