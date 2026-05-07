@@ -4253,6 +4253,20 @@ body.fullscreen-mode.active-question-classify {
   justify-content: flex-start;
 }
 
+.studio-question-position-label {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid rgba(190, 180, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--color-text-main);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .studio-math-chem-toggle-row {
   display: flex;
   align-items: center;
