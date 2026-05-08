@@ -2968,7 +2968,10 @@ MODIFICATION RULES FOR THIS APP
         const isBlank = isStudioFlashcardEditorBlank();
 
         if (hasUnsavedChanges && !isBlank) {
-            cacheCurrentStudioQuestionDraft();
+            // Add Card / New Card is an explicit flashcard creation action:
+            // save the current card first, then open a fresh blank pending card.
+            await handleSaveFlashcardQuiz();
+            if (state.auth.studioHasUnsavedChanges) return;
             await beginStudioNewQuestion();
             focusStudioPendingFlashcardTerm();
             return;
@@ -10561,9 +10564,13 @@ if (elements.studioNextQuestionBottomBtn) {
 }
 
 const handleStudioAddQuestionClick = () => {
-    beginStudioNewQuestion().catch(err => {
+    const addAction = isStudioFlashcardMode()
+        ? handleStudioFlashcardAddCard()
+        : beginStudioNewQuestion();
+
+    addAction.catch(err => {
         console.error(err);
-        setCreatorStatus('Could not add a new question.', 'error');
+        setCreatorStatus(isStudioFlashcardMode() ? 'Could not add a new card.' : 'Could not add a new question.', 'error');
     });
 };
 
