@@ -3041,6 +3041,7 @@ MODIFICATION RULES FOR THIS APP
 
         let nextSortOrder = await getNextQuestionSortOrder(quizId);
         const savedIds = [];
+        const localIdToSavedId = new Map();
         for (const row of localRows) {
             const term = normalizeSheetText(row.term_plain || row.prompt_plain);
             const definition = normalizeSheetText(row.definition_plain);
@@ -3084,7 +3085,16 @@ MODIFICATION RULES FOR THIS APP
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
             savedIds.push(questionId);
+            localIdToSavedId.set(row.id, questionId);
         }
+
+        const orderedQuestionIds = state.auth.studioQuizQuestions
+            .map(row => localIdToSavedId.get(row.id) || row.id)
+            .filter(questionId => questionId && !isStudioLocalFlashcardId(questionId));
+        if (orderedQuestionIds.length) {
+            await reorderStudioQuizQuestionIds(orderedQuestionIds);
+        }
+
         state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => !isStudioLocalFlashcardId(row.id));
         state.auth.studioPendingNewQuestionRow = null;
         return savedIds;
@@ -3237,7 +3247,7 @@ MODIFICATION RULES FOR THIS APP
 
         const editingType = getStudioCurrentQuizType();
         const rowsHtml = filteredQuestions.map((questionRow, filteredIndex) => {
-            let index = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
+            let index = displayRows.findIndex(question => question.id === questionRow.id);
             if (index === -1) index = filteredIndex;
             const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
             const isLocalFlashcardRow = isStudioLocalFlashcardId(questionRow.id);
@@ -3245,7 +3255,7 @@ MODIFICATION RULES FOR THIS APP
             const isActive = questionRow.id === state.auth.editingQuestionId || (isPendingRow && !state.auth.editingQuestionId && editingType === 'flashcard');
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
-            const chipLabel = isUnsavedFlashcardRow ? 'New Card' : getStudioQuestionChipLabel(questionType, index);
+            const chipLabel = getStudioQuestionChipLabel(questionType, index);
             const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
             const dragTitle = questionType === 'flashcard' ? 'Drag to reorder this card' : 'Drag to reorder this question';
 
@@ -3314,7 +3324,7 @@ MODIFICATION RULES FOR THIS APP
                       title="${escapeHtml(deleteTitle)}"
                     >🗑</button>
                   </div>
-                  ${isUnsavedFlashcardRow ? '' : `<div class="studio-question-insert-row">
+                  ${isPendingRow ? '' : `<div class="studio-question-insert-row">
                     <button
                       type="button"
                       class="studio-question-insert-btn${isInsertTarget ? ' active' : ''}"
@@ -10861,9 +10871,9 @@ if (elements.studioQuestionList) {
 
         const saveTailButton = e.target.closest('[data-studio-save-tail-card]');
         if (saveTailButton) {
-            handleSaveFlashcardQuiz().catch(err => {
+            handleSaveStudioQuiz().catch(err => {
                 console.error(err);
-                setCreatorStatus('Could not save the flashcard.', 'error');
+                setCreatorStatus('Could not save the flashcard changes.', 'error');
             });
             return;
         }
