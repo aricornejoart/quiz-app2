@@ -2061,27 +2061,32 @@ MODIFICATION RULES FOR THIS APP
 
     function updateCreateQuizModeUI() {
         const isEditingQuiz = !!state.auth.editingQuizId;
-        const isEditingQuestion = !!state.auth.editingQuestionId && !isStudioLocalFlashcardId(state.auth.editingQuestionId);
-        const quizType = getStudioCurrentQuizType();
-        const itemDisplayMap = { multiple_choice: 'Question', flashcard: 'Flashcard', hierarchy: 'Hierarchy Question', classify: 'Classify Question' };
-        const itemDisplay = itemDisplayMap[quizType] || 'Question';
+        const quizName = normalizeSheetText(elements.createQuizName?.value);
+        const creatorEnabled = !!state.auth.configured && !!state.auth.user?.id;
 
         if (elements.createQuizBtn) {
-            elements.createQuizBtn.textContent = !isEditingQuiz
-                ? 'Create Quiz'
-                : (isEditingQuestion ? `Save ${itemDisplay} Changes` : `Add ${itemDisplay} To Quiz`);
+            const canSaveChanges = creatorEnabled && !!quizName;
+            elements.createQuizBtn.textContent = 'Save Changes';
+            elements.createQuizBtn.disabled = !canSaveChanges;
+            elements.createQuizBtn.title = canSaveChanges
+                ? 'Save the current quiz changes.'
+                : 'Enter a quiz name before saving.';
         }
 
         if (elements.createQuizCancelEditBtn) {
             elements.createQuizCancelEditBtn.textContent = 'Create Quiz';
+            elements.createQuizCancelEditBtn.disabled = !creatorEnabled || !isEditingQuiz;
+            elements.createQuizCancelEditBtn.title = isEditingQuiz
+                ? 'Start a new quiz in the editor.'
+                : 'Save this quiz before starting another one.';
         }
 
         if (elements.studioStudyQuizBtn) {
-            const canStudyOpenQuiz = !!state.auth.editingQuizId && !!state.auth.user?.id;
+            const canStudyOpenQuiz = isEditingQuiz && creatorEnabled;
             elements.studioStudyQuizBtn.disabled = !canStudyOpenQuiz;
             elements.studioStudyQuizBtn.title = canStudyOpenQuiz
                 ? 'Study the quiz currently open in the editor.'
-                : 'Save or open a quiz before studying it.';
+                : 'Save this quiz before studying it.';
         }
 
         updateStudioEditorTypeUI();
@@ -2804,7 +2809,7 @@ MODIFICATION RULES FOR THIS APP
             if (hasStudioQuestionDrafts()) {
                 await saveStudioCachedDrafts();
             } else {
-                await handleSaveStudioQuiz();
+                await handleSaveStudioEditorChanges();
             }
             const saved = !state.auth.studioHasUnsavedChanges && !hasStudioQuestionDrafts();
 
@@ -3572,7 +3577,7 @@ MODIFICATION RULES FOR THIS APP
             cacheCurrentStudioQuestionDraft();
         }
         if (!state.auth.editingQuizId) {
-            setCreatorStatus('Create a quiz first, then you can add more questions to it.', 'error');
+            setCreatorStatus('Click Save Changes first to create this quiz, then you can add more questions to it.', 'error');
             return;
         }
 
@@ -4067,6 +4072,150 @@ MODIFICATION RULES FOR THIS APP
         const { data, error } = await query;
         if (error) throw error;
         return Number(data?.[0]?.sort_order ?? -1) + 1;
+    }
+
+    function getStudioQuizMetaDraft() {
+        return {
+            name: normalizeSheetText(elements.createQuizName?.value),
+            folderId: normalizeSheetText(elements.createQuizFolderSelect?.value) || null,
+            quizType: getStudioCurrentQuizType()
+        };
+    }
+
+    function isCurrentStudioQuestionBlank() {
+        const quizType = getStudioCurrentQuizType();
+        const hasLearningResourceImage = !!normalizeSheetText(state.auth.studioLearningResourcesImageDataUrl);
+        const hasLearningResources = !!getLearningResourcesEditorPlain() || hasLearningResourceImage;
+
+        if (quizType === 'flashcard') {
+            return !normalizeSheetText(elements.createFlashcardTerm?.value)
+                && !normalizeSheetText(elements.createFlashcardDefinition?.value)
+                && !normalizeSheetText(state.auth.studioFlashcardTermImageDataUrl)
+                && !normalizeSheetText(state.auth.studioFlashcardDefinitionImageDataUrl)
+                && !hasLearningResources;
+        }
+
+        if (quizType === 'hierarchy') {
+            return !normalizeSheetText(elements.createQuestionPrompt?.value)
+                && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && !hasLearningResources
+                && !getStudioHierarchyDraftsFromDOM().some(draft => normalizeSheetText(draft.text));
+        }
+
+        if (quizType === 'classify') {
+            const categories = getStudioClassifyCategoriesDraftsFromDOM();
+            const items = getStudioClassifyItemsDraftsFromDOM(categories);
+            return !normalizeSheetText(elements.createQuestionPrompt?.value)
+                && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && !hasLearningResources
+                && !categories.some(category => normalizeSheetText(category.label) || normalizeSheetText(category.imageUrl))
+                && !items.some(item => normalizeSheetText(item.text) || normalizeSheetText(item.imageUrl));
+        }
+
+        return !normalizeSheetText(elements.createQuestionPrompt?.value)
+            && !normalizeSheetText(elements.createCorrectExplanation?.value)
+            && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+            && !hasLearningResources
+            && !getStudioOptionDraftsFromDOM().some(option => normalizeSheetText(option.text) || normalizeSheetText(option.explanation) || normalizeSheetText(option.imageUrl));
+    }
+
+    function isCurrentStudioQuestionReadyToSave() {
+        const quizType = getStudioCurrentQuizType();
+
+        if (quizType === 'flashcard') {
+            return !!normalizeSheetText(elements.createFlashcardTerm?.value)
+                && !!normalizeSheetText(elements.createFlashcardDefinition?.value);
+        }
+
+        if (quizType === 'hierarchy') {
+            const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+            const hierarchyDrafts = getStudioHierarchyDraftsFromDOM();
+            const itemTexts = hierarchyDrafts.map(draft => normalizeSheetText(draft.text)).filter(Boolean);
+            const positions = hierarchyDrafts.map(draft => Number(draft.position));
+            return !!prompt
+                && itemTexts.length >= 2
+                && new Set(itemTexts).size === itemTexts.length
+                && !positions.some(position => !Number.isInteger(position) || position < 1 || position > hierarchyDrafts.length)
+                && new Set(positions).size === positions.length;
+        }
+
+        if (quizType === 'classify') {
+            const categories = getStudioClassifyCategoriesDraftsFromDOM();
+            const items = getStudioClassifyItemsDraftsFromDOM(categories);
+            const categoryLabels = categories.map(category => normalizeSheetText(category.label));
+            const itemTexts = items.map(item => normalizeSheetText(item.text));
+            return !!normalizeSheetText(elements.createQuestionPrompt?.value)
+                && !categories.some(category => !normalizeSheetText(category.label) && !normalizeSheetText(category.imageUrl))
+                && new Set(categoryLabels.filter(Boolean)).size === categoryLabels.filter(Boolean).length
+                && !items.some(item => !normalizeSheetText(item.text) && !normalizeSheetText(item.imageUrl))
+                && new Set(itemTexts.filter(Boolean)).size === itemTexts.filter(Boolean).length
+                && !items.some(item => !categories.some(category => category.id === item.categoryId));
+        }
+
+        const optionDrafts = getStudioOptionDraftsFromDOM();
+        const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
+        const maxOptionIndex = Math.max(0, optionDrafts.length - 1);
+        const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
+        return !!normalizeSheetText(elements.createQuestionPrompt?.value)
+            && optionDrafts.length >= 2
+            && !optionAnswerValues.some(value => !value)
+            && new Set(optionAnswerValues).size === optionAnswerValues.length
+            && !!optionAnswerValues[correctIndex];
+    }
+
+    async function saveQuizShellFromEditor(options = {}) {
+        if (!state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
+            return '';
+        }
+
+        const { name, folderId, quizType } = getStudioQuizMetaDraft();
+        if (!name) {
+            setCreatorStatus('Enter a quiz name first.', 'error');
+            return '';
+        }
+
+        if (state.auth.editingQuizId) {
+            const { error } = await state.auth.client
+                .from('quizzes')
+                .update({ folder_id: folderId, name })
+                .eq('id', state.auth.editingQuizId);
+            if (error) throw error;
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${state.auth.editingQuizId}` });
+            return state.auth.editingQuizId;
+        }
+
+        if (!options.quiet) {
+            setCreatorStatus('Creating quiz...');
+        }
+
+        const quizSortOrder = await getNextQuizSortOrder(folderId);
+        const { data, error } = await state.auth.client
+            .from('quizzes')
+            .insert({
+                user_id: state.auth.user.id,
+                folder_id: folderId,
+                name,
+                description: '',
+                sort_order: quizSortOrder,
+                is_archived: false
+            })
+            .select('id')
+            .single();
+        if (error) throw error;
+
+        state.auth.editingQuizId = data.id;
+        state.auth.editingQuizType = quizType;
+        state.auth.pendingInsertAfterQuestionId = null;
+        if (elements.createQuizTypeSelect) {
+            elements.createQuizTypeSelect.value = quizType;
+        }
+
+        await refreshStudioManagementData();
+        await refreshQuizCatalog({ selectQuizId: `sb:${data.id}`, loadSelectedQuiz: false });
+        updateCreateQuizModeUI();
+        return data.id;
     }
 
     function getUserDisplayName() {
@@ -5737,6 +5886,41 @@ MODIFICATION RULES FOR THIS APP
         if (isStudioHierarchyMode()) return handleSaveHierarchyQuiz();
         if (isStudioClassifyMode()) return handleSaveClassifyQuiz();
         return handleSaveMultipleChoiceQuiz();
+    }
+
+    async function handleSaveStudioEditorChanges() {
+        if (!state.auth.editingQuizId) {
+            const isBlankQuestion = isCurrentStudioQuestionBlank();
+            const canSaveQuestionNow = isCurrentStudioQuestionReadyToSave();
+            const quizId = await saveQuizShellFromEditor({ quiet: canSaveQuestionNow });
+            if (!quizId) return;
+
+            if (canSaveQuestionNow) {
+                await handleSaveStudioQuiz();
+                return;
+            }
+
+            setStudioDirtyState(!isBlankQuestion || hasStudioQuestionDrafts());
+            updateCreateQuizModeUI();
+            const itemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'card' : 'question';
+            setCreatorStatus(
+                isBlankQuestion
+                    ? `Quiz created. Add your first ${itemLabel} below.`
+                    : `Quiz created. Finish the current ${itemLabel}, then click Save Changes again to save it.`,
+                'success'
+            );
+            return;
+        }
+
+        if (!state.auth.editingQuestionId && isCurrentStudioQuestionBlank() && !hasStudioQuestionDrafts()) {
+            await saveQuizShellFromEditor();
+            setStudioDirtyState(false);
+            updateCreateQuizModeUI();
+            setCreatorStatus('Quiz details saved.', 'success');
+            return;
+        }
+
+        await handleSaveStudioQuiz();
     }
 
     async function handleRenameFolder(folderId, nextName) {
@@ -10704,7 +10888,7 @@ if (elements.createQuizTypeSelect) {
 
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
-        handleSaveStudioQuiz().catch(err => {
+        handleSaveStudioEditorChanges().catch(err => {
             console.error(err);
             setCreatorStatus('Could not save the quiz.', 'error');
         });
@@ -11511,6 +11695,7 @@ function handleStudioDirtyInput(event) {
         return;
     }
     setStudioDirtyState(true);
+    updateCreateQuizModeUI();
 }
 
 document.addEventListener('focusin', event => {
