@@ -42,6 +42,7 @@ MODIFICATION RULES FOR THIS APP
     });
 
     const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
+    const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
 
     const state = {
         questions: [],
@@ -123,6 +124,7 @@ MODIFICATION RULES FOR THIS APP
             studioAutosaveQuiet: false,
             studioDraggingQuestionId: null,
             studioPendingNewQuestionRow: null,
+            localFlashcardDraftCounter: 0,
             backupImportPayload: null,
             backupImportFileName: '',
             mediaSignedUrlCache: new Map(),
@@ -1586,7 +1588,8 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        elements.studioQuizList.innerHTML = state.auth.managedQuizzes.map(quiz => {
+        const quizzesToRender = [...state.auth.managedQuizzes].sort(sortStudioRecentItems);
+        elements.studioQuizList.innerHTML = quizzesToRender.map(quiz => {
             const folderLabel = quiz.folderName || 'No folder';
             const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
             const typeLabel = quiz.typeLabel || 'Mixed types';
@@ -2058,7 +2061,7 @@ MODIFICATION RULES FOR THIS APP
 
     function updateCreateQuizModeUI() {
         const isEditingQuiz = !!state.auth.editingQuizId;
-        const isEditingQuestion = !!state.auth.editingQuestionId;
+        const isEditingQuestion = !!state.auth.editingQuestionId && !isStudioLocalFlashcardId(state.auth.editingQuestionId);
         const quizType = getStudioCurrentQuizType();
         const itemDisplayMap = { multiple_choice: 'Question', flashcard: 'Flashcard', hierarchy: 'Hierarchy Question', classify: 'Classify Question' };
         const itemDisplay = itemDisplayMap[quizType] || 'Question';
@@ -2825,8 +2828,88 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function isStudioLocalFlashcardId(questionId) {
+        return normalizeSheetText(questionId).startsWith(STUDIO_LOCAL_FLASHCARD_PREFIX);
+    }
+
+    function createStudioLocalFlashcardId() {
+        state.auth.localFlashcardDraftCounter = Number(state.auth.localFlashcardDraftCounter || 0) + 1;
+        return `${STUDIO_LOCAL_FLASHCARD_PREFIX}${Date.now()}_${state.auth.localFlashcardDraftCounter}`;
+    }
+
+    function getStudioLocalFlashcardRows(sourceRows = state.auth.studioQuizQuestions) {
+        return (sourceRows || []).filter(row => isStudioLocalFlashcardId(row?.id) && normalizeSheetText(row?.question_type || 'flashcard') === 'flashcard');
+    }
+
+    function hasStudioLocalFlashcardDrafts() {
+        return getStudioLocalFlashcardRows().length > 0;
+    }
+
+    function hasPendingFlashcardDraftContent() {
+        const pendingRow = getStudioPendingFlashcardRow();
+        if (!pendingRow) return false;
+        return !!normalizeSheetText(pendingRow.term_plain || pendingRow.prompt_plain || pendingRow.definition_plain);
+    }
+
+    function buildLocalFlashcardDraftFromEditor(rowId = createStudioLocalFlashcardId()) {
+        const term = normalizeSheetText(elements.createFlashcardTerm?.value);
+        const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
+        return {
+            id: rowId,
+            question_type: 'flashcard',
+            prompt_plain: term,
+            term_plain: term,
+            definition_plain: definition,
+            learning_resources_html: getLearningResourcesEditorHtml(),
+            learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '',
+            learning_resources_image_label: state.auth.studioLearningResourcesImageLabel || '',
+            term_image_url: state.auth.studioFlashcardTermImageDataUrl || '',
+            term_image_label: state.auth.studioFlashcardTermImageLabel || '',
+            definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || '',
+            definition_image_label: state.auth.studioFlashcardDefinitionImageLabel || '',
+            sort_order: Number.MAX_SAFE_INTEGER,
+            is_local_draft: true
+        };
+    }
+
+    function syncLocalFlashcardDraftFromEditor() {
+        if (!isStudioLocalFlashcardId(state.auth.editingQuestionId)) return false;
+        const row = state.auth.studioQuizQuestions.find(item => item.id === state.auth.editingQuestionId);
+        if (!row) return false;
+        Object.assign(row, buildLocalFlashcardDraftFromEditor(row.id));
+        renderStudioQuestionList();
+        updateStudioUnsavedChangesIndicator();
+        return true;
+    }
+
+    function promotePendingFlashcardToLocalDraft() {
+        const pendingRow = getStudioPendingFlashcardRow();
+        if (!pendingRow || isStudioFlashcardEditorBlank()) return false;
+        const localRow = buildLocalFlashcardDraftFromEditor(createStudioLocalFlashcardId());
+        const insertAfterId = state.auth.pendingInsertAfterQuestionId;
+        const insertIndex = insertAfterId ? state.auth.studioQuizQuestions.findIndex(question => question.id === insertAfterId) : -1;
+        if (insertIndex !== -1) {
+            state.auth.studioQuizQuestions.splice(insertIndex + 1, 0, localRow);
+        } else {
+            state.auth.studioQuizQuestions.push(localRow);
+        }
+        state.auth.studioPendingNewQuestionRow = null;
+        return true;
+    }
+
+    function cacheCurrentFlashcardDraftForNavigation() {
+        if (!isStudioFlashcardMode()) return false;
+        if (isStudioLocalFlashcardId(state.auth.editingQuestionId)) {
+            return syncLocalFlashcardDraftFromEditor();
+        }
+        if (!state.auth.editingQuestionId && getStudioPendingFlashcardRow() && !isStudioFlashcardEditorBlank()) {
+            return promotePendingFlashcardToLocalDraft();
+        }
+        return false;
+    }
+
     function hasStudioQuestionDrafts() {
-        return !!state.auth.studioQuestionDrafts?.size;
+        return !!state.auth.studioQuestionDrafts?.size || hasStudioLocalFlashcardDrafts() || hasPendingFlashcardDraftContent();
     }
 
     function clearStudioQuestionDraft(questionId) {
@@ -2874,7 +2957,13 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function cacheCurrentStudioQuestionDraft() {
-        if (!state.auth.studioHasUnsavedChanges || !state.auth.editingQuestionId) return;
+        if (!state.auth.studioHasUnsavedChanges) return;
+        if (cacheCurrentFlashcardDraftForNavigation()) {
+            renderStudioQuestionList();
+            updateStudioUnsavedChangesIndicator();
+            return;
+        }
+        if (!state.auth.editingQuestionId) return;
         const draft = getStudioQuestionDraftFromEditor();
         if (!draft?.questionId) return;
         state.auth.studioQuestionDrafts.set(draft.questionId, draft);
@@ -2906,15 +2995,111 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function loadStudioLocalFlashcardIntoEditor(questionId, options = {}) {
+        const row = state.auth.studioQuizQuestions.find(item => item.id === questionId && isStudioLocalFlashcardId(item.id));
+        if (!row) return false;
+        if (state.auth.studioHasUnsavedChanges) {
+            cacheCurrentStudioQuestionDraft();
+        }
+        state.auth.editingQuestionId = row.id;
+        state.auth.editingQuizType = 'flashcard';
+        state.auth.pendingInsertAfterQuestionId = null;
+        state.auth.studioPendingNewQuestionRow = null;
+        state.auth.expandedOptionImageRows.clear();
+        if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = normalizeSheetText(row.term_plain || row.prompt_plain);
+        if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = normalizeSheetText(row.term_plain || row.prompt_plain);
+        if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = normalizeSheetText(row.definition_plain);
+        setLearningResourcesEditorHtml(row.learning_resources_html || '', '');
+        setStudioLearningResourcesImageState(row.learning_resources_image_url || '', row.learning_resources_image_label || (row.learning_resources_image_url ? 'Existing learning resources image saved.' : 'No learning resources image selected.'));
+        setStudioQuestionImageState('', 'No question image selected.');
+        setStudioFlashcardTermImageState(row.term_image_url || '', row.term_image_label || (row.term_image_url ? 'Existing term image saved.' : 'No term image selected.'));
+        setStudioFlashcardDefinitionImageState(row.definition_image_url || '', row.definition_image_label || (row.definition_image_url ? 'Existing definition image saved.' : 'No definition image selected.'));
+        renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
+        renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
+        renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
+        renderStudioQuestionList();
+        updateCreateQuizModeUI();
+        setStudioDirtyState(true);
+        if (!options.suppressStatus) {
+            setCreatorStatus('Unsaved flashcard loaded into the editor.', 'success');
+        }
+        return true;
+    }
+
+    async function saveStudioLocalFlashcardDraftRows(sourceRows = getStudioLocalFlashcardRows()) {
+        const localRows = (sourceRows || []).filter(row => isStudioLocalFlashcardId(row?.id));
+        if (!localRows.length) return [];
+        if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before saving flashcards.');
+        const quizId = state.auth.editingQuizId;
+        const quizName = normalizeSheetText(elements.createQuizName?.value);
+        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
+        if (!quizId) throw new Error('Save or open a flashcard quiz before adding cards.');
+        if (!quizName) throw new Error('Enter a quiz name first.');
+
+        const { error: quizError } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+        if (quizError) throw quizError;
+
+        let nextSortOrder = await getNextQuestionSortOrder(quizId);
+        const savedIds = [];
+        for (const row of localRows) {
+            const term = normalizeSheetText(row.term_plain || row.prompt_plain);
+            const definition = normalizeSheetText(row.definition_plain);
+            if (!term || !definition) {
+                throw new Error('Each unsaved flashcard needs both a term and a definition before saving.');
+            }
+            const learningResourcesHtml = sanitizeLearningResourcesHtml(row.learning_resources_html || '');
+            const { data, error } = await state.auth.client.from('questions').insert({
+                quiz_id: quizId,
+                question_type: 'flashcard',
+                prompt_html: buildStoredHtmlFromPlain(term),
+                prompt_plain: term,
+                image_url: '',
+                learning_resources_html: learningResourcesHtml,
+                learning_resources_image_url: '',
+                sort_order: nextSortOrder++
+            }).select('id').single();
+            if (error) throw error;
+            const questionId = data.id;
+            const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
+                image_url: '',
+                learning_resources_image_url: row.learning_resources_image_url || ''
+            });
+            const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+                learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+            }).eq('id', questionId);
+            if (mediaUpdateError) throw mediaUpdateError;
+            const savedFlashcardMedia = await saveFlashcardMediaValues(quizId, questionId, {
+                term_image_url: row.term_image_url || '',
+                definition_image_url: row.definition_image_url || ''
+            });
+            const detailPayload = {
+                question_id: questionId,
+                term_html: buildStoredHtmlFromPlain(term),
+                definition_html: buildStoredHtmlFromPlain(definition),
+                term_plain: term,
+                definition_plain: definition,
+                term_image_url: savedFlashcardMedia.term_image_url || '',
+                definition_image_url: savedFlashcardMedia.definition_image_url || ''
+            };
+            const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
+            if (detailError) throw detailError;
+            savedIds.push(questionId);
+        }
+        state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => !isStudioLocalFlashcardId(row.id));
+        state.auth.studioPendingNewQuestionRow = null;
+        return savedIds;
+    }
+
     async function saveStudioCachedDrafts() {
         cacheCurrentStudioQuestionDraft();
         const draftEntries = Array.from(state.auth.studioQuestionDrafts.entries());
+        const localFlashcardRows = getStudioLocalFlashcardRows().map(row => ({ ...row }));
         for (const [questionId, draft] of draftEntries) {
             try {
                 await loadStudioQuestionIntoEditor(questionId, { force: true, suppressStatus: true, skipDraftRestore: true });
                 applyStudioQuestionDraft(draft);
                 setStudioDirtyState(true);
-                await handleSaveStudioQuiz();
+                await handleSaveStudioQuiz({ skipCachedDrafts: true });
                 if (state.auth.studioQuestionDrafts.has(questionId)) {
                     throw new Error('Fix the editor fields before leaving this quiz.');
                 }
@@ -2922,6 +3107,12 @@ MODIFICATION RULES FOR THIS APP
                 state.auth.studioQuestionDrafts.set(questionId, draft);
                 throw error;
             }
+        }
+        const savedLocalIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows);
+        if (savedLocalIds.length && state.auth.editingQuizId) {
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
+            await loadQuizIntoEditor(state.auth.editingQuizId, savedLocalIds[savedLocalIds.length - 1], { force: true });
         }
         setStudioDirtyState(false);
     }
@@ -2962,24 +3153,8 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const hasCurrentQuestion = !!state.auth.editingQuestionId;
-        const hasPendingRow = !!getStudioPendingFlashcardRow();
-        const hasUnsavedChanges = !!state.auth.studioHasUnsavedChanges;
-        const isBlank = isStudioFlashcardEditorBlank();
-
-        if (hasUnsavedChanges && !isBlank) {
-            // Add Card / New Card is an explicit flashcard creation action:
-            // save the current card first, then open a fresh blank pending card.
-            await handleSaveFlashcardQuiz();
-            if (state.auth.studioHasUnsavedChanges) return;
-            await beginStudioNewQuestion();
-            focusStudioPendingFlashcardTerm();
-            return;
-        }
-
-        if (!hasCurrentQuestion && hasPendingRow) {
-            focusStudioPendingFlashcardTerm();
-            return;
+        if (state.auth.studioHasUnsavedChanges && !isStudioFlashcardEditorBlank()) {
+            cacheCurrentFlashcardDraftForNavigation();
         }
 
         await beginStudioNewQuestion();
@@ -3065,10 +3240,12 @@ MODIFICATION RULES FOR THIS APP
             let index = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
             if (index === -1) index = filteredIndex;
             const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
+            const isLocalFlashcardRow = isStudioLocalFlashcardId(questionRow.id);
+            const isUnsavedFlashcardRow = isPendingRow || isLocalFlashcardRow;
             const isActive = questionRow.id === state.auth.editingQuestionId || (isPendingRow && !state.auth.editingQuestionId && editingType === 'flashcard');
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
-            const chipLabel = isPendingRow ? 'New Card' : getStudioQuestionChipLabel(questionType, index);
+            const chipLabel = isUnsavedFlashcardRow ? 'New Card' : getStudioQuestionChipLabel(questionType, index);
             const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
             const dragTitle = questionType === 'flashcard' ? 'Drag to reorder this card' : 'Drag to reorder this question';
 
@@ -3104,21 +3281,21 @@ MODIFICATION RULES FOR THIS APP
             }
 
             const rowDropAttr = isPendingRow ? '' : `data-studio-drop-question-id="${escapeHtml(questionRow.id)}"`;
-            const handleAttrs = isPendingRow
+            const handleAttrs = isUnsavedFlashcardRow
                 ? 'disabled'
                 : `data-studio-drag-question-id="${escapeHtml(questionRow.id)}" draggable="true"`;
             const deleteAttrs = isPendingRow
                 ? 'data-studio-discard-pending-card="true"'
-                : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`;
-            const deleteLabel = isPendingRow ? 'Discard new card' : `Delete ${chipLabel}`;
-            const deleteTitle = isPendingRow ? 'Discard this unsaved card' : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
+                : (isLocalFlashcardRow ? `data-studio-discard-local-card="${escapeHtml(questionRow.id)}"` : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`);
+            const deleteLabel = isUnsavedFlashcardRow ? 'Discard new card' : `Delete ${chipLabel}`;
+            const deleteTitle = isUnsavedFlashcardRow ? 'Discard this unsaved card' : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
 
             return `
                 <div class="studio-question-list-row">
                   <div
                     class="studio-question-list-item${isActive ? ' active' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
                     data-studio-row-question-id="${escapeHtml(questionRow.id)}"
-                    ${rowDropAttr}
+                    ${isLocalFlashcardRow ? '' : rowDropAttr}
                   >
                     <button
                       type="button"
@@ -3137,7 +3314,7 @@ MODIFICATION RULES FOR THIS APP
                       title="${escapeHtml(deleteTitle)}"
                     >🗑</button>
                   </div>
-                  ${isPendingRow ? '' : `<div class="studio-question-insert-row">
+                  ${isUnsavedFlashcardRow ? '' : `<div class="studio-question-insert-row">
                     <button
                       type="button"
                       class="studio-question-insert-btn${isInsertTarget ? ' active' : ''}"
@@ -3240,6 +3417,10 @@ MODIFICATION RULES FOR THIS APP
         const suppressStatus = !!options.suppressStatus;
         if (!state.auth.client || !questionId) {
             clearStudioQuestionInputs();
+            return;
+        }
+        if (isStudioLocalFlashcardId(questionId)) {
+            loadStudioLocalFlashcardIntoEditor(questionId, options);
             return;
         }
         if (!options.force && questionId !== state.auth.editingQuestionId && state.auth.studioHasUnsavedChanges) {
@@ -5311,11 +5492,11 @@ MODIFICATION RULES FOR THIS APP
         if (!term) return void setCreatorStatus('Enter a flashcard term first.', 'error');
         if (!definition) return void setCreatorStatus('Enter a flashcard definition first.', 'error');
         const isEditingQuiz = !!state.auth.editingQuizId;
-        const isEditingQuestion = !!state.auth.editingQuestionId;
+        const isEditingQuestion = !!state.auth.editingQuestionId && !isStudioLocalFlashcardId(state.auth.editingQuestionId);
         setCreatorStatus(!isEditingQuiz ? 'Creating flashcard quiz...' : (isEditingQuestion ? 'Saving flashcard changes...' : 'Adding flashcard to quiz...'));
         try {
             let quizId = state.auth.editingQuizId;
-            let questionId = state.auth.editingQuestionId;
+            let questionId = isEditingQuestion ? state.auth.editingQuestionId : '';
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
                 const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
@@ -5536,8 +5717,13 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function handleSaveStudioQuiz() {
-        if (isStudioFlashcardMode()) return handleSaveFlashcardQuiz();
+    async function handleSaveStudioQuiz(options = {}) {
+        if (isStudioFlashcardMode()) {
+            if (!options.skipCachedDrafts && (hasStudioLocalFlashcardDrafts() || hasPendingFlashcardDraftContent() || isStudioLocalFlashcardId(state.auth.editingQuestionId))) {
+                return saveStudioCachedDrafts();
+            }
+            return handleSaveFlashcardQuiz();
+        }
         if (isStudioHierarchyMode()) return handleSaveHierarchyQuiz();
         if (isStudioClassifyMode()) return handleSaveClassifyQuiz();
         return handleSaveMultipleChoiceQuiz();
@@ -10640,6 +10826,21 @@ if (elements.studioQuestionList) {
             return;
         }
 
+        const discardLocalButton = e.target.closest('[data-studio-discard-local-card]');
+        if (discardLocalButton) {
+            const localId = discardLocalButton.dataset.studioDiscardLocalCard;
+            state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => row.id !== localId);
+            if (state.auth.editingQuestionId === localId) {
+                clearStudioQuestionInputs();
+                setStudioDirtyState(hasStudioQuestionDrafts());
+            } else {
+                renderStudioQuestionList();
+                setStudioDirtyState(hasStudioQuestionDrafts());
+            }
+            setCreatorStatus('Unsaved new card discarded.', 'success');
+            return;
+        }
+
         const deleteButton = e.target.closest('[data-studio-delete-question-id]');
         if (deleteButton) {
             handleDeleteStudioQuestion(deleteButton.dataset.studioDeleteQuestionId).catch(err => {
@@ -10699,7 +10900,10 @@ if (elements.studioQuestionList) {
         if (!questionId || questionId === state.auth.editingQuestionId) return;
 
         const selector = termField ? `[data-studio-flashcard-term-id="${questionId}"]` : `[data-studio-flashcard-definition-id="${questionId}"]`;
-        loadStudioQuestionIntoEditor(questionId, { suppressStatus: true }).then(() => {
+        const loadAction = isStudioLocalFlashcardId(questionId)
+            ? Promise.resolve(loadStudioLocalFlashcardIntoEditor(questionId, { suppressStatus: true }))
+            : loadStudioQuestionIntoEditor(questionId, { suppressStatus: true });
+        loadAction.then(() => {
             const replacementField = elements.studioQuestionList?.querySelector(selector);
             if (replacementField) {
                 replacementField.focus();
