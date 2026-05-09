@@ -2856,6 +2856,68 @@ MODIFICATION RULES FOR THIS APP
         return !!normalizeSheetText(pendingRow.term_plain || pendingRow.prompt_plain || pendingRow.definition_plain);
     }
 
+    function syncStudioFlashcardInlineRowsToState() {
+        if (!isStudioFlashcardMode() || !elements.studioQuestionList) return false;
+        let changed = false;
+
+        elements.studioQuestionList.querySelectorAll('[data-studio-flashcard-term-id]').forEach(field => {
+            const questionId = normalizeSheetText(field.dataset.studioFlashcardTermId);
+            const row = state.auth.studioQuizQuestions.find(question => question.id === questionId);
+            if (!row) return;
+            const value = field.value;
+            if (row.term_plain !== value || row.prompt_plain !== value) {
+                row.term_plain = value;
+                row.prompt_plain = value;
+                changed = true;
+            }
+            if (questionId === state.auth.editingQuestionId && elements.createFlashcardTerm && elements.createFlashcardTerm !== document.activeElement) {
+                elements.createFlashcardTerm.value = value;
+            }
+        });
+
+        elements.studioQuestionList.querySelectorAll('[data-studio-flashcard-definition-id]').forEach(field => {
+            const questionId = normalizeSheetText(field.dataset.studioFlashcardDefinitionId);
+            const row = state.auth.studioQuizQuestions.find(question => question.id === questionId);
+            if (!row) return;
+            const value = field.value;
+            if (row.definition_plain !== value) {
+                row.definition_plain = value;
+                changed = true;
+            }
+            if (questionId === state.auth.editingQuestionId && elements.createFlashcardDefinition && elements.createFlashcardDefinition !== document.activeElement) {
+                elements.createFlashcardDefinition.value = value;
+            }
+        });
+
+        const pendingRow = getStudioPendingFlashcardRow();
+        const pendingTerm = elements.studioQuestionList.querySelector('[data-studio-pending-flashcard-term]');
+        if (pendingRow && pendingTerm) {
+            const value = pendingTerm.value;
+            if (pendingRow.term_plain !== value || pendingRow.prompt_plain !== value) {
+                pendingRow.term_plain = value;
+                pendingRow.prompt_plain = value;
+                changed = true;
+            }
+            if (!state.auth.editingQuestionId && elements.createFlashcardTerm && elements.createFlashcardTerm !== document.activeElement) {
+                elements.createFlashcardTerm.value = value;
+            }
+        }
+
+        const pendingDefinition = elements.studioQuestionList.querySelector('[data-studio-pending-flashcard-definition]');
+        if (pendingRow && pendingDefinition) {
+            const value = pendingDefinition.value;
+            if (pendingRow.definition_plain !== value) {
+                pendingRow.definition_plain = value;
+                changed = true;
+            }
+            if (!state.auth.editingQuestionId && elements.createFlashcardDefinition && elements.createFlashcardDefinition !== document.activeElement) {
+                elements.createFlashcardDefinition.value = value;
+            }
+        }
+
+        return changed;
+    }
+
     function buildLocalFlashcardDraftFromEditor(rowId = createStudioLocalFlashcardId()) {
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
@@ -2963,6 +3025,7 @@ MODIFICATION RULES FOR THIS APP
 
     function cacheCurrentStudioQuestionDraft() {
         if (!state.auth.studioHasUnsavedChanges) return;
+        syncStudioFlashcardInlineRowsToState();
         if (cacheCurrentFlashcardDraftForNavigation()) {
             renderStudioQuestionList();
             updateStudioUnsavedChangesIndicator();
@@ -3031,7 +3094,7 @@ MODIFICATION RULES FOR THIS APP
         return true;
     }
 
-    async function saveStudioLocalFlashcardDraftRows(sourceRows = getStudioLocalFlashcardRows()) {
+    async function saveStudioLocalFlashcardDraftRows(sourceRows = getStudioLocalFlashcardRows(), orderRows = state.auth.studioQuizQuestions) {
         const localRows = (sourceRows || []).filter(row => isStudioLocalFlashcardId(row?.id));
         if (!localRows.length) return [];
         if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before saving flashcards.');
@@ -3093,7 +3156,7 @@ MODIFICATION RULES FOR THIS APP
             localIdToSavedId.set(row.id, questionId);
         }
 
-        const orderedQuestionIds = state.auth.studioQuizQuestions
+        const orderedQuestionIds = (orderRows || state.auth.studioQuizQuestions)
             .map(row => localIdToSavedId.get(row.id) || row.id)
             .filter(questionId => questionId && !isStudioLocalFlashcardId(questionId));
         if (orderedQuestionIds.length) {
@@ -3105,11 +3168,106 @@ MODIFICATION RULES FOR THIS APP
         return savedIds;
     }
 
+    async function saveStudioFlashcardQuestionDraftDirect(questionId, draft = {}) {
+        const normalizedQuestionId = normalizeSheetText(questionId);
+        if (!normalizedQuestionId || isStudioLocalFlashcardId(normalizedQuestionId)) return '';
+        if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before saving flashcards.');
+        const quizId = state.auth.editingQuizId;
+        const quizName = normalizeSheetText(elements.createQuizName?.value);
+        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
+        const term = normalizeSheetText(draft.term || draft.prompt || '');
+        const definition = normalizeSheetText(draft.definition || '');
+        const learningResourcesHtml = sanitizeLearningResourcesHtml(draft.learningResourcesHtml || '');
+
+        if (!quizId) throw new Error('Save or open a flashcard quiz before updating cards.');
+        if (!quizName) throw new Error('Enter a quiz name first.');
+        if (!term) throw new Error('Enter a flashcard term first.');
+        if (!definition) throw new Error('Enter a flashcard definition first.');
+
+        const previousMediaRefs = await getQuestionMediaReferences(normalizedQuestionId);
+        const savedLearningResourcesImage = await savePrivateMediaValue(draft.learningResourcesImage || '', {
+            quizId,
+            questionId: normalizedQuestionId,
+            usageContext: 'learning_resources_image_url',
+            label: draft.learningResourcesImageLabel || 'learning resources image'
+        });
+        const savedTermImage = await savePrivateMediaValue(draft.termImage || '', {
+            quizId,
+            questionId: normalizedQuestionId,
+            usageContext: 'term_image_url',
+            label: draft.termImageLabel || 'term image'
+        });
+        const savedDefinitionImage = await savePrivateMediaValue(draft.definitionImage || '', {
+            quizId,
+            questionId: normalizedQuestionId,
+            usageContext: 'definition_image_url',
+            label: draft.definitionImageLabel || 'definition image'
+        });
+
+        const { error: quizError } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+        if (quizError) throw quizError;
+
+        const { error: questionError } = await state.auth.client.from('questions').update({
+            prompt_html: buildStoredHtmlFromPlain(term),
+            prompt_plain: term,
+            image_url: '',
+            learning_resources_html: learningResourcesHtml,
+            learning_resources_image_url: savedLearningResourcesImage || ''
+        }).eq('id', normalizedQuestionId);
+        if (questionError) throw questionError;
+
+        const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert({
+            question_id: normalizedQuestionId,
+            term_html: buildStoredHtmlFromPlain(term),
+            definition_html: buildStoredHtmlFromPlain(definition),
+            term_plain: term,
+            definition_plain: definition,
+            term_image_url: savedTermImage || '',
+            definition_image_url: savedDefinitionImage || ''
+        }, { onConflict: 'question_id' });
+        if (detailError) throw detailError;
+
+        await deleteReplacedMediaReferences(previousMediaRefs, {
+            image_url: '',
+            learning_resources_image_url: savedLearningResourcesImage || '',
+            term_image_url: savedTermImage || '',
+            definition_image_url: savedDefinitionImage || ''
+        });
+
+        const row = state.auth.studioQuizQuestions.find(question => question.id === normalizedQuestionId);
+        if (row) {
+            row.prompt_plain = term;
+            row.term_plain = term;
+            row.definition_plain = definition;
+            row.learning_resources_html = learningResourcesHtml;
+            row.learning_resources_image_url = savedLearningResourcesImage || '';
+            row.term_image_url = savedTermImage || '';
+            row.definition_image_url = savedDefinitionImage || '';
+        }
+
+        clearStudioQuestionDraft(normalizedQuestionId);
+        return normalizedQuestionId;
+    }
+
     async function saveStudioCachedDrafts() {
+        syncStudioFlashcardInlineRowsToState();
         cacheCurrentStudioQuestionDraft();
+        const flashcardOrderSnapshot = state.auth.studioQuizQuestions.map(row => ({ id: row.id }));
         const draftEntries = Array.from(state.auth.studioQuestionDrafts.entries());
         const localFlashcardRows = getStudioLocalFlashcardRows().map(row => ({ ...row }));
-        for (const [questionId, draft] of draftEntries) {
+        const flashcardDraftEntries = draftEntries.filter(([, draft]) => draft?.questionType === 'flashcard');
+        const otherDraftEntries = draftEntries.filter(([, draft]) => draft?.questionType !== 'flashcard');
+
+        for (const [questionId, draft] of flashcardDraftEntries) {
+            try {
+                await saveStudioFlashcardQuestionDraftDirect(questionId, draft);
+            } catch (error) {
+                state.auth.studioQuestionDrafts.set(questionId, draft);
+                throw error;
+            }
+        }
+
+        for (const [questionId, draft] of otherDraftEntries) {
             try {
                 await loadStudioQuestionIntoEditor(questionId, { force: true, suppressStatus: true, skipDraftRestore: true });
                 applyStudioQuestionDraft(draft);
@@ -3123,11 +3281,15 @@ MODIFICATION RULES FOR THIS APP
                 throw error;
             }
         }
-        const savedLocalIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows);
+        const savedLocalIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows, flashcardOrderSnapshot);
         if (savedLocalIds.length && state.auth.editingQuizId) {
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(state.auth.editingQuizId, savedLocalIds[savedLocalIds.length - 1], { force: true });
+        } else if (flashcardDraftEntries.length) {
+            renderStudioQuestionList();
+            await refreshStudioManagementData();
+            await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}` });
         }
         setStudioDirtyState(false);
     }
@@ -5878,8 +6040,11 @@ MODIFICATION RULES FOR THIS APP
 
     async function handleSaveStudioQuiz(options = {}) {
         if (isStudioFlashcardMode()) {
-            if (!options.skipCachedDrafts && (hasStudioLocalFlashcardDrafts() || hasPendingFlashcardDraftContent() || isStudioLocalFlashcardId(state.auth.editingQuestionId))) {
-                return saveStudioCachedDrafts();
+            if (!options.skipCachedDrafts) {
+                syncStudioFlashcardInlineRowsToState();
+                if (hasStudioQuestionDrafts() || state.auth.studioHasUnsavedChanges || isStudioLocalFlashcardId(state.auth.editingQuestionId)) {
+                    return saveStudioCachedDrafts();
+                }
             }
             return handleSaveFlashcardQuiz();
         }
