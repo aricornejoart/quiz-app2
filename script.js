@@ -43,6 +43,7 @@ MODIFICATION RULES FOR THIS APP
 
     const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
     const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
+    const STUDIO_LOCAL_MULTIPLE_CHOICE_PREFIX = '__local_multiple_choice__';
 
     const state = {
         questions: [],
@@ -125,6 +126,7 @@ MODIFICATION RULES FOR THIS APP
             studioDraggingQuestionId: null,
             studioPendingNewQuestionRow: null,
             localFlashcardDraftCounter: 0,
+            localMultipleChoiceDraftCounter: 0,
             backupImportPayload: null,
             backupImportFileName: '',
             mediaSignedUrlCache: new Map(),
@@ -462,7 +464,25 @@ MODIFICATION RULES FOR THIS APP
     let lastMathChemInsertTarget = null;
 
     function isMathChemInsertTarget(target) {
-        return !!target && target.matches?.('#createQuestionPrompt, #createCorrectExplanation, [data-option-text], [data-option-explanation]');
+        return !!target && target.matches?.([
+            '#createQuestionPrompt',
+            '#createCorrectExplanation',
+            '[data-option-text]',
+            '[data-option-explanation]',
+            '#createFlashcardTerm',
+            '#createFlashcardDefinition',
+            '[data-studio-flashcard-term-id]',
+            '[data-studio-flashcard-definition-id]',
+            '[data-studio-pending-flashcard-term]',
+            '[data-studio-pending-flashcard-definition]'
+        ].join(', '));
+    }
+
+    function getDefaultMathChemInsertTarget() {
+        if (getStudioCurrentQuizType() === 'flashcard') {
+            return elements.createFlashcardTerm || elements.createFlashcardDefinition || null;
+        }
+        return elements.createQuestionPrompt || null;
     }
 
     function getMathChemInsertTarget() {
@@ -474,7 +494,7 @@ MODIFICATION RULES FOR THIS APP
         if (isMathChemInsertTarget(lastMathChemInsertTarget) && document.body.contains(lastMathChemInsertTarget) && !lastMathChemInsertTarget.disabled) {
             return lastMathChemInsertTarget;
         }
-        return elements.createQuestionPrompt || null;
+        return getDefaultMathChemInsertTarget();
     }
 
     function insertMathChemTextAtTarget(text) {
@@ -482,7 +502,7 @@ MODIFICATION RULES FOR THIS APP
         if (!insertText) return false;
         const target = getMathChemInsertTarget();
         if (!target || target.disabled) {
-            setCreatorStatus('Click a multiple-choice field before inserting math or chemistry text.', 'error');
+            setCreatorStatus('Click a multiple-choice or flashcard field before inserting math or chemistry text.', 'error');
             return false;
         }
 
@@ -513,19 +533,19 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
-    function updateMathChemToolsVisibility(isMultipleChoice = getStudioCurrentQuizType() === 'multiple_choice') {
-        if (!isMultipleChoice) {
+    function updateMathChemToolsVisibility(isSupportedType = ['multiple_choice', 'flashcard'].includes(getStudioCurrentQuizType())) {
+        if (!isSupportedType) {
             state.auth.mathChemToolsExpanded = false;
         }
 
         if (elements.toggleMathChemToolsBtn) {
-            elements.toggleMathChemToolsBtn.classList.toggle('hidden', !isMultipleChoice);
+            elements.toggleMathChemToolsBtn.classList.toggle('hidden', !isSupportedType);
             elements.toggleMathChemToolsBtn.textContent = state.auth.mathChemToolsExpanded ? 'Hide Math/Chem Tools' : 'Show Math/Chem Tools';
             elements.toggleMathChemToolsBtn.setAttribute('aria-expanded', String(!!state.auth.mathChemToolsExpanded));
         }
 
         if (elements.studioMathChemTools) {
-            elements.studioMathChemTools.classList.toggle('hidden', !(isMultipleChoice && state.auth.mathChemToolsExpanded));
+            elements.studioMathChemTools.classList.toggle('hidden', !(isSupportedType && state.auth.mathChemToolsExpanded));
         }
     }
 
@@ -1511,7 +1531,7 @@ MODIFICATION RULES FOR THIS APP
         [elements.addOptionFieldBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !isMultipleChoice);
         });
-        updateMathChemToolsVisibility(isMultipleChoice);
+        updateMathChemToolsVisibility(isMultipleChoice || isFlashcard);
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
             elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
@@ -2850,6 +2870,30 @@ MODIFICATION RULES FOR THIS APP
         return getStudioLocalFlashcardRows().length > 0;
     }
 
+    function isStudioLocalMultipleChoiceId(questionId) {
+        return normalizeSheetText(questionId).startsWith(STUDIO_LOCAL_MULTIPLE_CHOICE_PREFIX);
+    }
+
+    function createStudioLocalMultipleChoiceId() {
+        state.auth.localMultipleChoiceDraftCounter = Number(state.auth.localMultipleChoiceDraftCounter || 0) + 1;
+        return `${STUDIO_LOCAL_MULTIPLE_CHOICE_PREFIX}${Date.now()}_${state.auth.localMultipleChoiceDraftCounter}`;
+    }
+
+    function getStudioLocalMultipleChoiceRows(sourceRows = state.auth.studioQuizQuestions) {
+        return (sourceRows || []).filter(row => isStudioLocalMultipleChoiceId(row?.id) && normalizeSheetText(row?.question_type || 'multiple_choice') === 'multiple_choice');
+    }
+
+    function hasStudioLocalMultipleChoiceDrafts() {
+        return getStudioLocalMultipleChoiceRows().length > 0;
+    }
+
+    function hasPendingMultipleChoiceDraftContent() {
+        return getStudioCurrentQuizType() === 'multiple_choice'
+            && !state.auth.editingQuestionId
+            && !!state.auth.editingQuizId
+            && !isCurrentStudioQuestionBlank();
+    }
+
     function hasPendingFlashcardDraftContent() {
         const pendingRow = getStudioPendingFlashcardRow();
         if (!pendingRow) return false;
@@ -2918,6 +2962,130 @@ MODIFICATION RULES FOR THIS APP
         return changed;
     }
 
+    function buildLocalMultipleChoiceDraftFromEditor(rowId = createStudioLocalMultipleChoiceId()) {
+        return {
+            id: rowId,
+            question_type: 'multiple_choice',
+            prompt_plain: normalizeSheetText(elements.createQuestionPrompt?.value),
+            image_url: state.auth.studioQuestionImageDataUrl || '',
+            image_label: state.auth.studioQuestionImageLabel || '',
+            learning_resources_html: getLearningResourcesEditorHtml(),
+            learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '',
+            learning_resources_image_label: state.auth.studioLearningResourcesImageLabel || '',
+            options: getStudioOptionDraftsFromDOM(),
+            correctOption: normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1',
+            correctExplanation: normalizeSheetText(elements.createCorrectExplanation?.value),
+            expandedOptionImageRows: Array.from(state.auth.expandedOptionImageRows || []),
+            sort_order: Number.MAX_SAFE_INTEGER,
+            is_local_draft: true
+        };
+    }
+
+    function getLocalMultipleChoiceValidationMessage(row) {
+        const prompt = normalizeSheetText(row?.prompt_plain);
+        const optionDrafts = Array.isArray(row?.options) ? row.options : [];
+        const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
+        const maxOptionIndex = Math.max(0, optionDrafts.length - 1);
+        const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(row?.correctOption || '1') - 1));
+
+        if (!prompt) return 'Enter a question prompt before adding a new question.';
+        if (optionDrafts.length < 2) return 'Add at least 2 answer options before adding a new question.';
+        if (optionAnswerValues.some(value => !value)) return 'Each answer option needs text or an image before adding a new question.';
+        if (new Set(optionAnswerValues).size !== optionAnswerValues.length) return 'All answer options must be unique before adding a new question.';
+        if (!optionAnswerValues[correctIndex]) return 'Choose which option is correct before adding a new question.';
+        return '';
+    }
+
+    function isLocalMultipleChoiceDraftReady(row) {
+        return !getLocalMultipleChoiceValidationMessage(row);
+    }
+
+    function buildDraftFromLocalMultipleChoiceRow(row) {
+        return {
+            questionId: row?.id || '',
+            questionType: 'multiple_choice',
+            prompt: normalizeSheetText(row?.prompt_plain),
+            questionImage: normalizeSheetText(row?.image_url),
+            questionImageLabel: normalizeSheetText(row?.image_label || (row?.image_url ? 'Existing question image saved.' : 'No question image selected.')),
+            learningResourcesHtml: sanitizeLearningResourcesHtml(row?.learning_resources_html || ''),
+            learningResourcesImage: normalizeSheetText(row?.learning_resources_image_url),
+            learningResourcesImageLabel: normalizeSheetText(row?.learning_resources_image_label || (row?.learning_resources_image_url ? 'Existing learning resources image saved.' : 'No learning resources image selected.')),
+            options: Array.isArray(row?.options) ? row.options.map(option => ({ ...option })) : [],
+            correctOption: normalizeSheetText(row?.correctOption || '1') || '1',
+            correctExplanation: normalizeSheetText(row?.correctExplanation),
+            expandedOptionImageRows: Array.isArray(row?.expandedOptionImageRows) ? row.expandedOptionImageRows : []
+        };
+    }
+
+    function syncLocalMultipleChoiceDraftFromEditor() {
+        if (!isStudioLocalMultipleChoiceId(state.auth.editingQuestionId)) return false;
+        const row = state.auth.studioQuizQuestions.find(item => item.id === state.auth.editingQuestionId);
+        if (!row) return false;
+        Object.assign(row, buildLocalMultipleChoiceDraftFromEditor(row.id));
+        renderStudioQuestionList();
+        updateStudioUnsavedChangesIndicator();
+        return true;
+    }
+
+    function promotePendingMultipleChoiceToLocalDraft(options = {}) {
+        if (getStudioCurrentQuizType() !== 'multiple_choice' || state.auth.editingQuestionId || !state.auth.editingQuizId) return false;
+        if (isCurrentStudioQuestionBlank()) return false;
+
+        const localRow = buildLocalMultipleChoiceDraftFromEditor(createStudioLocalMultipleChoiceId());
+        const validationMessage = getLocalMultipleChoiceValidationMessage(localRow);
+        if (validationMessage) {
+            if (options.requireReady) setCreatorStatus(validationMessage, 'error');
+            return false;
+        }
+
+        const insertAfterId = state.auth.pendingInsertAfterQuestionId;
+        const insertIndex = insertAfterId ? state.auth.studioQuizQuestions.findIndex(question => question.id === insertAfterId) : -1;
+        if (insertIndex !== -1) {
+            state.auth.studioQuizQuestions.splice(insertIndex + 1, 0, localRow);
+        } else {
+            state.auth.studioQuizQuestions.push(localRow);
+        }
+        return true;
+    }
+
+    function cacheCurrentMultipleChoiceDraftForNavigation() {
+        if (getStudioCurrentQuizType() !== 'multiple_choice') return false;
+        if (isStudioLocalMultipleChoiceId(state.auth.editingQuestionId)) {
+            return syncLocalMultipleChoiceDraftFromEditor();
+        }
+        if (!state.auth.editingQuestionId && state.auth.editingQuizId && !isCurrentStudioQuestionBlank()) {
+            return promotePendingMultipleChoiceToLocalDraft();
+        }
+        return false;
+    }
+
+    function loadStudioLocalMultipleChoiceIntoEditor(questionId, options = {}) {
+        const row = state.auth.studioQuizQuestions.find(item => item.id === questionId && isStudioLocalMultipleChoiceId(item.id));
+        if (!row) return false;
+        if (state.auth.studioHasUnsavedChanges) {
+            cacheCurrentStudioQuestionDraft();
+        }
+        state.auth.editingQuestionId = row.id;
+        state.auth.editingQuizType = 'multiple_choice';
+        state.auth.pendingInsertAfterQuestionId = null;
+        state.auth.studioPendingNewQuestionRow = null;
+        state.auth.expandedOptionImageRows = new Set(row.expandedOptionImageRows || []);
+        applyStudioQuestionDraft(buildDraftFromLocalMultipleChoiceRow(row));
+        if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
+        if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
+        setStudioFlashcardTermImageState('', 'No term image selected.');
+        setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
+        renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
+        renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
+        renderStudioQuestionList();
+        updateCreateQuizModeUI();
+        setStudioDirtyState(true);
+        if (!options.suppressStatus) {
+            setCreatorStatus('Unsaved question loaded into the editor.', 'success');
+        }
+        return true;
+    }
+
     function buildLocalFlashcardDraftFromEditor(rowId = createStudioLocalFlashcardId()) {
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
@@ -2976,7 +3144,11 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function hasStudioQuestionDrafts() {
-        return !!state.auth.studioQuestionDrafts?.size || hasStudioLocalFlashcardDrafts() || hasPendingFlashcardDraftContent();
+        return !!state.auth.studioQuestionDrafts?.size
+            || hasStudioLocalFlashcardDrafts()
+            || hasPendingFlashcardDraftContent()
+            || hasStudioLocalMultipleChoiceDrafts()
+            || hasPendingMultipleChoiceDraftContent();
     }
 
     function clearStudioQuestionDraft(questionId) {
@@ -3026,6 +3198,11 @@ MODIFICATION RULES FOR THIS APP
     function cacheCurrentStudioQuestionDraft() {
         if (!state.auth.studioHasUnsavedChanges) return;
         syncStudioFlashcardInlineRowsToState();
+        if (cacheCurrentMultipleChoiceDraftForNavigation()) {
+            renderStudioQuestionList();
+            updateStudioUnsavedChangesIndicator();
+            return;
+        }
         if (cacheCurrentFlashcardDraftForNavigation()) {
             renderStudioQuestionList();
             updateStudioUnsavedChangesIndicator();
@@ -3094,6 +3271,100 @@ MODIFICATION RULES FOR THIS APP
         return true;
     }
 
+    async function saveStudioLocalMultipleChoiceDraftRows(sourceRows = getStudioLocalMultipleChoiceRows(), orderRows = state.auth.studioQuizQuestions) {
+        const localRows = (sourceRows || []).filter(row => isStudioLocalMultipleChoiceId(row?.id));
+        if (!localRows.length) return [];
+        if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before saving questions.');
+        const quizId = state.auth.editingQuizId;
+        const quizName = normalizeSheetText(elements.createQuizName?.value);
+        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
+        if (!quizId) throw new Error('Save or open a multiple-choice quiz before adding questions.');
+        if (!quizName) throw new Error('Enter a quiz name first.');
+
+        const { error: quizError } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+        if (quizError) throw quizError;
+
+        let nextSortOrder = await getNextQuestionSortOrder(quizId);
+        const savedIds = [];
+        const localIdToSavedId = new Map();
+        for (const row of localRows) {
+            const validationMessage = getLocalMultipleChoiceValidationMessage(row);
+            if (validationMessage) throw new Error(validationMessage);
+
+            const prompt = normalizeSheetText(row.prompt_plain);
+            const learningResourcesHtml = sanitizeLearningResourcesHtml(row.learning_resources_html || '');
+            const { data, error } = await state.auth.client.from('questions').insert({
+                quiz_id: quizId,
+                question_type: 'multiple_choice',
+                prompt_html: buildStoredHtmlFromPlain(prompt),
+                prompt_plain: prompt,
+                image_url: '',
+                learning_resources_html: learningResourcesHtml,
+                learning_resources_image_url: '',
+                sort_order: nextSortOrder++
+            }).select('id').single();
+            if (error) throw error;
+
+            const questionId = data.id;
+            const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
+                image_url: row.image_url || '',
+                learning_resources_image_url: row.learning_resources_image_url || ''
+            });
+            const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+                image_url: savedSharedMedia.image_url || '',
+                learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+            }).eq('id', questionId);
+            if (mediaUpdateError) throw mediaUpdateError;
+
+            const optionDrafts = Array.isArray(row.options) ? row.options : [];
+            const savedOptionDrafts = await saveOptionImageValues(quizId, questionId, optionDrafts);
+            const savedOptions = savedOptionDrafts.map(draft => draft.text);
+            const savedExplanations = savedOptionDrafts.map(draft => draft.explanation);
+            const savedOptionAnswerValues = savedOptionDrafts.map(getOptionAnswerValue);
+            const maxOptionIndex = Math.max(0, savedOptionDrafts.length - 1);
+            const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(row.correctOption || '1') - 1));
+            const savedCorrectAnswer = savedOptionAnswerValues[correctIndex] || '';
+            const optionPayload = savedOptionDrafts.map((draft, index) => ({
+                text: draft.text,
+                explanation_html: buildStoredHtmlFromPlain(draft.explanation),
+                imageUrl: draft.imageUrl || '',
+                imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
+            }));
+            const detailPayload = {
+                question_id: questionId,
+                correct_answer: savedCorrectAnswer,
+                correct_explanation_html: buildStoredHtmlFromPlain(row.correctExplanation || ''),
+                options_json: optionPayload,
+                option_1_text: savedOptions[0] || '',
+                option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''),
+                option_2_text: savedOptions[1] || '',
+                option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''),
+                option_3_text: savedOptions[2] || '',
+                option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''),
+                option_4_text: savedOptions[3] || '',
+                option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '')
+            };
+            const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
+            if (detailError) {
+                const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
+                if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
+                throw detailError;
+            }
+            savedIds.push(questionId);
+            localIdToSavedId.set(row.id, questionId);
+        }
+
+        const orderedQuestionIds = (orderRows || state.auth.studioQuizQuestions)
+            .map(row => localIdToSavedId.get(row.id) || row.id)
+            .filter(questionId => questionId && !isStudioLocalMultipleChoiceId(questionId) && !isStudioLocalFlashcardId(questionId));
+        if (orderedQuestionIds.length) {
+            await reorderStudioQuizQuestionIds(orderedQuestionIds);
+        }
+
+        state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => !isStudioLocalMultipleChoiceId(row.id));
+        return savedIds;
+    }
+
     async function saveStudioLocalFlashcardDraftRows(sourceRows = getStudioLocalFlashcardRows(), orderRows = state.auth.studioQuizQuestions) {
         const localRows = (sourceRows || []).filter(row => isStudioLocalFlashcardId(row?.id));
         if (!localRows.length) return [];
@@ -3158,7 +3429,7 @@ MODIFICATION RULES FOR THIS APP
 
         const orderedQuestionIds = (orderRows || state.auth.studioQuizQuestions)
             .map(row => localIdToSavedId.get(row.id) || row.id)
-            .filter(questionId => questionId && !isStudioLocalFlashcardId(questionId));
+            .filter(questionId => questionId && !isStudioLocalFlashcardId(questionId) && !isStudioLocalMultipleChoiceId(questionId));
         if (orderedQuestionIds.length) {
             await reorderStudioQuizQuestionIds(orderedQuestionIds);
         }
@@ -3252,8 +3523,16 @@ MODIFICATION RULES FOR THIS APP
     async function saveStudioCachedDrafts() {
         syncStudioFlashcardInlineRowsToState();
         cacheCurrentStudioQuestionDraft();
-        const flashcardOrderSnapshot = state.auth.studioQuizQuestions.map(row => ({ id: row.id }));
+        if (hasPendingMultipleChoiceDraftContent()) {
+            throw new Error(getLocalMultipleChoiceValidationMessage(buildLocalMultipleChoiceDraftFromEditor('')) || 'Finish the current multiple-choice question before saving.');
+        }
+        const questionOrderSnapshot = state.auth.studioQuizQuestions.map(row => ({ id: row.id }));
         const draftEntries = Array.from(state.auth.studioQuestionDrafts.entries());
+        const localMultipleChoiceRows = getStudioLocalMultipleChoiceRows().map(row => ({
+            ...row,
+            options: Array.isArray(row.options) ? row.options.map(option => ({ ...option })) : [],
+            expandedOptionImageRows: Array.isArray(row.expandedOptionImageRows) ? [...row.expandedOptionImageRows] : []
+        }));
         const localFlashcardRows = getStudioLocalFlashcardRows().map(row => ({ ...row }));
         const flashcardDraftEntries = draftEntries.filter(([, draft]) => draft?.questionType === 'flashcard');
         const otherDraftEntries = draftEntries.filter(([, draft]) => draft?.questionType !== 'flashcard');
@@ -3281,7 +3560,9 @@ MODIFICATION RULES FOR THIS APP
                 throw error;
             }
         }
-        const savedLocalIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows, flashcardOrderSnapshot);
+        const savedLocalMultipleChoiceIds = await saveStudioLocalMultipleChoiceDraftRows(localMultipleChoiceRows, questionOrderSnapshot);
+        const savedLocalFlashcardIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows, questionOrderSnapshot);
+        const savedLocalIds = [...savedLocalMultipleChoiceIds, ...savedLocalFlashcardIds];
         if (savedLocalIds.length && state.auth.editingQuizId) {
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
@@ -3418,7 +3699,9 @@ MODIFICATION RULES FOR THIS APP
             if (index === -1) index = filteredIndex;
             const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
             const isLocalFlashcardRow = isStudioLocalFlashcardId(questionRow.id);
+            const isLocalMultipleChoiceRow = isStudioLocalMultipleChoiceId(questionRow.id);
             const isUnsavedFlashcardRow = isPendingRow || isLocalFlashcardRow;
+            const isUnsavedQuestionRow = isUnsavedFlashcardRow || isLocalMultipleChoiceRow;
             const isActive = questionRow.id === state.auth.editingQuestionId || (isPendingRow && !state.auth.editingQuestionId && editingType === 'flashcard');
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
@@ -3458,28 +3741,30 @@ MODIFICATION RULES FOR THIS APP
             }
 
             const rowDropAttr = isPendingRow ? '' : `data-studio-drop-question-id="${escapeHtml(questionRow.id)}"`;
-            const handleAttrs = isUnsavedFlashcardRow
+            const handleAttrs = isUnsavedQuestionRow
                 ? 'disabled'
                 : `data-studio-drag-question-id="${escapeHtml(questionRow.id)}" draggable="true"`;
             const deleteAttrs = isPendingRow
                 ? 'data-studio-discard-pending-card="true"'
-                : (isLocalFlashcardRow ? `data-studio-discard-local-card="${escapeHtml(questionRow.id)}"` : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`);
-            const deleteLabel = isUnsavedFlashcardRow ? 'Discard new card' : `Delete ${chipLabel}`;
-            const deleteTitle = isUnsavedFlashcardRow ? 'Discard this unsaved card' : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
+                : (isLocalFlashcardRow
+                    ? `data-studio-discard-local-card="${escapeHtml(questionRow.id)}"`
+                    : (isLocalMultipleChoiceRow ? `data-studio-discard-local-question="${escapeHtml(questionRow.id)}"` : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`));
+            const deleteLabel = isUnsavedQuestionRow ? `Discard new ${questionType === 'flashcard' ? 'card' : 'question'}` : `Delete ${chipLabel}`;
+            const deleteTitle = isUnsavedQuestionRow ? `Discard this unsaved ${questionType === 'flashcard' ? 'card' : 'question'}` : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
 
             return `
                 <div class="studio-question-list-row">
                   <div
                     class="studio-question-list-item${isActive ? ' active' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
                     data-studio-row-question-id="${escapeHtml(questionRow.id)}"
-                    ${isLocalFlashcardRow ? '' : rowDropAttr}
+                    ${isUnsavedQuestionRow ? '' : rowDropAttr}
                   >
                     <button
                       type="button"
                       class="studio-question-row-handle"
                       ${handleAttrs}
-                      title="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
-                      aria-label="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
+                      title="${escapeHtml(isUnsavedQuestionRow ? 'Save changes before reordering this item' : dragTitle)}"
+                      aria-label="${escapeHtml(isUnsavedQuestionRow ? 'Save changes before reordering this item' : dragTitle)}"
                     >☰</button>
                     <span class="studio-question-chip">${escapeHtml(chipLabel)}</span>
                     ${itemContent}
@@ -3600,8 +3885,18 @@ MODIFICATION RULES FOR THIS APP
             loadStudioLocalFlashcardIntoEditor(questionId, options);
             return;
         }
+        if (isStudioLocalMultipleChoiceId(questionId)) {
+            loadStudioLocalMultipleChoiceIntoEditor(questionId, options);
+            return;
+        }
         if (!options.force && questionId !== state.auth.editingQuestionId && state.auth.studioHasUnsavedChanges) {
-            cacheCurrentStudioQuestionDraft();
+            const currentQuizType = getStudioCurrentQuizType();
+            if (currentQuizType === 'multiple_choice' && !state.auth.editingQuestionId && !isCurrentStudioQuestionBlank()) {
+                const promoted = promotePendingMultipleChoiceToLocalDraft({ requireReady: true });
+                if (!promoted) return;
+            } else {
+                cacheCurrentStudioQuestionDraft();
+            }
         }
 
         const { data: questionRow, error: questionError } = await state.auth.client
@@ -3735,8 +4030,14 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function beginStudioNewQuestion(insertAfterQuestionId = null) {
+        const currentQuizType = getStudioCurrentQuizType();
         if (state.auth.studioHasUnsavedChanges) {
-            cacheCurrentStudioQuestionDraft();
+            if (currentQuizType === 'multiple_choice' && !state.auth.editingQuestionId && !isCurrentStudioQuestionBlank()) {
+                const promoted = promotePendingMultipleChoiceToLocalDraft({ requireReady: true });
+                if (!promoted) return;
+            } else {
+                cacheCurrentStudioQuestionDraft();
+            }
         }
         if (!state.auth.editingQuizId) {
             setCreatorStatus('Click Save Changes first to create this quiz, then you can add more questions to it.', 'error');
@@ -3836,6 +4137,17 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function handleDeleteStudioQuestion(questionId = state.auth.editingQuestionId) {
+        if (isStudioLocalMultipleChoiceId(questionId) || isStudioLocalFlashcardId(questionId)) {
+            state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => row.id !== questionId);
+            if (state.auth.editingQuestionId === questionId) {
+                clearStudioQuestionInputs();
+            } else {
+                renderStudioQuestionList();
+            }
+            setStudioDirtyState(hasStudioQuestionDrafts());
+            setCreatorStatus('Unsaved item discarded.', 'success');
+            return;
+        }
         if (!state.auth.client || !state.auth.editingQuizId || !questionId) {
             setCreatorStatus('Select a saved question first.', 'error');
             return;
@@ -6050,6 +6362,9 @@ MODIFICATION RULES FOR THIS APP
         }
         if (isStudioHierarchyMode()) return handleSaveHierarchyQuiz();
         if (isStudioClassifyMode()) return handleSaveClassifyQuiz();
+        if (!options.skipCachedDrafts && (hasStudioQuestionDrafts() || isStudioLocalMultipleChoiceId(state.auth.editingQuestionId))) {
+            return saveStudioCachedDrafts();
+        }
         return handleSaveMultipleChoiceQuiz();
     }
 
@@ -9303,7 +9618,7 @@ function buildFlashcardFace(sideData, faceClass) {
     if (hasText) {
         const text = document.createElement('div');
         text.className = 'flashcard-side-text';
-        text.innerText = sideData.text;
+        setMathChemFormattedText(text, sideData.text);
         content.appendChild(text);
     }
 
@@ -11197,6 +11512,21 @@ if (elements.studioQuestionList) {
                 setStudioDirtyState(hasStudioQuestionDrafts());
             }
             setCreatorStatus('Unsaved new card discarded.', 'success');
+            return;
+        }
+
+        const discardLocalQuestionButton = e.target.closest('[data-studio-discard-local-question]');
+        if (discardLocalQuestionButton) {
+            const localId = discardLocalQuestionButton.dataset.studioDiscardLocalQuestion;
+            state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => row.id !== localId);
+            if (state.auth.editingQuestionId === localId) {
+                clearStudioQuestionInputs();
+                setStudioDirtyState(hasStudioQuestionDrafts());
+            } else {
+                renderStudioQuestionList();
+                setStudioDirtyState(hasStudioQuestionDrafts());
+            }
+            setCreatorStatus('Unsaved new question discarded.', 'success');
             return;
         }
 
