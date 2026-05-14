@@ -43,7 +43,6 @@ MODIFICATION RULES FOR THIS APP
 
     const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
     const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
-    const STUDIO_LOCAL_MULTIPLE_CHOICE_PREFIX = '__local_multiple_choice__';
 
     const state = {
         questions: [],
@@ -126,7 +125,6 @@ MODIFICATION RULES FOR THIS APP
             studioDraggingQuestionId: null,
             studioPendingNewQuestionRow: null,
             localFlashcardDraftCounter: 0,
-            localMultipleChoiceDraftCounter: 0,
             backupImportPayload: null,
             backupImportFileName: '',
             mediaSignedUrlCache: new Map(),
@@ -358,6 +356,13 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function setCreatorProgressStatus(action, detail = '') {
+        const safeAction = normalizeSheetText(action);
+        const safeDetail = normalizeSheetText(detail);
+        if (!safeAction) return;
+        setCreatorStatus(safeDetail ? `${safeAction}… ${safeDetail}` : `${safeAction}…`, 'neutral');
+    }
+
     function createStudioEmptyState(title, message, actions = []) {
         const actionMarkup = actions.length
             ? `<div class="studio-empty-actions">${actions.map(action => `
@@ -464,25 +469,7 @@ MODIFICATION RULES FOR THIS APP
     let lastMathChemInsertTarget = null;
 
     function isMathChemInsertTarget(target) {
-        return !!target && target.matches?.([
-            '#createQuestionPrompt',
-            '#createCorrectExplanation',
-            '[data-option-text]',
-            '[data-option-explanation]',
-            '#createFlashcardTerm',
-            '#createFlashcardDefinition',
-            '[data-studio-flashcard-term-id]',
-            '[data-studio-flashcard-definition-id]',
-            '[data-studio-pending-flashcard-term]',
-            '[data-studio-pending-flashcard-definition]'
-        ].join(', '));
-    }
-
-    function getDefaultMathChemInsertTarget() {
-        if (getStudioCurrentQuizType() === 'flashcard') {
-            return elements.createFlashcardTerm || elements.createFlashcardDefinition || null;
-        }
-        return elements.createQuestionPrompt || null;
+        return !!target && target.matches?.('#createQuestionPrompt, #createCorrectExplanation, [data-option-text], [data-option-explanation]');
     }
 
     function getMathChemInsertTarget() {
@@ -494,7 +481,7 @@ MODIFICATION RULES FOR THIS APP
         if (isMathChemInsertTarget(lastMathChemInsertTarget) && document.body.contains(lastMathChemInsertTarget) && !lastMathChemInsertTarget.disabled) {
             return lastMathChemInsertTarget;
         }
-        return getDefaultMathChemInsertTarget();
+        return elements.createQuestionPrompt || null;
     }
 
     function insertMathChemTextAtTarget(text) {
@@ -502,7 +489,7 @@ MODIFICATION RULES FOR THIS APP
         if (!insertText) return false;
         const target = getMathChemInsertTarget();
         if (!target || target.disabled) {
-            setCreatorStatus('Click a multiple-choice or flashcard field before inserting math or chemistry text.', 'error');
+            setCreatorStatus('Click a multiple-choice field before inserting math or chemistry text.', 'error');
             return false;
         }
 
@@ -533,19 +520,19 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
-    function updateMathChemToolsVisibility(isSupportedType = ['multiple_choice', 'flashcard'].includes(getStudioCurrentQuizType())) {
-        if (!isSupportedType) {
+    function updateMathChemToolsVisibility(isMultipleChoice = getStudioCurrentQuizType() === 'multiple_choice') {
+        if (!isMultipleChoice) {
             state.auth.mathChemToolsExpanded = false;
         }
 
         if (elements.toggleMathChemToolsBtn) {
-            elements.toggleMathChemToolsBtn.classList.toggle('hidden', !isSupportedType);
+            elements.toggleMathChemToolsBtn.classList.toggle('hidden', !isMultipleChoice);
             elements.toggleMathChemToolsBtn.textContent = state.auth.mathChemToolsExpanded ? 'Hide Math/Chem Tools' : 'Show Math/Chem Tools';
             elements.toggleMathChemToolsBtn.setAttribute('aria-expanded', String(!!state.auth.mathChemToolsExpanded));
         }
 
         if (elements.studioMathChemTools) {
-            elements.studioMathChemTools.classList.toggle('hidden', !(isSupportedType && state.auth.mathChemToolsExpanded));
+            elements.studioMathChemTools.classList.toggle('hidden', !(isMultipleChoice && state.auth.mathChemToolsExpanded));
         }
     }
 
@@ -1428,7 +1415,7 @@ MODIFICATION RULES FOR THIS APP
         await deleteSupabaseMediaReferences(refs);
     }
 
-    async function getQuizMediaReferences(quizId) {
+    async function getQuizMediaReferences(quizId, onProgress = null) {
         const refs = new Set();
         if (!state.auth.client || !quizId) return refs;
         const { data: questionRows, error } = await state.auth.client
@@ -1440,9 +1427,16 @@ MODIFICATION RULES FOR THIS APP
             return refs;
         }
 
-        for (const question of questionRows || []) {
-            const questionRefs = await getQuestionMediaReferences(question.id);
+        const questions = questionRows || [];
+        if (typeof onProgress === 'function') {
+            onProgress({ current: 0, total: questions.length });
+        }
+        for (let index = 0; index < questions.length; index += 1) {
+            const questionRefs = await getQuestionMediaReferences(questions[index].id);
             questionRefs.forEach(ref => refs.add(ref));
+            if (typeof onProgress === 'function') {
+                onProgress({ current: index + 1, total: questions.length });
+            }
         }
         return refs;
     }
@@ -1531,7 +1525,7 @@ MODIFICATION RULES FOR THIS APP
         [elements.addOptionFieldBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !isMultipleChoice);
         });
-        updateMathChemToolsVisibility(isMultipleChoice || isFlashcard);
+        updateMathChemToolsVisibility(isMultipleChoice);
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
             elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
@@ -2870,30 +2864,6 @@ MODIFICATION RULES FOR THIS APP
         return getStudioLocalFlashcardRows().length > 0;
     }
 
-    function isStudioLocalMultipleChoiceId(questionId) {
-        return normalizeSheetText(questionId).startsWith(STUDIO_LOCAL_MULTIPLE_CHOICE_PREFIX);
-    }
-
-    function createStudioLocalMultipleChoiceId() {
-        state.auth.localMultipleChoiceDraftCounter = Number(state.auth.localMultipleChoiceDraftCounter || 0) + 1;
-        return `${STUDIO_LOCAL_MULTIPLE_CHOICE_PREFIX}${Date.now()}_${state.auth.localMultipleChoiceDraftCounter}`;
-    }
-
-    function getStudioLocalMultipleChoiceRows(sourceRows = state.auth.studioQuizQuestions) {
-        return (sourceRows || []).filter(row => isStudioLocalMultipleChoiceId(row?.id) && normalizeSheetText(row?.question_type || 'multiple_choice') === 'multiple_choice');
-    }
-
-    function hasStudioLocalMultipleChoiceDrafts() {
-        return getStudioLocalMultipleChoiceRows().length > 0;
-    }
-
-    function hasPendingMultipleChoiceDraftContent() {
-        return getStudioCurrentQuizType() === 'multiple_choice'
-            && !state.auth.editingQuestionId
-            && !!state.auth.editingQuizId
-            && !isCurrentStudioQuestionBlank();
-    }
-
     function hasPendingFlashcardDraftContent() {
         const pendingRow = getStudioPendingFlashcardRow();
         if (!pendingRow) return false;
@@ -2962,130 +2932,6 @@ MODIFICATION RULES FOR THIS APP
         return changed;
     }
 
-    function buildLocalMultipleChoiceDraftFromEditor(rowId = createStudioLocalMultipleChoiceId()) {
-        return {
-            id: rowId,
-            question_type: 'multiple_choice',
-            prompt_plain: normalizeSheetText(elements.createQuestionPrompt?.value),
-            image_url: state.auth.studioQuestionImageDataUrl || '',
-            image_label: state.auth.studioQuestionImageLabel || '',
-            learning_resources_html: getLearningResourcesEditorHtml(),
-            learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '',
-            learning_resources_image_label: state.auth.studioLearningResourcesImageLabel || '',
-            options: getStudioOptionDraftsFromDOM(),
-            correctOption: normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1',
-            correctExplanation: normalizeSheetText(elements.createCorrectExplanation?.value),
-            expandedOptionImageRows: Array.from(state.auth.expandedOptionImageRows || []),
-            sort_order: Number.MAX_SAFE_INTEGER,
-            is_local_draft: true
-        };
-    }
-
-    function getLocalMultipleChoiceValidationMessage(row) {
-        const prompt = normalizeSheetText(row?.prompt_plain);
-        const optionDrafts = Array.isArray(row?.options) ? row.options : [];
-        const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
-        const maxOptionIndex = Math.max(0, optionDrafts.length - 1);
-        const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(row?.correctOption || '1') - 1));
-
-        if (!prompt) return 'Enter a question prompt before adding a new question.';
-        if (optionDrafts.length < 2) return 'Add at least 2 answer options before adding a new question.';
-        if (optionAnswerValues.some(value => !value)) return 'Each answer option needs text or an image before adding a new question.';
-        if (new Set(optionAnswerValues).size !== optionAnswerValues.length) return 'All answer options must be unique before adding a new question.';
-        if (!optionAnswerValues[correctIndex]) return 'Choose which option is correct before adding a new question.';
-        return '';
-    }
-
-    function isLocalMultipleChoiceDraftReady(row) {
-        return !getLocalMultipleChoiceValidationMessage(row);
-    }
-
-    function buildDraftFromLocalMultipleChoiceRow(row) {
-        return {
-            questionId: row?.id || '',
-            questionType: 'multiple_choice',
-            prompt: normalizeSheetText(row?.prompt_plain),
-            questionImage: normalizeSheetText(row?.image_url),
-            questionImageLabel: normalizeSheetText(row?.image_label || (row?.image_url ? 'Existing question image saved.' : 'No question image selected.')),
-            learningResourcesHtml: sanitizeLearningResourcesHtml(row?.learning_resources_html || ''),
-            learningResourcesImage: normalizeSheetText(row?.learning_resources_image_url),
-            learningResourcesImageLabel: normalizeSheetText(row?.learning_resources_image_label || (row?.learning_resources_image_url ? 'Existing learning resources image saved.' : 'No learning resources image selected.')),
-            options: Array.isArray(row?.options) ? row.options.map(option => ({ ...option })) : [],
-            correctOption: normalizeSheetText(row?.correctOption || '1') || '1',
-            correctExplanation: normalizeSheetText(row?.correctExplanation),
-            expandedOptionImageRows: Array.isArray(row?.expandedOptionImageRows) ? row.expandedOptionImageRows : []
-        };
-    }
-
-    function syncLocalMultipleChoiceDraftFromEditor() {
-        if (!isStudioLocalMultipleChoiceId(state.auth.editingQuestionId)) return false;
-        const row = state.auth.studioQuizQuestions.find(item => item.id === state.auth.editingQuestionId);
-        if (!row) return false;
-        Object.assign(row, buildLocalMultipleChoiceDraftFromEditor(row.id));
-        renderStudioQuestionList();
-        updateStudioUnsavedChangesIndicator();
-        return true;
-    }
-
-    function promotePendingMultipleChoiceToLocalDraft(options = {}) {
-        if (getStudioCurrentQuizType() !== 'multiple_choice' || state.auth.editingQuestionId || !state.auth.editingQuizId) return false;
-        if (isCurrentStudioQuestionBlank()) return false;
-
-        const localRow = buildLocalMultipleChoiceDraftFromEditor(createStudioLocalMultipleChoiceId());
-        const validationMessage = getLocalMultipleChoiceValidationMessage(localRow);
-        if (validationMessage) {
-            if (options.requireReady) setCreatorStatus(validationMessage, 'error');
-            return false;
-        }
-
-        const insertAfterId = state.auth.pendingInsertAfterQuestionId;
-        const insertIndex = insertAfterId ? state.auth.studioQuizQuestions.findIndex(question => question.id === insertAfterId) : -1;
-        if (insertIndex !== -1) {
-            state.auth.studioQuizQuestions.splice(insertIndex + 1, 0, localRow);
-        } else {
-            state.auth.studioQuizQuestions.push(localRow);
-        }
-        return true;
-    }
-
-    function cacheCurrentMultipleChoiceDraftForNavigation() {
-        if (getStudioCurrentQuizType() !== 'multiple_choice') return false;
-        if (isStudioLocalMultipleChoiceId(state.auth.editingQuestionId)) {
-            return syncLocalMultipleChoiceDraftFromEditor();
-        }
-        if (!state.auth.editingQuestionId && state.auth.editingQuizId && !isCurrentStudioQuestionBlank()) {
-            return promotePendingMultipleChoiceToLocalDraft();
-        }
-        return false;
-    }
-
-    function loadStudioLocalMultipleChoiceIntoEditor(questionId, options = {}) {
-        const row = state.auth.studioQuizQuestions.find(item => item.id === questionId && isStudioLocalMultipleChoiceId(item.id));
-        if (!row) return false;
-        if (state.auth.studioHasUnsavedChanges) {
-            cacheCurrentStudioQuestionDraft();
-        }
-        state.auth.editingQuestionId = row.id;
-        state.auth.editingQuizType = 'multiple_choice';
-        state.auth.pendingInsertAfterQuestionId = null;
-        state.auth.studioPendingNewQuestionRow = null;
-        state.auth.expandedOptionImageRows = new Set(row.expandedOptionImageRows || []);
-        applyStudioQuestionDraft(buildDraftFromLocalMultipleChoiceRow(row));
-        if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
-        if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
-        setStudioFlashcardTermImageState('', 'No term image selected.');
-        setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
-        renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
-        renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
-        renderStudioQuestionList();
-        updateCreateQuizModeUI();
-        setStudioDirtyState(true);
-        if (!options.suppressStatus) {
-            setCreatorStatus('Unsaved question loaded into the editor.', 'success');
-        }
-        return true;
-    }
-
     function buildLocalFlashcardDraftFromEditor(rowId = createStudioLocalFlashcardId()) {
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
@@ -3144,11 +2990,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function hasStudioQuestionDrafts() {
-        return !!state.auth.studioQuestionDrafts?.size
-            || hasStudioLocalFlashcardDrafts()
-            || hasPendingFlashcardDraftContent()
-            || hasStudioLocalMultipleChoiceDrafts()
-            || hasPendingMultipleChoiceDraftContent();
+        return !!state.auth.studioQuestionDrafts?.size || hasStudioLocalFlashcardDrafts() || hasPendingFlashcardDraftContent();
     }
 
     function clearStudioQuestionDraft(questionId) {
@@ -3198,11 +3040,6 @@ MODIFICATION RULES FOR THIS APP
     function cacheCurrentStudioQuestionDraft() {
         if (!state.auth.studioHasUnsavedChanges) return;
         syncStudioFlashcardInlineRowsToState();
-        if (cacheCurrentMultipleChoiceDraftForNavigation()) {
-            renderStudioQuestionList();
-            updateStudioUnsavedChangesIndicator();
-            return;
-        }
         if (cacheCurrentFlashcardDraftForNavigation()) {
             renderStudioQuestionList();
             updateStudioUnsavedChangesIndicator();
@@ -3271,100 +3108,6 @@ MODIFICATION RULES FOR THIS APP
         return true;
     }
 
-    async function saveStudioLocalMultipleChoiceDraftRows(sourceRows = getStudioLocalMultipleChoiceRows(), orderRows = state.auth.studioQuizQuestions) {
-        const localRows = (sourceRows || []).filter(row => isStudioLocalMultipleChoiceId(row?.id));
-        if (!localRows.length) return [];
-        if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before saving questions.');
-        const quizId = state.auth.editingQuizId;
-        const quizName = normalizeSheetText(elements.createQuizName?.value);
-        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
-        if (!quizId) throw new Error('Save or open a multiple-choice quiz before adding questions.');
-        if (!quizName) throw new Error('Enter a quiz name first.');
-
-        const { error: quizError } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
-        if (quizError) throw quizError;
-
-        let nextSortOrder = await getNextQuestionSortOrder(quizId);
-        const savedIds = [];
-        const localIdToSavedId = new Map();
-        for (const row of localRows) {
-            const validationMessage = getLocalMultipleChoiceValidationMessage(row);
-            if (validationMessage) throw new Error(validationMessage);
-
-            const prompt = normalizeSheetText(row.prompt_plain);
-            const learningResourcesHtml = sanitizeLearningResourcesHtml(row.learning_resources_html || '');
-            const { data, error } = await state.auth.client.from('questions').insert({
-                quiz_id: quizId,
-                question_type: 'multiple_choice',
-                prompt_html: buildStoredHtmlFromPlain(prompt),
-                prompt_plain: prompt,
-                image_url: '',
-                learning_resources_html: learningResourcesHtml,
-                learning_resources_image_url: '',
-                sort_order: nextSortOrder++
-            }).select('id').single();
-            if (error) throw error;
-
-            const questionId = data.id;
-            const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
-                image_url: row.image_url || '',
-                learning_resources_image_url: row.learning_resources_image_url || ''
-            });
-            const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
-                image_url: savedSharedMedia.image_url || '',
-                learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
-            }).eq('id', questionId);
-            if (mediaUpdateError) throw mediaUpdateError;
-
-            const optionDrafts = Array.isArray(row.options) ? row.options : [];
-            const savedOptionDrafts = await saveOptionImageValues(quizId, questionId, optionDrafts);
-            const savedOptions = savedOptionDrafts.map(draft => draft.text);
-            const savedExplanations = savedOptionDrafts.map(draft => draft.explanation);
-            const savedOptionAnswerValues = savedOptionDrafts.map(getOptionAnswerValue);
-            const maxOptionIndex = Math.max(0, savedOptionDrafts.length - 1);
-            const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(row.correctOption || '1') - 1));
-            const savedCorrectAnswer = savedOptionAnswerValues[correctIndex] || '';
-            const optionPayload = savedOptionDrafts.map((draft, index) => ({
-                text: draft.text,
-                explanation_html: buildStoredHtmlFromPlain(draft.explanation),
-                imageUrl: draft.imageUrl || '',
-                imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
-            }));
-            const detailPayload = {
-                question_id: questionId,
-                correct_answer: savedCorrectAnswer,
-                correct_explanation_html: buildStoredHtmlFromPlain(row.correctExplanation || ''),
-                options_json: optionPayload,
-                option_1_text: savedOptions[0] || '',
-                option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''),
-                option_2_text: savedOptions[1] || '',
-                option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''),
-                option_3_text: savedOptions[2] || '',
-                option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''),
-                option_4_text: savedOptions[3] || '',
-                option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '')
-            };
-            const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
-            if (detailError) {
-                const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
-                if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
-                throw detailError;
-            }
-            savedIds.push(questionId);
-            localIdToSavedId.set(row.id, questionId);
-        }
-
-        const orderedQuestionIds = (orderRows || state.auth.studioQuizQuestions)
-            .map(row => localIdToSavedId.get(row.id) || row.id)
-            .filter(questionId => questionId && !isStudioLocalMultipleChoiceId(questionId) && !isStudioLocalFlashcardId(questionId));
-        if (orderedQuestionIds.length) {
-            await reorderStudioQuizQuestionIds(orderedQuestionIds);
-        }
-
-        state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => !isStudioLocalMultipleChoiceId(row.id));
-        return savedIds;
-    }
-
     async function saveStudioLocalFlashcardDraftRows(sourceRows = getStudioLocalFlashcardRows(), orderRows = state.auth.studioQuizQuestions) {
         const localRows = (sourceRows || []).filter(row => isStudioLocalFlashcardId(row?.id));
         if (!localRows.length) return [];
@@ -3429,7 +3172,7 @@ MODIFICATION RULES FOR THIS APP
 
         const orderedQuestionIds = (orderRows || state.auth.studioQuizQuestions)
             .map(row => localIdToSavedId.get(row.id) || row.id)
-            .filter(questionId => questionId && !isStudioLocalFlashcardId(questionId) && !isStudioLocalMultipleChoiceId(questionId));
+            .filter(questionId => questionId && !isStudioLocalFlashcardId(questionId));
         if (orderedQuestionIds.length) {
             await reorderStudioQuizQuestionIds(orderedQuestionIds);
         }
@@ -3523,16 +3266,8 @@ MODIFICATION RULES FOR THIS APP
     async function saveStudioCachedDrafts() {
         syncStudioFlashcardInlineRowsToState();
         cacheCurrentStudioQuestionDraft();
-        if (hasPendingMultipleChoiceDraftContent()) {
-            throw new Error(getLocalMultipleChoiceValidationMessage(buildLocalMultipleChoiceDraftFromEditor('')) || 'Finish the current multiple-choice question before saving.');
-        }
-        const questionOrderSnapshot = state.auth.studioQuizQuestions.map(row => ({ id: row.id }));
+        const flashcardOrderSnapshot = state.auth.studioQuizQuestions.map(row => ({ id: row.id }));
         const draftEntries = Array.from(state.auth.studioQuestionDrafts.entries());
-        const localMultipleChoiceRows = getStudioLocalMultipleChoiceRows().map(row => ({
-            ...row,
-            options: Array.isArray(row.options) ? row.options.map(option => ({ ...option })) : [],
-            expandedOptionImageRows: Array.isArray(row.expandedOptionImageRows) ? [...row.expandedOptionImageRows] : []
-        }));
         const localFlashcardRows = getStudioLocalFlashcardRows().map(row => ({ ...row }));
         const flashcardDraftEntries = draftEntries.filter(([, draft]) => draft?.questionType === 'flashcard');
         const otherDraftEntries = draftEntries.filter(([, draft]) => draft?.questionType !== 'flashcard');
@@ -3560,9 +3295,7 @@ MODIFICATION RULES FOR THIS APP
                 throw error;
             }
         }
-        const savedLocalMultipleChoiceIds = await saveStudioLocalMultipleChoiceDraftRows(localMultipleChoiceRows, questionOrderSnapshot);
-        const savedLocalFlashcardIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows, questionOrderSnapshot);
-        const savedLocalIds = [...savedLocalMultipleChoiceIds, ...savedLocalFlashcardIds];
+        const savedLocalIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows, flashcardOrderSnapshot);
         if (savedLocalIds.length && state.auth.editingQuizId) {
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
@@ -3699,9 +3432,7 @@ MODIFICATION RULES FOR THIS APP
             if (index === -1) index = filteredIndex;
             const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
             const isLocalFlashcardRow = isStudioLocalFlashcardId(questionRow.id);
-            const isLocalMultipleChoiceRow = isStudioLocalMultipleChoiceId(questionRow.id);
             const isUnsavedFlashcardRow = isPendingRow || isLocalFlashcardRow;
-            const isUnsavedQuestionRow = isUnsavedFlashcardRow || isLocalMultipleChoiceRow;
             const isActive = questionRow.id === state.auth.editingQuestionId || (isPendingRow && !state.auth.editingQuestionId && editingType === 'flashcard');
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
@@ -3741,30 +3472,28 @@ MODIFICATION RULES FOR THIS APP
             }
 
             const rowDropAttr = isPendingRow ? '' : `data-studio-drop-question-id="${escapeHtml(questionRow.id)}"`;
-            const handleAttrs = isUnsavedQuestionRow
+            const handleAttrs = isUnsavedFlashcardRow
                 ? 'disabled'
                 : `data-studio-drag-question-id="${escapeHtml(questionRow.id)}" draggable="true"`;
             const deleteAttrs = isPendingRow
                 ? 'data-studio-discard-pending-card="true"'
-                : (isLocalFlashcardRow
-                    ? `data-studio-discard-local-card="${escapeHtml(questionRow.id)}"`
-                    : (isLocalMultipleChoiceRow ? `data-studio-discard-local-question="${escapeHtml(questionRow.id)}"` : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`));
-            const deleteLabel = isUnsavedQuestionRow ? `Discard new ${questionType === 'flashcard' ? 'card' : 'question'}` : `Delete ${chipLabel}`;
-            const deleteTitle = isUnsavedQuestionRow ? `Discard this unsaved ${questionType === 'flashcard' ? 'card' : 'question'}` : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
+                : (isLocalFlashcardRow ? `data-studio-discard-local-card="${escapeHtml(questionRow.id)}"` : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`);
+            const deleteLabel = isUnsavedFlashcardRow ? 'Discard new card' : `Delete ${chipLabel}`;
+            const deleteTitle = isUnsavedFlashcardRow ? 'Discard this unsaved card' : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
 
             return `
                 <div class="studio-question-list-row">
                   <div
                     class="studio-question-list-item${isActive ? ' active' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
                     data-studio-row-question-id="${escapeHtml(questionRow.id)}"
-                    ${isUnsavedQuestionRow ? '' : rowDropAttr}
+                    ${isLocalFlashcardRow ? '' : rowDropAttr}
                   >
                     <button
                       type="button"
                       class="studio-question-row-handle"
                       ${handleAttrs}
-                      title="${escapeHtml(isUnsavedQuestionRow ? 'Save changes before reordering this item' : dragTitle)}"
-                      aria-label="${escapeHtml(isUnsavedQuestionRow ? 'Save changes before reordering this item' : dragTitle)}"
+                      title="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
+                      aria-label="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
                     >☰</button>
                     <span class="studio-question-chip">${escapeHtml(chipLabel)}</span>
                     ${itemContent}
@@ -3885,18 +3614,8 @@ MODIFICATION RULES FOR THIS APP
             loadStudioLocalFlashcardIntoEditor(questionId, options);
             return;
         }
-        if (isStudioLocalMultipleChoiceId(questionId)) {
-            loadStudioLocalMultipleChoiceIntoEditor(questionId, options);
-            return;
-        }
         if (!options.force && questionId !== state.auth.editingQuestionId && state.auth.studioHasUnsavedChanges) {
-            const currentQuizType = getStudioCurrentQuizType();
-            if (currentQuizType === 'multiple_choice' && !state.auth.editingQuestionId && !isCurrentStudioQuestionBlank()) {
-                const promoted = promotePendingMultipleChoiceToLocalDraft({ requireReady: true });
-                if (!promoted) return;
-            } else {
-                cacheCurrentStudioQuestionDraft();
-            }
+            cacheCurrentStudioQuestionDraft();
         }
 
         const { data: questionRow, error: questionError } = await state.auth.client
@@ -4030,14 +3749,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function beginStudioNewQuestion(insertAfterQuestionId = null) {
-        const currentQuizType = getStudioCurrentQuizType();
         if (state.auth.studioHasUnsavedChanges) {
-            if (currentQuizType === 'multiple_choice' && !state.auth.editingQuestionId && !isCurrentStudioQuestionBlank()) {
-                const promoted = promotePendingMultipleChoiceToLocalDraft({ requireReady: true });
-                if (!promoted) return;
-            } else {
-                cacheCurrentStudioQuestionDraft();
-            }
+            cacheCurrentStudioQuestionDraft();
         }
         if (!state.auth.editingQuizId) {
             setCreatorStatus('Click Save Changes first to create this quiz, then you can add more questions to it.', 'error');
@@ -4137,17 +3850,6 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function handleDeleteStudioQuestion(questionId = state.auth.editingQuestionId) {
-        if (isStudioLocalMultipleChoiceId(questionId) || isStudioLocalFlashcardId(questionId)) {
-            state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => row.id !== questionId);
-            if (state.auth.editingQuestionId === questionId) {
-                clearStudioQuestionInputs();
-            } else {
-                renderStudioQuestionList();
-            }
-            setStudioDirtyState(hasStudioQuestionDrafts());
-            setCreatorStatus('Unsaved item discarded.', 'success');
-            return;
-        }
         if (!state.auth.client || !state.auth.editingQuizId || !questionId) {
             setCreatorStatus('Select a saved question first.', 'error');
             return;
@@ -5621,7 +5323,7 @@ MODIFICATION RULES FOR THIS APP
         const { quizzes } = getBackupImportArrays(payload);
         const stats = { folders: 0, quizzes: 0, questions: 0, starredQuestions: 0 };
         if (elements.importBackupBtn) elements.importBackupBtn.disabled = true;
-        setCreatorStatus('Importing backup as new copies...', 'neutral');
+        setCreatorProgressStatus('Importing backup', 'creating folders');
 
         const { folderIdMap, createdCount } = await importBackupFoldersAsCopies(payload);
         stats.folders = createdCount;
@@ -5629,10 +5331,13 @@ MODIFICATION RULES FOR THIS APP
         const usedQuizNames = new Set(state.auth.managedQuizzes.map(quiz => normalizeSheetText(quiz.name).toLowerCase()).filter(Boolean));
         const importedQuizIds = [];
 
-        for (const backupQuiz of quizzes) {
+        for (let quizIndex = 0; quizIndex < quizzes.length; quizIndex += 1) {
+            const backupQuiz = quizzes[quizIndex];
             const sourceFolderId = normalizeSheetText(backupQuiz.folder_id);
             const targetFolderId = sourceFolderId ? (folderIdMap.get(sourceFolderId) || null) : null;
             const quizName = reserveImportedCopyName(backupQuiz.name, usedQuizNames, 'Imported Quiz');
+            const quizPosition = `${quizIndex + 1} of ${quizzes.length}`;
+            setCreatorProgressStatus('Importing backup', `quiz ${quizPosition}: ${quizName}`);
             const { data: quizRow, error: quizError } = await state.auth.client
                 .from('quizzes')
                 .insert({
@@ -5653,10 +5358,12 @@ MODIFICATION RULES FOR THIS APP
             const questions = Array.isArray(backupQuiz.questions) ? [...backupQuiz.questions] : [];
             questions.sort((a, b) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0));
             for (let index = 0; index < questions.length; index += 1) {
+                setCreatorProgressStatus('Importing backup', `quiz ${quizPosition}, question ${index + 1} of ${questions.length}`);
                 await importBackupQuestionAsCopy(newQuizId, questions[index], index, stats);
             }
         }
 
+        setCreatorProgressStatus('Importing backup', 'refreshing Quiz Studio');
         await refreshStudioManagementData();
         await refreshQuizCatalog({ selectQuizId: importedQuizIds[0] ? `sb:${importedQuizIds[0]}` : undefined, loadSelectedQuiz: false });
         state.auth.backupImportPayload = null;
@@ -6362,9 +6069,6 @@ MODIFICATION RULES FOR THIS APP
         }
         if (isStudioHierarchyMode()) return handleSaveHierarchyQuiz();
         if (isStudioClassifyMode()) return handleSaveClassifyQuiz();
-        if (!options.skipCachedDrafts && (hasStudioQuestionDrafts() || isStudioLocalMultipleChoiceId(state.auth.editingQuestionId))) {
-            return saveStudioCachedDrafts();
-        }
         return handleSaveMultipleChoiceQuiz();
     }
 
@@ -6764,14 +6468,22 @@ MODIFICATION RULES FOR THIS APP
         }
 
         try {
-            const mediaRefsToDelete = await getQuizMediaReferences(quizId);
+            setCreatorProgressStatus('Deleting quiz', 'checking linked media');
+            const mediaRefsToDelete = await getQuizMediaReferences(quizId, ({ current, total }) => {
+                if (total) {
+                    setCreatorProgressStatus('Deleting quiz', `checking media ${current} of ${total}`);
+                }
+            });
+            const mediaCount = mediaRefsToDelete.size;
 
+            setCreatorProgressStatus('Deleting quiz', 'removing quiz data');
             const { error } = await state.auth.client
                 .from('quizzes')
                 .delete()
                 .eq('id', quizId);
 
             if (error) throw error;
+            setCreatorProgressStatus('Deleting quiz', mediaCount ? `cleaning ${mediaCount} linked ${mediaCount === 1 ? 'media file' : 'media files'}` : 'no linked media to clean');
             await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
             if (state.auth.editingQuizId === quizId) {
@@ -6780,6 +6492,7 @@ MODIFICATION RULES FOR THIS APP
                 renderStudioQuestionList();
             }
 
+            setCreatorProgressStatus('Deleting quiz', 'refreshing Quiz Studio');
             const currentSelectedWasDeleted = elements.quizSelector?.value === `sb:${quizId}`;
             await refreshStudioManagementData();
             await refreshQuizCatalog({ clearIfMissing: currentSelectedWasDeleted });
@@ -7078,10 +6791,14 @@ MODIFICATION RULES FOR THIS APP
         if (detailError) throw detailError;
     }
 
-    async function importGoogleSheetsQuestionsToSupabaseQuiz(quizId, questions) {
-        for (let index = 0; index < questions.length; index += 1) {
+    async function importGoogleSheetsQuestionsToSupabaseQuiz(quizId, questions, options = {}) {
+        const total = questions.length;
+        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+        if (onProgress) onProgress({ phase: 'questions-start', current: 0, total });
+        for (let index = 0; index < total; index += 1) {
             const question = questions[index];
             const questionType = getQuestionTypeForImport(question);
+            if (onProgress) onProgress({ phase: 'question', current: index + 1, total, questionType });
             if (questionType === 'flashcard') {
                 await importFlashcardQuestionToSupabase(quizId, question, index);
             } else if (questionType === 'hierarchy') {
@@ -7091,18 +6808,36 @@ MODIFICATION RULES FOR THIS APP
             } else {
                 await importMultipleChoiceQuestionToSupabase(quizId, question, index);
             }
+            if (onProgress) onProgress({ phase: 'question-complete', current: index + 1, total, questionType });
         }
     }
 
-    async function importGoogleSheetsQuizDescriptorToSupabase(quizDescriptor, targetFolderId = '') {
+    function setImportProgressFromEvent(operationLabel, progress = {}) {
+        const current = Number(progress.current || 0);
+        const total = Number(progress.total || 0);
+        if (progress.phase === 'reading') {
+            setCreatorProgressStatus(operationLabel, 'reading source questions');
+        } else if (progress.phase === 'creating-quiz') {
+            setCreatorProgressStatus(operationLabel, 'creating quiz');
+        } else if ((progress.phase === 'question' || progress.phase === 'question-complete') && total) {
+            setCreatorProgressStatus(operationLabel, `adding question ${current} of ${total}`);
+        } else if (progress.phase === 'refreshing') {
+            setCreatorProgressStatus(operationLabel, 'refreshing Quiz Studio');
+        }
+    }
+
+    async function importGoogleSheetsQuizDescriptorToSupabase(quizDescriptor, targetFolderId = '', options = {}) {
         const descriptor = isQuizDescriptor(quizDescriptor) ? quizDescriptor : getQuizBySelectorValue(quizDescriptor);
         if (!descriptor || descriptor.source !== DATA_SOURCES.GOOGLE_SHEETS) {
             throw new Error('Choose a valid Google Sheets quiz to import.');
         }
 
+        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+        if (onProgress) onProgress({ phase: 'reading', quizName: descriptor.name });
         const sourceQuestions = await loadQuestionsFromGoogleSheets(descriptor.sheet);
         const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'The selected Google Sheets quiz');
 
+        if (onProgress) onProgress({ phase: 'creating-quiz', quizName: descriptor.name, total: sourceQuestions.length });
         const folderId = await ensureImportTargetFolderId(targetFolderId, descriptor.folder);
         const nextSortOrder = state.auth.managedQuizzes
             .filter(quiz => (quiz.folderId || '') === (folderId || ''))
@@ -7122,12 +6857,14 @@ MODIFICATION RULES FOR THIS APP
             .single();
         if (quizError) throw quizError;
 
-        await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, sourceQuestions);
+        await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, sourceQuestions, {
+            onProgress: progress => onProgress?.({ ...progress, quizName: descriptor.name })
+        });
         return { quizId: quizRow.id, quizName: descriptor.name, questionCount: sourceQuestions.length, quizType, folderId };
     }
 
 
-    async function importGoogleSheetTemplateToSupabase(sheetInput, sheetTabName, quizName, targetFolderId = '') {
+    async function importGoogleSheetTemplateToSupabase(sheetInput, sheetTabName, quizName, targetFolderId = '', options = {}) {
         const sheetId = extractGoogleSheetId(sheetInput);
         if (!sheetId) {
             throw new Error('Paste a valid Google Sheets URL or sheet ID.');
@@ -7138,9 +6875,12 @@ MODIFICATION RULES FOR THIS APP
             throw new Error('Enter the Google Sheets tab name from your template.');
         }
 
+        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+        if (onProgress) onProgress({ phase: 'reading', quizName: resolvedTabName });
         const sourceQuestions = await loadQuestionsFromGoogleSheetDocument(sheetId, resolvedTabName);
         const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'That Google Sheet tab');
 
+        if (onProgress) onProgress({ phase: 'creating-quiz', quizName: resolvedTabName, total: sourceQuestions.length });
         const folderId = normalizeSheetText(targetFolderId);
         const nextSortOrder = state.auth.managedQuizzes
             .filter(quiz => (quiz.folderId || '') === (folderId || ''))
@@ -7161,7 +6901,9 @@ MODIFICATION RULES FOR THIS APP
             .single();
         if (quizError) throw quizError;
 
-        await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, sourceQuestions);
+        await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, sourceQuestions, {
+            onProgress: progress => onProgress?.({ ...progress, quizName: finalQuizName })
+        });
         return { quizId: quizRow.id, quizName: finalQuizName, questionCount: sourceQuestions.length, quizType, folderId };
     }
 
@@ -7179,7 +6921,10 @@ MODIFICATION RULES FOR THIS APP
 
         try {
             const targetFolderId = normalizeSheetText(elements.importTargetFolderSelect?.value);
-            const result = await importGoogleSheetsQuizDescriptorToSupabase(quizDescriptor, targetFolderId);
+            const result = await importGoogleSheetsQuizDescriptorToSupabase(quizDescriptor, targetFolderId, {
+                onProgress: progress => setImportProgressFromEvent('Importing quiz', progress)
+            });
+            setCreatorProgressStatus('Importing quiz', 'refreshing Quiz Studio');
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
             renderGoogleSheetsImportControls();
@@ -7212,10 +6957,24 @@ MODIFICATION RULES FOR THIS APP
         try {
             const targetFolderId = await ensureImportTargetFolderId(normalizeSheetText(elements.importEntireFolderTargetSelect?.value), sourceFolderName);
             let importedCount = 0;
-            for (const descriptor of sourceQuizzes) {
-                await importGoogleSheetsQuizDescriptorToSupabase(descriptor, targetFolderId);
+            for (let index = 0; index < sourceQuizzes.length; index += 1) {
+                const descriptor = sourceQuizzes[index];
+                const quizPosition = `${index + 1} of ${sourceQuizzes.length}`;
+                setCreatorProgressStatus('Importing folder', `quiz ${quizPosition}: ${normalizeSheetText(descriptor.name) || 'Untitled quiz'}`);
+                await importGoogleSheetsQuizDescriptorToSupabase(descriptor, targetFolderId, {
+                    onProgress: progress => {
+                        if ((progress.phase === 'question' || progress.phase === 'question-complete') && progress.total) {
+                            setCreatorProgressStatus('Importing folder', `quiz ${quizPosition}, question ${progress.current} of ${progress.total}`);
+                        } else if (progress.phase === 'reading') {
+                            setCreatorProgressStatus('Importing folder', `quiz ${quizPosition}: reading source questions`);
+                        } else if (progress.phase === 'creating-quiz') {
+                            setCreatorProgressStatus('Importing folder', `quiz ${quizPosition}: creating quiz`);
+                        }
+                    }
+                });
                 importedCount += 1;
             }
+            setCreatorProgressStatus('Importing folder', 'refreshing Quiz Studio');
             await refreshStudioManagementData();
             await refreshQuizCatalog();
             renderGoogleSheetsImportControls();
@@ -7239,8 +6998,10 @@ MODIFICATION RULES FOR THIS APP
                 elements.importTemplateSheetInput?.value,
                 elements.importTemplateTabInput?.value,
                 elements.importTemplateQuizNameInput?.value,
-                normalizeSheetText(elements.importTemplateTargetFolderSelect?.value)
+                normalizeSheetText(elements.importTemplateTargetFolderSelect?.value),
+                { onProgress: progress => setImportProgressFromEvent('Importing template', progress) }
             );
+            setCreatorProgressStatus('Importing template', 'refreshing Quiz Studio');
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
             renderGoogleSheetsImportControls();
@@ -9618,7 +9379,7 @@ function buildFlashcardFace(sideData, faceClass) {
     if (hasText) {
         const text = document.createElement('div');
         text.className = 'flashcard-side-text';
-        setMathChemFormattedText(text, sideData.text);
+        text.innerText = sideData.text;
         content.appendChild(text);
     }
 
@@ -11512,21 +11273,6 @@ if (elements.studioQuestionList) {
                 setStudioDirtyState(hasStudioQuestionDrafts());
             }
             setCreatorStatus('Unsaved new card discarded.', 'success');
-            return;
-        }
-
-        const discardLocalQuestionButton = e.target.closest('[data-studio-discard-local-question]');
-        if (discardLocalQuestionButton) {
-            const localId = discardLocalQuestionButton.dataset.studioDiscardLocalQuestion;
-            state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => row.id !== localId);
-            if (state.auth.editingQuestionId === localId) {
-                clearStudioQuestionInputs();
-                setStudioDirtyState(hasStudioQuestionDrafts());
-            } else {
-                renderStudioQuestionList();
-                setStudioDirtyState(hasStudioQuestionDrafts());
-            }
-            setCreatorStatus('Unsaved new question discarded.', 'success');
             return;
         }
 
