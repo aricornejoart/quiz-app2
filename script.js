@@ -3625,10 +3625,24 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getStudioQuestionChipLabel(questionType, index) {
-        if (questionType === 'flashcard') return `Card ${index + 1}`;
-        if (questionType === 'hierarchy') return `H${index + 1}`;
-        if (questionType === 'classify') return `C${index + 1}`;
-        return `Q${index + 1}`;
+        return String(index + 1);
+    }
+
+    function getStudioQuestionNavigationName(questionType, index) {
+        const normalizedType = normalizeSheetText(questionType || 'multiple_choice');
+        if (normalizedType === 'flashcard') return `Card ${index + 1}`;
+        return `Question ${index + 1}`;
+    }
+
+    function autosizeStudioFlashcardInlineTextarea(field) {
+        if (!field) return;
+        field.style.height = 'auto';
+        field.style.height = `${Math.max(field.scrollHeight, 56)}px`;
+    }
+
+    function autosizeStudioFlashcardInlineTextareas(root = elements.studioQuestionList) {
+        if (!root) return;
+        root.querySelectorAll('.studio-flashcard-inline-field textarea').forEach(autosizeStudioFlashcardInlineTextarea);
     }
 
     function renderStudioQuestionList() {
@@ -3679,6 +3693,7 @@ MODIFICATION RULES FOR THIS APP
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
             const chipLabel = getStudioQuestionChipLabel(questionType, index);
+            const navigationName = getStudioQuestionNavigationName(questionType, index);
             const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
             const dragTitle = questionType === 'flashcard' ? 'Drag to reorder this card' : 'Drag to reorder this question';
 
@@ -3720,8 +3735,9 @@ MODIFICATION RULES FOR THIS APP
             const deleteAttrs = isPendingRow
                 ? 'data-studio-discard-pending-card="true"'
                 : (isLocalFlashcardRow ? `data-studio-discard-local-card="${escapeHtml(questionRow.id)}"` : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`);
-            const deleteLabel = isUnsavedFlashcardRow ? 'Discard new card' : `Delete ${chipLabel}`;
+            const deleteLabel = isUnsavedFlashcardRow ? 'Discard new card' : `Delete ${navigationName}`;
             const deleteTitle = isUnsavedFlashcardRow ? 'Discard this unsaved card' : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
+            const insertLabel = questionType === 'flashcard' ? `Add a new card after ${navigationName}` : `Add a new question after ${navigationName}`;
 
             return `
                 <div class="studio-question-list-row">
@@ -3730,30 +3746,32 @@ MODIFICATION RULES FOR THIS APP
                     data-studio-row-question-id="${escapeHtml(questionRow.id)}"
                     ${isLocalFlashcardRow ? '' : rowDropAttr}
                   >
-                    <button
-                      type="button"
-                      class="studio-question-row-handle"
-                      ${handleAttrs}
-                      title="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
-                      aria-label="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
-                    >☰</button>
-                    <span class="studio-question-chip">${escapeHtml(chipLabel)}</span>
+                    <div class="studio-question-row-controls" aria-label="${escapeHtml(navigationName)} controls">
+                      <span class="studio-question-chip">${escapeHtml(chipLabel)}</span>
+                      <button
+                        type="button"
+                        class="studio-question-row-handle"
+                        ${handleAttrs}
+                        title="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
+                        aria-label="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
+                      >☰</button>
+                      <button
+                        type="button"
+                        class="studio-question-row-delete"
+                        ${deleteAttrs}
+                        aria-label="${escapeHtml(deleteLabel)}"
+                        title="${escapeHtml(deleteTitle)}"
+                      >🗑</button>
+                    </div>
                     ${itemContent}
-                    <button
-                      type="button"
-                      class="studio-question-row-delete"
-                      ${deleteAttrs}
-                      aria-label="${escapeHtml(deleteLabel)}"
-                      title="${escapeHtml(deleteTitle)}"
-                    >🗑</button>
                   </div>
                   ${isPendingRow ? '' : `<div class="studio-question-insert-row">
                     <button
                       type="button"
                       class="studio-question-insert-btn${isInsertTarget ? ' active' : ''}"
                       data-studio-insert-after-question-id="${escapeHtml(questionRow.id)}"
-                      aria-label="Add a new question after ${escapeHtml(chipLabel)}"
-                      title="Add a new question after this one"
+                      aria-label="${escapeHtml(insertLabel)}"
+                      title="Add a new ${questionType === 'flashcard' ? 'card' : 'question'} after this one"
                     >+</button>
                   </div>`}
                 </div>
@@ -3770,6 +3788,7 @@ MODIFICATION RULES FOR THIS APP
             : '';
 
         elements.studioQuestionList.innerHTML = `${rowsHtml}${addTailHtml}`;
+        autosizeStudioFlashcardInlineTextareas();
         updateStudioQuestionNavigationUI();
     }
 
@@ -11622,12 +11641,14 @@ if (elements.studioQuestionList) {
     elements.studioQuestionList.addEventListener('input', e => {
         const termField = e.target.closest('[data-studio-flashcard-term-id]');
         if (termField) {
+            autosizeStudioFlashcardInlineTextarea(termField);
             updateStudioFlashcardDraft(termField.dataset.studioFlashcardTermId, 'term', termField.value);
             return;
         }
 
         const pendingTermField = e.target.closest('[data-studio-pending-flashcard-term]');
         if (pendingTermField) {
+            autosizeStudioFlashcardInlineTextarea(pendingTermField);
             const row = getStudioPendingFlashcardRow();
             if (row) {
                 row.term_plain = pendingTermField.value;
@@ -11642,12 +11663,14 @@ if (elements.studioQuestionList) {
 
         const definitionField = e.target.closest('[data-studio-flashcard-definition-id]');
         if (definitionField) {
+            autosizeStudioFlashcardInlineTextarea(definitionField);
             updateStudioFlashcardDraft(definitionField.dataset.studioFlashcardDefinitionId, 'definition', definitionField.value);
             return;
         }
 
         const pendingDefinitionField = e.target.closest('[data-studio-pending-flashcard-definition]');
         if (pendingDefinitionField) {
+            autosizeStudioFlashcardInlineTextarea(pendingDefinitionField);
             const row = getStudioPendingFlashcardRow();
             if (row) {
                 row.definition_plain = pendingDefinitionField.value;
@@ -12349,6 +12372,7 @@ if (elements.createFlashcardTerm) {
             const pendingField = elements.studioQuestionList?.querySelector('[data-studio-pending-flashcard-term]');
             if (pendingField && pendingField !== document.activeElement) {
                 pendingField.value = elements.createFlashcardTerm.value;
+                autosizeStudioFlashcardInlineTextarea(pendingField);
             }
             return;
         }
@@ -12361,6 +12385,7 @@ if (elements.createFlashcardTerm) {
         const listField = elements.studioQuestionList?.querySelector(`[data-studio-flashcard-term-id="${state.auth.editingQuestionId}"]`);
         if (listField && listField !== document.activeElement) {
             listField.value = elements.createFlashcardTerm.value;
+            autosizeStudioFlashcardInlineTextarea(listField);
         }
     });
 }
@@ -12375,6 +12400,7 @@ if (elements.createFlashcardDefinition) {
             const pendingField = elements.studioQuestionList?.querySelector('[data-studio-pending-flashcard-definition]');
             if (pendingField && pendingField !== document.activeElement) {
                 pendingField.value = elements.createFlashcardDefinition.value;
+                autosizeStudioFlashcardInlineTextarea(pendingField);
             }
             return;
         }
@@ -12386,6 +12412,7 @@ if (elements.createFlashcardDefinition) {
         const listField = elements.studioQuestionList?.querySelector(`[data-studio-flashcard-definition-id="${state.auth.editingQuestionId}"]`);
         if (listField && listField !== document.activeElement) {
             listField.value = elements.createFlashcardDefinition.value;
+            autosizeStudioFlashcardInlineTextarea(listField);
         }
     });
 }
