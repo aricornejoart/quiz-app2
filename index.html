@@ -824,15 +824,72 @@ MODIFICATION RULES FOR THIS APP
                   </div>
 
                   <div id="flashcardEditorFields" class="studio-editor-type-fields hidden">
-                    <label class="auth-field">
-                      <span>Term</span>
-                      <textarea id="createFlashcardTerm" rows="3" placeholder="Type the flashcard term here"></textarea>
-                    </label>
+                    <div class="auth-field studio-rich-text-field studio-flashcard-rich-text-field">
+                      <span>Flashcard text styling</span>
+                      <div id="flashcardRichToolbar" class="studio-rich-toolbar" aria-label="Flashcard formatting toolbar">
+                      <button type="button" class="studio-rich-icon-btn" data-flashcard-rich-control data-flashcard-rich-command="bold" aria-label="Bold" title="Bold"><strong>B</strong></button>
+                      <button type="button" class="studio-rich-icon-btn" data-flashcard-rich-control data-flashcard-rich-command="italic" aria-label="Italic" title="Italic"><em>I</em></button>
+                      <button type="button" class="studio-rich-icon-btn" data-flashcard-rich-control data-flashcard-rich-command="underline" aria-label="Underline" title="Underline"><u>U</u></button>
+                      <button type="button" class="studio-rich-icon-btn" data-flashcard-rich-control data-flashcard-rich-command="insertUnorderedList" aria-label="Bullet list" title="Bullet list">•</button>
 
-                    <label class="auth-field">
+                      <div class="studio-rich-menu-wrap">
+                        <button id="createFlashcardFontFamilyBtn" type="button" class="studio-rich-icon-btn" data-flashcard-rich-control data-flashcard-rich-menu-trigger="font" aria-label="Font family" title="Font family">Aa</button>
+                        <div class="studio-rich-menu hidden" data-flashcard-rich-menu="font" role="menu" aria-label="Font family choices">
+                          <button type="button" data-flashcard-rich-style="fontFamily" data-flashcard-rich-value="Arial" role="menuitem">Arial</button>
+                          <button type="button" data-flashcard-rich-style="fontFamily" data-flashcard-rich-value="Georgia" role="menuitem">Georgia</button>
+                          <button type="button" data-flashcard-rich-style="fontFamily" data-flashcard-rich-value="Times New Roman" role="menuitem">Times New Roman</button>
+                          <button type="button" data-flashcard-rich-style="fontFamily" data-flashcard-rich-value="Courier New" role="menuitem">Courier New</button>
+                          <button type="button" data-flashcard-rich-style="fontFamily" data-flashcard-rich-value="Verdana" role="menuitem">Verdana</button>
+                          <button type="button" data-flashcard-rich-style="fontFamily" data-flashcard-rich-value="Trebuchet MS" role="menuitem">Trebuchet MS</button>
+                        </div>
+                      </div>
+
+                      <div class="studio-rich-menu-wrap">
+                        <button id="createFlashcardFontSizeBtn" type="button" class="studio-rich-icon-btn studio-rich-size-btn" data-flashcard-rich-control data-flashcard-rich-menu-trigger="size" aria-label="Font size" title="Font size">18</button>
+                        <div class="studio-rich-menu studio-rich-size-menu hidden" data-flashcard-rich-menu="size" role="menu" aria-label="Font size choices">
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="8" role="menuitem">8</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="9" role="menuitem">9</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="10" role="menuitem">10</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="11" role="menuitem">11</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="12" role="menuitem">12</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="13" role="menuitem">13</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="14" role="menuitem">14</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="15" role="menuitem">15</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="16" role="menuitem">16</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="18" role="menuitem">18</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="20" role="menuitem">20</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="22" role="menuitem">22</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="24" role="menuitem">24</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="28" role="menuitem">28</button>
+                          <button type="button" data-flashcard-rich-style="fontSize" data-flashcard-rich-value="32" role="menuitem">32</button>
+                        </div>
+                      </div>
+
+                      <div class="studio-rich-menu-wrap">
+                        <button id="createFlashcardJustifyBtn" type="button" class="studio-rich-icon-btn" data-flashcard-rich-control data-flashcard-rich-menu-trigger="align" aria-label="Text alignment" title="Text alignment">☰</button>
+                        <div class="studio-rich-menu studio-rich-align-menu hidden" data-flashcard-rich-menu="align" role="menu" aria-label="Text alignment choices">
+                          <button type="button" data-flashcard-rich-command-choice="justifyLeft" role="menuitem">☰ Left</button>
+                          <button type="button" data-flashcard-rich-command-choice="justifyCenter" role="menuitem">☷ Center</button>
+                          <button type="button" data-flashcard-rich-command-choice="justifyRight" role="menuitem">☱ Right</button>
+                        </div>
+                      </div>
+
+                      <span class="studio-rich-color-wrap" title="Font color">
+                        <button id="createFlashcardColorBtn" type="button" class="studio-rich-icon-btn studio-rich-color-btn" aria-label="Font color" tabindex="-1"><span class="studio-rich-color-icon">A</span></button>
+                        <input id="createFlashcardColor" class="studio-rich-hidden-color" type="color" value="#e0e0ff" data-flashcard-rich-control aria-label="Font color picker">
+                      </span>
+                    </div>
+                    </div>
+
+                    <div class="auth-field studio-rich-text-field studio-flashcard-rich-text-field">
+                      <span>Term</span>
+                      <div id="createFlashcardTerm" class="studio-rich-editor studio-flashcard-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Type the flashcard term here"></div>
+                    </div>
+
+                    <div class="auth-field studio-rich-text-field studio-flashcard-rich-text-field">
                       <span>Definition</span>
-                      <textarea id="createFlashcardDefinition" rows="4" placeholder="Type the flashcard definition here"></textarea>
-                    </label>
+                      <div id="createFlashcardDefinition" class="studio-rich-editor studio-flashcard-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Type the flashcard definition here"></div>
+                    </div>
 
                     <label class="auth-field">
                       <span>Term image (optional)</span>
@@ -874,7 +931,7 @@ MODIFICATION RULES FOR THIS APP
                       </div>
 
                       <div class="studio-rich-menu-wrap">
-                        <button id="createLearningResourcesFontSizeBtn" type="button" class="studio-rich-icon-btn studio-rich-size-btn" data-learning-rich-control data-rich-menu-trigger="size" aria-label="Font size" title="Font size">15</button>
+                        <button id="createLearningResourcesFontSizeBtn" type="button" class="studio-rich-icon-btn studio-rich-size-btn" data-learning-rich-control data-rich-menu-trigger="size" aria-label="Font size" title="Font size">18</button>
                         <div class="studio-rich-menu studio-rich-size-menu hidden" data-rich-menu="size" role="menu" aria-label="Font size choices">
                           <button type="button" data-rich-style="fontSize" data-rich-value="8" role="menuitem">8</button>
                           <button type="button" data-rich-style="fontSize" data-rich-value="9" role="menuitem">9</button>

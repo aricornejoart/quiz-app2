@@ -225,6 +225,17 @@ MODIFICATION RULES FOR THIS APP
         createFlashcardDefinitionImageFile: document.getElementById('createFlashcardDefinitionImageFile'),
         createFlashcardDefinitionImageName: document.getElementById('createFlashcardDefinitionImageName'),
         createFlashcardDefinitionImageClearBtn: document.getElementById('createFlashcardDefinitionImageClearBtn'),
+        flashcardRichToolbar: document.getElementById('flashcardRichToolbar'),
+        createFlashcardFontFamilyBtn: document.getElementById('createFlashcardFontFamilyBtn'),
+        createFlashcardFontSizeBtn: document.getElementById('createFlashcardFontSizeBtn'),
+        createFlashcardJustifyBtn: document.getElementById('createFlashcardJustifyBtn'),
+        createFlashcardColorBtn: document.getElementById('createFlashcardColorBtn'),
+        createFlashcardColor: document.getElementById('createFlashcardColor'),
+        flashcardRichControls: Array.from(document.querySelectorAll('[data-flashcard-rich-control]')),
+        flashcardRichMenuTriggers: Array.from(document.querySelectorAll('[data-flashcard-rich-menu-trigger]')),
+        flashcardRichMenus: Array.from(document.querySelectorAll('[data-flashcard-rich-menu]')),
+        flashcardRichStyleButtons: Array.from(document.querySelectorAll('[data-flashcard-rich-style]')),
+        flashcardRichCommandChoices: Array.from(document.querySelectorAll('[data-flashcard-rich-command-choice]')),
         createLearningResources: document.getElementById('createLearningResources'),
         createLearningResourcesFontFamilyBtn: document.getElementById('createLearningResourcesFontFamilyBtn'),
         createLearningResourcesFontSizeBtn: document.getElementById('createLearningResourcesFontSizeBtn'),
@@ -579,6 +590,12 @@ MODIFICATION RULES FOR THIS APP
         '7': '32px'
     };
     const LEARNING_RESOURCES_ALLOWED_FONT_SIZES = new Set(['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '28', '32']);
+    const RICH_TEXT_LEGACY_BASELINE_FONT_SIZE = '15px';
+    const RICH_TEXT_DEFAULT_FONT_SIZE = '18px';
+
+    function isLegacyRichDefaultFontSize(value) {
+        return normalizeLearningResourcesFontSize(value) === RICH_TEXT_LEGACY_BASELINE_FONT_SIZE;
+    }
 
     function isSafeLearningResourceColor(value) {
         const color = normalizeSheetText(value);
@@ -633,19 +650,19 @@ MODIFICATION RULES FOR THIS APP
                 styleParts.push(`text-align: ${sourceAlign}`);
             }
 
-            const sourceWeight = normalizeSheetText(sourceStyle.fontWeight).toLowerCase();
-            if (sourceWeight === 'bold' || Number(sourceWeight) >= 600) {
-                styleParts.push('font-weight: bold');
+            const sourceWeight = normalizeRichStyleValue('fontWeight', sourceStyle.fontWeight || '');
+            if (sourceWeight === 'bold' || sourceWeight === 'normal') {
+                styleParts.push(`font-weight: ${sourceWeight}`);
             }
 
-            const sourceItalic = normalizeSheetText(sourceStyle.fontStyle).toLowerCase();
-            if (sourceItalic === 'italic') {
-                styleParts.push('font-style: italic');
+            const sourceItalic = normalizeRichStyleValue('fontStyle', sourceStyle.fontStyle || '');
+            if (sourceItalic === 'italic' || sourceItalic === 'normal') {
+                styleParts.push(`font-style: ${sourceItalic}`);
             }
 
-            const sourceDecoration = normalizeSheetText(sourceStyle.textDecoration || sourceStyle.textDecorationLine).toLowerCase();
-            if (sourceDecoration.includes('underline')) {
-                styleParts.push('text-decoration: underline');
+            const sourceDecoration = normalizeRichStyleValue('textDecoration', sourceStyle.textDecoration || sourceStyle.textDecorationLine || '');
+            if (sourceDecoration === 'underline' || sourceDecoration === 'none') {
+                styleParts.push(`text-decoration: ${sourceDecoration}`);
             }
 
             const sourceFontFamily = normalizeSheetText((sourceStyle.fontFamily || node.getAttribute('face') || '').replace(/["']/g, ''));
@@ -654,7 +671,7 @@ MODIFICATION RULES FOR THIS APP
             }
 
             const sourceSize = normalizeSheetText(node.getAttribute('size')) || normalizeSheetText(sourceStyle.fontSize);
-            const mappedSize = LEARNING_RESOURCES_FONT_SIZE_MAP[sourceSize] || normalizeLearningResourcesFontSize(sourceSize);
+            const mappedSize = normalizeRichStyleValue('fontSize', LEARNING_RESOURCES_FONT_SIZE_MAP[sourceSize] || sourceSize);
             if (mappedSize) {
                 styleParts.push(`font-size: ${mappedSize}`);
             }
@@ -674,110 +691,323 @@ MODIFICATION RULES FOR THIS APP
         return wrapper.innerHTML.trim();
     }
 
-    function getLearningResourcesEditorHtml() {
-        if (!elements.createLearningResources) return '';
-        const sanitizedHtml = sanitizeLearningResourcesHtml(elements.createLearningResources.innerHTML || '');
+    function getRichEditorHtml(editorEl) {
+        if (!editorEl) return '';
+        const sanitizedHtml = sanitizeLearningResourcesHtml(editorEl.innerHTML || '');
         return htmlToDisplayText(sanitizedHtml) ? sanitizedHtml : '';
     }
 
-    function getLearningResourcesEditorPlain() {
-        return htmlToDisplayText(getLearningResourcesEditorHtml());
+    function getRichEditorPlain(editorEl) {
+        return htmlToDisplayText(getRichEditorHtml(editorEl));
     }
 
-    function setLearningResourcesEditorHtml(htmlValue = '', plainFallback = '') {
-        if (!elements.createLearningResources) return;
+    function setRichEditorHtml(editorEl, htmlValue = '', plainFallback = '') {
+        if (!editorEl) return;
         const sanitizedHtml = sanitizeLearningResourcesHtml(htmlValue);
-        elements.createLearningResources.innerHTML = sanitizedHtml || buildStoredHtmlFromPlain(plainFallback);
+        editorEl.innerHTML = sanitizedHtml || buildStoredHtmlFromPlain(plainFallback);
     }
 
-    let learningResourcesSavedRange = null;
-
-    function saveLearningResourcesSelection() {
-        if (!elements.createLearningResources) return;
-        const selection = window.getSelection();
-        if (!selection || !selection.rangeCount) return;
-        const range = selection.getRangeAt(0);
-        const container = elements.createLearningResources;
-        if (container.contains(range.commonAncestorContainer) || container === range.commonAncestorContainer) {
-            learningResourcesSavedRange = range.cloneRange();
-        }
+    function bindRichValueProperty(editorEl) {
+        if (!editorEl || Object.prototype.hasOwnProperty.call(editorEl, '__studyBunnyRichValueBound')) return;
+        Object.defineProperty(editorEl, '__studyBunnyRichValueBound', { value: true });
+        Object.defineProperty(editorEl, 'value', {
+            configurable: true,
+            get() { return getRichEditorPlain(editorEl); },
+            set(value) { setRichEditorHtml(editorEl, '', value); }
+        });
     }
 
-    function restoreLearningResourcesSelection() {
-        if (!learningResourcesSavedRange) return;
-        const selection = window.getSelection();
-        if (!selection) return;
-        selection.removeAllRanges();
-        selection.addRange(learningResourcesSavedRange);
+    function getLearningResourcesEditorHtml() { return getRichEditorHtml(elements.createLearningResources); }
+    function getLearningResourcesEditorPlain() { return getRichEditorPlain(elements.createLearningResources); }
+    function setLearningResourcesEditorHtml(htmlValue = '', plainFallback = '') { setRichEditorHtml(elements.createLearningResources, htmlValue, plainFallback); }
+    function getFlashcardTermEditorHtml() { return getRichEditorHtml(elements.createFlashcardTerm); }
+    function getFlashcardDefinitionEditorHtml() { return getRichEditorHtml(elements.createFlashcardDefinition); }
+    function setFlashcardTermEditorHtml(htmlValue = '', plainFallback = '') { setRichEditorHtml(elements.createFlashcardTerm, htmlValue, plainFallback); }
+    function setFlashcardDefinitionEditorHtml(htmlValue = '', plainFallback = '') { setRichEditorHtml(elements.createFlashcardDefinition, htmlValue, plainFallback); }
+
+    function dispatchRichEditorInput(editorEl) {
+        if (editorEl) editorEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    function applyLearningResourcesFormat(command, value = null) {
-        if (!elements.createLearningResources || elements.createLearningResources.getAttribute('contenteditable') === 'false') return;
-        elements.createLearningResources.focus();
-        restoreLearningResourcesSelection();
-        document.execCommand(command, false, value);
-        saveLearningResourcesSelection();
-        elements.createLearningResources.dispatchEvent(new Event('input', { bubbles: true }));
+    function isRichEditorEditable(editorEl) {
+        return !!editorEl && editorEl.getAttribute('contenteditable') !== 'false';
     }
 
-    function applyLearningResourcesInlineStyle(styleDraft = {}) {
-        if (!elements.createLearningResources || elements.createLearningResources.getAttribute('contenteditable') === 'false') return;
-        elements.createLearningResources.focus();
-        restoreLearningResourcesSelection();
-
-        const selection = window.getSelection();
-        if (!selection || !selection.rangeCount) return;
-
-        const range = selection.getRangeAt(0);
-        const container = elements.createLearningResources;
-        if (!(container.contains(range.commonAncestorContainer) || container === range.commonAncestorContainer)) return;
-
+    function getSafeRichInlineStyles(styleDraft = {}) {
         const safeStyles = {};
         const fontFamily = normalizeSheetText(styleDraft.fontFamily || '').replace(/["']/g, '');
-        if (fontFamily && LEARNING_RESOURCES_ALLOWED_FONTS.has(fontFamily)) {
-            safeStyles.fontFamily = fontFamily;
-        }
-
-        const fontSize = normalizeLearningResourcesFontSize(styleDraft.fontSize || '');
-        if (fontSize) {
-            safeStyles.fontSize = fontSize;
-        }
-
+        if (fontFamily && LEARNING_RESOURCES_ALLOWED_FONTS.has(fontFamily)) safeStyles.fontFamily = fontFamily;
+        const fontSize = normalizeRichStyleValue('fontSize', styleDraft.fontSize || '');
+        if (fontSize) safeStyles.fontSize = fontSize;
         const color = normalizeSheetText(styleDraft.color || '');
-        if (color && isSafeLearningResourceColor(color)) {
-            safeStyles.color = color;
-        }
+        if (color && isSafeLearningResourceColor(color)) safeStyles.color = color;
+        const fontWeight = normalizeRichStyleValue('fontWeight', styleDraft.fontWeight || '');
+        if (fontWeight) safeStyles.fontWeight = fontWeight;
+        const fontStyle = normalizeRichStyleValue('fontStyle', styleDraft.fontStyle || '');
+        if (fontStyle) safeStyles.fontStyle = fontStyle;
+        const textDecoration = normalizeRichStyleValue('textDecoration', styleDraft.textDecoration || '');
+        if (textDecoration) safeStyles.textDecoration = textDecoration;
+        return safeStyles;
+    }
 
-        const backgroundColor = normalizeSheetText(styleDraft.backgroundColor || '');
-        if (backgroundColor && isSafeLearningResourceColor(backgroundColor)) {
-            safeStyles.backgroundColor = backgroundColor;
-        }
 
+    function normalizeRichStyleValue(property, value) {
+        const raw = normalizeSheetText(value);
+        if (!raw) return '';
+        if (property === 'fontFamily') {
+            const family = raw.replace(/["']/g, '');
+            return LEARNING_RESOURCES_ALLOWED_FONTS.has(family) ? family : '';
+        }
+        if (property === 'fontSize') {
+            const normalizedSize = LEARNING_RESOURCES_FONT_SIZE_MAP[raw] || normalizeLearningResourcesFontSize(raw);
+            return isLegacyRichDefaultFontSize(normalizedSize) ? RICH_TEXT_DEFAULT_FONT_SIZE : normalizedSize;
+        }
+        if (property === 'color') return isSafeLearningResourceColor(raw) ? raw : '';
+        if (property === 'fontWeight') {
+            const weight = raw.toLowerCase();
+            if (weight === 'normal' || weight === '400' || Number(weight) < 600) return 'normal';
+            return weight === 'bold' || Number(weight) >= 600 ? 'bold' : '';
+        }
+        if (property === 'fontStyle') {
+            const fontStyle = raw.toLowerCase();
+            if (fontStyle === 'normal') return 'normal';
+            return fontStyle === 'italic' ? 'italic' : '';
+        }
+        if (property === 'textDecoration') {
+            const decoration = raw.toLowerCase();
+            if (decoration === 'none') return 'none';
+            return decoration.includes('underline') ? 'underline' : '';
+        }
+        return '';
+    }
+
+
+    function getRichElementInlineStyles(el) {
+        const styles = {};
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return styles;
+        const tagName = el.tagName.toUpperCase();
+        if (tagName === 'B' || tagName === 'STRONG') styles.fontWeight = 'bold';
+        if (tagName === 'I' || tagName === 'EM') styles.fontStyle = 'italic';
+        if (tagName === 'U') styles.textDecoration = 'underline';
+        const sourceStyle = el.style || {};
+        const candidates = {
+            color: sourceStyle.color || el.getAttribute('color') || '',
+            fontSize: sourceStyle.fontSize || el.getAttribute('size') || '',
+            fontFamily: (sourceStyle.fontFamily || el.getAttribute('face') || '').replace(/["']/g, ''),
+            fontWeight: sourceStyle.fontWeight || '',
+            fontStyle: sourceStyle.fontStyle || '',
+            textDecoration: sourceStyle.textDecoration || sourceStyle.textDecorationLine || ''
+        };
+        Object.entries(candidates).forEach(([property, value]) => {
+            const normalized = normalizeRichStyleValue(property, value);
+            if (normalized) styles[property] = normalized;
+        });
+        return styles;
+    }
+
+    function getRichInheritedInlineStyles(node, editorEl) {
+        const styles = {};
+        const path = [];
+        let current = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+        while (current && current !== editorEl && current.nodeType === Node.ELEMENT_NODE) {
+            path.push(current);
+            current = current.parentElement;
+        }
+        path.reverse().forEach(el => Object.assign(styles, getRichElementInlineStyles(el)));
+        return styles;
+    }
+
+    function applyRichStyleMapToElement(el, styles = {}, overwrite = true) {
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
+        Object.entries(styles).forEach(([property, value]) => {
+            const normalizedValue = normalizeRichStyleValue(property, value);
+            if (!normalizedValue) return;
+            if (overwrite || !el.style[property]) el.style[property] = normalizedValue;
+        });
+    }
+
+    function normalizeRichBaseStylesForTarget(baseStyles = {}, targetStyles = {}) {
+        const nextStyles = { ...baseStyles };
+        if (!targetStyles.fontSize) {
+            if (!nextStyles.fontSize || isLegacyRichDefaultFontSize(nextStyles.fontSize)) {
+                nextStyles.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
+            }
+        } else if (isLegacyRichDefaultFontSize(targetStyles.fontSize)) {
+            targetStyles.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
+        }
+        return nextStyles;
+    }
+
+    function normalizeLegacyRichDefaultFontSize(node) {
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+        if (isLegacyRichDefaultFontSize(node.style?.fontSize || '')) {
+            node.style.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
+        }
+        Array.from(node.childNodes).forEach(normalizeLegacyRichDefaultFontSize);
+    }
+
+    function wrapRichTextNode(node, baseStyles = {}, targetStyles = {}) {
+        const span = document.createElement('span');
+        applyRichStyleMapToElement(span, { ...baseStyles, ...targetStyles }, true);
+        span.appendChild(node);
+        return span;
+    }
+
+    function applyTargetStylesToRichNode(node, targetStyles = {}) {
+        if (!node) return node;
+        if (node.nodeType === Node.TEXT_NODE) return node;
+        if (node.nodeType !== Node.ELEMENT_NODE) return node;
+        applyRichStyleMapToElement(node, targetStyles, true);
+        Array.from(node.childNodes).forEach(child => {
+            const nextChild = applyTargetStylesToRichNode(child, targetStyles);
+            if (nextChild !== child) child.replaceWith(nextChild);
+        });
+        return node;
+    }
+
+    function buildStrictRichStyledFragment(fragment, baseStyles = {}, targetStyles = {}) {
+        const nextFragment = document.createDocumentFragment();
+        const safeBaseStyles = normalizeRichBaseStylesForTarget(baseStyles, targetStyles);
+        Array.from(fragment.childNodes).forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                nextFragment.appendChild(wrapRichTextNode(node, safeBaseStyles, targetStyles));
+                return;
+            }
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                if (!targetStyles.fontSize) normalizeLegacyRichDefaultFontSize(node);
+                applyRichStyleMapToElement(node, safeBaseStyles, false);
+                nextFragment.appendChild(applyTargetStylesToRichNode(node, targetStyles));
+                return;
+            }
+            nextFragment.appendChild(node);
+        });
+        return nextFragment;
+    }
+
+    function saveRichEditorSelection(editorEl, stateBag) {
+        if (!editorEl || !stateBag) return;
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (editorEl.contains(range.commonAncestorContainer) || editorEl === range.commonAncestorContainer) {
+            stateBag.savedRange = range.cloneRange();
+            stateBag.editor = editorEl;
+        }
+    }
+
+    function restoreRichEditorSelection(editorEl, stateBag) {
+        if (!editorEl || !stateBag?.savedRange) return false;
+        const range = stateBag.savedRange;
+        if (!(editorEl.contains(range.commonAncestorContainer) || editorEl === range.commonAncestorContainer)) return false;
+        const selection = window.getSelection();
+        if (!selection) return false;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return true;
+    }
+
+    function applyRichInlineStyle(editorEl, stateBag, styleDraft = {}) {
+        if (!isRichEditorEditable(editorEl)) return;
+        editorEl.focus();
+        restoreRichEditorSelection(editorEl, stateBag);
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (!(editorEl.contains(range.commonAncestorContainer) || editorEl === range.commonAncestorContainer)) return;
+        const safeStyles = getSafeRichInlineStyles(styleDraft);
         if (!Object.keys(safeStyles).length) return;
 
-        const span = document.createElement('span');
-        Object.entries(safeStyles).forEach(([property, value]) => {
-            span.style[property] = value;
-        });
-
+        const baseStyles = normalizeRichBaseStylesForTarget(getRichInheritedInlineStyles(range.startContainer, editorEl), safeStyles);
         const nextRange = document.createRange();
 
         if (range.collapsed) {
-            span.appendChild(document.createTextNode('​'));
+            const span = document.createElement('span');
+            applyRichStyleMapToElement(span, { ...baseStyles, ...safeStyles }, true);
+            const marker = document.createTextNode('​');
+            span.appendChild(marker);
             range.insertNode(span);
-            nextRange.setStartAfter(span);
+            nextRange.setStart(marker, marker.textContent.length);
             nextRange.collapse(true);
         } else {
-            span.appendChild(range.extractContents());
-            range.insertNode(span);
-            nextRange.selectNodeContents(span);
+            const styledFragment = buildStrictRichStyledFragment(range.extractContents(), baseStyles, safeStyles);
+            const anchor = document.createTextNode('');
+            range.insertNode(anchor);
+            anchor.parentNode.insertBefore(styledFragment, anchor);
+            nextRange.setStartBefore(anchor);
+            nextRange.setEndBefore(anchor);
+            anchor.remove();
         }
 
         selection.removeAllRanges();
         selection.addRange(nextRange);
-        saveLearningResourcesSelection();
-        elements.createLearningResources.dispatchEvent(new Event('input', { bubbles: true }));
+        saveRichEditorSelection(editorEl, stateBag);
+        dispatchRichEditorInput(editorEl);
     }
+
+    function getRichSelectionCurrentStyles(editorEl, range) {
+        if (!editorEl || !range) return {};
+        const currentStyles = getRichInheritedInlineStyles(range.startContainer, editorEl);
+        const sourceEl = range.startContainer?.nodeType === Node.ELEMENT_NODE
+            ? range.startContainer
+            : range.startContainer?.parentElement;
+        if (sourceEl && sourceEl !== editorEl && editorEl.contains(sourceEl)) {
+            const computed = window.getComputedStyle(sourceEl);
+            if (!currentStyles.fontWeight) currentStyles.fontWeight = normalizeRichStyleValue('fontWeight', computed.fontWeight || '');
+            if (!currentStyles.fontStyle) currentStyles.fontStyle = normalizeRichStyleValue('fontStyle', computed.fontStyle || '');
+            if (!currentStyles.textDecoration) currentStyles.textDecoration = normalizeRichStyleValue('textDecoration', computed.textDecorationLine || computed.textDecoration || '');
+            if (!currentStyles.fontSize) currentStyles.fontSize = normalizeRichStyleValue('fontSize', computed.fontSize || '');
+        }
+        if (!currentStyles.fontSize || isLegacyRichDefaultFontSize(currentStyles.fontSize)) {
+            currentStyles.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
+        }
+        return currentStyles;
+    }
+
+    function isRichStyleActive(currentStyles = {}, property, activeValue) {
+        const normalizedCurrent = normalizeRichStyleValue(property, currentStyles[property] || '');
+        const normalizedActive = normalizeRichStyleValue(property, activeValue);
+        return !!normalizedCurrent && normalizedCurrent === normalizedActive;
+    }
+
+    function applyRichInlineToggle(editorEl, stateBag, property, activeValue, inactiveValue) {
+        if (!isRichEditorEditable(editorEl)) return;
+        editorEl.focus();
+        restoreRichEditorSelection(editorEl, stateBag);
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (!(editorEl.contains(range.commonAncestorContainer) || editorEl === range.commonAncestorContainer)) return;
+        const currentStyles = getRichSelectionCurrentStyles(editorEl, range);
+        const nextValue = isRichStyleActive(currentStyles, property, activeValue) ? inactiveValue : activeValue;
+        applyRichInlineStyle(editorEl, stateBag, { [property]: nextValue });
+    }
+
+    function applyRichEditorCommand(editorEl, stateBag, command, value = null) {
+        if (!isRichEditorEditable(editorEl)) return;
+        const normalizedCommand = normalizeSheetText(command);
+        if (normalizedCommand === 'bold') return applyRichInlineToggle(editorEl, stateBag, 'fontWeight', 'bold', 'normal');
+        if (normalizedCommand === 'italic') return applyRichInlineToggle(editorEl, stateBag, 'fontStyle', 'italic', 'normal');
+        if (normalizedCommand === 'underline') return applyRichInlineToggle(editorEl, stateBag, 'textDecoration', 'underline', 'none');
+        editorEl.focus();
+        restoreRichEditorSelection(editorEl, stateBag);
+        document.execCommand(normalizedCommand, false, value);
+        saveRichEditorSelection(editorEl, stateBag);
+        dispatchRichEditorInput(editorEl);
+    }
+
+    const learningResourcesRichState = { savedRange: null, editor: null };
+    const flashcardRichState = { savedRange: null, editor: null };
+
+    function saveLearningResourcesSelection() { saveRichEditorSelection(elements.createLearningResources, learningResourcesRichState); }
+    function applyLearningResourcesFormat(command, value = null) { applyRichEditorCommand(elements.createLearningResources, learningResourcesRichState, command, value); }
+    function applyLearningResourcesInlineStyle(styleDraft = {}) { applyRichInlineStyle(elements.createLearningResources, learningResourcesRichState, styleDraft); }
+    function getActiveFlashcardRichEditor() { return (flashcardRichState.editor && document.body.contains(flashcardRichState.editor)) ? flashcardRichState.editor : (elements.createFlashcardTerm || elements.createFlashcardDefinition || null); }
+    function saveFlashcardRichSelection(editorEl = null) { const target = editorEl || getActiveFlashcardRichEditor(); if (target) { flashcardRichState.editor = target; saveRichEditorSelection(target, flashcardRichState); } }
+    function applyFlashcardRichFormat(command, value = null) { applyRichEditorCommand(getActiveFlashcardRichEditor(), flashcardRichState, command, value); }
+    function applyFlashcardRichInlineStyle(styleDraft = {}) { applyRichInlineStyle(getActiveFlashcardRichEditor(), flashcardRichState, styleDraft); }
+
+    bindRichValueProperty(elements.createFlashcardTerm);
+    bindRichValueProperty(elements.createFlashcardDefinition);
 
     function downloadTextFile(content, filename, mimeType = 'text/plain;charset=utf-8') {
         const blob = new Blob([content], { type: mimeType });
@@ -2882,6 +3112,7 @@ MODIFICATION RULES FOR THIS APP
             if (row.term_plain !== value || row.prompt_plain !== value) {
                 row.term_plain = value;
                 row.prompt_plain = value;
+                row.term_html = buildStoredHtmlFromPlain(value);
                 changed = true;
             }
             if (questionId === state.auth.editingQuestionId && elements.createFlashcardTerm && elements.createFlashcardTerm !== document.activeElement) {
@@ -2896,6 +3127,7 @@ MODIFICATION RULES FOR THIS APP
             const value = field.value;
             if (row.definition_plain !== value) {
                 row.definition_plain = value;
+                row.definition_html = buildStoredHtmlFromPlain(value);
                 changed = true;
             }
             if (questionId === state.auth.editingQuestionId && elements.createFlashcardDefinition && elements.createFlashcardDefinition !== document.activeElement) {
@@ -2910,6 +3142,7 @@ MODIFICATION RULES FOR THIS APP
             if (pendingRow.term_plain !== value || pendingRow.prompt_plain !== value) {
                 pendingRow.term_plain = value;
                 pendingRow.prompt_plain = value;
+                pendingRow.term_html = buildStoredHtmlFromPlain(value);
                 changed = true;
             }
             if (!state.auth.editingQuestionId && elements.createFlashcardTerm && elements.createFlashcardTerm !== document.activeElement) {
@@ -2922,6 +3155,7 @@ MODIFICATION RULES FOR THIS APP
             const value = pendingDefinition.value;
             if (pendingRow.definition_plain !== value) {
                 pendingRow.definition_plain = value;
+                pendingRow.definition_html = buildStoredHtmlFromPlain(value);
                 changed = true;
             }
             if (!state.auth.editingQuestionId && elements.createFlashcardDefinition && elements.createFlashcardDefinition !== document.activeElement) {
@@ -2940,7 +3174,9 @@ MODIFICATION RULES FOR THIS APP
             question_type: 'flashcard',
             prompt_plain: term,
             term_plain: term,
+            term_html: getFlashcardTermEditorHtml(),
             definition_plain: definition,
+            definition_html: getFlashcardDefinitionEditorHtml(),
             learning_resources_html: getLearningResourcesEditorHtml(),
             learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || '',
             learning_resources_image_label: state.auth.studioLearningResourcesImageLabel || '',
@@ -3016,7 +3252,9 @@ MODIFICATION RULES FOR THIS APP
 
         if (questionType === 'flashcard') {
             draft.term = normalizeSheetText(elements.createFlashcardTerm?.value);
+            draft.termHtml = getFlashcardTermEditorHtml();
             draft.definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
+            draft.definitionHtml = getFlashcardDefinitionEditorHtml();
             draft.termImage = state.auth.studioFlashcardTermImageDataUrl || '';
             draft.termImageLabel = state.auth.studioFlashcardTermImageLabel || '';
             draft.definitionImage = state.auth.studioFlashcardDefinitionImageDataUrl || '';
@@ -3061,8 +3299,8 @@ MODIFICATION RULES FOR THIS APP
         setStudioLearningResourcesImageState(draft.learningResourcesImage || '', draft.learningResourcesImageLabel || (draft.learningResourcesImage ? 'Existing learning resources image saved.' : 'No learning resources image selected.'));
 
         if (draft.questionType === 'flashcard') {
-            if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = draft.term || '';
-            if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = draft.definition || '';
+            setFlashcardTermEditorHtml(draft.termHtml || '', draft.term || '');
+            setFlashcardDefinitionEditorHtml(draft.definitionHtml || '', draft.definition || '');
             setStudioFlashcardTermImageState(draft.termImage || '', draft.termImageLabel || (draft.termImage ? 'Existing term image saved.' : 'No term image selected.'));
             setStudioFlashcardDefinitionImageState(draft.definitionImage || '', draft.definitionImageLabel || (draft.definitionImage ? 'Existing definition image saved.' : 'No definition image selected.'));
         } else if (draft.questionType === 'hierarchy') {
@@ -3089,8 +3327,8 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.expandedOptionImageRows.clear();
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = normalizeSheetText(row.term_plain || row.prompt_plain);
-        if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = normalizeSheetText(row.term_plain || row.prompt_plain);
-        if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = normalizeSheetText(row.definition_plain);
+        setFlashcardTermEditorHtml(row.term_html || '', normalizeSheetText(row.term_plain || row.prompt_plain));
+        setFlashcardDefinitionEditorHtml(row.definition_html || '', normalizeSheetText(row.definition_plain));
         setLearningResourcesEditorHtml(row.learning_resources_html || '', '');
         setStudioLearningResourcesImageState(row.learning_resources_image_url || '', row.learning_resources_image_label || (row.learning_resources_image_url ? 'Existing learning resources image saved.' : 'No learning resources image selected.'));
         setStudioQuestionImageState('', 'No question image selected.');
@@ -3134,7 +3372,7 @@ MODIFICATION RULES FOR THIS APP
             const { data, error } = await state.auth.client.from('questions').insert({
                 quiz_id: quizId,
                 question_type: 'flashcard',
-                prompt_html: buildStoredHtmlFromPlain(term),
+                prompt_html: sanitizeLearningResourcesHtml(row.term_html || '') || buildStoredHtmlFromPlain(term),
                 prompt_plain: term,
                 image_url: '',
                 learning_resources_html: learningResourcesHtml,
@@ -3157,8 +3395,8 @@ MODIFICATION RULES FOR THIS APP
             });
             const detailPayload = {
                 question_id: questionId,
-                term_html: buildStoredHtmlFromPlain(term),
-                definition_html: buildStoredHtmlFromPlain(definition),
+                term_html: sanitizeLearningResourcesHtml(row.term_html || '') || buildStoredHtmlFromPlain(term),
+                definition_html: sanitizeLearningResourcesHtml(row.definition_html || '') || buildStoredHtmlFromPlain(definition),
                 term_plain: term,
                 definition_plain: definition,
                 term_image_url: savedFlashcardMedia.term_image_url || '',
@@ -3191,6 +3429,8 @@ MODIFICATION RULES FOR THIS APP
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const term = normalizeSheetText(draft.term || draft.prompt || '');
         const definition = normalizeSheetText(draft.definition || '');
+        const termHtml = sanitizeLearningResourcesHtml(draft.termHtml || '') || buildStoredHtmlFromPlain(term);
+        const definitionHtml = sanitizeLearningResourcesHtml(draft.definitionHtml || '') || buildStoredHtmlFromPlain(definition);
         const learningResourcesHtml = sanitizeLearningResourcesHtml(draft.learningResourcesHtml || '');
 
         if (!quizId) throw new Error('Save or open a flashcard quiz before updating cards.');
@@ -3222,7 +3462,7 @@ MODIFICATION RULES FOR THIS APP
         if (quizError) throw quizError;
 
         const { error: questionError } = await state.auth.client.from('questions').update({
-            prompt_html: buildStoredHtmlFromPlain(term),
+            prompt_html: termHtml,
             prompt_plain: term,
             image_url: '',
             learning_resources_html: learningResourcesHtml,
@@ -3232,8 +3472,8 @@ MODIFICATION RULES FOR THIS APP
 
         const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert({
             question_id: normalizedQuestionId,
-            term_html: buildStoredHtmlFromPlain(term),
-            definition_html: buildStoredHtmlFromPlain(definition),
+            term_html: termHtml,
+            definition_html: definitionHtml,
             term_plain: term,
             definition_plain: definition,
             term_image_url: savedTermImage || '',
@@ -3252,7 +3492,9 @@ MODIFICATION RULES FOR THIS APP
         if (row) {
             row.prompt_plain = term;
             row.term_plain = term;
+            row.term_html = termHtml;
             row.definition_plain = definition;
+            row.definition_html = definitionHtml;
             row.learning_resources_html = learningResourcesHtml;
             row.learning_resources_image_url = savedLearningResourcesImage || '';
             row.term_image_url = savedTermImage || '';
@@ -3596,7 +3838,9 @@ MODIFICATION RULES FOR THIS APP
             id: row.id,
             prompt_plain: normalizeSheetText(row.prompt_plain),
             term_plain: normalizeSheetText(flashcardMap.get(row.id)?.term_plain),
+            term_html: normalizeSheetText(flashcardMap.get(row.id)?.term_html),
             definition_plain: normalizeSheetText(flashcardMap.get(row.id)?.definition_plain),
+            definition_html: normalizeSheetText(flashcardMap.get(row.id)?.definition_html),
             question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
             sort_order: Number(row.sort_order ?? 0)
         }));
@@ -3647,8 +3891,8 @@ MODIFICATION RULES FOR THIS APP
                 throw new Error('Could not load that flashcard into the editor.');
             }
 
-            if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = getStoredTextForDisplay(detailRow.term_plain, detailRow.term_html);
-            if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = getStoredTextForDisplay(detailRow.definition_plain, detailRow.definition_html);
+            setFlashcardTermEditorHtml(detailRow.term_html, detailRow.term_plain);
+            setFlashcardDefinitionEditorHtml(detailRow.definition_html, detailRow.definition_plain);
             setStudioFlashcardTermImageState(
                 normalizeSheetText(detailRow.term_image_url),
                 normalizeSheetText(detailRow.term_image_url) ? 'Existing term image saved.' : 'No term image selected.'
@@ -3764,7 +4008,7 @@ MODIFICATION RULES FOR THIS APP
         clearStudioQuestionInputs({ keepPendingInsert: !!validInsertAfterQuestionId, keepPendingDraft: getStudioCurrentQuizType() === 'flashcard' });
         state.auth.pendingInsertAfterQuestionId = validInsertAfterQuestionId;
         state.auth.studioPendingNewQuestionRow = getStudioCurrentQuizType() === 'flashcard'
-            ? { id: STUDIO_PENDING_NEW_FLASHCARD_ID, question_type: 'flashcard', prompt_plain: '', term_plain: '', definition_plain: '' }
+            ? { id: STUDIO_PENDING_NEW_FLASHCARD_ID, question_type: 'flashcard', prompt_plain: '', term_plain: '', term_html: '', definition_plain: '', definition_html: '' }
             : null;
         renderStudioQuestionList();
         updateCreateQuizModeUI();
@@ -3785,11 +4029,13 @@ MODIFICATION RULES FOR THIS APP
         if (field === 'term') {
             questionRow.term_plain = value;
             questionRow.prompt_plain = value;
+            questionRow.term_html = buildStoredHtmlFromPlain(value);
             if (questionId === state.auth.editingQuestionId && elements.createFlashcardTerm) {
                 elements.createFlashcardTerm.value = value;
             }
         } else if (field === 'definition') {
             questionRow.definition_plain = value;
+            questionRow.definition_html = buildStoredHtmlFromPlain(value);
             if (questionId === state.auth.editingQuestionId && elements.createFlashcardDefinition) {
                 elements.createFlashcardDefinition.value = value;
             }
@@ -4145,6 +4391,10 @@ MODIFICATION RULES FOR THIS APP
             control.disabled = !creatorEnabled;
         });
 
+        elements.flashcardRichControls.forEach(control => {
+            control.disabled = !creatorEnabled;
+        });
+
         elements.studioMathChemControls.forEach(control => {
             control.disabled = !creatorEnabled;
         });
@@ -4153,6 +4403,12 @@ MODIFICATION RULES FOR THIS APP
             elements.createLearningResources.setAttribute('contenteditable', creatorEnabled ? 'true' : 'false');
             elements.createLearningResources.classList.toggle('disabled', !creatorEnabled);
         }
+
+        [elements.createFlashcardTerm, elements.createFlashcardDefinition].forEach(editorEl => {
+            if (!editorEl) return;
+            editorEl.setAttribute('contenteditable', creatorEnabled ? 'true' : 'false');
+            editorEl.classList.toggle('disabled', !creatorEnabled);
+        });
 
         if (elements.createOptionFieldsContainer) {
             elements.createOptionFieldsContainer.querySelectorAll('input, textarea').forEach(el => {
@@ -5826,6 +6082,8 @@ MODIFICATION RULES FOR THIS APP
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
+        const termHtml = getFlashcardTermEditorHtml() || buildStoredHtmlFromPlain(term);
+        const definitionHtml = getFlashcardDefinitionEditorHtml() || buildStoredHtmlFromPlain(definition);
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
@@ -5849,11 +6107,11 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'flashcard', prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'flashcard', prompt_html: termHtml, prompt_plain: term, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(term), prompt_plain: term, image_url: '', learning_resources_html: learningResourcesHtml }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: termHtml, prompt_plain: term, image_url: '', learning_resources_html: learningResourcesHtml }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
@@ -5869,7 +6127,7 @@ MODIFICATION RULES FOR THIS APP
                 term_image_url: state.auth.studioFlashcardTermImageDataUrl || '',
                 definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || ''
             });
-            const detailPayload = { question_id: questionId, term_html: buildStoredHtmlFromPlain(term), definition_html: buildStoredHtmlFromPlain(definition), term_plain: term, definition_plain: definition, term_image_url: savedFlashcardMedia.term_image_url || '', definition_image_url: savedFlashcardMedia.definition_image_url || '' };
+            const detailPayload = { question_id: questionId, term_html: termHtml, definition_html: definitionHtml, term_plain: term, definition_plain: definition, term_image_url: savedFlashcardMedia.term_image_url || '', definition_image_url: savedFlashcardMedia.definition_image_url || '' };
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
             await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, ...savedFlashcardMedia });
@@ -8119,7 +8377,9 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     sourceQuestionId: row.id,
                     type: 'flashcard',
                     termText: getStoredTextForDisplay(detail.term_plain, detail.term_html),
+                    termHtml: normalizeSheetText(detail.term_html),
                     definitionText: getStoredTextForDisplay(detail.definition_plain, detail.definition_html),
+                    definitionHtml: normalizeSheetText(detail.definition_html),
                     termImage: normalizeSheetText(detail.term_image_url),
                     definitionImage: normalizeSheetText(detail.definition_image_url),
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
@@ -9332,6 +9592,7 @@ function getFlashcardSideData(q, side) {
         return {
             sideName: 'Definition',
             text: normalizeSheetText(q.definitionText),
+            html: normalizeSheetText(q.definitionHtml),
             imageUrl: normalizeSheetText(q.definitionImage)
         };
     }
@@ -9339,6 +9600,7 @@ function getFlashcardSideData(q, side) {
     return {
         sideName: 'Term',
         text: normalizeSheetText(q.termText),
+        html: normalizeSheetText(q.termHtml),
         imageUrl: normalizeSheetText(q.termImage)
     };
 }
@@ -9363,7 +9625,9 @@ function buildFlashcardFace(sideData, faceClass) {
     const content = document.createElement('div');
     content.className = 'flashcard-side-content';
 
-    const hasText = !!sideData.text;
+    const safeHtml = sanitizeLearningResourcesHtml(sideData.html || '');
+    const hasRichText = !!htmlToDisplayText(safeHtml);
+    const hasText = hasRichText || !!sideData.text;
     const hasImage = !!sideData.imageUrl;
 
     if (hasText && hasImage) {
@@ -9379,7 +9643,11 @@ function buildFlashcardFace(sideData, faceClass) {
     if (hasText) {
         const text = document.createElement('div');
         text.className = 'flashcard-side-text';
-        text.innerText = sideData.text;
+        if (hasRichText) {
+            text.innerHTML = safeHtml;
+        } else {
+            text.innerText = sideData.text;
+        }
         content.appendChild(text);
     }
 
@@ -11463,46 +11731,100 @@ if (elements.createLearningResourcesImageClearBtn) {
     });
 }
 
-if (elements.createLearningResources) {
-    ['keyup', 'mouseup', 'focus', 'input'].forEach(eventName => {
-        elements.createLearningResources.addEventListener(eventName, saveLearningResourcesSelection);
-    });
-    elements.createLearningResources.addEventListener('paste', event => {
+
+function insertPlainTextIntoRichEditor(editorEl, stateBag, text) {
+    if (!isRichEditorEditable(editorEl)) return;
+    editorEl.focus();
+    restoreRichEditorSelection(editorEl, stateBag);
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!(editorEl.contains(range.commonAncestorContainer) || editorEl === range.commonAncestorContainer)) return;
+    range.deleteContents();
+    const node = document.createTextNode(text || '');
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    saveRichEditorSelection(editorEl, stateBag);
+    dispatchRichEditorInput(editorEl);
+}
+
+function bindPlainPasteForRichEditor(editorEl, stateBag) {
+    if (!editorEl) return;
+    editorEl.addEventListener('paste', event => {
         event.preventDefault();
         const text = event.clipboardData?.getData('text/plain') || '';
-        document.execCommand('insertText', false, text);
+        insertPlainTextIntoRichEditor(editorEl, stateBag, text);
     });
 }
+
+if (elements.createLearningResources) {
+    ['keyup', 'mouseup', 'focus', 'input'].forEach(eventName => {
+        elements.createLearningResources.addEventListener(eventName, () => saveLearningResourcesSelection());
+    });
+    bindPlainPasteForRichEditor(elements.createLearningResources, learningResourcesRichState);
+}
+
+[elements.createFlashcardTerm, elements.createFlashcardDefinition].forEach(editorEl => {
+    if (!editorEl) return;
+    ['keyup', 'mouseup', 'focus', 'input'].forEach(eventName => {
+        editorEl.addEventListener(eventName, () => saveFlashcardRichSelection(editorEl));
+    });
+    bindPlainPasteForRichEditor(editorEl, flashcardRichState);
+});
 
 function closeLearningResourcesRichMenus(exceptMenu = '') {
     elements.createLearningResourcesRichMenus.forEach(menu => {
         const menuName = normalizeSheetText(menu.dataset.richMenu);
-        if (menuName !== exceptMenu) {
-            menu.classList.add('hidden');
-        }
+        if (menuName !== exceptMenu) menu.classList.add('hidden');
     });
 }
 
-function toggleLearningResourcesRichMenu(menuName) {
+function closeFlashcardRichMenus(exceptMenu = '') {
+    elements.flashcardRichMenus.forEach(menu => {
+        const menuName = normalizeSheetText(menu.dataset.flashcardRichMenu);
+        if (menuName !== exceptMenu) menu.classList.add('hidden');
+    });
+}
+
+function toggleRichMenu(menuName, menus, closeFn, datasetName) {
     const normalizedName = normalizeSheetText(menuName);
-    const menu = elements.createLearningResourcesRichMenus.find(item => normalizeSheetText(item.dataset.richMenu) === normalizedName);
+    const menu = menus.find(item => normalizeSheetText(item.dataset[datasetName]) === normalizedName);
     if (!menu) return;
     const willOpen = menu.classList.contains('hidden');
-    closeLearningResourcesRichMenus(normalizedName);
+    closeFn(normalizedName);
     menu.classList.toggle('hidden', !willOpen);
 }
 
-function updateLearningResourcesToolbarChoice(styleName, value) {
+function toggleLearningResourcesRichMenu(menuName) {
+    toggleRichMenu(menuName, elements.createLearningResourcesRichMenus, closeLearningResourcesRichMenus, 'richMenu');
+}
+
+function toggleFlashcardRichMenu(menuName) {
+    toggleRichMenu(menuName, elements.flashcardRichMenus, closeFlashcardRichMenus, 'flashcardRichMenu');
+}
+
+function updateRichToolbarChoice(styleName, value, fontFamilyBtn, fontSizeBtn) {
     const normalizedStyle = normalizeSheetText(styleName);
     const normalizedValue = normalizeSheetText(value);
-    if (normalizedStyle === 'fontFamily' && elements.createLearningResourcesFontFamilyBtn) {
-        elements.createLearningResourcesFontFamilyBtn.title = normalizedValue ? `Font family: ${normalizedValue}` : 'Font family';
+    if (normalizedStyle === 'fontFamily' && fontFamilyBtn) {
+        fontFamilyBtn.title = normalizedValue ? `Font family: ${normalizedValue}` : 'Font family';
     }
-    if (normalizedStyle === 'fontSize' && elements.createLearningResourcesFontSizeBtn) {
-        const numericValue = normalizedValue.replace(/px$/i, '') || '15';
-        elements.createLearningResourcesFontSizeBtn.textContent = numericValue;
-        elements.createLearningResourcesFontSizeBtn.title = `Font size: ${numericValue}`;
+    if (normalizedStyle === 'fontSize' && fontSizeBtn) {
+        const numericValue = normalizedValue.replace(/px$/i, '');
+        fontSizeBtn.textContent = numericValue || String(parseInt(RICH_TEXT_DEFAULT_FONT_SIZE, 10) || 18);
+        fontSizeBtn.title = `Font size: ${numericValue || String(parseInt(RICH_TEXT_DEFAULT_FONT_SIZE, 10) || 18)}`;
     }
+}
+
+function updateLearningResourcesToolbarChoice(styleName, value) {
+    updateRichToolbarChoice(styleName, value, elements.createLearningResourcesFontFamilyBtn, elements.createLearningResourcesFontSizeBtn);
+}
+
+function updateFlashcardToolbarChoice(styleName, value) {
+    updateRichToolbarChoice(styleName, value, elements.createFlashcardFontFamilyBtn, elements.createFlashcardFontSizeBtn);
 }
 
 function applyLearningResourcesStyleChoice(styleName, value) {
@@ -11517,6 +11839,37 @@ function applyLearningResourcesStyleChoice(styleName, value) {
     }
 }
 
+function applyFlashcardStyleChoice(styleName, value) {
+    const normalizedStyle = normalizeSheetText(styleName);
+    const normalizedValue = normalizeSheetText(value);
+    if (normalizedStyle === 'fontFamily') {
+        applyFlashcardRichInlineStyle({ fontFamily: normalizedValue });
+        updateFlashcardToolbarChoice(normalizedStyle, normalizedValue);
+    } else if (normalizedStyle === 'fontSize') {
+        applyFlashcardRichInlineStyle({ fontSize: normalizedValue });
+        updateFlashcardToolbarChoice(normalizedStyle, normalizedValue);
+    }
+}
+
+function prepareRichColorPicker(inputEl, saveSelectionFn, closeMenusFn) {
+    if (!inputEl) return;
+    ['pointerdown', 'mousedown', 'focus'].forEach(eventName => {
+        inputEl.addEventListener(eventName, event => {
+            event.stopPropagation();
+            saveSelectionFn();
+            closeMenusFn();
+        });
+    });
+}
+
+function handleRichColorInput(inputEl, applyColorFn, fallbackColor) {
+    if (!inputEl) return;
+    inputEl.addEventListener('change', () => {
+        const selectedColor = inputEl.value || fallbackColor;
+        applyColorFn(selectedColor);
+    });
+}
+
 if (elements.createLearningResourcesRichControls.length) {
     elements.createLearningResourcesRichControls.forEach(control => {
         if (!control.classList.contains('studio-rich-hidden-color')) {
@@ -11525,11 +11878,27 @@ if (elements.createLearningResourcesRichControls.length) {
                 saveLearningResourcesSelection();
             });
         }
-
         if (control.matches('[data-rich-command]')) {
             control.addEventListener('click', () => {
                 closeLearningResourcesRichMenus();
                 applyLearningResourcesFormat(control.dataset.richCommand);
+            });
+        }
+    });
+}
+
+if (elements.flashcardRichControls.length) {
+    elements.flashcardRichControls.forEach(control => {
+        if (!control.classList.contains('studio-rich-hidden-color')) {
+            control.addEventListener('mousedown', event => {
+                event.preventDefault();
+                saveFlashcardRichSelection();
+            });
+        }
+        if (control.matches('[data-flashcard-rich-command]')) {
+            control.addEventListener('click', () => {
+                closeFlashcardRichMenus();
+                applyFlashcardRichFormat(control.dataset.flashcardRichCommand);
             });
         }
     });
@@ -11543,6 +11912,14 @@ elements.createLearningResourcesRichMenuTriggers.forEach(trigger => {
     });
 });
 
+elements.flashcardRichMenuTriggers.forEach(trigger => {
+    trigger.addEventListener('click', event => {
+        event.stopPropagation();
+        saveFlashcardRichSelection();
+        toggleFlashcardRichMenu(trigger.dataset.flashcardRichMenuTrigger);
+    });
+});
+
 elements.createLearningResourcesRichStyleButtons.forEach(button => {
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', event => {
@@ -11552,61 +11929,63 @@ elements.createLearningResourcesRichStyleButtons.forEach(button => {
     });
 });
 
+elements.flashcardRichStyleButtons.forEach(button => {
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        applyFlashcardStyleChoice(button.dataset.flashcardRichStyle, button.dataset.flashcardRichValue);
+        closeFlashcardRichMenus();
+    });
+});
+
+const richAlignmentIconMap = {
+    justifyLeft: '☰',
+    justifyCenter: '☷',
+    justifyRight: '☱'
+};
+
 elements.createLearningResourcesRichCommandChoices.forEach(button => {
-    const alignmentIconMap = {
-        justifyLeft: '☰',
-        justifyCenter: '☷',
-        justifyRight: '☱'
-    };
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', event => {
         event.stopPropagation();
         const command = normalizeSheetText(button.dataset.richCommandChoice) || 'justifyLeft';
         applyLearningResourcesFormat(command);
         if (elements.createLearningResourcesJustifyBtn) {
-            elements.createLearningResourcesJustifyBtn.textContent = alignmentIconMap[command] || '☰';
+            elements.createLearningResourcesJustifyBtn.textContent = richAlignmentIconMap[command] || '☰';
             elements.createLearningResourcesJustifyBtn.title = `Text alignment: ${button.textContent.trim()}`;
         }
         closeLearningResourcesRichMenus();
     });
 });
 
-function prepareLearningResourcesColorPicker(inputEl) {
-    if (!inputEl) return;
-    ['pointerdown', 'mousedown', 'focus'].forEach(eventName => {
-        inputEl.addEventListener(eventName, event => {
-            event.stopPropagation();
-            saveLearningResourcesSelection();
-            closeLearningResourcesRichMenus();
-        });
+elements.flashcardRichCommandChoices.forEach(button => {
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        const command = normalizeSheetText(button.dataset.flashcardRichCommandChoice) || 'justifyLeft';
+        applyFlashcardRichFormat(command);
+        if (elements.createFlashcardJustifyBtn) {
+            elements.createFlashcardJustifyBtn.textContent = richAlignmentIconMap[command] || '☰';
+            elements.createFlashcardJustifyBtn.title = `Text alignment: ${button.textContent.trim()}`;
+        }
+        closeFlashcardRichMenus();
     });
-}
+});
 
-function handleLearningResourcesColorInput(inputEl, styleName, fallbackColor) {
-    if (!inputEl) return;
-    const applySelectedColor = () => {
-        const selectedColor = inputEl.value || fallbackColor;
-        const styleDraft = styleName === 'backgroundColor'
-            ? { backgroundColor: selectedColor }
-            : { color: selectedColor };
-        applyLearningResourcesInlineStyle(styleDraft);
-    };
-    inputEl.addEventListener('input', applySelectedColor);
-    inputEl.addEventListener('change', applySelectedColor);
-}
-
-prepareLearningResourcesColorPicker(elements.createLearningResourcesColor);
-handleLearningResourcesColorInput(elements.createLearningResourcesColor, 'color', '#e0e0ff');
+prepareRichColorPicker(elements.createLearningResourcesColor, saveLearningResourcesSelection, closeLearningResourcesRichMenus);
+handleRichColorInput(elements.createLearningResourcesColor, color => applyLearningResourcesInlineStyle({ color }), '#e0e0ff');
+prepareRichColorPicker(elements.createFlashcardColor, saveFlashcardRichSelection, closeFlashcardRichMenus);
+handleRichColorInput(elements.createFlashcardColor, color => applyFlashcardRichInlineStyle({ color }), '#e0e0ff');
 
 document.addEventListener('click', event => {
-    if (!event.target.closest('#learningResourcesRichToolbar')) {
-        closeLearningResourcesRichMenus();
-    }
+    if (!event.target.closest('#learningResourcesRichToolbar')) closeLearningResourcesRichMenus();
+    if (!event.target.closest('#flashcardRichToolbar')) closeFlashcardRichMenus();
 });
 
 document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
         closeLearningResourcesRichMenus();
+        closeFlashcardRichMenus();
     }
 });
 
@@ -11966,6 +12345,7 @@ if (elements.createFlashcardTerm) {
         if (!state.auth.editingQuestionId && pendingRow) {
             pendingRow.term_plain = elements.createFlashcardTerm.value;
             pendingRow.prompt_plain = elements.createFlashcardTerm.value;
+            pendingRow.term_html = getFlashcardTermEditorHtml();
             const pendingField = elements.studioQuestionList?.querySelector('[data-studio-pending-flashcard-term]');
             if (pendingField && pendingField !== document.activeElement) {
                 pendingField.value = elements.createFlashcardTerm.value;
@@ -11977,6 +12357,7 @@ if (elements.createFlashcardTerm) {
         if (!row) return;
         row.term_plain = elements.createFlashcardTerm.value;
         row.prompt_plain = elements.createFlashcardTerm.value;
+        row.term_html = getFlashcardTermEditorHtml();
         const listField = elements.studioQuestionList?.querySelector(`[data-studio-flashcard-term-id="${state.auth.editingQuestionId}"]`);
         if (listField && listField !== document.activeElement) {
             listField.value = elements.createFlashcardTerm.value;
@@ -11990,6 +12371,7 @@ if (elements.createFlashcardDefinition) {
         const pendingRow = getStudioPendingFlashcardRow();
         if (!state.auth.editingQuestionId && pendingRow) {
             pendingRow.definition_plain = elements.createFlashcardDefinition.value;
+            pendingRow.definition_html = getFlashcardDefinitionEditorHtml();
             const pendingField = elements.studioQuestionList?.querySelector('[data-studio-pending-flashcard-definition]');
             if (pendingField && pendingField !== document.activeElement) {
                 pendingField.value = elements.createFlashcardDefinition.value;
@@ -12000,6 +12382,7 @@ if (elements.createFlashcardDefinition) {
         const row = state.auth.studioQuizQuestions.find(question => question.id === state.auth.editingQuestionId);
         if (!row) return;
         row.definition_plain = elements.createFlashcardDefinition.value;
+        row.definition_html = getFlashcardDefinitionEditorHtml();
         const listField = elements.studioQuestionList?.querySelector(`[data-studio-flashcard-definition-id="${state.auth.editingQuestionId}"]`);
         if (listField && listField !== document.activeElement) {
             listField.value = elements.createFlashcardDefinition.value;
