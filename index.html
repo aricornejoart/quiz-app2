@@ -604,6 +604,7 @@ MODIFICATION RULES FOR THIS APP
                       <option value="flashcard">Flashcard</option>
                       <option value="hierarchy">Hierarchy</option>
                       <option value="classify">Classify</option>
+                      <option value="diagrams">Diagrams</option>
                     </select>
                   </label>
 
@@ -648,6 +649,26 @@ MODIFICATION RULES FOR THIS APP
                     </div>
                   </div>
 
+
+                  <div id="diagramEditorFields" class="studio-editor-type-fields hidden">
+                    <div class="creator-note studio-options-note">Upload a diagram image above, then place draggable labels on it. Label positions are saved as percentages so they stay aligned across screen sizes.</div>
+                    <div class="studio-diagram-editor-layout">
+                      <div id="studioDiagramPreview" class="studio-diagram-preview" aria-label="Diagram label placement preview">
+                        <div id="studioDiagramPreviewWrap" class="studio-diagram-preview-wrap">
+                          <img id="studioDiagramPreviewImage" class="studio-diagram-preview-image hidden" alt="Diagram preview">
+                          <div id="studioDiagramLabelLayer" class="studio-diagram-label-layer"></div>
+                        </div>
+                        <div id="studioDiagramEmptyState" class="studio-diagram-empty-state">Upload a diagram image to place labels.</div>
+                      </div>
+                      <div class="studio-diagram-label-panel">
+                        <div class="studio-options-toolbar-actions">
+                          <button id="addDiagramLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Label</button>
+                          <button id="removeDiagramLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Label</button>
+                        </div>
+                        <div id="diagramLabelList" class="studio-diagram-label-list"></div>
+                      </div>
+                    </div>
+                  </div>
                   <div class="studio-options-toolbar studio-editor-quick-toolbar">
                     <div class="studio-options-toolbar-actions">
                       <button id="studioPrevQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Previous Question</button>
@@ -1033,7 +1054,10 @@ MODIFICATION RULES FOR THIS APP
     </div>
 
     <div class="image-container">
-      <img id="questionImage" src="" alt="" style="display:none;">
+      <div id="diagramStudyImageWrap" class="diagram-study-image-wrap">
+        <img id="questionImage" src="" alt="" style="display:none;">
+        <div id="diagramStudyLabelLayer" class="diagram-study-label-layer hidden" aria-hidden="true"></div>
+      </div>
     </div>
   </div>
 

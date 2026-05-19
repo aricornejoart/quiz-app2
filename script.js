@@ -129,7 +129,9 @@ MODIFICATION RULES FOR THIS APP
             backupImportFileName: '',
             mediaSignedUrlCache: new Map(),
             mathChemToolsExpanded: false,
-            expandedOptionImageRows: new Set()
+            expandedOptionImageRows: new Set(),
+            studioDiagramDraggingIndex: null,
+            studioDiagramLabels: []
         }
     };
 
@@ -216,6 +218,15 @@ MODIFICATION RULES FOR THIS APP
         multipleChoiceEditorFields: document.getElementById('multipleChoiceEditorFields'),
         hierarchyEditorFields: document.getElementById('hierarchyEditorFields'),
         classifyEditorFields: document.getElementById('classifyEditorFields'),
+        diagramEditorFields: document.getElementById('diagramEditorFields'),
+        studioDiagramPreview: document.getElementById('studioDiagramPreview'),
+        studioDiagramPreviewImage: document.getElementById('studioDiagramPreviewImage'),
+        studioDiagramPreviewWrap: document.getElementById('studioDiagramPreviewWrap'),
+        studioDiagramLabelLayer: document.getElementById('studioDiagramLabelLayer'),
+        studioDiagramEmptyState: document.getElementById('studioDiagramEmptyState'),
+        diagramLabelList: document.getElementById('diagramLabelList'),
+        addDiagramLabelBtn: document.getElementById('addDiagramLabelBtn'),
+        removeDiagramLabelBtn: document.getElementById('removeDiagramLabelBtn'),
         flashcardEditorFields: document.getElementById('flashcardEditorFields'),
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
@@ -300,6 +311,8 @@ MODIFICATION RULES FOR THIS APP
 
         questionTextEl: document.getElementById('questionText'),
         questionImage: document.getElementById('questionImage'),
+        diagramStudyImageWrap: document.getElementById('diagramStudyImageWrap'),
+        diagramStudyLabelLayer: document.getElementById('diagramStudyLabelLayer'),
         imageContainer: document.querySelector('.image-container'),
         optionsContainer: document.querySelector('.options'),
         questionContainer: document.querySelector('.question-container'),
@@ -1083,7 +1096,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function downloadStudyBunnyTemplate(type, variant = 'blank') {
-        const safeType = ['multiple_choice', 'flashcard', 'hierarchy', 'classify'].includes(type) ? type : 'multiple_choice';
+        const safeType = ['multiple_choice', 'flashcard', 'hierarchy', 'classify', 'diagrams'].includes(type) ? type : 'multiple_choice';
         const safeVariant = variant === 'example' ? 'example' : 'blank';
         const rows = buildStudyBunnyTemplateRows(safeType, safeVariant);
         const csv = rowsToCsv(rows);
@@ -1495,6 +1508,161 @@ MODIFICATION RULES FOR THIS APP
         return savedDrafts;
     }
 
+    function getDiagramLabelName(index = 0) {
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        if (index < alphabet.length) return alphabet[index];
+        return `${alphabet[index % alphabet.length]}${Math.floor(index / alphabet.length) + 1}`;
+    }
+
+    function normalizeDiagramLabels(labels = []) {
+        const source = Array.isArray(labels) ? labels : [];
+        return source.map((label, index) => ({
+            label: normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index)) || getDiagramLabelName(index),
+            x: Math.min(100, Math.max(0, Number(label?.x ?? label?.left ?? 50) || 50)),
+            y: Math.min(100, Math.max(0, Number(label?.y ?? label?.top ?? 50) || 50))
+        })).filter(label => label.label);
+    }
+
+    function getOptionsJsonOptions(optionsJson) {
+        if (Array.isArray(optionsJson)) return optionsJson;
+        if (optionsJson && typeof optionsJson === 'object' && Array.isArray(optionsJson.options)) return optionsJson.options;
+        return [];
+    }
+
+    function getDiagramLabelsFromDetailRow(detailRow) {
+        const optionsJson = detailRow?.options_json;
+        if (optionsJson && typeof optionsJson === 'object' && !Array.isArray(optionsJson)) {
+            return normalizeDiagramLabels(optionsJson.diagramLabels || optionsJson.labels || []);
+        }
+        return [];
+    }
+
+    function getStudioDiagramLabelsFromDOM() {
+        if (!elements.diagramLabelList) return [];
+        return normalizeDiagramLabels(Array.from(elements.diagramLabelList.querySelectorAll('[data-diagram-label-row]')).map((row, index) => ({
+            label: normalizeSheetText(row.querySelector('[data-diagram-label-text]')?.value) || getDiagramLabelName(index),
+            x: Number(row.querySelector('[data-diagram-label-x]')?.value || 50),
+            y: Number(row.querySelector('[data-diagram-label-y]')?.value || 50)
+        })));
+    }
+
+    function updateStudioDiagramPreviewImage() {
+        const hasImage = !!normalizeSheetText(state.auth.studioQuestionImageDataUrl);
+        if (elements.studioDiagramPreviewImage) {
+            setPreviewImageSource(elements.studioDiagramPreviewImage, state.auth.studioQuestionImageDataUrl || '');
+        }
+        if (elements.studioDiagramEmptyState) {
+            elements.studioDiagramEmptyState.classList.toggle('hidden', hasImage);
+        }
+        if (elements.studioDiagramPreview) {
+            elements.studioDiagramPreview.classList.toggle('has-image', hasImage);
+        }
+    }
+
+    function getDiagramLabelClampBounds(index = null) {
+        const wrap = elements.studioDiagramPreviewWrap || elements.studioDiagramPreview;
+        const rect = wrap?.getBoundingClientRect?.();
+        if (!rect?.width || !rect?.height) {
+            return { minX: 3, maxX: 97, minY: 3, maxY: 97 };
+        }
+
+        let markerRect = null;
+        if (index !== null && elements.studioDiagramLabelLayer) {
+            markerRect = elements.studioDiagramLabelLayer
+                .querySelector(`[data-diagram-label-index="${index}"]`)
+                ?.getBoundingClientRect?.() || null;
+        }
+
+        const markerWidth = markerRect?.width || 20;
+        const markerHeight = markerRect?.height || 20;
+        const minX = Math.min(50, Math.max(0, ((markerWidth / 2) / rect.width) * 100));
+        const minY = Math.min(50, Math.max(0, ((markerHeight / 2) / rect.height) * 100));
+        return {
+            minX,
+            maxX: 100 - minX,
+            minY,
+            maxY: 100 - minY
+        };
+    }
+
+    function clampDiagramLabelPosition(x, y, index = null) {
+        const bounds = getDiagramLabelClampBounds(index);
+        return {
+            x: Math.min(bounds.maxX, Math.max(bounds.minX, Number(x) || 0)),
+            y: Math.min(bounds.maxY, Math.max(bounds.minY, Number(y) || 0))
+        };
+    }
+
+    function syncStudioDiagramMarkersFromRows() {
+        const labels = getStudioDiagramLabelsFromDOM();
+        state.auth.studioDiagramLabels = labels;
+        if (!elements.studioDiagramLabelLayer) return;
+        elements.studioDiagramLabelLayer.innerHTML = labels.map((item, index) => `
+            <button type="button" class="studio-diagram-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Drag label ${escapeHtml(item.label)}">${escapeHtml(item.label)}</button>
+        `).join('');
+    }
+
+    function renderStudioDiagramLabels(labels = null) {
+        const drafts = labels === null ? normalizeDiagramLabels([{ label: 'A', x: 50, y: 50 }]) : normalizeDiagramLabels(labels || []);
+        state.auth.studioDiagramLabels = drafts;
+        if (elements.diagramLabelList) {
+            elements.diagramLabelList.innerHTML = drafts.map((item, index) => `
+                <div class="studio-diagram-label-row" data-diagram-label-row data-diagram-label-index="${index}">
+                  <input type="text" autocomplete="off" value="${escapeHtml(item.label)}" aria-label="Diagram label ${index + 1}" data-diagram-label-text>
+                  <label><span>X%</span><input type="number" min="0" max="100" step="0.1" value="${Number(item.x).toFixed(1)}" data-diagram-label-x></label>
+                  <label><span>Y%</span><input type="number" min="0" max="100" step="0.1" value="${Number(item.y).toFixed(1)}" data-diagram-label-y></label>
+                  <button type="button" class="auth-action-btn auth-secondary-btn studio-diagram-label-delete" data-diagram-label-delete aria-label="Delete label ${escapeHtml(item.label)}">Delete</button>
+                </div>
+            `).join('');
+        }
+        updateStudioDiagramPreviewImage();
+        syncStudioDiagramMarkersFromRows();
+    }
+
+    function addStudioDiagramLabel() {
+        const labels = getStudioDiagramLabelsFromDOM();
+        labels.push({ label: getDiagramLabelName(labels.length), x: 50, y: 50 });
+        renderStudioDiagramLabels(labels);
+        setStudioDirtyState(true);
+    }
+
+    function removeLastStudioDiagramLabel() {
+        const labels = getStudioDiagramLabelsFromDOM();
+        labels.pop();
+        renderStudioDiagramLabels(labels);
+        setStudioDirtyState(true);
+    }
+
+    function updateStudioDiagramLabelPosition(index, x, y) {
+        const row = elements.diagramLabelList?.querySelector(`[data-diagram-label-row][data-diagram-label-index="${index}"]`);
+        if (!row) return;
+        const xInput = row.querySelector('[data-diagram-label-x]');
+        const yInput = row.querySelector('[data-diagram-label-y]');
+        const safePosition = clampDiagramLabelPosition(x, y, index);
+        if (xInput) xInput.value = safePosition.x.toFixed(1);
+        if (yInput) yInput.value = safePosition.y.toFixed(1);
+        syncStudioDiagramMarkersFromRows();
+        setStudioDirtyState(true);
+    }
+
+    function renderDiagramStudyLabels(labels = []) {
+        const layer = elements.diagramStudyLabelLayer;
+        if (!layer) return;
+        const drafts = normalizeDiagramLabels(labels);
+        layer.innerHTML = drafts.map(item => `
+            <span class="diagram-study-label" style="left:${item.x}%; top:${item.y}%;">${escapeHtml(item.label)}</span>
+        `).join('');
+        layer.classList.toggle('hidden', !drafts.length);
+        layer.setAttribute('aria-hidden', drafts.length ? 'false' : 'true');
+    }
+
+    function clearDiagramStudyLabels() {
+        if (!elements.diagramStudyLabelLayer) return;
+        elements.diagramStudyLabelLayer.innerHTML = '';
+        elements.diagramStudyLabelLayer.classList.add('hidden');
+        elements.diagramStudyLabelLayer.setAttribute('aria-hidden', 'true');
+    }
+
     async function replaceMediaRefsForCopiedValue(value, options = {}) {
         const normalizedValue = normalizeSheetText(value);
         if (!isSupabaseMediaReference(normalizedValue)) return normalizedValue;
@@ -1596,7 +1764,7 @@ MODIFICATION RULES FOR THIS APP
             const detail = await loadClassifyDetailByQuestionId(questionId);
             collectSupabaseMediaReferences(detail?.items_json, refs);
             collectSupabaseMediaReferences(detail?.classifications_json, refs);
-        } else if (questionRow.question_type === 'multiple_choice') {
+        } else if (questionRow.question_type === 'multiple_choice' || questionRow.question_type === 'diagrams') {
             const detail = await loadMultipleChoiceDetailByQuestionId(questionId);
             collectSupabaseMediaReferences(detail?.options_json, refs);
         }
@@ -1695,6 +1863,8 @@ MODIFICATION RULES FOR THIS APP
         if (!dataUrl && elements.createQuestionImageFile) {
             elements.createQuestionImageFile.value = '';
         }
+
+        updateStudioDiagramPreviewImage();
     }
 
     function setStudioLearningResourcesImageState(dataUrl = '', label = 'No learning resources image selected.') {
@@ -1741,21 +1911,28 @@ MODIFICATION RULES FOR THIS APP
         return getStudioCurrentQuizType() === 'classify';
     }
 
+    function isStudioDiagramsMode() {
+        return getStudioCurrentQuizType() === 'diagrams';
+    }
+
     function updateStudioEditorTypeUI() {
         const quizType = getStudioCurrentQuizType();
         const isFlashcard = quizType === 'flashcard';
         const isHierarchy = quizType === 'hierarchy';
         const isClassify = quizType === 'classify';
+        const isDiagrams = quizType === 'diagrams';
         const isMultipleChoice = quizType === 'multiple_choice';
+        const usesMultipleChoiceOptions = isMultipleChoice || isDiagrams;
         if (elements.sharedQuestionEditorFields) elements.sharedQuestionEditorFields.classList.toggle('hidden', isFlashcard);
-        if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', !isMultipleChoice);
+        if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', !usesMultipleChoiceOptions);
         if (elements.hierarchyEditorFields) elements.hierarchyEditorFields.classList.toggle('hidden', !isHierarchy);
         if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
+        if (elements.diagramEditorFields) elements.diagramEditorFields.classList.toggle('hidden', !isDiagrams);
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
         [elements.addOptionFieldBtn, elements.removeOptionFieldBtn].forEach(button => {
-            if (button) button.classList.toggle('hidden', !isMultipleChoice);
+            if (button) button.classList.toggle('hidden', !usesMultipleChoiceOptions);
         });
-        updateMathChemToolsVisibility(isMultipleChoice);
+        updateMathChemToolsVisibility(usesMultipleChoiceOptions);
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
             elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
@@ -1884,7 +2061,7 @@ MODIFICATION RULES FOR THIS APP
             const key = quiz.quizType || 'mixed';
             counts[key] = (counts[key] || 0) + 1;
             return counts;
-        }, { multiple_choice: 0, flashcard: 0, hierarchy: 0, classify: 0, mixed: 0 });
+        }, { multiple_choice: 0, flashcard: 0, hierarchy: 0, classify: 0, diagrams: 0, mixed: 0 });
     }
 
 
@@ -2036,6 +2213,7 @@ MODIFICATION RULES FOR THIS APP
                 ['Flashcards', typeCounts.flashcard || 0],
                 ['Hierarchy', typeCounts.hierarchy || 0],
                 ['Classify', typeCounts.classify || 0],
+                ['Diagrams', typeCounts.diagrams || 0],
                 ['Mixed Type', typeCounts.mixed || 0]
             ];
 
@@ -2147,6 +2325,7 @@ MODIFICATION RULES FOR THIS APP
                     flashcard: 'Flashcard',
                     hierarchy: 'Hierarchy',
                     classify: 'Classify',
+                    diagrams: 'Diagrams',
                     mixed: 'Mixed types'
                 };
                 return {
@@ -2899,9 +3078,7 @@ MODIFICATION RULES FOR THIS APP
 
 
     function getMultipleChoiceDraftsFromDetailRow(detailRow) {
-        const rawOptions = Array.isArray(detailRow?.options_json)
-            ? detailRow.options_json
-            : [];
+        const rawOptions = getOptionsJsonOptions(detailRow?.options_json);
 
         const normalizedFromJson = rawOptions
             .map(item => ({
@@ -2961,11 +3138,11 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const prompt = normalizeSheetText(questionRow?.prompt_plain || '');
-        const prefix = questionType === 'hierarchy' ? `H${index + 1}` : (questionType === 'classify' ? `C${index + 1}` : `Q${index + 1}`);
+        const prefix = questionType === 'hierarchy' ? `H${index + 1}` : (questionType === 'classify' ? `C${index + 1}` : (questionType === 'diagrams' ? `D${index + 1}` : `Q${index + 1}`));
         if (prompt) {
             return `${prefix}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
         }
-        return questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : (questionType === 'classify' ? `Classify ${index + 1}` : `Question ${index + 1}`);
+        return questionType === 'hierarchy' ? `Hierarchy ${index + 1}` : (questionType === 'classify' ? `Classify ${index + 1}` : (questionType === 'diagrams' ? `Diagram ${index + 1}` : `Question ${index + 1}`));
     }
 
 
@@ -3265,6 +3442,12 @@ MODIFICATION RULES FOR THIS APP
             const categories = getStudioClassifyCategoriesDraftsFromDOM();
             draft.classifyCategories = categories;
             draft.classifyItems = getStudioClassifyItemsDraftsFromDOM(categories);
+        } else if (questionType === 'diagrams') {
+            draft.diagramLabels = getStudioDiagramLabelsFromDOM();
+            draft.options = getStudioOptionDraftsFromDOM();
+            draft.correctOption = normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1';
+            draft.correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
+            draft.expandedOptionImageRows = Array.from(state.auth.expandedOptionImageRows || []);
         } else {
             draft.options = getStudioOptionDraftsFromDOM();
             draft.correctOption = normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1';
@@ -3307,6 +3490,12 @@ MODIFICATION RULES FOR THIS APP
             renderStudioHierarchyFields(draft.hierarchyDrafts || null);
         } else if (draft.questionType === 'classify') {
             renderStudioClassifyFields(draft.classifyCategories || null, draft.classifyItems || null);
+        } else if (draft.questionType === 'diagrams') {
+            renderStudioDiagramLabels(draft.diagramLabels || null);
+            state.auth.expandedOptionImageRows = new Set(draft.expandedOptionImageRows || []);
+            renderStudioOptionFields(draft.options || null);
+            syncCorrectOptionSelect(draft.correctOption || '1');
+            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = draft.correctExplanation || '';
         } else {
             state.auth.expandedOptionImageRows = new Set(draft.expandedOptionImageRows || []);
             renderStudioOptionFields(draft.options || null);
@@ -3801,6 +3990,7 @@ MODIFICATION RULES FOR THIS APP
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
         renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
+        renderStudioDiagramLabels([]);
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         state.auth.editingQuestionId = null;
@@ -3925,6 +4115,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
             renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
+            renderStudioDiagramLabels([]);
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         } else if (state.auth.editingQuizType === 'hierarchy') {
             const detailRow = await loadHierarchyDetailByQuestionId(questionId);
@@ -3936,6 +4127,7 @@ MODIFICATION RULES FOR THIS APP
             renderStudioHierarchyFields(getHierarchyDraftsFromDetailRow(detailRow));
             renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
             renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
+            renderStudioDiagramLabels([]);
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
 
@@ -3958,12 +4150,40 @@ MODIFICATION RULES FOR THIS APP
             renderStudioClassifyFields(classifyDrafts.categories, classifyDrafts.items);
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
+            renderStudioDiagramLabels([]);
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
 
             setStudioQuestionImageState(
                 normalizeSheetText(questionRow.image_url),
                 normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
+            );
+            setStudioFlashcardTermImageState('', 'No term image selected.');
+            setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
+            if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
+            if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
+        } else if (state.auth.editingQuizType === 'diagrams') {
+            const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId);
+            if (!detailRow) {
+                throw new Error('Could not load that diagram question into the editor.');
+            }
+
+            if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
+            if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
+            const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
+            renderStudioOptionFields(optionDrafts);
+            renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
+            renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
+            renderStudioDiagramLabels(getDiagramLabelsFromDetailRow(detailRow));
+            const savedCorrectAnswer = normalizeSheetText(detailRow.correct_answer);
+            const correctIndex = Math.max(0, optionDrafts.findIndex(option => getOptionAnswerValue(option) === savedCorrectAnswer));
+            if (elements.createCorrectOptionSelect) {
+                elements.createCorrectOptionSelect.value = String(correctIndex + 1);
+            }
+
+            setStudioQuestionImageState(
+                normalizeSheetText(questionRow.image_url),
+                normalizeSheetText(questionRow.image_url) ? 'Existing diagram image saved.' : 'No diagram image selected.'
             );
             setStudioFlashcardTermImageState('', 'No term image selected.');
             setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
@@ -3980,6 +4200,7 @@ MODIFICATION RULES FOR THIS APP
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
             renderStudioOptionFields(optionDrafts);
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
+            renderStudioDiagramLabels([]);
             const savedCorrectAnswer = normalizeSheetText(detailRow.correct_answer);
             const correctIndex = Math.max(0, optionDrafts.findIndex(option => getOptionAnswerValue(option) === savedCorrectAnswer));
             if (elements.createCorrectOptionSelect) {
@@ -4006,7 +4227,7 @@ MODIFICATION RULES FOR THIS APP
             setStudioDirtyState(hasStudioQuestionDrafts());
         }
         if (!suppressStatus) {
-            const statusLabel = state.auth.editingQuizType === 'flashcard' ? 'Flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'Hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'Classify question' : 'Question'));
+            const statusLabel = state.auth.editingQuizType === 'flashcard' ? 'Flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'Hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'Classify question' : (state.auth.editingQuizType === 'diagrams' ? 'Diagram question' : 'Question')));
             setCreatorStatus(`${statusLabel} loaded into the editor.`, 'success');
         }
     }
@@ -4033,7 +4254,7 @@ MODIFICATION RULES FOR THIS APP
         updateCreateQuizModeUI();
         setStudioDirtyState(hasStudioQuestionDrafts());
         await setQuizStudioSection('editor');
-        const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : (getStudioCurrentQuizType() === 'classify' ? 'classify question' : 'question'));
+        const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : (getStudioCurrentQuizType() === 'classify' ? 'classify question' : (getStudioCurrentQuizType() === 'diagrams' ? 'diagram question' : 'question')));
         if (validInsertAfterQuestionId) {
             setCreatorStatus(`Ready to insert a new ${nextItemLabel} between existing items. Fill in the fields below and save.`, 'success');
         } else {
@@ -4380,6 +4601,8 @@ MODIFICATION RULES FOR THIS APP
             elements.removeClassifyCategoryBtn,
             elements.addClassifyItemBtn,
             elements.removeClassifyItemBtn,
+            elements.addDiagramLabelBtn,
+            elements.removeDiagramLabelBtn,
             elements.createFlashcardTerm,
             elements.createFlashcardDefinition,
             elements.createFlashcardTermImageFile,
@@ -4449,6 +4672,12 @@ MODIFICATION RULES FOR THIS APP
 
         if (elements.createClassifyItemsContainer) {
             elements.createClassifyItemsContainer.querySelectorAll('input, select, button').forEach(el => {
+                el.disabled = !creatorEnabled;
+            });
+        }
+
+        if (elements.diagramLabelList) {
+            elements.diagramLabelList.querySelectorAll('input, button').forEach(el => {
                 el.disabled = !creatorEnabled;
             });
         }
@@ -4563,6 +4792,15 @@ MODIFICATION RULES FOR THIS APP
                 && !items.some(item => normalizeSheetText(item.text) || normalizeSheetText(item.imageUrl));
         }
 
+        if (quizType === 'diagrams') {
+            return !normalizeSheetText(elements.createQuestionPrompt?.value)
+                && !normalizeSheetText(elements.createCorrectExplanation?.value)
+                && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && !hasLearningResources
+                && !getStudioDiagramLabelsFromDOM().some(label => normalizeSheetText(label.label))
+                && !getStudioOptionDraftsFromDOM().some(option => normalizeSheetText(option.text) || normalizeSheetText(option.explanation) || normalizeSheetText(option.imageUrl));
+        }
+
         return !normalizeSheetText(elements.createQuestionPrompt?.value)
             && !normalizeSheetText(elements.createCorrectExplanation?.value)
             && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
@@ -4601,6 +4839,21 @@ MODIFICATION RULES FOR THIS APP
                 && !items.some(item => !normalizeSheetText(item.text) && !normalizeSheetText(item.imageUrl))
                 && new Set(itemTexts.filter(Boolean)).size === itemTexts.filter(Boolean).length
                 && !items.some(item => !categories.some(category => category.id === item.categoryId));
+        }
+
+        if (quizType === 'diagrams') {
+            const optionDrafts = getStudioOptionDraftsFromDOM();
+            const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
+            const maxOptionIndex = Math.max(0, optionDrafts.length - 1);
+            const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
+            const labels = getStudioDiagramLabelsFromDOM();
+            return !!normalizeSheetText(elements.createQuestionPrompt?.value)
+                && !!normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && labels.length >= 1
+                && optionDrafts.length >= 2
+                && !optionAnswerValues.some(value => !value)
+                && new Set(optionAnswerValues).size === optionAnswerValues.length
+                && !!optionAnswerValues[correctIndex];
         }
 
         const optionDrafts = getStudioOptionDraftsFromDOM();
@@ -5026,8 +5279,12 @@ MODIFICATION RULES FOR THIS APP
             return groups;
         }, {});
 
+        const multipleChoiceBackupIds = [
+            ...(questionIdsByType.multiple_choice || []),
+            ...(questionIdsByType.diagrams || [])
+        ];
         const [multipleChoiceDetails, flashcardDetails, hierarchyDetails, classifyDetails, questionStateRows] = await Promise.all([
-            loadMultipleChoiceDetailsByQuestionIds(questionIdsByType.multiple_choice || []),
+            loadMultipleChoiceDetailsByQuestionIds(multipleChoiceBackupIds),
             loadFlashcardDetailsByQuestionIds(questionIdsByType.flashcard || []),
             loadHierarchyDetailsByQuestionIds(questionIdsByType.hierarchy || []),
             loadClassifyDetailsByQuestionIds(questionIdsByType.classify || []),
@@ -5036,6 +5293,7 @@ MODIFICATION RULES FOR THIS APP
 
         const detailMaps = {
             multiple_choice: new Map((multipleChoiceDetails || []).map(row => [row.question_id, row])),
+            diagrams: new Map((multipleChoiceDetails || []).map(row => [row.question_id, row])),
             flashcard: new Map((flashcardDetails || []).map(row => [row.question_id, row])),
             hierarchy: new Map((hierarchyDetails || []).map(row => [row.question_id, row])),
             classify: new Map((classifyDetails || []).map(row => [row.question_id, row]))
@@ -5432,20 +5690,23 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function insertBackupMultipleChoiceDetail(quizId, questionId, detail = {}) {
-        const sourceOptionJson = Array.isArray(detail.options_json) ? detail.options_json : [];
-        const restoredOptionJson = sourceOptionJson.length
+        const sourceOptionJson = detail.options_json || [];
+        const sourceOptions = getOptionsJsonOptions(sourceOptionJson);
+        const restoredOptionJson = sourceOptions.length || (sourceOptionJson && typeof sourceOptionJson === 'object')
             ? await restoreBackupMediaRefsInObject(sourceOptionJson, { quizId, questionId, usageContext: 'multiple_choice_option_image' })
             : [];
-        const optionJson = Array.isArray(restoredOptionJson)
-            ? restoredOptionJson.map((option, index) => ({
-                text: normalizeSheetText(option?.text),
-                explanation_html: normalizeSheetText(option?.explanation_html),
-                imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url),
-                imageLabel: normalizeSheetText(option?.imageLabel || option?.image_label) || getOptionImageLabel(option, index)
-            }))
-            : [];
+        const restoredOptions = getOptionsJsonOptions(restoredOptionJson);
+        const optionJson = restoredOptions.map((option, index) => ({
+            text: normalizeSheetText(option?.text),
+            explanation_html: normalizeSheetText(option?.explanation_html),
+            imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url),
+            imageLabel: normalizeSheetText(option?.imageLabel || option?.image_label) || getOptionImageLabel(option, index)
+        }));
+        const normalizedOptionsJson = restoredOptionJson && typeof restoredOptionJson === 'object' && !Array.isArray(restoredOptionJson)
+            ? { ...restoredOptionJson, options: optionJson, diagramLabels: normalizeDiagramLabels(restoredOptionJson.diagramLabels || restoredOptionJson.labels || []) }
+            : optionJson;
         let correctAnswer = normalizeSheetText(detail.correct_answer);
-        const sourceCorrectIndex = sourceOptionJson.findIndex(option => getOptionAnswerValue({
+        const sourceCorrectIndex = sourceOptions.findIndex(option => getOptionAnswerValue({
             text: normalizeSheetText(option?.text),
             imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url)
         }) === correctAnswer);
@@ -5466,7 +5727,7 @@ MODIFICATION RULES FOR THIS APP
             option_4_explanation_html: normalizeSheetText(detail.option_4_explanation_html)
         };
         if (Object.prototype.hasOwnProperty.call(detail, 'options_json')) {
-            payload.options_json = optionJson;
+            payload.options_json = normalizedOptionsJson;
         }
         const { error } = await state.auth.client.from('multiple_choice_questions').insert(payload);
         if (error) {
@@ -5528,7 +5789,7 @@ MODIFICATION RULES FOR THIS APP
 
     async function importBackupQuestionAsCopy(quizId, backupQuestion = {}, sortOrder = 0, stats = {}) {
         const questionType = normalizeSheetText(backupQuestion.question_type || 'multiple_choice') || 'multiple_choice';
-        const supportedTypes = new Set(['multiple_choice', 'flashcard', 'hierarchy', 'classify']);
+        const supportedTypes = new Set(['multiple_choice', 'flashcard', 'hierarchy', 'classify', 'diagrams']);
         if (!supportedTypes.has(questionType)) {
             throw new Error(`Unsupported backup question type: ${questionType}`);
         }
@@ -6008,6 +6269,9 @@ MODIFICATION RULES FOR THIS APP
         const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
+        const quizType = getStudioCurrentQuizType();
+        const isDiagramQuestion = quizType === 'diagrams';
+        const diagramLabels = isDiagramQuestion ? getStudioDiagramLabelsFromDOM() : [];
         const optionDrafts = getStudioOptionDraftsFromDOM();
         const options = optionDrafts.map(draft => draft.text);
         const explanations = optionDrafts.map(draft => draft.explanation);
@@ -6019,13 +6283,15 @@ MODIFICATION RULES FOR THIS APP
         const correctAnswer = optionAnswerValues[correctIndex];
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         if (!prompt) return void setCreatorStatus('Enter a question prompt.', 'error');
+        if (isDiagramQuestion && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)) return void setCreatorStatus('Upload a diagram image before saving.', 'error');
+        if (isDiagramQuestion && !diagramLabels.length) return void setCreatorStatus('Add at least one diagram label before saving.', 'error');
         if (optionDrafts.length < 2) return void setCreatorStatus('Add at least 2 answer options.', 'error');
         if (optionAnswerValues.some(value => !value)) return void setCreatorStatus('Each answer option needs text or an image before saving.', 'error');
         if (new Set(optionAnswerValues).size !== optionAnswerValues.length) return void setCreatorStatus('All answer options must be unique.', 'error');
         if (!correctAnswer) return void setCreatorStatus('Choose which option is correct.', 'error');
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
-        setCreatorStatus(!isEditingQuiz ? 'Creating quiz...' : (isEditingQuestion ? 'Saving question changes...' : 'Adding question to quiz...'));
+        setCreatorStatus(!isEditingQuiz ? (isDiagramQuestion ? 'Creating diagrams quiz...' : 'Creating quiz...') : (isEditingQuestion ? (isDiagramQuestion ? 'Saving diagram changes...' : 'Saving question changes...') : (isDiagramQuestion ? 'Adding diagram question to quiz...' : 'Adding question to quiz...')));
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
@@ -6041,11 +6307,11 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
-                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: 'multiple_choice', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
+                const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: isDiagramQuestion ? 'diagrams' : 'multiple_choice', prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
             } else {
-                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: learningResourcesHtml }).eq('id', questionId);
+                const { error } = await state.auth.client.from('questions').update({ prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, learning_resources_html: learningResourcesHtml, question_type: isDiagramQuestion ? 'diagrams' : 'multiple_choice' }).eq('id', questionId);
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
@@ -6070,25 +6336,26 @@ MODIFICATION RULES FOR THIS APP
                 imageUrl: draft.imageUrl || '',
                 imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
             }));
-            const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
+            const optionsJsonPayload = isDiagramQuestion ? { options: optionPayload, diagramLabels } : optionPayload;
+            const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionsJsonPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) {
                 const missingColumn = /options_json/i.test(detailError.message || '') || /options_json/i.test(detailError.details || '');
                 if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
                 throw detailError;
             }
-            await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, options_json: optionPayload });
+            await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, options_json: optionsJsonPayload });
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
-            state.auth.editingQuizType = 'multiple_choice';
+            state.auth.editingQuizType = isDiagramQuestion ? 'diagrams' : 'multiple_choice';
             clearStudioQuestionDraft(questionId);
             setStudioDirtyState(hasStudioQuestionDrafts());
             state.auth.studioPendingNewQuestionRow = null;
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(quizId, questionId, { force: true });
-            setCreatorStatus(!isEditingQuiz ? 'Quiz created and first question saved.' : (isEditingQuestion ? 'Question updated.' : 'New question added to the quiz.'), 'success');
+            setCreatorStatus(!isEditingQuiz ? (isDiagramQuestion ? 'Diagrams quiz created and first question saved.' : 'Quiz created and first question saved.') : (isEditingQuestion ? (isDiagramQuestion ? 'Diagram question updated.' : 'Question updated.') : (isDiagramQuestion ? 'New diagram question added to the quiz.' : 'New question added to the quiz.')), 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not save the quiz.', 'error');
@@ -6479,7 +6746,7 @@ MODIFICATION RULES FOR THIS APP
 
             updateCreateQuizModeUI();
             openQuizStudioPage('editor');
-            const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'classify question' : 'question'));
+            const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'classify question' : (state.auth.editingQuizType === 'diagrams' ? 'diagram question' : 'question')));
             setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${nextItemTypeLabel} below.`, 'success');
         } catch (error) {
             console.error(error);
@@ -6629,20 +6896,22 @@ MODIFICATION RULES FOR THIS APP
             option_4_explanation_html: detail.option_4_explanation_html || ''
         };
         if (Object.prototype.hasOwnProperty.call(detail, 'options_json')) {
-            const sourceOptionsJson = Array.isArray(detail.options_json) ? detail.options_json : [];
+            const sourceOptionsJson = detail.options_json || [];
+            const sourceOptions = getOptionsJsonOptions(sourceOptionsJson);
             const clonedOptionsJson = await cloneMediaRefsInObject(sourceOptionsJson, {
                 quizId: targetQuizId,
                 questionId: newQuestionId,
                 usageContext: 'multiple_choice_option_image'
             });
             detailPayload.options_json = clonedOptionsJson;
+            const clonedOptions = getOptionsJsonOptions(clonedOptionsJson);
             const sourceCorrectAnswer = normalizeSheetText(detail.correct_answer);
-            const sourceCorrectIndex = sourceOptionsJson.findIndex(option => getOptionAnswerValue({
+            const sourceCorrectIndex = sourceOptions.findIndex(option => getOptionAnswerValue({
                 text: normalizeSheetText(option?.text),
                 imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url)
             }) === sourceCorrectAnswer);
             if (sourceCorrectIndex >= 0) {
-                const clonedCorrectOption = clonedOptionsJson[sourceCorrectIndex] || {};
+                const clonedCorrectOption = clonedOptions[sourceCorrectIndex] || {};
                 detailPayload.correct_answer = getOptionAnswerValue({
                     text: normalizeSheetText(clonedCorrectOption?.text),
                     imageUrl: normalizeSheetText(clonedCorrectOption?.imageUrl || clonedCorrectOption?.image_url)
@@ -7554,7 +7823,7 @@ function updateShuffleAnswersAvailability() {
     const shuffleAnswersCheckbox = document.getElementById('shuffleAnswers');
     const shuffleAnswersSetting = document.getElementById('shuffleAnswersSetting');
     const supportsAnswerShuffle = state.questions.some(q =>
-        q.type === 'multiple choice' || q.type === 'hierarchy' || q.type === 'classify'
+        q.type === 'multiple choice' || q.type === 'diagrams' || q.type === 'hierarchy' || q.type === 'classify'
     );
 
     shuffleAnswersCheckbox.disabled = !supportsAnswerShuffle;
@@ -7682,7 +7951,7 @@ function getMultipleChoiceSplitQuestionColumn() {
 }
 
 function syncMultipleChoiceSplitLayoutMount() {
-    const shouldUseSplitMount = state.currentQuestionType === 'multiple choice' && isMultipleChoiceSplitLayoutViewport();
+    const shouldUseSplitMount = (state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams') && isMultipleChoiceSplitLayoutViewport();
     const quizArea = elements.quizArea;
     const questionContainer = elements.questionContainer;
     const questionText = elements.questionTextEl;
@@ -7719,7 +7988,7 @@ function syncMultipleChoiceSplitLayoutMount() {
 
 function updateViewportClasses() {
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
-    document.body.classList.toggle('active-question-multiple-choice', state.currentQuestionType === 'multiple choice');
+    document.body.classList.toggle('active-question-multiple-choice', state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams');
     document.body.classList.toggle('active-question-flashcard', state.currentQuestionType === 'flashcard');
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
     syncMultipleChoiceSplitLayoutMount();
@@ -8332,7 +8601,7 @@ async function loadQuizListFromSupabase() {
         return (quizzes || [])
             .filter(quiz => {
                 const types = quizTypeMap.get(quiz.id) || [];
-                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard' || type === 'hierarchy' || type === 'classify');
+                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard' || type === 'hierarchy' || type === 'classify' || type === 'diagrams');
             })
             .map(quiz => {
                 const types = quizTypeMap.get(quiz.id) || [];
@@ -8475,6 +8744,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             const detail = detailMap.get(row.id);
             if (!detail) return null;
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
+            const diagramLabels = quizType === 'diagrams' ? getDiagramLabelsFromDetailRow(detail) : [];
             const options = optionDrafts.map(draft => draft.text);
             const optionImages = optionDrafts.map(draft => normalizeSheetText(draft.imageUrl));
             const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
@@ -8488,12 +8758,13 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 id: `q_${state.questionIdCounter++}`,
                 sourceQuestionId: row.id,
                 question: getStoredTextForDisplay(row.prompt_plain, row.prompt_html),
-                type: 'multiple choice',
+                type: quizType === 'diagrams' ? 'diagrams' : 'multiple choice',
                 options,
                 optionImages,
                 correct: correctAnswer,
                 explanations,
                 image: normalizeSheetText(row.image_url),
+                diagramLabels,
                 learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                 learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                 learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
@@ -8998,6 +9269,7 @@ function clearQuestionUI() {
     removeHierarchyUI();
     removeClassifyUI();
     removeFlashcardUI();
+    clearDiagramStudyLabels();
     elements.questionImage.classList.remove('zoomed');
     if (elements.questionStarBtn) {
         elements.questionStarBtn.classList.add('hidden');
@@ -9347,8 +9619,13 @@ function showQuestion() {
     elements.imageContainer.style.display = '';
     elements.questionImage.style.display = q.image ? 'block' : 'none';
     elements.questionImage.src = q.image || '';
+    if (q.type === 'diagrams') {
+        renderDiagramStudyLabels(q.diagramLabels || []);
+    } else {
+        clearDiagramStudyLabels();
+    }
 
-    if (q.type === 'multiple choice') {
+    if (q.type === 'multiple choice' || q.type === 'diagrams') {
         showMC(q);
     } else if (q.type === 'hierarchy') {
         showHierarchy(q);
@@ -11724,6 +12001,71 @@ if (elements.studioQuestionList) {
     });
 }
 
+
+if (elements.addDiagramLabelBtn) {
+    elements.addDiagramLabelBtn.addEventListener('click', addStudioDiagramLabel);
+}
+
+if (elements.removeDiagramLabelBtn) {
+    elements.removeDiagramLabelBtn.addEventListener('click', removeLastStudioDiagramLabel);
+}
+
+if (elements.diagramLabelList) {
+    elements.diagramLabelList.addEventListener('input', e => {
+        const row = e.target.closest('[data-diagram-label-row]');
+        if (!row) return;
+        if (e.target.matches('[data-diagram-label-x], [data-diagram-label-y]')) {
+            const index = Number(row.dataset.diagramLabelIndex || 0);
+            const xInput = row.querySelector('[data-diagram-label-x]');
+            const yInput = row.querySelector('[data-diagram-label-y]');
+            const safePosition = clampDiagramLabelPosition(Number(xInput?.value || 0), Number(yInput?.value || 0), index);
+            if (xInput) xInput.value = safePosition.x.toFixed(1);
+            if (yInput) yInput.value = safePosition.y.toFixed(1);
+        }
+        syncStudioDiagramMarkersFromRows();
+        setStudioDirtyState(true);
+    });
+
+    elements.diagramLabelList.addEventListener('click', e => {
+        const deleteButton = e.target.closest('[data-diagram-label-delete]');
+        if (!deleteButton) return;
+        const row = deleteButton.closest('[data-diagram-label-row]');
+        row?.remove();
+        const labels = getStudioDiagramLabelsFromDOM();
+        renderStudioDiagramLabels(labels);
+        setStudioDirtyState(true);
+    });
+}
+
+if (elements.studioDiagramLabelLayer) {
+    elements.studioDiagramLabelLayer.addEventListener('pointerdown', e => {
+        const marker = e.target.closest('[data-diagram-label-index]');
+        if (!marker || !elements.studioDiagramPreview) return;
+        e.preventDefault();
+        state.auth.studioDiagramDraggingIndex = Number(marker.dataset.diagramLabelIndex || 0);
+        marker.setPointerCapture?.(e.pointerId);
+        marker.classList.add('is-dragging');
+    });
+
+    elements.studioDiagramLabelLayer.addEventListener('pointermove', e => {
+        if (state.auth.studioDiagramDraggingIndex === null) return;
+        const rect = (elements.studioDiagramPreviewWrap || elements.studioDiagramPreview)?.getBoundingClientRect();
+        if (!rect?.width || !rect?.height) return;
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        updateStudioDiagramLabelPosition(state.auth.studioDiagramDraggingIndex, x, y);
+    });
+
+    const stopDiagramDrag = e => {
+        if (state.auth.studioDiagramDraggingIndex === null) return;
+        const marker = e.target.closest?.('[data-diagram-label-index]');
+        marker?.classList.remove('is-dragging');
+        state.auth.studioDiagramDraggingIndex = null;
+    };
+    elements.studioDiagramLabelLayer.addEventListener('pointerup', stopDiagramDrag);
+    elements.studioDiagramLabelLayer.addEventListener('pointercancel', stopDiagramDrag);
+}
+
 if (elements.createQuestionImageFile) {
     elements.createQuestionImageFile.addEventListener('change', () => {
         handleStudioFileInput(elements.createQuestionImageFile, 'question').catch(err => {
@@ -12350,13 +12692,13 @@ document.addEventListener('focusin', event => {
 // Math/Chem toolbar mini-fields are helper controls, not quiz content fields.
 document.addEventListener('input', event => {
     if (event.target.closest('#studioMathChemTools')) return;
-    if (event.target.matches(studioDirtyInputSelector) || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row')) {
+    if (event.target.matches(studioDirtyInputSelector) || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row') || event.target.closest('.studio-diagram-label-row')) {
         handleStudioDirtyInput(event);
     }
 });
 
 document.addEventListener('change', event => {
-    if (event.target.matches('#createQuizFolderSelect, #createQuizTypeSelect, #createQuestionImageFile, #createLearningResourcesImageFile, #createFlashcardTermImageFile, #createFlashcardDefinitionImageFile') || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row')) {
+    if (event.target.matches('#createQuizFolderSelect, #createQuizTypeSelect, #createQuestionImageFile, #createLearningResourcesImageFile, #createFlashcardTermImageFile, #createFlashcardDefinitionImageFile') || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row') || event.target.closest('.studio-diagram-label-row') || event.target.closest('.studio-diagram-label-row')) {
         handleStudioDirtyInput(event);
     }
 });

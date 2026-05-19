@@ -5664,3 +5664,157 @@ body.fullscreen-mode .progress-mode-summary {
 .studio-flashcard-rich-text-field .studio-rich-toolbar + .studio-rich-editor {
   border-radius: 0 0 8px 8px;
 }
+
+/* ===== Phase 22AL Diagrams Quiz Type ===== */
+.studio-diagram-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 0.75fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.studio-diagram-preview {
+  position: relative;
+  min-height: 220px;
+  border: 1px dashed var(--color-border-soft);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.studio-diagram-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 10px;
+}
+
+.studio-diagram-preview.has-image {
+  align-items: center;
+}
+
+.studio-diagram-label-layer,
+.diagram-study-label-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.studio-diagram-label-marker,
+.diagram-study-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 14px;
+  min-height: 14px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: rgba(30, 27, 46, 0.92);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-border-strong);
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.32);
+  z-index: 3;
+}
+
+.studio-diagram-label-marker {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.studio-diagram-label-marker.is-dragging {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.studio-diagram-empty-state {
+  padding: 18px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.studio-diagram-label-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.studio-diagram-label-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studio-diagram-label-row {
+  display: grid;
+  grid-template-columns: minmax(54px, 0.7fr) minmax(64px, 0.7fr) minmax(64px, 0.7fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 8px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.studio-diagram-label-row input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-bg-control-hover);
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+}
+
+.studio-diagram-label-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.diagram-study-image-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.diagram-study-label-layer {
+  z-index: 2;
+}
+
+@media (max-width: 760px) {
+  .studio-diagram-editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-diagram-label-row {
+    grid-template-columns: minmax(54px, 0.8fr) minmax(58px, 0.7fr) minmax(58px, 0.7fr);
+  }
+
+  .studio-diagram-label-delete {
+    grid-column: 1 / -1;
+  }
+}
+
+.studio-diagram-preview-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.studio-diagram-preview:not(.has-image) .studio-diagram-preview-wrap {
+  display: none;
+}
