@@ -3117,6 +3117,22 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
+    function createEmptyMultipleChoiceDetailRow() {
+        return {
+            correct_answer: '',
+            correct_explanation_html: '',
+            option_1_text: '',
+            option_1_explanation_html: '',
+            option_2_text: '',
+            option_2_explanation_html: '',
+            option_3_text: '',
+            option_3_explanation_html: '',
+            option_4_text: '',
+            option_4_explanation_html: '',
+            options_json: []
+        };
+    }
+
     function getMultipleChoiceDraftsFromDetailRow(detailRow) {
         const rawOptions = getOptionsJsonOptions(detailRow?.options_json);
 
@@ -4203,10 +4219,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
             if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         } else if (state.auth.editingQuizType === 'diagrams') {
-            const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId);
-            if (!detailRow) {
-                throw new Error('Could not load that diagram question into the editor.');
-            }
+            const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId) || createEmptyMultipleChoiceDetailRow();
 
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
@@ -4230,10 +4243,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
             if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         } else {
-            const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId);
-            if (!detailRow) {
-                throw new Error('Could not load that question into the editor.');
-            }
+            const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId) || createEmptyMultipleChoiceDetailRow();
 
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
