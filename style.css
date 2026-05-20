@@ -3998,8 +3998,10 @@ body.fullscreen-mode.active-question-classify {
 .studio-math-chem-custom-grid,
 .studio-math-chem-panel,
 .studio-option-label-row,
+.studio-option-label-actions,
 .studio-option-image-panel,
-.studio-option-image-row {
+.studio-option-image-row,
+.studio-option-inline-add-row {
   max-width: 100%;
   min-width: 0;
 }
@@ -4657,6 +4659,60 @@ body.fullscreen-mode.active-question-classify {
   justify-content: space-between;
   gap: 8px;
   width: 100%;
+}
+
+.studio-option-label-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.studio-option-delete-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  border-radius: 999px;
+  background: rgba(255, 107, 107, 0.1);
+  color: #ffb3b3;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.studio-option-delete-btn:hover {
+  background: rgba(255, 107, 107, 0.2);
+  border-color: var(--color-danger);
+}
+
+.studio-option-delete-btn:active {
+  transform: scale(0.96);
+}
+
+.studio-option-inline-add-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: -2px;
+}
+
+.studio-option-inline-add-btn {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .studio-option-image-toggle {

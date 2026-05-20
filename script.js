@@ -275,7 +275,9 @@ MODIFICATION RULES FOR THIS APP
         mathChemSubscriptInput: document.getElementById('mathChemSubscriptInput'),
         insertMathChemSubscriptBtn: document.getElementById('insertMathChemSubscriptBtn'),
         addOptionFieldBtn: document.getElementById('addOptionFieldBtn'),
+        addOptionInlineBtn: document.getElementById('addOptionInlineBtn'),
         removeOptionFieldBtn: document.getElementById('removeOptionFieldBtn'),
+        studioEditorActionSaveBtn: document.getElementById('studioEditorActionSaveBtn'),
         createHierarchyFieldsContainer: document.getElementById('createHierarchyFieldsContainer'),
         addHierarchyItemBtn: document.getElementById('addHierarchyItemBtn'),
         removeHierarchyItemBtn: document.getElementById('removeHierarchyItemBtn'),
@@ -1929,7 +1931,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
         if (elements.diagramEditorFields) elements.diagramEditorFields.classList.toggle('hidden', !isDiagrams);
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
-        [elements.addOptionFieldBtn, elements.removeOptionFieldBtn].forEach(button => {
+        [elements.addOptionFieldBtn, elements.addOptionInlineBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !usesMultipleChoiceOptions);
         });
         updateMathChemToolsVisibility(usesMultipleChoiceOptions);
@@ -2487,14 +2489,15 @@ MODIFICATION RULES FOR THIS APP
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const creatorEnabled = !!state.auth.configured && !!state.auth.user?.id;
 
-        if (elements.createQuizBtn) {
-            const canSaveChanges = creatorEnabled && !!quizName;
-            elements.createQuizBtn.textContent = 'Save Changes';
-            elements.createQuizBtn.disabled = !canSaveChanges;
-            elements.createQuizBtn.title = canSaveChanges
+        const canSaveChanges = creatorEnabled && !!quizName;
+        [elements.createQuizBtn, elements.studioEditorActionSaveBtn].forEach(button => {
+            if (!button) return;
+            button.textContent = 'Save Changes';
+            button.disabled = !canSaveChanges;
+            button.title = canSaveChanges
                 ? 'Save the current quiz changes.'
                 : 'Enter a quiz name before saving.';
-        }
+        });
 
         if (elements.createQuizCancelEditBtn) {
             elements.createQuizCancelEditBtn.textContent = 'Create Quiz';
@@ -2610,7 +2613,10 @@ MODIFICATION RULES FOR THIS APP
             <label class="auth-field studio-option-text-field">
               <span class="studio-option-label-row">
                 <span>Option ${optionNumber}</span>
-                <button type="button" class="studio-option-image-toggle${optionImageUrl ? ' has-image' : ''}" data-option-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}" title="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}">${isImagePanelOpen ? 'Hide Image' : (optionImageUrl ? 'Edit Image' : 'Add Image')}</button>
+                <span class="studio-option-label-actions">
+                  <button type="button" class="studio-option-image-toggle${optionImageUrl ? ' has-image' : ''}" data-option-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}" title="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}">${isImagePanelOpen ? 'Hide Image' : (optionImageUrl ? 'Edit Image' : 'Add Image')}</button>
+                  <button type="button" class="studio-option-delete-btn" data-option-delete aria-label="Delete Option ${optionNumber}" title="Delete Option ${optionNumber}">×</button>
+                </span>
               </span>
               <input type="text" autocomplete="off" placeholder="Answer option ${optionNumber}" data-option-text>
             </label>
@@ -2717,6 +2723,7 @@ MODIFICATION RULES FOR THIS APP
         drafts.push({ text: '', explanation: '', imageUrl: '', imageLabel: '' });
         renderStudioOptionFields(drafts);
         syncCorrectOptionSelect(String(drafts.length));
+        setStudioDirtyState(true);
     }
 
     function removeStudioOptionField() {
@@ -2725,8 +2732,41 @@ MODIFICATION RULES FOR THIS APP
             setCreatorStatus('Multiple-choice quizzes need at least 2 options.', 'error');
             return;
         }
+        const previousCorrect = Number(elements.createCorrectOptionSelect?.value || 1);
         drafts.pop();
         renderStudioOptionFields(drafts);
+        if (previousCorrect > drafts.length) {
+            syncCorrectOptionSelect('1');
+            setCreatorStatus('Deleted the selected correct option. Choose the correct option again.', 'error');
+        } else {
+            syncCorrectOptionSelect(String(previousCorrect));
+        }
+        setStudioDirtyState(true);
+    }
+
+    function removeStudioOptionFieldAt(optionNumber) {
+        const drafts = getStudioOptionDraftsFromDOM();
+        const index = Number(optionNumber) - 1;
+        if (!Number.isInteger(index) || index < 0 || index >= drafts.length) return;
+        if (drafts.length <= 2) {
+            setCreatorStatus('Multiple-choice quizzes need at least 2 options.', 'error');
+            return;
+        }
+
+        const previousCorrect = Number(elements.createCorrectOptionSelect?.value || 1);
+        drafts.splice(index, 1);
+        renderStudioOptionFields(drafts);
+
+        let nextCorrect = previousCorrect;
+        if (previousCorrect === optionNumber) {
+            nextCorrect = 1;
+            setCreatorStatus('Deleted the selected correct option. Choose the correct option again.', 'error');
+        } else if (previousCorrect > optionNumber) {
+            nextCorrect = previousCorrect - 1;
+        }
+
+        syncCorrectOptionSelect(String(Math.max(1, Math.min(nextCorrect, drafts.length))));
+        setStudioDirtyState(true);
     }
     function normalizeHierarchyDrafts(hierarchyDrafts = null) {
         const source = (Array.isArray(hierarchyDrafts) && hierarchyDrafts.length ? hierarchyDrafts : Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })))
@@ -4613,7 +4653,9 @@ MODIFICATION RULES FOR THIS APP
             elements.createLearningResourcesImageFile,
             elements.createLearningResourcesImageClearBtn,
             elements.addOptionFieldBtn,
+            elements.addOptionInlineBtn,
             elements.removeOptionFieldBtn,
+            elements.studioEditorActionSaveBtn,
             elements.createCorrectOptionSelect,
             elements.createCorrectExplanation,
             elements.toggleMathChemToolsBtn,
@@ -4653,7 +4695,7 @@ MODIFICATION RULES FOR THIS APP
         });
 
         if (elements.createOptionFieldsContainer) {
-            elements.createOptionFieldsContainer.querySelectorAll('input, textarea').forEach(el => {
+            elements.createOptionFieldsContainer.querySelectorAll('input, textarea, button').forEach(el => {
                 el.disabled = !creatorEnabled;
             });
         }
@@ -11489,6 +11531,12 @@ if (elements.addOptionFieldBtn) {
     });
 }
 
+if (elements.addOptionInlineBtn) {
+    elements.addOptionInlineBtn.addEventListener('click', () => {
+        addStudioOptionField();
+    });
+}
+
 if (elements.removeOptionFieldBtn) {
     elements.removeOptionFieldBtn.addEventListener('click', () => {
         removeStudioOptionField();
@@ -11510,6 +11558,14 @@ if (elements.createOptionFieldsContainer) {
             const row = clearBtn.closest('[data-option-index]');
             setStudioOptionImageState(row, '', 'No option image selected.');
             setStudioDirtyState(true);
+            return;
+        }
+
+        const deleteBtn = event.target.closest('[data-option-delete]');
+        if (deleteBtn) {
+            event.preventDefault();
+            const row = deleteBtn.closest('[data-option-index]');
+            removeStudioOptionFieldAt(Number(row?.dataset.optionIndex || 0));
         }
     });
 
@@ -11693,6 +11749,15 @@ if (elements.createQuizTypeSelect) {
 
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
+        handleSaveStudioEditorChanges().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not save the quiz.', 'error');
+        });
+    });
+}
+
+if (elements.studioEditorActionSaveBtn) {
+    elements.studioEditorActionSaveBtn.addEventListener('click', () => {
         handleSaveStudioEditorChanges().catch(err => {
             console.error(err);
             setCreatorStatus('Could not save the quiz.', 'error');
