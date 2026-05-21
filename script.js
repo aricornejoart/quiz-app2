@@ -137,7 +137,9 @@ MODIFICATION RULES FOR THIS APP
                 useSharedLabels: false,
                 sharedImageUrl: '',
                 sharedImageLabel: '',
+                sharedImageName: '',
                 sharedLabels: [],
+                sourceQuestionId: '',
                 questionOverride: false
             }
         }
@@ -238,6 +240,7 @@ MODIFICATION RULES FOR THIS APP
         useSharedDiagramImage: document.getElementById('useSharedDiagramImage'),
         reuseSharedDiagramLabels: document.getElementById('reuseSharedDiagramLabels'),
         overrideSharedDiagramQuestion: document.getElementById('overrideSharedDiagramQuestion'),
+        goToSharedDiagramSourceBtn: document.getElementById('goToSharedDiagramSourceBtn'),
         diagramSharingStatus: document.getElementById('diagramSharingStatus'),
         flashcardEditorFields: document.getElementById('flashcardEditorFields'),
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
@@ -1545,7 +1548,9 @@ MODIFICATION RULES FOR THIS APP
             useSharedLabels: false,
             sharedImageUrl: '',
             sharedImageLabel: '',
+            sharedImageName: '',
             sharedLabels: [],
+            sourceQuestionId: '',
             questionOverride: false
         };
     }
@@ -1567,6 +1572,66 @@ MODIFICATION RULES FOR THIS APP
         return `${STUDY_BUNNY_QUIZ_META_PREFIX}${JSON.stringify(safeMetadata)}`;
     }
 
+    function getSelectedFileNameFromLabel(label = '') {
+        const text = normalizeSheetText(label);
+        const selectedMatch = text.match(/^Selected:\s*(.+)$/i);
+        return normalizeSheetText(selectedMatch?.[1] || '');
+    }
+
+    function getSharedDiagramImageName(sharing = state.auth.studioDiagramSharing || {}) {
+        const explicitName = normalizeSheetText(sharing.sharedImageName || sharing.sharedImageFileName);
+        if (explicitName) return explicitName;
+        return getSelectedFileNameFromLabel(sharing.sharedImageLabel);
+    }
+
+    function getDiagramSharingSourceQuestionId(sharing = state.auth.studioDiagramSharing || {}) {
+        return normalizeSheetText(sharing.sourceQuestionId || sharing.sharedSourceQuestionId || sharing.source_question_id);
+    }
+
+    function getStudioQuestionNumber(questionId = '') {
+        const targetId = normalizeSheetText(questionId);
+        if (!targetId) return 0;
+        const rows = Array.isArray(state.auth.studioQuizQuestions) ? state.auth.studioQuizQuestions : [];
+        const index = rows.findIndex(question => normalizeSheetText(question?.id) === targetId);
+        return index >= 0 ? index + 1 : 0;
+    }
+
+    function getStudioQuestionDisplayLabel(questionId = '') {
+        const number = getStudioQuestionNumber(questionId);
+        return number ? `Question ${number}` : 'the source question';
+    }
+
+    function canEditStudioSharedDiagramSettings(sharing = state.auth.studioDiagramSharing || {}) {
+        const sourceQuestionId = getDiagramSharingSourceQuestionId(sharing);
+        if (!sourceQuestionId) return true;
+        return normalizeSheetText(state.auth.editingQuestionId) === sourceQuestionId;
+    }
+
+    function isCurrentStudioSharedDiagramSource(sharing = state.auth.studioDiagramSharing || {}) {
+        const sourceQuestionId = getDiagramSharingSourceQuestionId(sharing);
+        return !!sourceQuestionId && normalizeSheetText(state.auth.editingQuestionId) === sourceQuestionId;
+    }
+
+    function getSharedDiagramImageStatusLabel(sharing = state.auth.studioDiagramSharing || {}) {
+        const fileName = getSharedDiagramImageName(sharing);
+        if (fileName) return `Shared diagram image: ${fileName}`;
+        const label = normalizeSheetText(sharing.sharedImageLabel);
+        if (label && !/^Shared diagram image saved\.?$/i.test(label)) return label;
+        return normalizeSheetText(sharing.sharedImageUrl) ? 'Shared diagram image saved.' : 'No diagram image selected.';
+    }
+
+    function remapDiagramSharingSourceQuestionId(description = '', idMap = new Map()) {
+        if (!idMap?.size) return description;
+        const metadata = parseQuizMetadata(description);
+        const diagramSharing = metadata.diagramSharing;
+        if (!diagramSharing || typeof diagramSharing !== 'object') return description;
+        const sourceQuestionId = getDiagramSharingSourceQuestionId(diagramSharing);
+        const nextSourceQuestionId = sourceQuestionId ? normalizeSheetText(idMap.get(sourceQuestionId)) : '';
+        if (!nextSourceQuestionId || nextSourceQuestionId === sourceQuestionId) return description;
+        metadata.diagramSharing = { ...diagramSharing, sourceQuestionId: nextSourceQuestionId };
+        return buildQuizDescriptionFromMetadata(metadata);
+    }
+
     function getDiagramSharingFromDescription(description = '') {
         const metadata = parseQuizMetadata(description);
         const diagramSharing = metadata.diagramSharing || {};
@@ -1576,7 +1641,9 @@ MODIFICATION RULES FOR THIS APP
             useSharedLabels: !!diagramSharing.useSharedLabels,
             sharedImageUrl: normalizeSheetText(diagramSharing.sharedImageUrl),
             sharedImageLabel: normalizeSheetText(diagramSharing.sharedImageLabel),
-            sharedLabels: normalizeDiagramLabels(diagramSharing.sharedLabels || diagramSharing.labels || [])
+            sharedImageName: getSharedDiagramImageName(diagramSharing),
+            sharedLabels: normalizeDiagramLabels(diagramSharing.sharedLabels || diagramSharing.labels || []),
+            sourceQuestionId: getDiagramSharingSourceQuestionId(diagramSharing)
         };
     }
 
@@ -1587,7 +1654,9 @@ MODIFICATION RULES FOR THIS APP
             useSharedLabels: !!diagramSharingDraft.useSharedLabels,
             sharedImageUrl: normalizeSheetText(diagramSharingDraft.sharedImageUrl),
             sharedImageLabel: normalizeSheetText(diagramSharingDraft.sharedImageLabel),
-            sharedLabels: normalizeDiagramLabels(diagramSharingDraft.sharedLabels || [])
+            sharedImageName: getSharedDiagramImageName(diagramSharingDraft),
+            sharedLabels: normalizeDiagramLabels(diagramSharingDraft.sharedLabels || []),
+            sourceQuestionId: getDiagramSharingSourceQuestionId(diagramSharingDraft)
         };
         metadata.diagramSharing = safeDraft;
         return buildQuizDescriptionFromMetadata(metadata);
@@ -1621,31 +1690,56 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getStudioDiagramSharingDraft() {
+        const currentSharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        const canEditSharedSettings = canEditStudioSharedDiagramSettings(currentSharing);
         return {
-            ...state.auth.studioDiagramSharing,
-            useSharedImage: !!elements.useSharedDiagramImage?.checked,
-            useSharedLabels: !!elements.reuseSharedDiagramLabels?.checked,
+            ...currentSharing,
+            useSharedImage: canEditSharedSettings ? !!elements.useSharedDiagramImage?.checked : !!currentSharing.useSharedImage,
+            useSharedLabels: canEditSharedSettings ? !!elements.reuseSharedDiagramLabels?.checked : !!currentSharing.useSharedLabels,
             questionOverride: !!elements.overrideSharedDiagramQuestion?.checked
         };
     }
 
     function updateDiagramSharingControls() {
         const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
-        if (elements.useSharedDiagramImage) elements.useSharedDiagramImage.checked = !!sharing.useSharedImage;
+        const sourceQuestionId = getDiagramSharingSourceQuestionId(sharing);
+        const hasSource = !!sourceQuestionId;
+        const isSource = isCurrentStudioSharedDiagramSource(sharing);
+        const canEditSharedSettings = canEditStudioSharedDiagramSettings(sharing);
+        if (elements.useSharedDiagramImage) {
+            elements.useSharedDiagramImage.checked = !!sharing.useSharedImage;
+            elements.useSharedDiagramImage.disabled = !canEditSharedSettings;
+        }
         if (elements.reuseSharedDiagramLabels) {
             elements.reuseSharedDiagramLabels.checked = !!sharing.useSharedLabels;
-            elements.reuseSharedDiagramLabels.disabled = !sharing.useSharedImage;
+            elements.reuseSharedDiagramLabels.disabled = !sharing.useSharedImage || !canEditSharedSettings;
         }
         if (elements.overrideSharedDiagramQuestion) {
-            elements.overrideSharedDiagramQuestion.checked = !!sharing.questionOverride;
-            elements.overrideSharedDiagramQuestion.disabled = !sharing.useSharedImage;
+            elements.overrideSharedDiagramQuestion.checked = !!sharing.questionOverride && !isSource;
+            elements.overrideSharedDiagramQuestion.disabled = !sharing.useSharedImage || isSource;
+        }
+        if (elements.goToSharedDiagramSourceBtn) {
+            const showSourceJump = hasSource && !isSource;
+            elements.goToSharedDiagramSourceBtn.classList.toggle('hidden', !showSourceJump);
+            elements.goToSharedDiagramSourceBtn.disabled = !showSourceJump;
+            elements.goToSharedDiagramSourceBtn.textContent = showSourceJump ? `Go to ${getStudioQuestionDisplayLabel(sourceQuestionId)}` : 'Go to source question';
         }
         if (elements.diagramSharingStatus) {
             const hasSharedImage = !!normalizeSheetText(sharing.sharedImageUrl);
             const hasSharedLabels = normalizeDiagramLabels(sharing.sharedLabels || []).length > 0;
+            const fileName = getSharedDiagramImageName(sharing);
+            const fileText = hasSharedImage
+                ? `File: ${fileName || 'saved shared image'}.`
+                : 'File: none selected yet.';
+            const sourceText = hasSource
+                ? `${isSource ? 'This question controls the shared diagram.' : `Shared diagram controlled by ${getStudioQuestionDisplayLabel(sourceQuestionId)}.`}`
+                : 'No shared diagram source has been saved yet.';
+            const labelText = sharing.useSharedLabels
+                ? `Shared labels ${hasSharedLabels ? 'saved' : 'not saved yet'}.`
+                : 'Labels remain per-question unless shared labels are enabled.';
             elements.diagramSharingStatus.textContent = sharing.useSharedImage
-                ? `Shared image ${hasSharedImage ? 'saved' : 'not saved yet'}${sharing.useSharedLabels ? `; shared labels ${hasSharedLabels ? 'saved' : 'not saved yet'}` : '; labels remain per-question'}.`
-                : 'Sharing is optional. Shared image uses one uploaded media file; labels can remain per-question.';
+                ? `${sourceText} ${fileText} ${labelText}`
+                : 'Sharing is optional. Turn on a shared image from the source question to use one uploaded diagram across this quiz.';
         }
     }
 
@@ -1654,9 +1748,68 @@ MODIFICATION RULES FOR THIS APP
             ...createDefaultDiagramSharingState(),
             ...(state.auth.studioDiagramSharing || {}),
             ...nextSharing,
+            sharedImageName: getSharedDiagramImageName({ ...(state.auth.studioDiagramSharing || {}), ...nextSharing }),
+            sourceQuestionId: getDiagramSharingSourceQuestionId({ ...(state.auth.studioDiagramSharing || {}), ...nextSharing }),
             sharedLabels: normalizeDiagramLabels(nextSharing.sharedLabels ?? state.auth.studioDiagramSharing?.sharedLabels ?? [])
         };
+        if (isCurrentStudioSharedDiagramSource(state.auth.studioDiagramSharing)) {
+            state.auth.studioDiagramSharing.questionOverride = false;
+        }
         updateDiagramSharingControls();
+    }
+
+    async function persistStudioDiagramSharingState(quizId = state.auth.editingQuizId, nextSharing = state.auth.studioDiagramSharing || {}) {
+        if (!state.auth.client || !quizId) return;
+        const { data: quizRow, error: quizError } = await state.auth.client
+            .from('quizzes')
+            .select('description')
+            .eq('id', quizId)
+            .maybeSingle();
+        if (quizError) throw quizError;
+        const currentDescription = normalizeSheetText(quizRow?.description);
+        const previousDescriptionRefs = collectQuizDescriptionMediaReferences(currentDescription);
+        const nextDescription = setDiagramSharingInDescription(currentDescription, nextSharing);
+        const { error: descriptionError } = await state.auth.client
+            .from('quizzes')
+            .update({ description: nextDescription })
+            .eq('id', quizId);
+        if (descriptionError) throw descriptionError;
+        setStudioDiagramSharingState(nextSharing);
+        await deleteReplacedMediaReferences(previousDescriptionRefs, nextDescription);
+    }
+
+    function getFirstDiagramQuestionId(rows = state.auth.studioQuizQuestions || []) {
+        const match = (rows || []).find(question => normalizeSheetText(question?.question_type) === 'diagrams');
+        return normalizeSheetText(match?.id);
+    }
+
+    async function ensureSharedDiagramSourceQuestionForRows(quizId = state.auth.editingQuizId, rows = state.auth.studioQuizQuestions || [], options = {}) {
+        const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        if (!sharing.useSharedImage) return sharing;
+        const sourceQuestionId = getDiagramSharingSourceQuestionId(sharing);
+        const sourceStillExists = !!sourceQuestionId && (rows || []).some(question => normalizeSheetText(question?.id) === sourceQuestionId);
+        if (sourceStillExists) return sharing;
+
+        const fallbackSourceQuestionId = getFirstDiagramQuestionId(rows);
+        const nextSharing = fallbackSourceQuestionId
+            ? { ...sharing, sourceQuestionId: fallbackSourceQuestionId, questionOverride: false }
+            : {
+                ...sharing,
+                useSharedImage: false,
+                useSharedLabels: false,
+                sharedImageUrl: '',
+                sharedImageLabel: '',
+                sharedImageName: '',
+                sharedLabels: [],
+                sourceQuestionId: '',
+                questionOverride: false
+            };
+        if (options.persist !== false && quizId) {
+            await persistStudioDiagramSharingState(quizId, nextSharing);
+        } else {
+            setStudioDiagramSharingState(nextSharing);
+        }
+        return nextSharing;
     }
 
     function isUsingSharedDiagramImage() {
@@ -4096,6 +4249,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const editingType = getStudioCurrentQuizType();
+        const sharedDiagramSourceQuestionId = editingType === 'diagrams' ? getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) : '';
         const rowsHtml = filteredQuestions.map((questionRow, filteredIndex) => {
             let index = displayRows.findIndex(question => question.id === questionRow.id);
             if (index === -1) index = filteredIndex;
@@ -4108,6 +4262,8 @@ MODIFICATION RULES FOR THIS APP
             const chipLabel = getStudioQuestionChipLabel(questionType, index);
             const navigationName = getStudioQuestionNavigationName(questionType, index);
             const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
+            const isSharedDiagramSource = !!sharedDiagramSourceQuestionId && questionRow.id === sharedDiagramSourceQuestionId;
+            const sharedDiagramSourceBadge = isSharedDiagramSource ? '<span class="studio-question-shared-source-badge">Shared source</span>' : '';
             const dragTitle = questionType === 'flashcard' ? 'Drag to reorder this card' : 'Drag to reorder this question';
 
             let itemContent = '';
@@ -4137,6 +4293,7 @@ MODIFICATION RULES FOR THIS APP
                       aria-pressed="${isActive ? 'true' : 'false'}"
                     >
                       <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
+                      ${sharedDiagramSourceBadge}
                     </button>
                 `;
             }
@@ -4230,7 +4387,7 @@ MODIFICATION RULES FOR THIS APP
         }
         if (getStudioCurrentQuizType() === 'diagrams' && state.auth.studioDiagramSharing?.useSharedImage && !state.auth.studioDiagramSharing?.questionOverride) {
             const sharedImageUrl = normalizeSheetText(state.auth.studioDiagramSharing.sharedImageUrl);
-            setStudioQuestionImageState(sharedImageUrl, sharedImageUrl ? 'Using shared diagram image.' : 'No diagram image selected.');
+            setStudioQuestionImageState(sharedImageUrl, sharedImageUrl ? getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing) : 'No diagram image selected.');
         } else {
             setStudioQuestionImageState('', 'No question image selected.');
         }
@@ -4418,7 +4575,9 @@ MODIFICATION RULES FOR THIS APP
             const effectiveDiagramImage = getEffectiveStudioDiagramImage(questionRow.image_url);
             setStudioQuestionImageState(
                 effectiveDiagramImage,
-                effectiveDiagramImage ? (questionOverride ? 'Existing diagram image saved.' : 'Using shared diagram image.') : 'No diagram image selected.'
+                effectiveDiagramImage
+                    ? (getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) && !questionOverride ? getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing) : 'Existing diagram image saved.')
+                    : 'No diagram image selected.'
             );
             setStudioFlashcardTermImageState('', 'No term image selected.');
             setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
@@ -4578,7 +4737,12 @@ MODIFICATION RULES FOR THIS APP
             cacheCurrentStudioQuestionDraft();
         }
 
-        if (!confirm('Delete this question from the quiz?')) {
+        const sourceQuestionId = getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing);
+        const isDeletingSharedDiagramSource = !!sourceQuestionId && sourceQuestionId === questionId;
+        const deleteMessage = isDeletingSharedDiagramSource
+            ? 'Delete this question from the quiz? This question controls the shared diagram. The shared source will move to the next Diagram question, or sharing will be removed if none remain.'
+            : 'Delete this question from the quiz?';
+        if (!confirm(deleteMessage)) {
             return;
         }
 
@@ -4596,6 +4760,9 @@ MODIFICATION RULES FOR THIS APP
         await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
         await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
+        if (isDeletingSharedDiagramSource) {
+            await ensureSharedDiagramSourceQuestionForRows(state.auth.editingQuizId, state.auth.studioQuizQuestions);
+        }
         await refreshStudioManagementData();
         await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true, clearIfMissing: true });
 
@@ -6122,8 +6289,9 @@ MODIFICATION RULES FOR THIS APP
                 .single();
             if (quizError) throw quizError;
             const newQuizId = quizRow.id;
+            let restoredDescription = '';
             if (normalizeSheetText(backupQuiz.description)) {
-                const restoredDescription = await restoreQuizDescriptionMediaReferences(backupQuiz.description, { quizId: newQuizId, questionId: null, usageContext: 'quiz_description' });
+                restoredDescription = await restoreQuizDescriptionMediaReferences(backupQuiz.description, { quizId: newQuizId, questionId: null, usageContext: 'quiz_description' });
                 const { error: descriptionError } = await state.auth.client
                     .from('quizzes')
                     .update({ description: restoredDescription || '' })
@@ -6135,9 +6303,20 @@ MODIFICATION RULES FOR THIS APP
 
             const questions = Array.isArray(backupQuiz.questions) ? [...backupQuiz.questions] : [];
             questions.sort((a, b) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0));
+            const importedQuestionIdMap = new Map();
             for (let index = 0; index < questions.length; index += 1) {
                 setCreatorProgressStatus('Importing backup', `quiz ${quizPosition}, question ${index + 1} of ${questions.length}`);
-                await importBackupQuestionAsCopy(newQuizId, questions[index], index, stats);
+                const importedQuestionId = await importBackupQuestionAsCopy(newQuizId, questions[index], index, stats);
+                const sourceBackupQuestionId = normalizeSheetText(questions[index]?.id);
+                if (sourceBackupQuestionId && importedQuestionId) importedQuestionIdMap.set(sourceBackupQuestionId, importedQuestionId);
+            }
+            const remappedDescription = remapDiagramSharingSourceQuestionId(restoredDescription, importedQuestionIdMap);
+            if (remappedDescription !== restoredDescription) {
+                const { error: remapDescriptionError } = await state.auth.client
+                    .from('quizzes')
+                    .update({ description: remappedDescription || '' })
+                    .eq('id', newQuizId);
+                if (remapDescriptionError) throw remapDescriptionError;
             }
         }
 
@@ -6542,10 +6721,12 @@ MODIFICATION RULES FOR THIS APP
             let questionId = state.auth.editingQuestionId;
             let currentQuizDescription = '';
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
+            let previousQuizDescriptionMediaRefs = new Set();
             if (quizId) {
                 const { data: existingQuizRow, error: existingQuizError } = await state.auth.client.from('quizzes').select('description').eq('id', quizId).maybeSingle();
                 if (existingQuizError) throw existingQuizError;
                 currentQuizDescription = normalizeSheetText(existingQuizRow?.description);
+                previousQuizDescriptionMediaRefs = collectQuizDescriptionMediaReferences(currentQuizDescription);
                 const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
                 if (error) throw error;
             } else {
@@ -6569,26 +6750,62 @@ MODIFICATION RULES FOR THIS APP
             let nextDiagramSharing = {
                 ...state.auth.studioDiagramSharing,
                 ...diagramSharingDraft,
-                sharedLabels: normalizeDiagramLabels(state.auth.studioDiagramSharing?.sharedLabels || [])
+                sharedLabels: normalizeDiagramLabels(state.auth.studioDiagramSharing?.sharedLabels || []),
+                sourceQuestionId: getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing)
             };
 
-            if (isDiagramQuestion && nextDiagramSharing.useSharedImage && !nextDiagramSharing.questionOverride) {
-                const sharedImageCandidate = normalizeSheetText(questionDiagramImageValue || nextDiagramSharing.sharedImageUrl);
-                const savedSharedDiagramImage = await savePrivateMediaValue(sharedImageCandidate, {
-                    quizId,
-                    questionId: null,
-                    usageContext: 'diagram_shared_image',
-                    label: state.auth.studioQuestionImageLabel || nextDiagramSharing.sharedImageLabel || 'shared diagram image'
-                });
-                nextDiagramSharing.sharedImageUrl = savedSharedDiagramImage || '';
-                nextDiagramSharing.sharedImageLabel = nextDiagramSharing.sharedImageUrl
-                    ? (state.auth.studioQuestionImageLabel || nextDiagramSharing.sharedImageLabel || 'Shared diagram image saved.')
-                    : '';
-                if (nextDiagramSharing.useSharedLabels) {
-                    nextDiagramSharing.sharedLabels = normalizeDiagramLabels(diagramLabels);
-                    diagramLabelsForQuestion = [];
+            if (isDiagramQuestion) {
+                const existingSourceQuestionId = getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing);
+                const currentQuestionIsSource = !!existingSourceQuestionId && existingSourceQuestionId === questionId;
+                const canEditSharedSettings = !existingSourceQuestionId || currentQuestionIsSource;
+
+                if (!canEditSharedSettings) {
+                    nextDiagramSharing = {
+                        ...state.auth.studioDiagramSharing,
+                        questionOverride: !!diagramSharingDraft.questionOverride
+                    };
+                } else if (nextDiagramSharing.useSharedImage) {
+                    nextDiagramSharing.sourceQuestionId = existingSourceQuestionId || questionId;
+                    if (nextDiagramSharing.sourceQuestionId === questionId) {
+                        nextDiagramSharing.questionOverride = false;
+                    }
+                } else {
+                    nextDiagramSharing = {
+                        ...nextDiagramSharing,
+                        useSharedLabels: false,
+                        sharedImageUrl: '',
+                        sharedImageLabel: '',
+                        sharedImageName: '',
+                        sharedLabels: [],
+                        sourceQuestionId: '',
+                        questionOverride: false
+                    };
                 }
-                questionDiagramImageValue = '';
+
+                const editingSharedSource = canEditSharedSettings && nextDiagramSharing.useSharedImage && getDiagramSharingSourceQuestionId(nextDiagramSharing) === questionId;
+                if (editingSharedSource) {
+                    const sharedImageCandidate = normalizeSheetText(questionDiagramImageValue || nextDiagramSharing.sharedImageUrl);
+                    const nextSharedImageName = getSelectedFileNameFromLabel(state.auth.studioQuestionImageLabel) || getSharedDiagramImageName(nextDiagramSharing);
+                    const savedSharedDiagramImage = await savePrivateMediaValue(sharedImageCandidate, {
+                        quizId,
+                        questionId: null,
+                        usageContext: 'diagram_shared_image',
+                        label: state.auth.studioQuestionImageLabel || nextDiagramSharing.sharedImageLabel || 'shared diagram image'
+                    });
+                    nextDiagramSharing.sharedImageUrl = savedSharedDiagramImage || '';
+                    nextDiagramSharing.sharedImageName = savedSharedDiagramImage ? nextSharedImageName : '';
+                    nextDiagramSharing.sharedImageLabel = nextDiagramSharing.sharedImageUrl
+                        ? (nextSharedImageName ? `Selected: ${nextSharedImageName}` : (state.auth.studioQuestionImageLabel || nextDiagramSharing.sharedImageLabel || 'Shared diagram image saved.'))
+                        : '';
+                    if (nextDiagramSharing.useSharedLabels) {
+                        nextDiagramSharing.sharedLabels = normalizeDiagramLabels(diagramLabels);
+                        diagramLabelsForQuestion = [];
+                    }
+                    questionDiagramImageValue = '';
+                } else if (nextDiagramSharing.useSharedImage && !nextDiagramSharing.questionOverride) {
+                    questionDiagramImageValue = '';
+                    diagramLabelsForQuestion = nextDiagramSharing.useSharedLabels ? [] : diagramLabelsForQuestion;
+                }
             }
 
             if (isDiagramQuestion) {
@@ -6630,7 +6847,8 @@ MODIFICATION RULES FOR THIS APP
                 if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before saving quizzes with flexible option counts.');
                 throw detailError;
             }
-            await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, options_json: optionsJsonPayload });
+            const mediaReplacementBaseline = new Set([...previousMediaRefs, ...previousQuizDescriptionMediaRefs]);
+            await deleteReplacedMediaReferences(mediaReplacementBaseline, { ...savedSharedMedia, options_json: optionsJsonPayload, quiz_description: currentQuizDescription });
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
@@ -7026,7 +7244,9 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
 
             const questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
-            const targetQuestionId = preferredQuestionId || questionRows[0]?.id || null;
+            await ensureSharedDiagramSourceQuestionForRows(quizRow.id, questionRows);
+            const sourceQuestionId = getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing);
+            const targetQuestionId = preferredQuestionId || sourceQuestionId || questionRows[0]?.id || null;
 
             if (targetQuestionId) {
                 await loadStudioQuestionIntoEditor(targetQuestionId, { suppressStatus: true });
@@ -7278,8 +7498,9 @@ MODIFICATION RULES FOR THIS APP
             if (insertQuizError) throw insertQuizError;
             const newQuizId = insertedQuiz.id;
 
+            let clonedDescription = '';
             if (normalizeSheetText(quizRow.description)) {
-                const clonedDescription = await cloneQuizDescriptionMediaReferences(quizRow.description, { quizId: newQuizId, questionId: null });
+                clonedDescription = await cloneQuizDescriptionMediaReferences(quizRow.description, { quizId: newQuizId, questionId: null });
                 const { error: descriptionCloneError } = await state.auth.client
                     .from('quizzes')
                     .update({ description: clonedDescription || '' })
@@ -7294,8 +7515,18 @@ MODIFICATION RULES FOR THIS APP
                 .order('sort_order', { ascending: true });
             if (sourceQuestionsError) throw sourceQuestionsError;
 
+            const duplicatedQuestionIdMap = new Map();
             for (const [index, question] of (sourceQuestions || []).entries()) {
-                await duplicateQuestionRecord(question.id, newQuizId, index);
+                const duplicatedQuestionId = await duplicateQuestionRecord(question.id, newQuizId, index);
+                duplicatedQuestionIdMap.set(question.id, duplicatedQuestionId);
+            }
+            const remappedDescription = remapDiagramSharingSourceQuestionId(clonedDescription, duplicatedQuestionIdMap);
+            if (remappedDescription !== clonedDescription) {
+                const { error: sourceRemapError } = await state.auth.client
+                    .from('quizzes')
+                    .update({ description: remappedDescription || '' })
+                    .eq('id', newQuizId);
+                if (sourceRemapError) throw sourceRemapError;
             }
 
             await refreshStudioManagementData();
@@ -12420,7 +12651,7 @@ function handleDiagramSharingControlChange(event) {
     if (nextSharing.useSharedImage && !nextSharing.questionOverride) {
         const sharedImageUrl = normalizeSheetText(state.auth.studioDiagramSharing?.sharedImageUrl);
         if (sharedImageUrl && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)) {
-            setStudioQuestionImageState(sharedImageUrl, 'Using shared diagram image.');
+            setStudioQuestionImageState(sharedImageUrl, getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing));
         }
         if (nextSharing.useSharedLabels) {
             const sharedLabels = normalizeDiagramLabels(state.auth.studioDiagramSharing?.sharedLabels || []);
@@ -12435,6 +12666,17 @@ function handleDiagramSharingControlChange(event) {
     if (!control) return;
     control.addEventListener('change', handleDiagramSharingControlChange);
 });
+
+if (elements.goToSharedDiagramSourceBtn) {
+    elements.goToSharedDiagramSourceBtn.addEventListener('click', () => {
+        const sourceQuestionId = getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing);
+        if (!sourceQuestionId) return;
+        loadStudioQuestionIntoEditor(sourceQuestionId).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the shared diagram source question.', 'error');
+        });
+    });
+}
 
 if (elements.createQuestionImageFile) {
     elements.createQuestionImageFile.addEventListener('change', () => {
