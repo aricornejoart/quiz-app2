@@ -510,7 +510,7 @@ MODIFICATION RULES FOR THIS APP
     let lastMathChemInsertTarget = null;
 
     function isMathChemInsertTarget(target) {
-        return !!target && target.matches?.('#createQuestionPrompt, #createCorrectExplanation, [data-option-text], [data-option-explanation]');
+        return !!target && target.matches?.('#createQuestionPrompt, #createCorrectExplanation, [data-option-text], [data-option-explanation], [data-diagram-label-text]');
     }
 
     function getMathChemInsertTarget() {
@@ -530,7 +530,7 @@ MODIFICATION RULES FOR THIS APP
         if (!insertText) return false;
         const target = getMathChemInsertTarget();
         if (!target || target.disabled) {
-            setCreatorStatus('Click a multiple-choice field before inserting math or chemistry text.', 'error');
+            setCreatorStatus('Click a question, answer, explanation, or diagram label field before inserting math or chemistry text.', 'error');
             return false;
         }
 
@@ -561,19 +561,23 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
-    function updateMathChemToolsVisibility(isMultipleChoice = getStudioCurrentQuizType() === 'multiple_choice') {
-        if (!isMultipleChoice) {
+    function studioCurrentTypeSupportsMathChemTools(quizType = getStudioCurrentQuizType()) {
+        return quizType === 'multiple_choice' || quizType === 'diagrams';
+    }
+
+    function updateMathChemToolsVisibility(supportsMathChemTools = studioCurrentTypeSupportsMathChemTools()) {
+        if (!supportsMathChemTools) {
             state.auth.mathChemToolsExpanded = false;
         }
 
         if (elements.toggleMathChemToolsBtn) {
-            elements.toggleMathChemToolsBtn.classList.toggle('hidden', !isMultipleChoice);
+            elements.toggleMathChemToolsBtn.classList.toggle('hidden', !supportsMathChemTools);
             elements.toggleMathChemToolsBtn.textContent = state.auth.mathChemToolsExpanded ? 'Hide Math/Chem Tools' : 'Show Math/Chem Tools';
             elements.toggleMathChemToolsBtn.setAttribute('aria-expanded', String(!!state.auth.mathChemToolsExpanded));
         }
 
         if (elements.studioMathChemTools) {
-            elements.studioMathChemTools.classList.toggle('hidden', !(isMultipleChoice && state.auth.mathChemToolsExpanded));
+            elements.studioMathChemTools.classList.toggle('hidden', !(supportsMathChemTools && state.auth.mathChemToolsExpanded));
         }
     }
 
