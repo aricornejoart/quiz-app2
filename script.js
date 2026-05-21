@@ -455,6 +455,9 @@ MODIFICATION RULES FOR THIS APP
         'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ',
         'v': 'ᵥ', 'x': 'ₓ'
     });
+    const MATH_CHEM_SUPERSCRIPT_REVERSE_MAP = Object.freeze(Object.fromEntries(Object.entries(MATH_CHEM_SUPERSCRIPT_MAP).map(([base, script]) => [script, base])));
+    const MATH_CHEM_SUBSCRIPT_REVERSE_MAP = Object.freeze(Object.fromEntries(Object.entries(MATH_CHEM_SUBSCRIPT_MAP).map(([base, script]) => [script, base])));
+    const MATH_CHEM_MARKER_PATTERN = /\{\{frac:([^{}|]*)\|([^{}|]*)\}\}|\{\{(sup|sub):([^{}]*)\}\}/g;
 
     function escapeDisplayText(value) {
         return escapeHtml(value).replace(/\n/g, '<br>');
@@ -474,19 +477,70 @@ MODIFICATION RULES FOR THIS APP
         return `{{frac:${top}|${bottom}}}`;
     }
 
+    function buildMathChemScriptMarker(kind, value) {
+        const safeKind = kind === 'sub' ? 'sub' : 'sup';
+        const text = normalizeMathChemMarkerPart(value);
+        if (!text) return '';
+        return `{{${safeKind}:${text}}}`;
+    }
+
+    function renderMathChemScriptHtml(kind, value) {
+        const safeKind = kind === 'sub' ? 'sub' : 'sup';
+        const text = normalizeMathChemMarkerPart(value);
+        if (!text) return '';
+        return `<span class="math-chem-script math-chem-${safeKind}">${escapeHtml(text)}</span>`;
+    }
+
+    function renderMathChemPlainTextToHtml(value) {
+        const raw = String(value ?? '');
+        if (!raw) return '';
+        let html = '';
+        let buffer = '';
+        let scriptKind = '';
+
+        const flush = () => {
+            if (!buffer) return;
+            html += scriptKind ? renderMathChemScriptHtml(scriptKind, buffer) : escapeDisplayText(buffer);
+            buffer = '';
+            scriptKind = '';
+        };
+
+        Array.from(raw).forEach(char => {
+            const superscriptBase = MATH_CHEM_SUPERSCRIPT_REVERSE_MAP[char];
+            const subscriptBase = MATH_CHEM_SUBSCRIPT_REVERSE_MAP[char];
+            const nextKind = superscriptBase ? 'sup' : (subscriptBase ? 'sub' : '');
+            const nextChar = superscriptBase || subscriptBase || char;
+            if (nextKind) {
+                if (scriptKind && scriptKind !== nextKind) flush();
+                if (!scriptKind && buffer) flush();
+                scriptKind = nextKind;
+                buffer += nextChar;
+                return;
+            }
+            if (scriptKind) flush();
+            buffer += nextChar;
+        });
+        flush();
+        return html;
+    }
+
     function renderMathChemTextToHtml(value) {
         const raw = String(value ?? '');
         if (!raw) return '';
 
         let html = '';
         let lastIndex = 0;
-        raw.replace(MATH_CHEM_FRACTION_PATTERN, (match, numerator, denominator, offset) => {
-            html += escapeDisplayText(raw.slice(lastIndex, offset));
-            html += `<span class="math-chem-fraction" aria-label="${escapeHtml(`${numerator} over ${denominator}`)}"><span class="math-chem-fraction-top">${escapeHtml(numerator)}</span><span class="math-chem-fraction-line"></span><span class="math-chem-fraction-bottom">${escapeHtml(denominator)}</span></span>`;
+        raw.replace(MATH_CHEM_MARKER_PATTERN, (match, numerator, denominator, scriptKind, scriptText, offset) => {
+            html += renderMathChemPlainTextToHtml(raw.slice(lastIndex, offset));
+            if (match.startsWith('{{frac:')) {
+                html += `<span class="math-chem-fraction" aria-label="${escapeHtml(`${numerator} over ${denominator}`)}"><span class="math-chem-fraction-top">${renderMathChemPlainTextToHtml(numerator)}</span><span class="math-chem-fraction-line"></span><span class="math-chem-fraction-bottom">${renderMathChemPlainTextToHtml(denominator)}</span></span>`;
+            } else {
+                html += renderMathChemScriptHtml(scriptKind, scriptText);
+            }
             lastIndex = offset + match.length;
             return match;
         });
-        html += escapeDisplayText(raw.slice(lastIndex));
+        html += renderMathChemPlainTextToHtml(raw.slice(lastIndex));
         return html;
     }
 
@@ -500,11 +554,11 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function convertToMathChemSuperscript(value) {
-        return convertMathChemScriptText(value, MATH_CHEM_SUPERSCRIPT_MAP);
+        return buildMathChemScriptMarker('sup', value);
     }
 
     function convertToMathChemSubscript(value) {
-        return convertMathChemScriptText(value, MATH_CHEM_SUBSCRIPT_MAP);
+        return buildMathChemScriptMarker('sub', value);
     }
 
     let lastMathChemInsertTarget = null;
@@ -1304,6 +1358,37 @@ MODIFICATION RULES FOR THIS APP
         return uploadDataUrlToPrivateMediaAsset(normalizedValue, options);
     }
 
+    async function anchorSupabaseMediaReferenceToQuestion(value, options = {}) {
+        const normalizedValue = normalizeSheetText(value);
+        const questionId = normalizeSheetText(options.questionId);
+        if (!isSupabaseMediaReference(normalizedValue) || !state.auth.client || !state.auth.user?.id || !questionId) {
+            return normalizedValue;
+        }
+
+        const assetId = getSupabaseMediaAssetId(normalizedValue);
+        if (!assetId) return normalizedValue;
+
+        const payload = {
+            question_id: questionId,
+            quiz_id: options.quizId || null
+        };
+        const usageContext = normalizeSheetText(options.usageContext);
+        if (usageContext) payload.usage_context = usageContext;
+
+        const { error } = await state.auth.client
+            .from('media_assets')
+            .update(payload)
+            .eq('id', assetId)
+            .eq('user_id', state.auth.user.id);
+
+        if (error) {
+            throw new Error(getPhase18StorageErrorMessage(error) || 'Could not link the shared diagram image to its source question.');
+        }
+
+        state.auth.mediaSignedUrlCache?.delete(assetId);
+        return normalizedValue;
+    }
+
     async function savePrivateMediaValues(valueMap, options = {}) {
         const entries = Object.entries(valueMap || {});
         const savedEntries = [];
@@ -1399,27 +1484,59 @@ MODIFICATION RULES FOR THIS APP
         return replaceSupabaseMediaReferences(value, urlMap);
     }
 
-    function setPreviewImageSource(previewEl, sourceValue) {
+    async function verifySupabaseMediaReferenceIsLoadable(value) {
+        const normalizedValue = normalizeSheetText(value);
+        if (!isSupabaseMediaReference(normalizedValue)) return true;
+        try {
+            return !!(await resolveSupabaseMediaValue(normalizedValue));
+        } catch (error) {
+            console.error('Could not verify private media reference:', error);
+            return false;
+        }
+    }
+
+    function setPreviewImageSource(previewEl, sourceValue, callbacks = {}) {
         if (!previewEl) return;
         const normalizedSource = normalizeSheetText(sourceValue);
         previewEl.dataset.mediaPreviewSource = normalizedSource;
+        previewEl.onload = null;
+        previewEl.onerror = null;
         previewEl.src = '';
         previewEl.classList.add('hidden');
+
+        const applySource = displaySource => {
+            previewEl.onload = () => {
+                if (previewEl.dataset.mediaPreviewSource !== normalizedSource) return;
+                callbacks.onLoad?.(normalizedSource);
+            };
+            previewEl.onerror = () => {
+                if (previewEl.dataset.mediaPreviewSource !== normalizedSource) return;
+                previewEl.classList.add('hidden');
+                callbacks.onError?.(normalizedSource);
+            };
+            previewEl.src = displaySource;
+            previewEl.classList.remove('hidden');
+        };
 
         if (!normalizedSource) return;
 
         if (!isSupabaseMediaReference(normalizedSource)) {
-            previewEl.src = normalizedSource;
-            previewEl.classList.remove('hidden');
+            applySource(normalizedSource);
             return;
         }
 
         resolveSupabaseMediaValue(normalizedSource).then(signedUrl => {
-            if (previewEl.dataset.mediaPreviewSource !== normalizedSource || !signedUrl) return;
-            previewEl.src = signedUrl;
-            previewEl.classList.remove('hidden');
+            if (previewEl.dataset.mediaPreviewSource !== normalizedSource) return;
+            if (!signedUrl) {
+                callbacks.onError?.(normalizedSource);
+                return;
+            }
+            applySource(signedUrl);
         }).catch(error => {
             console.error('Could not load private image preview:', error);
+            if (previewEl.dataset.mediaPreviewSource === normalizedSource) {
+                callbacks.onError?.(normalizedSource);
+            }
         });
     }
 
@@ -1779,7 +1896,7 @@ MODIFICATION RULES FOR THIS APP
             .eq('id', quizId);
         if (descriptionError) throw descriptionError;
         setStudioDiagramSharingState(nextSharing);
-        await deleteReplacedMediaReferences(previousDescriptionRefs, nextDescription);
+        await deleteReplacedMediaReferences(previousDescriptionRefs, nextDescription, { protectedValue: nextDescription });
     }
 
     function getFirstDiagramQuestionId(rows = state.auth.studioQuizQuestions || []) {
@@ -1860,16 +1977,51 @@ MODIFICATION RULES FOR THIS APP
         })));
     }
 
-    function updateStudioDiagramPreviewImage() {
-        const hasImage = !!normalizeSheetText(state.auth.studioQuestionImageDataUrl);
-        if (elements.studioDiagramPreviewImage) {
-            setPreviewImageSource(elements.studioDiagramPreviewImage, state.auth.studioQuestionImageDataUrl || '');
+    function getStudioDiagramImageLoadFailureMessage(sourceValue = state.auth.studioQuestionImageDataUrl) {
+        const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        const isSharedImage = sharing.useSharedImage
+            && !sharing.questionOverride
+            && normalizeSheetText(sourceValue)
+            && normalizeSheetText(sourceValue) === normalizeSheetText(sharing.sharedImageUrl);
+        if (isSharedImage) {
+            const fileName = getSharedDiagramImageName(sharing);
+            return `Shared diagram image${fileName ? ` (${fileName})` : ''} could not load. Re-upload it from the shared source question.`;
         }
+        return 'Saved diagram image could not load. Re-upload the image.';
+    }
+
+    function setStudioDiagramPreviewAvailability(hasLoadedImage) {
         if (elements.studioDiagramEmptyState) {
-            elements.studioDiagramEmptyState.classList.toggle('hidden', hasImage);
+            elements.studioDiagramEmptyState.classList.toggle('hidden', !!hasLoadedImage);
         }
         if (elements.studioDiagramPreview) {
-            elements.studioDiagramPreview.classList.toggle('has-image', hasImage);
+            elements.studioDiagramPreview.classList.toggle('has-image', !!hasLoadedImage);
+        }
+    }
+
+    function updateStudioDiagramPreviewImage() {
+        const imageSource = normalizeSheetText(state.auth.studioQuestionImageDataUrl);
+        const hasImage = !!imageSource;
+        if (elements.studioDiagramEmptyState) {
+            elements.studioDiagramEmptyState.textContent = hasImage
+                ? 'Loading diagram image…'
+                : 'No diagram image selected. You can still save this as a regular multiple-choice-style question.';
+        }
+        setStudioDiagramPreviewAvailability(false);
+        if (elements.studioDiagramPreviewImage) {
+            setPreviewImageSource(elements.studioDiagramPreviewImage, imageSource, {
+                onLoad: () => setStudioDiagramPreviewAvailability(true),
+                onError: sourceValue => {
+                    const message = getStudioDiagramImageLoadFailureMessage(sourceValue);
+                    if (elements.studioDiagramEmptyState) {
+                        elements.studioDiagramEmptyState.textContent = message;
+                    }
+                    if (elements.createQuestionImageName && normalizeSheetText(state.auth.studioQuestionImageDataUrl) === normalizeSheetText(sourceValue)) {
+                        elements.createQuestionImageName.textContent = message;
+                    }
+                    setStudioDiagramPreviewAvailability(false);
+                }
+            });
         }
     }
 
@@ -1912,7 +2064,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioDiagramLabels = labels;
         if (!elements.studioDiagramLabelLayer) return;
         elements.studioDiagramLabelLayer.innerHTML = labels.map((item, index) => `
-            <button type="button" class="studio-diagram-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Drag label ${escapeHtml(item.label)}">${escapeHtml(item.label)}</button>
+            <button type="button" class="studio-diagram-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Drag label ${escapeHtml(item.label)}">${renderMathChemTextToHtml(item.label)}</button>
         `).join('');
     }
 
@@ -1964,7 +2116,7 @@ MODIFICATION RULES FOR THIS APP
         if (!layer) return;
         const drafts = normalizeDiagramLabels(labels);
         layer.innerHTML = drafts.map(item => `
-            <span class="diagram-study-label" style="left:${item.x}%; top:${item.y}%;">${escapeHtml(item.label)}</span>
+            <span class="diagram-study-label" style="left:${item.x}%; top:${item.y}%;">${renderMathChemTextToHtml(item.label)}</span>
         `).join('');
         layer.classList.toggle('hidden', !drafts.length);
         layer.setAttribute('aria-hidden', drafts.length ? 'false' : 'true');
@@ -2086,8 +2238,12 @@ MODIFICATION RULES FOR THIS APP
         return refs;
     }
 
-    async function deleteSupabaseMediaReferences(refs) {
-        const assetIds = Array.from(new Set(Array.from(refs || []).map(getSupabaseMediaAssetId).filter(Boolean)));
+    async function deleteSupabaseMediaReferences(refs, options = {}) {
+        const protectedRefs = collectSupabaseMediaReferences(options.protectedValue, new Set(options.protectedRefs || []));
+        const assetIds = Array.from(new Set(Array.from(refs || [])
+            .filter(ref => !protectedRefs.has(ref))
+            .map(getSupabaseMediaAssetId)
+            .filter(Boolean)));
         if (!state.auth.client || !assetIds.length) return;
 
         const { data: assets, error } = await state.auth.client
@@ -2170,12 +2326,13 @@ MODIFICATION RULES FOR THIS APP
         await deleteSupabaseMediaReferences(refs);
     }
 
-    async function deleteReplacedMediaReferences(previousRefs, nextValue) {
+    async function deleteReplacedMediaReferences(previousRefs, nextValue, options = {}) {
         const oldRefs = Array.from(previousRefs || []);
         if (!oldRefs.length) return;
         const nextRefs = collectSupabaseMediaReferences(nextValue);
-        const refsToDelete = new Set(oldRefs.filter(ref => !nextRefs.has(ref)));
-        await deleteSupabaseMediaReferences(refsToDelete);
+        const protectedRefs = collectSupabaseMediaReferences(options.protectedValue, new Set(options.protectedRefs || []));
+        const refsToDelete = new Set(oldRefs.filter(ref => !nextRefs.has(ref) && !protectedRefs.has(ref)));
+        await deleteSupabaseMediaReferences(refsToDelete, { protectedRefs });
     }
 
     function setStudioQuestionImageState(dataUrl = '', label = 'No question image selected.') {
@@ -4426,7 +4583,7 @@ MODIFICATION RULES FOR THIS APP
 
         const { data, error } = await state.auth.client
             .from('questions')
-            .select('id, prompt_plain, question_type, sort_order')
+            .select('id, prompt_plain, question_type, sort_order, image_url')
             .eq('quiz_id', quizId)
             .order('sort_order', { ascending: true });
 
@@ -4445,6 +4602,7 @@ MODIFICATION RULES FOR THIS APP
             definition_plain: normalizeSheetText(flashcardMap.get(row.id)?.definition_plain),
             definition_html: normalizeSheetText(flashcardMap.get(row.id)?.definition_html),
             question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
+            image_url: normalizeSheetText(row.image_url),
             sort_order: Number(row.sort_order ?? 0)
         }));
         renderStudioQuestionList();
@@ -4761,12 +4919,14 @@ MODIFICATION RULES FOR THIS APP
             .eq('id', deletedQuestionId);
 
         if (error) throw error;
-        await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
         await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
         if (isDeletingSharedDiagramSource) {
             await ensureSharedDiagramSourceQuestionForRows(state.auth.editingQuizId, state.auth.studioQuizQuestions);
         }
+        await deleteSupabaseMediaReferences(mediaRefsToDelete, {
+            protectedValue: state.auth.studioDiagramSharing?.useSharedImage ? state.auth.studioDiagramSharing : null
+        });
         await refreshStudioManagementData();
         await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true, clearIfMissing: true });
 
@@ -6757,6 +6917,7 @@ MODIFICATION RULES FOR THIS APP
                 sharedLabels: normalizeDiagramLabels(state.auth.studioDiagramSharing?.sharedLabels || []),
                 sourceQuestionId: getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing)
             };
+            let shouldVerifySharedImageAfterCleanup = false;
 
             if (isDiagramQuestion) {
                 const existingSourceQuestionId = getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing);
@@ -6790,12 +6951,22 @@ MODIFICATION RULES FOR THIS APP
                 if (editingSharedSource) {
                     const sharedImageCandidate = normalizeSheetText(questionDiagramImageValue || nextDiagramSharing.sharedImageUrl);
                     const nextSharedImageName = getSelectedFileNameFromLabel(state.auth.studioQuestionImageLabel) || getSharedDiagramImageName(nextDiagramSharing);
-                    const savedSharedDiagramImage = await savePrivateMediaValue(sharedImageCandidate, {
+                    let savedSharedDiagramImage = await savePrivateMediaValue(sharedImageCandidate, {
                         quizId,
-                        questionId: null,
+                        questionId,
                         usageContext: 'diagram_shared_image',
                         label: state.auth.studioQuestionImageLabel || nextDiagramSharing.sharedImageLabel || 'shared diagram image'
                     });
+                    savedSharedDiagramImage = await anchorSupabaseMediaReferenceToQuestion(savedSharedDiagramImage, {
+                        quizId,
+                        questionId,
+                        usageContext: 'diagram_shared_image'
+                    });
+                    const sharedDiagramImageIsLoadable = await verifySupabaseMediaReferenceIsLoadable(savedSharedDiagramImage);
+                    if (savedSharedDiagramImage && !sharedDiagramImageIsLoadable) {
+                        throw new Error('The shared diagram image was saved, but Study Bunny could not prepare it for preview. Re-upload the image from the shared source question.');
+                    }
+                    shouldVerifySharedImageAfterCleanup = !!savedSharedDiagramImage;
                     nextDiagramSharing.sharedImageUrl = savedSharedDiagramImage || '';
                     nextDiagramSharing.sharedImageName = savedSharedDiagramImage ? nextSharedImageName : '';
                     nextDiagramSharing.sharedImageLabel = nextDiagramSharing.sharedImageUrl
@@ -6805,7 +6976,7 @@ MODIFICATION RULES FOR THIS APP
                         nextDiagramSharing.sharedLabels = normalizeDiagramLabels(diagramLabels);
                         diagramLabelsForQuestion = [];
                     }
-                    questionDiagramImageValue = '';
+                    questionDiagramImageValue = nextDiagramSharing.sharedImageUrl;
                 } else if (nextDiagramSharing.useSharedImage && !nextDiagramSharing.questionOverride) {
                     questionDiagramImageValue = '';
                     diagramLabelsForQuestion = nextDiagramSharing.useSharedLabels ? [] : diagramLabelsForQuestion;
@@ -6852,7 +7023,11 @@ MODIFICATION RULES FOR THIS APP
                 throw detailError;
             }
             const mediaReplacementBaseline = new Set([...previousMediaRefs, ...previousQuizDescriptionMediaRefs]);
-            await deleteReplacedMediaReferences(mediaReplacementBaseline, { ...savedSharedMedia, options_json: optionsJsonPayload, quiz_description: currentQuizDescription });
+            await deleteReplacedMediaReferences(mediaReplacementBaseline, { ...savedSharedMedia, options_json: optionsJsonPayload, quiz_description: currentQuizDescription }, { protectedValue: currentQuizDescription });
+            const finalSharedImageRef = shouldVerifySharedImageAfterCleanup ? normalizeSheetText(nextDiagramSharing.sharedImageUrl) : '';
+            if (finalSharedImageRef && !(await verifySupabaseMediaReferenceIsLoadable(finalSharedImageRef))) {
+                throw new Error('The shared diagram image was saved, but Study Bunny could not reload it after cleanup. Re-upload the image from the shared source question.');
+            }
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
@@ -7249,6 +7424,22 @@ MODIFICATION RULES FOR THIS APP
 
             const questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
             await ensureSharedDiagramSourceQuestionForRows(quizRow.id, questionRows);
+            const repairedSharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+            const repairedSourceQuestionId = getDiagramSharingSourceQuestionId(repairedSharing);
+            const repairedSourceRow = repairedSourceQuestionId
+                ? questionRows.find(question => normalizeSheetText(question?.id) === repairedSourceQuestionId)
+                : null;
+            if (state.auth.editingQuizType === 'diagrams'
+                && repairedSharing.useSharedImage
+                && !normalizeSheetText(repairedSharing.sharedImageUrl)
+                && normalizeSheetText(repairedSourceRow?.image_url)) {
+                await persistStudioDiagramSharingState(quizRow.id, {
+                    ...repairedSharing,
+                    sharedImageUrl: normalizeSheetText(repairedSourceRow.image_url),
+                    sharedImageLabel: repairedSharing.sharedImageLabel || 'Shared diagram image recovered from source question.',
+                    sharedImageName: getSharedDiagramImageName(repairedSharing)
+                });
+            }
             const sourceQuestionId = getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing);
             const targetQuestionId = preferredQuestionId || sourceQuestionId || questionRows[0]?.id || null;
 
@@ -9194,6 +9385,11 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         if (quizError) throw quizError;
         const diagramSharing = getDiagramSharingFromDescription(quizRow?.description || '');
         const rows = questionRows || [];
+        const sharedDiagramSourceQuestionId = getDiagramSharingSourceQuestionId(diagramSharing);
+        const sharedDiagramSourceRow = sharedDiagramSourceQuestionId
+            ? rows.find(row => normalizeSheetText(row?.id) === sharedDiagramSourceQuestionId)
+            : null;
+        const sharedDiagramSourceImageUrl = normalizeSheetText(sharedDiagramSourceRow?.image_url);
         const questionIds = rows.map(row => row.id).filter(Boolean);
         if (!questionIds.length) return [];
         const quizType = normalizeSheetText(quizDescriptor.quizType || rows[0]?.question_type || 'multiple_choice');
@@ -9294,7 +9490,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 ? normalizeDiagramLabels(diagramSharing.sharedLabels)
                 : questionDiagramLabels;
             const diagramImage = useSharedDiagramImage
-                ? normalizeSheetText(diagramSharing.sharedImageUrl || row.image_url)
+                ? normalizeSheetText(diagramSharing.sharedImageUrl || sharedDiagramSourceImageUrl || row.image_url)
                 : normalizeSheetText(row.image_url);
             const options = optionDrafts.map(draft => draft.text);
             const optionImages = optionDrafts.map(draft => normalizeSheetText(draft.imageUrl));
