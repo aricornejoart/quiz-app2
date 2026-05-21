@@ -458,6 +458,7 @@ MODIFICATION RULES FOR THIS APP
     const MATH_CHEM_SUPERSCRIPT_REVERSE_MAP = Object.freeze(Object.fromEntries(Object.entries(MATH_CHEM_SUPERSCRIPT_MAP).map(([base, script]) => [script, base])));
     const MATH_CHEM_SUBSCRIPT_REVERSE_MAP = Object.freeze(Object.fromEntries(Object.entries(MATH_CHEM_SUBSCRIPT_MAP).map(([base, script]) => [script, base])));
     const MATH_CHEM_MARKER_PATTERN = /\{\{frac:([^{}|]*)\|([^{}|]*)\}\}|\{\{(sup|sub):([^{}]*)\}\}/g;
+    const MATH_CHEM_SCRIPT_MARKER_PATTERN = /\{\{(sup|sub):([^{}]*)\}\}/g;
 
     function escapeDisplayText(value) {
         return escapeHtml(value).replace(/\n/g, '<br>');
@@ -489,6 +490,20 @@ MODIFICATION RULES FOR THIS APP
         const text = normalizeMathChemMarkerPart(value);
         if (!text) return '';
         return `<span class="math-chem-script math-chem-${safeKind}">${escapeHtml(text)}</span>`;
+    }
+
+    function convertMathChemScriptMarkerToUnicode(kind, value) {
+        const text = normalizeMathChemMarkerPart(value);
+        if (!text) return '';
+        return convertMathChemScriptText(text, kind === 'sub' ? MATH_CHEM_SUBSCRIPT_MAP : MATH_CHEM_SUPERSCRIPT_MAP);
+    }
+
+    function displayMathChemTextForEditor(value) {
+        return String(value ?? '').replace(MATH_CHEM_SCRIPT_MARKER_PATTERN, (_match, kind, scriptText) => convertMathChemScriptMarkerToUnicode(kind, scriptText));
+    }
+
+    function normalizeAuthoredMathChemText(value) {
+        return displayMathChemTextForEditor(normalizeSheetText(value));
     }
 
     function renderMathChemPlainTextToHtml(value) {
@@ -554,11 +569,11 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function convertToMathChemSuperscript(value) {
-        return buildMathChemScriptMarker('sup', value);
+        return convertMathChemScriptMarkerToUnicode('sup', value);
     }
 
     function convertToMathChemSubscript(value) {
-        return buildMathChemScriptMarker('sub', value);
+        return convertMathChemScriptMarkerToUnicode('sub', value);
     }
 
     let lastMathChemInsertTarget = null;
@@ -1655,7 +1670,7 @@ MODIFICATION RULES FOR THIS APP
     function normalizeDiagramLabels(labels = []) {
         const source = Array.isArray(labels) ? labels : [];
         return source.map((label, index) => ({
-            label: normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index)) || getDiagramLabelName(index),
+            label: displayMathChemTextForEditor(normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index))) || getDiagramLabelName(index),
             x: Math.min(100, Math.max(0, Number(label?.x ?? label?.left ?? 50) || 50)),
             y: Math.min(100, Math.max(0, Number(label?.y ?? label?.top ?? 50) || 50))
         })).filter(label => label.label);
@@ -1709,10 +1724,24 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(sharing.sourceQuestionId || sharing.sharedSourceQuestionId || sharing.source_question_id);
     }
 
+    function getStudioQuestionRowsSnapshot(rows = state.auth.studioQuizQuestions || []) {
+        return Array.isArray(rows) ? rows : [];
+    }
+
+    function getStudioQuestionRowById(questionId = '', rows = state.auth.studioQuizQuestions || []) {
+        const targetId = normalizeSheetText(questionId);
+        if (!targetId) return null;
+        return getStudioQuestionRowsSnapshot(rows).find(question => normalizeSheetText(question?.id) === targetId) || null;
+    }
+
+    function getFirstStudioQuestionId(rows = state.auth.studioQuizQuestions || []) {
+        return normalizeSheetText(getStudioQuestionRowsSnapshot(rows)[0]?.id);
+    }
+
     function getStudioQuestionNumber(questionId = '') {
         const targetId = normalizeSheetText(questionId);
         if (!targetId) return 0;
-        const rows = Array.isArray(state.auth.studioQuizQuestions) ? state.auth.studioQuizQuestions : [];
+        const rows = getStudioQuestionRowsSnapshot();
         const index = rows.findIndex(question => normalizeSheetText(question?.id) === targetId);
         return index >= 0 ? index + 1 : 0;
     }
@@ -1900,7 +1929,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getFirstDiagramQuestionId(rows = state.auth.studioQuizQuestions || []) {
-        const match = (rows || []).find(question => normalizeSheetText(question?.question_type) === 'diagrams');
+        const match = getStudioQuestionRowsSnapshot(rows).find(question => normalizeSheetText(question?.question_type) === 'diagrams');
         return normalizeSheetText(match?.id);
     }
 
@@ -1908,7 +1937,7 @@ MODIFICATION RULES FOR THIS APP
         const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
         if (!sharing.useSharedImage) return sharing;
         const sourceQuestionId = getDiagramSharingSourceQuestionId(sharing);
-        const sourceStillExists = !!sourceQuestionId && (rows || []).some(question => normalizeSheetText(question?.id) === sourceQuestionId);
+        const sourceStillExists = !!sourceQuestionId && !!getStudioQuestionRowById(sourceQuestionId, rows);
         if (sourceStillExists) return sharing;
 
         const fallbackSourceQuestionId = getFirstDiagramQuestionId(rows);
@@ -1971,7 +2000,7 @@ MODIFICATION RULES FOR THIS APP
     function getStudioDiagramLabelsFromDOM() {
         if (!elements.diagramLabelList) return [];
         return normalizeDiagramLabels(Array.from(elements.diagramLabelList.querySelectorAll('[data-diagram-label-row]')).map((row, index) => ({
-            label: normalizeSheetText(row.querySelector('[data-diagram-label-text]')?.value) || getDiagramLabelName(index),
+            label: normalizeAuthoredMathChemText(row.querySelector('[data-diagram-label-text]')?.value) || getDiagramLabelName(index),
             x: Number(row.querySelector('[data-diagram-label-x]')?.value || 50),
             y: Number(row.querySelector('[data-diagram-label-y]')?.value || 50)
         })));
@@ -2064,7 +2093,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioDiagramLabels = labels;
         if (!elements.studioDiagramLabelLayer) return;
         elements.studioDiagramLabelLayer.innerHTML = labels.map((item, index) => `
-            <button type="button" class="studio-diagram-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Drag label ${escapeHtml(item.label)}">${renderMathChemTextToHtml(item.label)}</button>
+            <button type="button" class="studio-diagram-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Drag label ${escapeHtml(displayMathChemTextForEditor(item.label))}">${renderMathChemTextToHtml(item.label)}</button>
         `).join('');
     }
 
@@ -2074,10 +2103,10 @@ MODIFICATION RULES FOR THIS APP
         if (elements.diagramLabelList) {
             elements.diagramLabelList.innerHTML = drafts.map((item, index) => `
                 <div class="studio-diagram-label-row" data-diagram-label-row data-diagram-label-index="${index}">
-                  <input type="text" autocomplete="off" value="${escapeHtml(item.label)}" aria-label="Diagram label ${index + 1}" data-diagram-label-text>
+                  <input type="text" autocomplete="off" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" aria-label="Diagram label ${index + 1}" data-diagram-label-text>
                   <label><span>X%</span><input type="number" min="0" max="100" step="0.1" value="${Number(item.x).toFixed(1)}" data-diagram-label-x></label>
                   <label><span>Y%</span><input type="number" min="0" max="100" step="0.1" value="${Number(item.y).toFixed(1)}" data-diagram-label-y></label>
-                  <button type="button" class="auth-action-btn auth-secondary-btn studio-diagram-label-delete" data-diagram-label-delete aria-label="Delete label ${escapeHtml(item.label)}">Delete</button>
+                  <button type="button" class="auth-action-btn auth-secondary-btn studio-diagram-label-delete" data-diagram-label-delete aria-label="Delete label ${escapeHtml(displayMathChemTextForEditor(item.label))}">Delete</button>
                 </div>
             `).join('');
         }
@@ -3082,8 +3111,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function createStudioOptionFieldRow(index, optionData = {}) {
-        const optionText = normalizeSheetText(optionData.text);
-        const optionExplanation = normalizeSheetText(optionData.explanation);
+        const optionText = displayMathChemTextForEditor(normalizeSheetText(optionData.text));
+        const optionExplanation = displayMathChemTextForEditor(normalizeSheetText(optionData.explanation));
         const optionImageUrl = normalizeSheetText(optionData.imageUrl);
         const optionImageLabel = getOptionImageLabel(optionData, index);
         const optionNumber = index + 1;
@@ -3192,8 +3221,8 @@ MODIFICATION RULES FOR THIS APP
         return Array.from(elements.createOptionFieldsContainer.querySelectorAll('[data-option-index]')).map(row => {
             const imageInput = row.querySelector('[data-option-image-url]');
             return {
-                text: normalizeSheetText(row.querySelector('[data-option-text]')?.value),
-                explanation: normalizeSheetText(row.querySelector('[data-option-explanation]')?.value),
+                text: normalizeAuthoredMathChemText(row.querySelector('[data-option-text]')?.value),
+                explanation: normalizeAuthoredMathChemText(row.querySelector('[data-option-explanation]')?.value),
                 imageUrl: normalizeSheetText(imageInput?.value),
                 imageLabel: normalizeSheetText(imageInput?.dataset.optionImageLabel)
             };
@@ -3620,7 +3649,7 @@ MODIFICATION RULES FOR THIS APP
 
         const normalizedFromJson = rawOptions
             .map(item => ({
-                text: normalizeSheetText(item?.text),
+                text: displayMathChemTextForEditor(normalizeSheetText(item?.text)),
                 explanation: getStoredTextForDisplay('', item?.explanation_html || ''),
                 imageUrl: normalizeSheetText(item?.imageUrl || item?.image_url),
                 imageLabel: normalizeSheetText(item?.imageLabel || item?.image_label)
@@ -3633,22 +3662,22 @@ MODIFICATION RULES FOR THIS APP
 
         return [
             {
-                text: normalizeSheetText(detailRow?.option_1_text),
+                text: displayMathChemTextForEditor(normalizeSheetText(detailRow?.option_1_text)),
                 explanation: getStoredTextForDisplay('', detailRow?.option_1_explanation_html),
                 imageUrl: ''
             },
             {
-                text: normalizeSheetText(detailRow?.option_2_text),
+                text: displayMathChemTextForEditor(normalizeSheetText(detailRow?.option_2_text)),
                 explanation: getStoredTextForDisplay('', detailRow?.option_2_explanation_html),
                 imageUrl: ''
             },
             {
-                text: normalizeSheetText(detailRow?.option_3_text),
+                text: displayMathChemTextForEditor(normalizeSheetText(detailRow?.option_3_text)),
                 explanation: getStoredTextForDisplay('', detailRow?.option_3_explanation_html),
                 imageUrl: ''
             },
             {
-                text: normalizeSheetText(detailRow?.option_4_text),
+                text: displayMathChemTextForEditor(normalizeSheetText(detailRow?.option_4_text)),
                 explanation: getStoredTextForDisplay('', detailRow?.option_4_explanation_html),
                 imageUrl: ''
             }
@@ -3675,7 +3704,7 @@ MODIFICATION RULES FOR THIS APP
             return `Flashcard ${index + 1}`;
         }
 
-        const prompt = normalizeSheetText(questionRow?.prompt_plain || '');
+        const prompt = displayMathChemTextForEditor(normalizeSheetText(questionRow?.prompt_plain || ''));
         const prefix = questionType === 'hierarchy' ? `H${index + 1}` : (questionType === 'classify' ? `C${index + 1}` : (questionType === 'diagrams' ? `D${index + 1}` : `Q${index + 1}`));
         if (prompt) {
             return `${prefix}: ${prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt}`;
@@ -3957,7 +3986,7 @@ MODIFICATION RULES FOR THIS APP
         const draft = {
             questionId,
             questionType,
-            prompt: normalizeSheetText(elements.createQuestionPrompt?.value),
+            prompt: normalizeAuthoredMathChemText(elements.createQuestionPrompt?.value),
             questionImage: state.auth.studioQuestionImageDataUrl || '',
             questionImageLabel: state.auth.studioQuestionImageLabel || '',
             learningResourcesHtml: getLearningResourcesEditorHtml(),
@@ -3984,12 +4013,12 @@ MODIFICATION RULES FOR THIS APP
             draft.diagramLabels = getStudioDiagramLabelsFromDOM();
             draft.options = getStudioOptionDraftsFromDOM();
             draft.correctOption = normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1';
-            draft.correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
+            draft.correctExplanation = normalizeAuthoredMathChemText(elements.createCorrectExplanation?.value);
             draft.expandedOptionImageRows = Array.from(state.auth.expandedOptionImageRows || []);
         } else {
             draft.options = getStudioOptionDraftsFromDOM();
             draft.correctOption = normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1';
-            draft.correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
+            draft.correctExplanation = normalizeAuthoredMathChemText(elements.createCorrectExplanation?.value);
             draft.expandedOptionImageRows = Array.from(state.auth.expandedOptionImageRows || []);
         }
 
@@ -4631,6 +4660,23 @@ MODIFICATION RULES FOR THIS APP
 
         if (questionError) throw questionError;
         if (!questionRow) {
+            clearStudioQuestionDraft(questionId);
+            const fallbackQuestionId = !options.disableMissingQuestionFallback
+                ? getStudioQuestionRowsSnapshot().find(question => normalizeSheetText(question?.id) !== normalizeSheetText(questionId))?.id
+                : '';
+            if (fallbackQuestionId) {
+                console.warn('Studio question was missing during editor load; falling back to the next available question.', { missingQuestionId: questionId, fallbackQuestionId });
+                await loadStudioQuestionIntoEditor(fallbackQuestionId, {
+                    ...options,
+                    force: true,
+                    suppressStatus: true,
+                    disableMissingQuestionFallback: true
+                });
+                if (!suppressStatus) {
+                    setCreatorStatus('That question was no longer available, so the next available question was loaded.', 'neutral');
+                }
+                return;
+            }
             throw new Error('Could not load that question into the editor.');
         }
 
@@ -5382,7 +5428,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         if (quizType === 'hierarchy') {
-            const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+            const prompt = normalizeAuthoredMathChemText(elements.createQuestionPrompt?.value);
             const hierarchyDrafts = getStudioHierarchyDraftsFromDOM();
             const itemTexts = hierarchyDrafts.map(draft => normalizeSheetText(draft.text)).filter(Boolean);
             const positions = hierarchyDrafts.map(draft => Number(draft.position));
@@ -6851,7 +6897,7 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
         const quizName = normalizeSheetText(elements.createQuizName?.value);
-        const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+        const prompt = normalizeAuthoredMathChemText(elements.createQuestionPrompt?.value);
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
         const quizType = getStudioCurrentQuizType();
@@ -6869,7 +6915,7 @@ MODIFICATION RULES FOR THIS APP
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const maxOptionIndex = Math.max(0, options.length - 1);
         const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
-        const correctExplanation = normalizeSheetText(elements.createCorrectExplanation?.value);
+        const correctExplanation = normalizeAuthoredMathChemText(elements.createCorrectExplanation?.value);
         const correctAnswer = optionAnswerValues[correctIndex];
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         if (!prompt) return void setCreatorStatus('Enter a question prompt.', 'error');
@@ -7121,7 +7167,7 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.client || !state.auth.user?.id) return void setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
-        const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+        const prompt = normalizeAuthoredMathChemText(elements.createQuestionPrompt?.value);
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
         const hierarchyDrafts = getStudioHierarchyDraftsFromDOM();
@@ -7211,7 +7257,7 @@ MODIFICATION RULES FOR THIS APP
     async function handleSaveClassifyQuiz() {
         if (!state.auth.client || !state.auth.user?.id) return void setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
         const quizName = normalizeSheetText(elements.createQuizName?.value);
-        const prompt = normalizeSheetText(elements.createQuestionPrompt?.value);
+        const prompt = normalizeAuthoredMathChemText(elements.createQuestionPrompt?.value);
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
@@ -7441,7 +7487,16 @@ MODIFICATION RULES FOR THIS APP
                 });
             }
             const sourceQuestionId = getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing);
-            const targetQuestionId = preferredQuestionId || sourceQuestionId || questionRows[0]?.id || null;
+            const normalizedPreferredQuestionId = normalizeSheetText(preferredQuestionId);
+            const preferredQuestionStillExists = !!getStudioQuestionRowById(normalizedPreferredQuestionId, questionRows);
+            const sourceQuestionStillExists = !!getStudioQuestionRowById(sourceQuestionId, questionRows);
+            const targetQuestionId = preferredQuestionStillExists
+                ? normalizedPreferredQuestionId
+                : (sourceQuestionStillExists ? sourceQuestionId : (getFirstStudioQuestionId(questionRows) || null));
+            if (normalizedPreferredQuestionId && !preferredQuestionStillExists) {
+                console.warn('Preferred question was not found while loading the quiz editor; loading a valid question instead.', { preferredQuestionId: normalizedPreferredQuestionId, targetQuestionId });
+                clearStudioQuestionDraft(normalizedPreferredQuestionId);
+            }
 
             if (targetQuestionId) {
                 await loadStudioQuestionIntoEditor(targetQuestionId, { suppressStatus: true });
@@ -9181,8 +9236,8 @@ function htmlToDisplayText(value) {
 
 function getStoredTextForDisplay(plainValue, htmlValue) {
     const plain = normalizeSheetText(plainValue);
-    if (plain) return plain;
-    return htmlToDisplayText(htmlValue);
+    if (plain) return displayMathChemTextForEditor(plain);
+    return displayMathChemTextForEditor(htmlToDisplayText(htmlValue));
 }
 
 function resetQuizSelector() {

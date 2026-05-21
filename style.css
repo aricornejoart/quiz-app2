@@ -4409,6 +4409,24 @@ body.fullscreen-mode.active-question-classify {
   margin: 0.08em 0;
 }
 
+
+.math-chem-script,
+.math-chem-toolbar-script {
+  display: inline-block;
+  font-size: 0.92em;
+  line-height: 1;
+}
+
+.math-chem-sup,
+.math-chem-toolbar-sup {
+  vertical-align: super;
+}
+
+.math-chem-sub,
+.math-chem-toolbar-sub {
+  vertical-align: sub;
+}
+
 .studio-options-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
