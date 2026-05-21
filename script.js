@@ -131,7 +131,15 @@ MODIFICATION RULES FOR THIS APP
             mathChemToolsExpanded: false,
             expandedOptionImageRows: new Set(),
             studioDiagramDraggingIndex: null,
-            studioDiagramLabels: []
+            studioDiagramLabels: [],
+            studioDiagramSharing: {
+                useSharedImage: false,
+                useSharedLabels: false,
+                sharedImageUrl: '',
+                sharedImageLabel: '',
+                sharedLabels: [],
+                questionOverride: false
+            }
         }
     };
 
@@ -227,6 +235,10 @@ MODIFICATION RULES FOR THIS APP
         diagramLabelList: document.getElementById('diagramLabelList'),
         addDiagramLabelBtn: document.getElementById('addDiagramLabelBtn'),
         removeDiagramLabelBtn: document.getElementById('removeDiagramLabelBtn'),
+        useSharedDiagramImage: document.getElementById('useSharedDiagramImage'),
+        reuseSharedDiagramLabels: document.getElementById('reuseSharedDiagramLabels'),
+        overrideSharedDiagramQuestion: document.getElementById('overrideSharedDiagramQuestion'),
+        diagramSharingStatus: document.getElementById('diagramSharingStatus'),
         flashcardEditorFields: document.getElementById('flashcardEditorFields'),
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
@@ -1525,6 +1537,152 @@ MODIFICATION RULES FOR THIS APP
         })).filter(label => label.label);
     }
 
+    const STUDY_BUNNY_QUIZ_META_PREFIX = 'STUDY_BUNNY_META:';
+
+    function createDefaultDiagramSharingState() {
+        return {
+            useSharedImage: false,
+            useSharedLabels: false,
+            sharedImageUrl: '',
+            sharedImageLabel: '',
+            sharedLabels: [],
+            questionOverride: false
+        };
+    }
+
+    function parseQuizMetadata(description = '') {
+        const raw = String(description ?? '').trim();
+        if (!raw.startsWith(STUDY_BUNNY_QUIZ_META_PREFIX)) return {};
+        try {
+            const parsed = JSON.parse(raw.slice(STUDY_BUNNY_QUIZ_META_PREFIX.length));
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+            console.warn('Could not parse Study Bunny quiz metadata:', error);
+            return {};
+        }
+    }
+
+    function buildQuizDescriptionFromMetadata(metadata = {}) {
+        const safeMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+        return `${STUDY_BUNNY_QUIZ_META_PREFIX}${JSON.stringify(safeMetadata)}`;
+    }
+
+    function getDiagramSharingFromDescription(description = '') {
+        const metadata = parseQuizMetadata(description);
+        const diagramSharing = metadata.diagramSharing || {};
+        return {
+            ...createDefaultDiagramSharingState(),
+            useSharedImage: !!diagramSharing.useSharedImage,
+            useSharedLabels: !!diagramSharing.useSharedLabels,
+            sharedImageUrl: normalizeSheetText(diagramSharing.sharedImageUrl),
+            sharedImageLabel: normalizeSheetText(diagramSharing.sharedImageLabel),
+            sharedLabels: normalizeDiagramLabels(diagramSharing.sharedLabels || diagramSharing.labels || [])
+        };
+    }
+
+    function setDiagramSharingInDescription(description = '', diagramSharingDraft = {}) {
+        const metadata = parseQuizMetadata(description);
+        const safeDraft = {
+            useSharedImage: !!diagramSharingDraft.useSharedImage,
+            useSharedLabels: !!diagramSharingDraft.useSharedLabels,
+            sharedImageUrl: normalizeSheetText(diagramSharingDraft.sharedImageUrl),
+            sharedImageLabel: normalizeSheetText(diagramSharingDraft.sharedImageLabel),
+            sharedLabels: normalizeDiagramLabels(diagramSharingDraft.sharedLabels || [])
+        };
+        metadata.diagramSharing = safeDraft;
+        return buildQuizDescriptionFromMetadata(metadata);
+    }
+
+    function collectQuizDescriptionMediaReferences(description = '', refs = new Set()) {
+        return collectSupabaseMediaReferences(parseQuizMetadata(description), refs);
+    }
+
+    async function cloneQuizDescriptionMediaReferences(description = '', options = {}) {
+        const metadata = parseQuizMetadata(description);
+        if (!Object.keys(metadata).length) return normalizeSheetText(description);
+        const clonedMetadata = await cloneMediaRefsInObject(metadata, options);
+        return buildQuizDescriptionFromMetadata(clonedMetadata);
+    }
+
+    async function restoreQuizDescriptionMediaReferences(description = '', options = {}) {
+        const metadata = parseQuizMetadata(description);
+        if (!Object.keys(metadata).length) return normalizeSheetText(description);
+        const restoredMetadata = await restoreBackupMediaRefsInObject(metadata, options);
+        return buildQuizDescriptionFromMetadata(restoredMetadata);
+    }
+
+    function getDiagramOptionsJsonObject(detailRow) {
+        const optionsJson = detailRow?.options_json;
+        return optionsJson && typeof optionsJson === 'object' && !Array.isArray(optionsJson) ? optionsJson : {};
+    }
+
+    function getDiagramQuestionOverrideFromDetailRow(detailRow) {
+        return !!getDiagramOptionsJsonObject(detailRow).diagramQuestionOverride;
+    }
+
+    function getStudioDiagramSharingDraft() {
+        return {
+            ...state.auth.studioDiagramSharing,
+            useSharedImage: !!elements.useSharedDiagramImage?.checked,
+            useSharedLabels: !!elements.reuseSharedDiagramLabels?.checked,
+            questionOverride: !!elements.overrideSharedDiagramQuestion?.checked
+        };
+    }
+
+    function updateDiagramSharingControls() {
+        const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        if (elements.useSharedDiagramImage) elements.useSharedDiagramImage.checked = !!sharing.useSharedImage;
+        if (elements.reuseSharedDiagramLabels) {
+            elements.reuseSharedDiagramLabels.checked = !!sharing.useSharedLabels;
+            elements.reuseSharedDiagramLabels.disabled = !sharing.useSharedImage;
+        }
+        if (elements.overrideSharedDiagramQuestion) {
+            elements.overrideSharedDiagramQuestion.checked = !!sharing.questionOverride;
+            elements.overrideSharedDiagramQuestion.disabled = !sharing.useSharedImage;
+        }
+        if (elements.diagramSharingStatus) {
+            const hasSharedImage = !!normalizeSheetText(sharing.sharedImageUrl);
+            const hasSharedLabels = normalizeDiagramLabels(sharing.sharedLabels || []).length > 0;
+            elements.diagramSharingStatus.textContent = sharing.useSharedImage
+                ? `Shared image ${hasSharedImage ? 'saved' : 'not saved yet'}${sharing.useSharedLabels ? `; shared labels ${hasSharedLabels ? 'saved' : 'not saved yet'}` : '; labels remain per-question'}.`
+                : 'Sharing is optional. Shared image uses one uploaded media file; labels can remain per-question.';
+        }
+    }
+
+    function setStudioDiagramSharingState(nextSharing = {}) {
+        state.auth.studioDiagramSharing = {
+            ...createDefaultDiagramSharingState(),
+            ...(state.auth.studioDiagramSharing || {}),
+            ...nextSharing,
+            sharedLabels: normalizeDiagramLabels(nextSharing.sharedLabels ?? state.auth.studioDiagramSharing?.sharedLabels ?? [])
+        };
+        updateDiagramSharingControls();
+    }
+
+    function isUsingSharedDiagramImage() {
+        const sharing = getStudioDiagramSharingDraft();
+        return !!(sharing.useSharedImage && !sharing.questionOverride);
+    }
+
+    function isUsingSharedDiagramLabels() {
+        const sharing = getStudioDiagramSharingDraft();
+        return !!(sharing.useSharedImage && sharing.useSharedLabels && !sharing.questionOverride);
+    }
+
+    function getEffectiveStudioDiagramImage(questionImage = '') {
+        const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        return sharing.useSharedImage && !sharing.questionOverride
+            ? normalizeSheetText(sharing.sharedImageUrl || questionImage)
+            : normalizeSheetText(questionImage);
+    }
+
+    function getEffectiveStudioDiagramLabels(questionLabels = []) {
+        const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        return sharing.useSharedImage && sharing.useSharedLabels && !sharing.questionOverride
+            ? normalizeDiagramLabels(sharing.sharedLabels || questionLabels)
+            : normalizeDiagramLabels(questionLabels);
+    }
+
     function getOptionsJsonOptions(optionsJson) {
         if (Array.isArray(optionsJson)) return optionsJson;
         if (optionsJson && typeof optionsJson === 'object' && Array.isArray(optionsJson.options)) return optionsJson.options;
@@ -1532,11 +1690,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getDiagramLabelsFromDetailRow(detailRow) {
-        const optionsJson = detailRow?.options_json;
-        if (optionsJson && typeof optionsJson === 'object' && !Array.isArray(optionsJson)) {
-            return normalizeDiagramLabels(optionsJson.diagramLabels || optionsJson.labels || []);
-        }
-        return [];
+        const optionsJson = getDiagramOptionsJsonObject(detailRow);
+        return normalizeDiagramLabels(optionsJson.diagramLabels || optionsJson.labels || []);
     }
 
     function getStudioDiagramLabelsFromDOM() {
@@ -1818,10 +1973,22 @@ MODIFICATION RULES FOR THIS APP
     async function getQuizMediaReferences(quizId, onProgress = null) {
         const refs = new Set();
         if (!state.auth.client || !quizId) return refs;
-        const { data: questionRows, error } = await state.auth.client
-            .from('questions')
-            .select('id')
-            .eq('quiz_id', quizId);
+        const [{ data: quizRow, error: quizError }, { data: questionRows, error }] = await Promise.all([
+            state.auth.client
+                .from('quizzes')
+                .select('description')
+                .eq('id', quizId)
+                .maybeSingle(),
+            state.auth.client
+                .from('questions')
+                .select('id')
+                .eq('quiz_id', quizId)
+        ]);
+        if (quizError) {
+            console.error('Could not load quiz shared media before delete:', quizError);
+        } else {
+            collectQuizDescriptionMediaReferences(quizRow?.description, refs);
+        }
         if (error) {
             console.error('Could not load quiz media before delete:', error);
             return refs;
@@ -1931,6 +2098,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
         if (elements.diagramEditorFields) elements.diagramEditorFields.classList.toggle('hidden', !isDiagrams);
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
+        updateDiagramSharingControls();
         [elements.addOptionFieldBtn, elements.addOptionInlineBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !usesMultipleChoiceOptions);
         });
@@ -2286,7 +2454,7 @@ MODIFICATION RULES FOR THIS APP
             let [{ data: quizzes, error: quizzesError }, { data: questionRows, error: questionsError }] = await Promise.all([
                 state.auth.client
                     .from('quizzes')
-                    .select('id, folder_id, name, sort_order, is_archived, updated_at')
+                    .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
                     .order('sort_order', { ascending: true })
                     .order('name', { ascending: true }),
                 state.auth.client
@@ -2298,7 +2466,7 @@ MODIFICATION RULES FOR THIS APP
             if (quizzesError && /updated_at/i.test(quizzesError.message || '')) {
                 const { data: fallbackQuizzes, error: fallbackQuizzesError } = await state.auth.client
                     .from('quizzes')
-                    .select('id, folder_id, name, sort_order, is_archived')
+                    .select('id, folder_id, name, description, sort_order, is_archived')
                     .order('sort_order', { ascending: true })
                     .order('name', { ascending: true });
                 if (fallbackQuizzesError) throw fallbackQuizzesError;
@@ -4046,7 +4214,11 @@ MODIFICATION RULES FOR THIS APP
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
         renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
-        renderStudioDiagramLabels([]);
+        if (getStudioCurrentQuizType() === 'diagrams' && state.auth.studioDiagramSharing?.useSharedImage && !state.auth.studioDiagramSharing?.questionOverride) {
+            renderStudioDiagramLabels(state.auth.studioDiagramSharing.useSharedLabels ? state.auth.studioDiagramSharing.sharedLabels : []);
+        } else {
+            renderStudioDiagramLabels([]);
+        }
         if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
         if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
         state.auth.editingQuestionId = null;
@@ -4056,7 +4228,12 @@ MODIFICATION RULES FOR THIS APP
         if (!options.keepPendingDraft) {
             state.auth.studioPendingNewQuestionRow = null;
         }
-        setStudioQuestionImageState('', 'No question image selected.');
+        if (getStudioCurrentQuizType() === 'diagrams' && state.auth.studioDiagramSharing?.useSharedImage && !state.auth.studioDiagramSharing?.questionOverride) {
+            const sharedImageUrl = normalizeSheetText(state.auth.studioDiagramSharing.sharedImageUrl);
+            setStudioQuestionImageState(sharedImageUrl, sharedImageUrl ? 'Using shared diagram image.' : 'No diagram image selected.');
+        } else {
+            setStudioQuestionImageState('', 'No question image selected.');
+        }
         setStudioLearningResourcesImageState('', 'No learning resources image selected.');
         setStudioFlashcardTermImageState('', 'No term image selected.');
         setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
@@ -4220,6 +4397,8 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         } else if (state.auth.editingQuizType === 'diagrams') {
             const detailRow = await loadMultipleChoiceDetailByQuestionId(questionId) || createEmptyMultipleChoiceDetailRow();
+            const questionOverride = getDiagramQuestionOverrideFromDetailRow(detailRow);
+            setStudioDiagramSharingState({ questionOverride });
 
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
@@ -4227,16 +4406,19 @@ MODIFICATION RULES FOR THIS APP
             renderStudioOptionFields(optionDrafts);
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
-            renderStudioDiagramLabels(getDiagramLabelsFromDetailRow(detailRow));
+            const questionDiagramLabels = getDiagramLabelsFromDetailRow(detailRow);
+            const effectiveLabels = getEffectiveStudioDiagramLabels(questionDiagramLabels);
+            renderStudioDiagramLabels(effectiveLabels);
             const savedCorrectAnswer = normalizeSheetText(detailRow.correct_answer);
             const correctIndex = Math.max(0, optionDrafts.findIndex(option => getOptionAnswerValue(option) === savedCorrectAnswer));
             if (elements.createCorrectOptionSelect) {
                 elements.createCorrectOptionSelect.value = String(correctIndex + 1);
             }
 
+            const effectiveDiagramImage = getEffectiveStudioDiagramImage(questionRow.image_url);
             setStudioQuestionImageState(
-                normalizeSheetText(questionRow.image_url),
-                normalizeSheetText(questionRow.image_url) ? 'Existing diagram image saved.' : 'No diagram image selected.'
+                effectiveDiagramImage,
+                effectiveDiagramImage ? (questionOverride ? 'Existing diagram image saved.' : 'Using shared diagram image.') : 'No diagram image selected.'
             );
             setStudioFlashcardTermImageState('', 'No term image selected.');
             setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
@@ -4900,8 +5082,6 @@ MODIFICATION RULES FOR THIS APP
             const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
             const labels = getStudioDiagramLabelsFromDOM();
             return !!normalizeSheetText(elements.createQuestionPrompt?.value)
-                && !!normalizeSheetText(state.auth.studioQuestionImageDataUrl)
-                && labels.length >= 1
                 && optionDrafts.length >= 2
                 && !optionAnswerValues.some(value => !value)
                 && new Set(optionAnswerValues).size === optionAnswerValues.length
@@ -5214,13 +5394,13 @@ MODIFICATION RULES FOR THIS APP
 
         let result = await state.auth.client
             .from('quizzes')
-            .select('id, folder_id, name, sort_order, is_archived, updated_at')
+            .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
             .in('id', safeQuizIds);
 
         if (result.error && /updated_at/i.test(result.error.message || '')) {
             result = await state.auth.client
                 .from('quizzes')
-                .select('id, folder_id, name, sort_order, is_archived')
+                .select('id, folder_id, name, description, sort_order, is_archived')
                 .in('id', safeQuizIds);
         }
 
@@ -5385,6 +5565,7 @@ MODIFICATION RULES FOR THIS APP
         const folderIds = new Set(requestedFolderIds);
         quizRows.forEach(quiz => {
             if (quiz.folder_id) folderIds.add(quiz.folder_id);
+            collectQuizDescriptionMediaReferences(quiz.description, allMediaRefs);
         });
         const folderRows = createBackupFolderRows(folderIds);
         const folderMap = new Map(folderRows.map(folder => [folder.id, folder]));
@@ -5398,6 +5579,7 @@ MODIFICATION RULES FOR THIS APP
                 folder_id: quiz.folder_id || null,
                 folder_name: folderMap.get(quiz.folder_id)?.name || managedQuiz?.folderName || '',
                 name: normalizeSheetText(quiz.name),
+                description: normalizeSheetText(quiz.description),
                 sort_order: Number(quiz.sort_order ?? 0),
                 is_archived: !!quiz.is_archived,
                 updated_at: normalizeSheetText(quiz.updated_at || managedQuiz?.updatedAt),
@@ -5940,6 +6122,14 @@ MODIFICATION RULES FOR THIS APP
                 .single();
             if (quizError) throw quizError;
             const newQuizId = quizRow.id;
+            if (normalizeSheetText(backupQuiz.description)) {
+                const restoredDescription = await restoreQuizDescriptionMediaReferences(backupQuiz.description, { quizId: newQuizId, questionId: null, usageContext: 'quiz_description' });
+                const { error: descriptionError } = await state.auth.client
+                    .from('quizzes')
+                    .update({ description: restoredDescription || '' })
+                    .eq('id', newQuizId);
+                if (descriptionError) throw descriptionError;
+            }
             importedQuizIds.push(newQuizId);
             stats.quizzes += 1;
 
@@ -6324,6 +6514,11 @@ MODIFICATION RULES FOR THIS APP
         const quizType = getStudioCurrentQuizType();
         const isDiagramQuestion = quizType === 'diagrams';
         const diagramLabels = isDiagramQuestion ? getStudioDiagramLabelsFromDOM() : [];
+        const diagramSharingDraft = isDiagramQuestion ? getStudioDiagramSharingDraft() : createDefaultDiagramSharingState();
+        if (!diagramSharingDraft.useSharedImage) {
+            diagramSharingDraft.useSharedLabels = false;
+            diagramSharingDraft.questionOverride = false;
+        }
         const optionDrafts = getStudioOptionDraftsFromDOM();
         const options = optionDrafts.map(draft => draft.text);
         const explanations = optionDrafts.map(draft => draft.explanation);
@@ -6335,8 +6530,6 @@ MODIFICATION RULES FOR THIS APP
         const correctAnswer = optionAnswerValues[correctIndex];
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         if (!prompt) return void setCreatorStatus('Enter a question prompt.', 'error');
-        if (isDiagramQuestion && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)) return void setCreatorStatus('Upload a diagram image before saving.', 'error');
-        if (isDiagramQuestion && !diagramLabels.length) return void setCreatorStatus('Add at least one diagram label before saving.', 'error');
         if (optionDrafts.length < 2) return void setCreatorStatus('Add at least 2 answer options.', 'error');
         if (optionAnswerValues.some(value => !value)) return void setCreatorStatus('Each answer option needs text or an image before saving.', 'error');
         if (new Set(optionAnswerValues).size !== optionAnswerValues.length) return void setCreatorStatus('All answer options must be unique.', 'error');
@@ -6347,8 +6540,12 @@ MODIFICATION RULES FOR THIS APP
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
+            let currentQuizDescription = '';
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
+                const { data: existingQuizRow, error: existingQuizError } = await state.auth.client.from('quizzes').select('description').eq('id', quizId).maybeSingle();
+                if (existingQuizError) throw existingQuizError;
+                currentQuizDescription = normalizeSheetText(existingQuizRow?.description);
                 const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
                 if (error) throw error;
             } else {
@@ -6367,8 +6564,43 @@ MODIFICATION RULES FOR THIS APP
                 if (error) throw error;
                 state.auth.pendingInsertAfterQuestionId = null;
             }
+            let questionDiagramImageValue = state.auth.studioQuestionImageDataUrl || '';
+            let diagramLabelsForQuestion = diagramLabels;
+            let nextDiagramSharing = {
+                ...state.auth.studioDiagramSharing,
+                ...diagramSharingDraft,
+                sharedLabels: normalizeDiagramLabels(state.auth.studioDiagramSharing?.sharedLabels || [])
+            };
+
+            if (isDiagramQuestion && nextDiagramSharing.useSharedImage && !nextDiagramSharing.questionOverride) {
+                const sharedImageCandidate = normalizeSheetText(questionDiagramImageValue || nextDiagramSharing.sharedImageUrl);
+                const savedSharedDiagramImage = await savePrivateMediaValue(sharedImageCandidate, {
+                    quizId,
+                    questionId: null,
+                    usageContext: 'diagram_shared_image',
+                    label: state.auth.studioQuestionImageLabel || nextDiagramSharing.sharedImageLabel || 'shared diagram image'
+                });
+                nextDiagramSharing.sharedImageUrl = savedSharedDiagramImage || '';
+                nextDiagramSharing.sharedImageLabel = nextDiagramSharing.sharedImageUrl
+                    ? (state.auth.studioQuestionImageLabel || nextDiagramSharing.sharedImageLabel || 'Shared diagram image saved.')
+                    : '';
+                if (nextDiagramSharing.useSharedLabels) {
+                    nextDiagramSharing.sharedLabels = normalizeDiagramLabels(diagramLabels);
+                    diagramLabelsForQuestion = [];
+                }
+                questionDiagramImageValue = '';
+            }
+
+            if (isDiagramQuestion) {
+                setStudioDiagramSharingState(nextDiagramSharing);
+                const nextDescription = setDiagramSharingInDescription(currentQuizDescription, nextDiagramSharing);
+                const { error: descriptionError } = await state.auth.client.from('quizzes').update({ description: nextDescription }).eq('id', quizId);
+                if (descriptionError) throw descriptionError;
+                currentQuizDescription = nextDescription;
+            }
+
             const savedSharedMedia = await saveSharedQuestionMediaValues(quizId, questionId, {
-                image_url: state.auth.studioQuestionImageDataUrl || '',
+                image_url: isDiagramQuestion ? questionDiagramImageValue : (state.auth.studioQuestionImageDataUrl || ''),
                 learning_resources_image_url: state.auth.studioLearningResourcesImageDataUrl || ''
             });
             const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
@@ -6388,7 +6620,9 @@ MODIFICATION RULES FOR THIS APP
                 imageUrl: draft.imageUrl || '',
                 imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
             }));
-            const optionsJsonPayload = isDiagramQuestion ? { options: optionPayload, diagramLabels } : optionPayload;
+            const optionsJsonPayload = isDiagramQuestion
+                ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: !!nextDiagramSharing.questionOverride }
+                : optionPayload;
             const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionsJsonPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) {
@@ -6768,7 +7002,7 @@ MODIFICATION RULES FOR THIS APP
 
             const { data: quizRow, error: quizError } = await state.auth.client
                 .from('quizzes')
-                .select('id, folder_id, name')
+                .select('id, folder_id, name, description')
                 .eq('id', quizId)
                 .maybeSingle();
 
@@ -6780,6 +7014,10 @@ MODIFICATION RULES FOR THIS APP
             state.auth.editingQuizId = quizRow.id;
             state.auth.pendingInsertAfterQuestionId = null;
             state.auth.editingQuizType = managedQuiz.quizType || 'multiple_choice';
+            setStudioDiagramSharingState({
+                ...getDiagramSharingFromDescription(quizRow.description || ''),
+                questionOverride: false
+            });
             state.auth.studioQuestionSearchQuery = '';
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
             if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
@@ -7031,7 +7269,7 @@ MODIFICATION RULES FOR THIS APP
                     user_id: state.auth.user.id,
                     folder_id: quizRow.folder_id || null,
                     name: duplicateName,
-                    description: quizRow.description || '',
+                    description: '',
                     sort_order: nextSortOrder,
                     is_archived: false
                 })
@@ -7039,6 +7277,15 @@ MODIFICATION RULES FOR THIS APP
                 .single();
             if (insertQuizError) throw insertQuizError;
             const newQuizId = insertedQuiz.id;
+
+            if (normalizeSheetText(quizRow.description)) {
+                const clonedDescription = await cloneQuizDescriptionMediaReferences(quizRow.description, { quizId: newQuizId, questionId: null });
+                const { error: descriptionCloneError } = await state.auth.client
+                    .from('quizzes')
+                    .update({ description: clonedDescription || '' })
+                    .eq('id', newQuizId);
+                if (descriptionCloneError) throw descriptionCloneError;
+            }
 
             const { data: sourceQuestions, error: sourceQuestionsError } = await state.auth.client
                 .from('questions')
@@ -8696,12 +8943,21 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
     }
 
     try {
-        const { data: questionRows, error: questionsError } = await state.auth.client
-            .from('questions')
-            .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, sort_order, question_type')
-            .eq('quiz_id', quizDescriptor.sourceQuizId)
-            .order('sort_order', { ascending: true });
+        const [{ data: questionRows, error: questionsError }, { data: quizRow, error: quizError }] = await Promise.all([
+            state.auth.client
+                .from('questions')
+                .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, sort_order, question_type')
+                .eq('quiz_id', quizDescriptor.sourceQuizId)
+                .order('sort_order', { ascending: true }),
+            state.auth.client
+                .from('quizzes')
+                .select('description')
+                .eq('id', quizDescriptor.sourceQuizId)
+                .maybeSingle()
+        ]);
         if (questionsError) throw questionsError;
+        if (quizError) throw quizError;
+        const diagramSharing = getDiagramSharingFromDescription(quizRow?.description || '');
         const rows = questionRows || [];
         const questionIds = rows.map(row => row.id).filter(Boolean);
         if (!questionIds.length) return [];
@@ -8796,7 +9052,15 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             const detail = detailMap.get(row.id);
             if (!detail) return null;
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
-            const diagramLabels = quizType === 'diagrams' ? getDiagramLabelsFromDetailRow(detail) : [];
+            const questionDiagramLabels = quizType === 'diagrams' ? getDiagramLabelsFromDetailRow(detail) : [];
+            const diagramQuestionOverride = quizType === 'diagrams' ? getDiagramQuestionOverrideFromDetailRow(detail) : false;
+            const useSharedDiagramImage = quizType === 'diagrams' && diagramSharing.useSharedImage && !diagramQuestionOverride;
+            const diagramLabels = useSharedDiagramImage && diagramSharing.useSharedLabels
+                ? normalizeDiagramLabels(diagramSharing.sharedLabels)
+                : questionDiagramLabels;
+            const diagramImage = useSharedDiagramImage
+                ? normalizeSheetText(diagramSharing.sharedImageUrl || row.image_url)
+                : normalizeSheetText(row.image_url);
             const options = optionDrafts.map(draft => draft.text);
             const optionImages = optionDrafts.map(draft => normalizeSheetText(draft.imageUrl));
             const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
@@ -8815,7 +9079,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 optionImages,
                 correct: correctAnswer,
                 explanations,
-                image: normalizeSheetText(row.image_url),
+                image: quizType === 'diagrams' ? diagramImage : normalizeSheetText(row.image_url),
                 diagramLabels,
                 learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                 learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
@@ -9671,7 +9935,7 @@ function showQuestion() {
     elements.imageContainer.style.display = '';
     elements.questionImage.style.display = q.image ? 'block' : 'none';
     elements.questionImage.src = q.image || '';
-    if (q.type === 'diagrams') {
+    if (q.type === 'diagrams' && q.image) {
         renderDiagramStudyLabels(q.diagramLabels || []);
     } else {
         clearDiagramStudyLabels();
@@ -12140,6 +12404,37 @@ if (elements.studioDiagramLabelLayer) {
     elements.studioDiagramLabelLayer.addEventListener('pointerup', stopDiagramDrag);
     elements.studioDiagramLabelLayer.addEventListener('pointercancel', stopDiagramDrag);
 }
+
+function handleDiagramSharingControlChange(event) {
+    const nextSharing = getStudioDiagramSharingDraft();
+    if (!nextSharing.useSharedImage) {
+        nextSharing.useSharedLabels = false;
+        nextSharing.questionOverride = false;
+    }
+    if (event?.target === elements.reuseSharedDiagramLabels && nextSharing.useSharedLabels && !nextSharing.questionOverride) {
+        const existingLabels = normalizeDiagramLabels(state.auth.studioDiagramSharing?.sharedLabels || []);
+        if (existingLabels.length && !getStudioDiagramLabelsFromDOM().length) {
+            renderStudioDiagramLabels(existingLabels);
+        }
+    }
+    if (nextSharing.useSharedImage && !nextSharing.questionOverride) {
+        const sharedImageUrl = normalizeSheetText(state.auth.studioDiagramSharing?.sharedImageUrl);
+        if (sharedImageUrl && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)) {
+            setStudioQuestionImageState(sharedImageUrl, 'Using shared diagram image.');
+        }
+        if (nextSharing.useSharedLabels) {
+            const sharedLabels = normalizeDiagramLabels(state.auth.studioDiagramSharing?.sharedLabels || []);
+            if (sharedLabels.length) renderStudioDiagramLabels(sharedLabels);
+        }
+    }
+    setStudioDiagramSharingState(nextSharing);
+    setStudioDirtyState(true);
+}
+
+[elements.useSharedDiagramImage, elements.reuseSharedDiagramLabels, elements.overrideSharedDiagramQuestion].forEach(control => {
+    if (!control) return;
+    control.addEventListener('change', handleDiagramSharingControlChange);
+});
 
 if (elements.createQuestionImageFile) {
     elements.createQuestionImageFile.addEventListener('change', () => {

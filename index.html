@@ -651,14 +651,29 @@ MODIFICATION RULES FOR THIS APP
 
 
                   <div id="diagramEditorFields" class="studio-editor-type-fields hidden">
-                    <div class="creator-note studio-options-note">Upload a diagram image above, then place draggable labels on it. Label positions are saved as percentages so they stay aligned across screen sizes.</div>
+                    <div class="creator-note studio-options-note">Optional: upload a diagram image above, then place draggable labels on it. If no image/labels are added, this Diagram question works like a regular multiple-choice question.</div>
+                    <div class="studio-diagram-sharing-panel" aria-label="Diagram sharing options">
+                      <label class="studio-diagram-sharing-option">
+                        <input id="useSharedDiagramImage" type="checkbox">
+                        <span>Use same image for all questions</span>
+                      </label>
+                      <label class="studio-diagram-sharing-option">
+                        <input id="reuseSharedDiagramLabels" type="checkbox">
+                        <span>Reuse same labels for all questions</span>
+                      </label>
+                      <label class="studio-diagram-sharing-option">
+                        <input id="overrideSharedDiagramQuestion" type="checkbox">
+                        <span>Override shared image/labels for this question</span>
+                      </label>
+                      <div id="diagramSharingStatus" class="studio-diagram-sharing-status">Sharing is optional. Shared image uses one uploaded media file; labels can remain per-question.</div>
+                    </div>
                     <div class="studio-diagram-editor-layout">
                       <div id="studioDiagramPreview" class="studio-diagram-preview" aria-label="Diagram label placement preview">
                         <div id="studioDiagramPreviewWrap" class="studio-diagram-preview-wrap">
                           <img id="studioDiagramPreviewImage" class="studio-diagram-preview-image hidden" alt="Diagram preview">
                           <div id="studioDiagramLabelLayer" class="studio-diagram-label-layer"></div>
                         </div>
-                        <div id="studioDiagramEmptyState" class="studio-diagram-empty-state">Upload a diagram image to place labels.</div>
+                        <div id="studioDiagramEmptyState" class="studio-diagram-empty-state">No diagram image selected. You can still save this as a regular multiple-choice-style question.</div>
                       </div>
                       <div class="studio-diagram-label-panel">
                         <div class="studio-options-toolbar-actions">

@@ -5874,3 +5874,37 @@ body.fullscreen-mode .progress-mode-summary {
 .studio-diagram-preview:not(.has-image) .studio-diagram-preview-wrap {
   display: none;
 }
+
+/* ===== Phase 22AQ Shared Diagram Image/Labels ===== */
+.studio-diagram-sharing-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.studio-diagram-sharing-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-soft);
+  font-size: 13px;
+}
+
+.studio-diagram-sharing-option input {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.studio-diagram-sharing-option input:disabled + span {
+  opacity: 0.55;
+}
+
+.studio-diagram-sharing-status {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
