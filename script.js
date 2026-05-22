@@ -4401,6 +4401,28 @@ MODIFICATION RULES FOR THIS APP
         root.querySelectorAll('.studio-flashcard-inline-field textarea').forEach(autosizeStudioFlashcardInlineTextarea);
     }
 
+    function revealStudioQuestionInList(questionId, options = {}) {
+        const normalizedQuestionId = normalizeSheetText(questionId);
+        if (!normalizedQuestionId || !elements.studioQuestionList) return;
+        const reveal = () => {
+            const row = Array.from(elements.studioQuestionList.querySelectorAll('[data-studio-row-question-id]'))
+                .find(item => normalizeSheetText(item.getAttribute('data-studio-row-question-id')) === normalizedQuestionId);
+            if (!row) return;
+            row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: options.instant ? 'auto' : 'smooth' });
+            if (options.focusListButton) {
+                const button = row.querySelector('[data-studio-question-id]');
+                if (button && typeof button.focus === 'function') {
+                    button.focus({ preventScroll: true });
+                }
+            }
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(reveal);
+        } else {
+            setTimeout(reveal, 0);
+        }
+    }
+
     function renderStudioQuestionList() {
         if (!elements.studioQuestionList) return;
 
@@ -4587,6 +4609,9 @@ MODIFICATION RULES FOR THIS APP
         renderStudioQuestionList();
         updateCreateQuizModeUI();
         setStudioDirtyState(false);
+        if (options.revealInList) {
+            revealStudioQuestionInList(questionRow.id, { focusListButton: !!options.focusListButton });
+        }
     }
 
     async function getNextQuestionSortOrder(quizId) {
@@ -7705,8 +7730,8 @@ MODIFICATION RULES FOR THIS APP
             await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
-            await loadStudioQuestionIntoEditor(duplicatedQuestionId, { suppressStatus: true });
-            setCreatorStatus('Question duplicated.', 'success');
+            await loadStudioQuestionIntoEditor(duplicatedQuestionId, { suppressStatus: true, revealInList: true, focusListButton: true });
+            setCreatorStatus('Question duplicated and opened.', 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not duplicate the question.', 'error');
@@ -8687,6 +8712,12 @@ function updateNavigationButtons() {
     }
 
     if (isStructuredMode()) {
+        setNavButtonEnabled(elements.prevBtn, false);
+        setNavButtonEnabled(elements.nextBtn, state.questionAnswered);
+        return;
+    }
+
+    if (isProgressMode()) {
         setNavButtonEnabled(elements.prevBtn, false);
         setNavButtonEnabled(elements.nextBtn, state.questionAnswered);
         return;
