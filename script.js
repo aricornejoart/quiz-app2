@@ -9433,6 +9433,131 @@ function toggleFullscreenMode() {
     }
 }
 
+function isEditableKeyboardShortcutTarget(target) {
+    if (!target) return false;
+    const editable = target.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"]');
+    return !!editable;
+}
+
+function isStudyKeyboardShortcutBlocked(event) {
+    if (event.defaultPrevented) return true;
+    if (event.ctrlKey || event.metaKey || event.altKey) return true;
+    if (isEditableKeyboardShortcutTarget(event.target)) return true;
+    if (state.auth.quizStudioOpen || !elements.quizStudioPage?.classList.contains('hidden')) return true;
+    if (elements.authPopup && !elements.authPopup.classList.contains('hidden')) return true;
+    if (elements.settingsPopup && !elements.settingsPopup.classList.contains('hidden')) return true;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return true;
+    if (!state.questions.length || isQuizFinished()) return true;
+    return false;
+}
+
+function activateVisibleAnswerShortcut(optionNumber) {
+    if (!Number.isInteger(optionNumber) || optionNumber < 1 || optionNumber > 9) return false;
+    if (state.questionAnswered) return false;
+
+    const currentQuestion = state.questionQueue[state.currentIndex] || null;
+    if (currentQuestion?.type === 'flashcard') {
+        if (optionNumber === 1) {
+            gradeFlashcard(false);
+            return true;
+        }
+        if (optionNumber === 2) {
+            gradeFlashcard(true);
+            return true;
+        }
+        return false;
+    }
+
+    const visibleButtons = Array.from(elements.optionsContainer.querySelectorAll('.optionBtn'))
+        .filter(button => !button.disabled && button.offsetParent !== null && button.closest('.option-block')?.style.display !== 'none');
+    const targetButton = visibleButtons[optionNumber - 1];
+    if (!targetButton) return false;
+
+    targetButton.click();
+    return true;
+}
+
+function submitCurrentStructuredQuestionShortcut() {
+    if (state.questionAnswered) return false;
+
+    const hierarchySubmit = document.getElementById('hierarchySubmit');
+    if (hierarchySubmit && !hierarchySubmit.disabled) {
+        hierarchySubmit.click();
+        return true;
+    }
+
+    const classifySubmit = document.getElementById('classifySubmit');
+    if (classifySubmit && !classifySubmit.disabled) {
+        classifySubmit.click();
+        return true;
+    }
+
+    return false;
+}
+
+function handleStudyKeyboardShortcut(event) {
+    const key = event.key;
+
+    if (key === 'f' || key === 'F') {
+        if (isStudyKeyboardShortcutBlocked(event)) return false;
+        event.preventDefault();
+        toggleFullscreenMode();
+        return true;
+    }
+
+    if (key === 's' || key === 'S') {
+        if (isStudyKeyboardShortcutBlocked(event)) return false;
+        if (!elements.questionStarBtn || elements.questionStarBtn.disabled || elements.questionStarBtn.classList.contains('hidden')) return false;
+        event.preventDefault();
+        elements.questionStarBtn.click();
+        return true;
+    }
+
+    if (/^[1-9]$/.test(key)) {
+        if (isStudyKeyboardShortcutBlocked(event)) return false;
+        if (event.repeat) return false;
+        const handled = activateVisibleAnswerShortcut(Number(key));
+        if (handled) event.preventDefault();
+        return handled;
+    }
+
+    if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
+        if (isStudyKeyboardShortcutBlocked(event)) return false;
+        if (event.repeat) return false;
+
+        let handled = false;
+        if (state.questionAnswered) {
+            if (!elements.nextBtn?.disabled) {
+                nextQuestion();
+                handled = true;
+            }
+        } else {
+            handled = submitCurrentStructuredQuestionShortcut();
+        }
+
+        if (handled) event.preventDefault();
+        return handled;
+    }
+
+    if (key === 'ArrowLeft') {
+        if (isStudyKeyboardShortcutBlocked(event)) return false;
+        if (elements.prevBtn?.disabled) return false;
+        event.preventDefault();
+        prevQuestion();
+        return true;
+    }
+
+    if (key === 'ArrowRight') {
+        if (isStudyKeyboardShortcutBlocked(event)) return false;
+        if (elements.nextBtn?.disabled) return false;
+        event.preventDefault();
+        nextQuestion();
+        return true;
+    }
+
+    return false;
+}
+
 // ================= LEARNING RESOURCES UI =================
 function clearPendingLearningResource() {
     state.pendingLearningResource = null;
@@ -14344,7 +14469,10 @@ document.addEventListener('keydown', e => {
             exitFullscreenMode();
         }
         closeSettingsPopup();
+        return;
     }
+
+    handleStudyKeyboardShortcut(e);
 });
 
 window.addEventListener('resize', handleViewportChange);
