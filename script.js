@@ -142,6 +142,7 @@ MODIFICATION RULES FOR THIS APP
             quizChallengeAchievements: new Map(),
             quizChallengeUnavailable: false,
             expandedQuizChallengeIds: new Set(),
+            openQuizActionMenuId: '',
             quizStudioOpen: false,
             studioQuestionImageDataUrl: '',
             studioQuestionImageLabel: 'No question image selected.',
@@ -2898,6 +2899,68 @@ MODIFICATION RULES FOR THIS APP
         return false;
     }
 
+    async function resetStarredQuestionsForQuiz(quizId = '') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        if (!normalizedQuizId || !state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before resetting starred questions.', 'error');
+            return;
+        }
+
+        const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
+        if (!managedQuiz) {
+            setCreatorStatus('Could not find that quiz.', 'error');
+            return;
+        }
+
+        if (!confirm(`Reset all starred questions for "${managedQuiz.name || 'this quiz'}"?`)) {
+            return;
+        }
+
+        setCreatorStatus('Resetting starred questions...');
+
+        try {
+            let questionIds = Array.isArray(managedQuiz.questionIds) ? managedQuiz.questionIds.filter(Boolean) : [];
+            if (!questionIds.length) {
+                const { data, error } = await state.auth.client
+                    .from('questions')
+                    .select('id')
+                    .eq('quiz_id', normalizedQuizId);
+                if (error) throw error;
+                questionIds = (data || []).map(row => row.id).filter(Boolean);
+            }
+
+            if (!questionIds.length) {
+                setCreatorStatus('That quiz has no questions to reset.', 'error');
+                return;
+            }
+
+            const { error } = await state.auth.client
+                .from('user_question_state')
+                .update({ is_starred: false })
+                .eq('user_id', state.auth.user.id)
+                .in('question_id', questionIds);
+
+            if (error) throw error;
+
+            const resetIdSet = new Set(questionIds.map(id => normalizeSheetText(id)).filter(Boolean));
+            const applyReset = question => {
+                if (resetIdSet.has(normalizeSheetText(question?.sourceQuestionId))) {
+                    question.isStarred = false;
+                }
+            };
+            state.sourceQuestions.forEach(applyReset);
+            state.questions.forEach(applyReset);
+            state.questionQueue.forEach(applyReset);
+            syncQuestionStarButton();
+            updateProgress();
+
+            setCreatorStatus('Starred questions reset for this quiz.', 'success');
+        } catch (error) {
+            console.error('Could not reset starred questions:', error);
+            setCreatorStatus(error.message || 'Could not reset starred questions.', 'error');
+        }
+    }
+
     function renderQuizManagementList() {
         if (!elements.studioQuizList) return;
 
@@ -2922,6 +2985,7 @@ MODIFICATION RULES FOR THIS APP
             const unlockedChallengeCount = QUIZ_CHALLENGES.filter(challenge => hasQuizChallengeAchievement(quiz.id, challenge.key)).length;
             const challengePanel = challengesExpanded ? renderQuizChallengePanel(quiz) : '';
             const challengeButtonLabel = challengesExpanded ? 'Hide Challenges' : `Challenges ${unlockedChallengeCount}/${QUIZ_CHALLENGES.length}`;
+            const actionMenuOpen = state.auth.openQuizActionMenuId === quiz.id;
             return `
                 <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
                   <div class="studio-list-meta">
@@ -2938,8 +3002,14 @@ MODIFICATION RULES FOR THIS APP
                     <button type="button" class="auth-action-btn auth-secondary-btn quiz-challenge-toggle-btn" data-action="toggle-challenges" aria-expanded="${challengesExpanded ? 'true' : 'false'}">${escapeHtml(challengeButtonLabel)}</button>
                     <button type="button" class="auth-action-btn" data-action="load-quiz">Study</button>
                     <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
-                    <button type="button" class="auth-action-btn auth-secondary-btn" data-action="duplicate-quiz">Duplicate</button>
-                    <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-quiz">Delete</button>
+                    <div class="studio-quiz-actions-menu-wrap">
+                      <button type="button" class="auth-action-btn auth-secondary-btn studio-quiz-actions-toggle" data-action="toggle-quiz-actions" aria-haspopup="menu" aria-expanded="${actionMenuOpen ? 'true' : 'false'}" aria-label="More actions for ${escapeHtml(quiz.name)}">...</button>
+                      <div class="studio-quiz-actions-menu${actionMenuOpen ? ' open' : ''}" role="menu">
+                        <button type="button" role="menuitem" data-action="reset-starred">Reset Stars</button>
+                        <button type="button" role="menuitem" data-action="duplicate-quiz">Duplicate</button>
+                        <button type="button" role="menuitem" data-action="delete-quiz">Delete</button>
+                      </div>
+                    </div>
                   </div>
                   ${challengePanel}
                 </div>
@@ -3246,6 +3316,7 @@ MODIFICATION RULES FOR THIS APP
                     folderId: quiz.folder_id || '',
                     folderName: folder ? normalizeFolderName(folder.name) : '',
                     questionCount: rows.length,
+                    questionIds: rows.map(row => row.id).filter(Boolean),
                     quizType,
                     typeLabel: typeLabelMap[quizType] || 'Mixed types',
                     sortOrder: Number(quiz.sort_order ?? 0),
@@ -13838,56 +13909,85 @@ if (elements.studioQuizList) {
         const item = e.target.closest('[data-quiz-id]');
         if (!item) return;
 
+        const actionButton = e.target.closest('[data-action]');
+        if (!actionButton || !item.contains(actionButton)) return;
+
         const quizId = item.dataset.quizId;
-        if (e.target.matches('[data-action="toggle-challenges"]')) {
+        const action = actionButton.dataset.action || '';
+        if (action === 'toggle-challenges') {
             if (state.auth.expandedQuizChallengeIds.has(quizId)) {
                 state.auth.expandedQuizChallengeIds.delete(quizId);
             } else {
                 state.auth.expandedQuizChallengeIds.add(quizId);
             }
+            state.auth.openQuizActionMenuId = '';
             renderQuizManagementList();
             return;
         }
 
-        if (e.target.matches('[data-action="save-quiz"]')) {
+        if (action === 'toggle-quiz-actions') {
+            state.auth.openQuizActionMenuId = state.auth.openQuizActionMenuId === quizId ? '' : quizId;
+            renderQuizManagementList();
+            return;
+        }
+
+        if (action === 'reset-starred') {
+            state.auth.openQuizActionMenuId = '';
+            renderQuizManagementList();
+            resetStarredQuestionsForQuiz(quizId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not reset starred questions.', 'error');
+            });
+            return;
+        }
+
+        if (action === 'save-quiz') {
             const nameInput = item.querySelector('[data-quiz-rename-input]');
             const folderSelect = item.querySelector('[data-quiz-folder-select]');
+            state.auth.openQuizActionMenuId = '';
             handleSaveQuizMeta(quizId, nameInput?.value || '', folderSelect?.value || '').catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not update the quiz.', 'error');
             });
         }
 
-        if (e.target.matches('[data-action="edit-quiz"]')) {
+        if (action === 'edit-quiz') {
+            state.auth.openQuizActionMenuId = '';
             loadQuizIntoEditor(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not load the quiz editor.', 'error');
             });
         }
 
-        if (e.target.matches('[data-action="duplicate-quiz"]')) {
+        if (action === 'duplicate-quiz') {
+            state.auth.openQuizActionMenuId = '';
+            renderQuizManagementList();
             handleDuplicateQuiz(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not duplicate the quiz.', 'error');
             });
         }
 
-        if (e.target.matches('[data-action="delete-quiz"]')) {
+        if (action === 'delete-quiz') {
+            state.auth.openQuizActionMenuId = '';
+            renderQuizManagementList();
             handleDeleteQuiz(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not delete the quiz.', 'error');
             });
         }
 
-        if (e.target.matches('[data-action="load-quiz"]')) {
+        if (action === 'load-quiz') {
+            state.auth.openQuizActionMenuId = '';
             studySupabaseQuizFromStudio(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not load the quiz into the study view.', 'error');
             });
         }
 
-        if (e.target.matches('[data-action="begin-challenge"]')) {
-            const challengeKey = e.target.dataset.challengeKey || '';
+        if (action === 'begin-challenge') {
+            const challengeKey = actionButton.dataset.challengeKey || '';
+            state.auth.openQuizActionMenuId = '';
             beginQuizChallenge(quizId, challengeKey).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not start that challenge.', 'error');

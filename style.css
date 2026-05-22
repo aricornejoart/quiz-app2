@@ -6099,3 +6099,56 @@ body.fullscreen-mode .progress-mode-summary {
 .quiz-challenge-toggle-btn {
   white-space: nowrap;
 }
+
+/* Phase 22BL: compact per-quiz actions menu in Manage Quiz. */
+.studio-quiz-actions-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.studio-quiz-actions-toggle {
+  min-width: 40px;
+  padding-left: 10px;
+  padding-right: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.studio-quiz-actions-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 12;
+  display: none;
+  min-width: 150px;
+  padding: 6px;
+  border: 1px solid rgba(190, 180, 255, 0.22);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
+}
+
+.studio-quiz-actions-menu.open {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.studio-quiz-actions-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--color-text-main);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-quiz-actions-menu button:hover,
+.studio-quiz-actions-menu button:focus-visible {
+  background: var(--color-bg-control-hover);
+  outline: none;
+}
