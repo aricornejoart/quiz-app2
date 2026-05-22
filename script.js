@@ -41,6 +41,44 @@ MODIFICATION RULES FOR THIS APP
         FOLDER_DECK: 'folder_deck'
     });
 
+    const QUIZ_CHALLENGES = Object.freeze([
+        {
+            key: 'mastery_shuffle_answers',
+            mode: 'mastery',
+            title: 'Mastery Challenge',
+            shortLabel: 'M',
+            trophy: '🏆',
+            description: 'Complete Mastery mode with locked challenge settings.'
+        },
+        {
+            key: 'retention_shuffle_answers',
+            mode: 'retention',
+            title: 'Retention Challenge',
+            shortLabel: 'R',
+            trophy: '🏆',
+            description: 'Complete Retention mode with locked challenge settings.'
+        },
+        {
+            key: 'mastery_check_shuffle_answers',
+            mode: 'mastery_check',
+            title: 'Mastery Check Challenge',
+            shortLabel: 'C',
+            trophy: '🏆',
+            description: 'Complete Mastery Check with locked challenge settings.'
+        },
+        {
+            key: 'progress_shuffle_answers',
+            mode: 'progress',
+            title: 'Progress Challenge',
+            shortLabel: 'P',
+            trophy: '🏆',
+            description: 'Complete Progress mode with locked challenge settings.'
+        }
+    ]);
+
+    const QUIZ_CHALLENGE_GRAND_KEY = 'all_shuffle_mode_trophies';
+    const QUIZ_CHALLENGE_TABLE = 'user_quiz_challenge_achievements';
+
     const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
     const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
 
@@ -53,6 +91,8 @@ MODIFICATION RULES FOR THIS APP
         googleSheetsImportQuizzes: [],
         sourceQuestions: [],
         emptyQuizMessage: '',
+        activeQuizDescriptor: null,
+        activeQuizChallenge: null,
         isAppFullscreen: false,
 
         pendingRetentionJump: false,
@@ -99,6 +139,9 @@ MODIFICATION RULES FOR THIS APP
             profile: null,
             supabaseFolders: [],
             managedQuizzes: [],
+            quizChallengeAchievements: new Map(),
+            quizChallengeUnavailable: false,
+            expandedQuizChallengeIds: new Set(),
             quizStudioOpen: false,
             studioQuestionImageDataUrl: '',
             studioQuestionImageLabel: 'No question image selected.',
@@ -2509,6 +2552,352 @@ MODIFICATION RULES FOR THIS APP
         return options.join('');
     }
 
+    // ================= QUIZ CHALLENGE TROPHIES =================
+    function getQuizChallengeDefinition(challengeKey = '') {
+        const normalizedKey = normalizeSheetText(challengeKey);
+        return QUIZ_CHALLENGES.find(challenge => challenge.key === normalizedKey) || null;
+    }
+
+    function getQuizChallengeAchievementMap(quizId = '') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        if (!normalizedQuizId) return new Map();
+        return state.auth.quizChallengeAchievements.get(normalizedQuizId) || new Map();
+    }
+
+    function hasQuizChallengeAchievement(quizId = '', challengeKey = '') {
+        return getQuizChallengeAchievementMap(quizId).has(normalizeSheetText(challengeKey));
+    }
+
+    function setQuizChallengeAchievementLocal(quizId = '', challengeKey = '', completedAt = new Date().toISOString()) {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        const normalizedKey = normalizeSheetText(challengeKey);
+        if (!normalizedQuizId || !normalizedKey) return;
+        if (!state.auth.quizChallengeAchievements.has(normalizedQuizId)) {
+            state.auth.quizChallengeAchievements.set(normalizedQuizId, new Map());
+        }
+        state.auth.quizChallengeAchievements.get(normalizedQuizId).set(normalizedKey, completedAt);
+    }
+
+    function isQuizChallengeGrandUnlocked(quizId = '') {
+        return QUIZ_CHALLENGES.every(challenge => hasQuizChallengeAchievement(quizId, challenge.key));
+    }
+
+    function canQuizUseChallengeSettings(quiz = {}) {
+        const quizType = normalizeSheetText(quiz.quizType || quiz.type || '');
+        if (!Number(quiz.questionCount || 0)) return false;
+        return quizType !== 'flashcard';
+    }
+
+    function renderQuizChallengeBadges(quiz) {
+        const quizId = normalizeSheetText(quiz?.id);
+        if (!quizId) return '';
+        const badgeHtml = QUIZ_CHALLENGES.map(challenge => {
+            const unlocked = hasQuizChallengeAchievement(quizId, challenge.key);
+            const label = `${challenge.title}: ${unlocked ? 'unlocked' : 'locked'}`;
+            return `<span class="quiz-challenge-badge${unlocked ? ' unlocked' : ''}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="quiz-challenge-badge-icon">${unlocked ? '🏆' : '○'}</span><span>${escapeHtml(challenge.shortLabel)}</span></span>`;
+        }).join('');
+        const grandUnlocked = isQuizChallengeGrandUnlocked(quizId);
+        const grandLabel = `Grand Trophy: ${grandUnlocked ? 'unlocked' : 'locked'}`;
+        return `<div class="quiz-challenge-badges" aria-label="Quiz challenge trophies">${badgeHtml}<span class="quiz-challenge-badge grand${grandUnlocked ? ' unlocked' : ''}" title="${escapeHtml(grandLabel)}" aria-label="${escapeHtml(grandLabel)}"><span class="quiz-challenge-badge-icon">${grandUnlocked ? '🌟' : '☆'}</span><span>All</span></span></div>`;
+    }
+
+    function renderQuizChallengePanel(quiz) {
+        const quizId = normalizeSheetText(quiz?.id);
+        const canStart = canQuizUseChallengeSettings(quiz);
+        const disabledReason = canStart ? '' : 'Challenges require a quiz type with answer choices so the challenge settings can be locked.';
+        const tableNote = state.auth.quizChallengeUnavailable
+            ? 'Supabase challenge table is not available yet; install the Phase 22BG SQL before trophies can save permanently.'
+            : '';
+        const challengeRows = QUIZ_CHALLENGES.map(challenge => {
+            const unlocked = hasQuizChallengeAchievement(quizId, challenge.key);
+            return `
+                <div class="quiz-challenge-row${unlocked ? ' completed' : ''}">
+                  <div class="quiz-challenge-row-main">
+                    <div class="quiz-challenge-row-title"><span>${unlocked ? '🏆' : '○'}</span> ${escapeHtml(challenge.title)}</div>
+                    <div class="quiz-challenge-row-description">${escapeHtml(challenge.description)}</div>
+                  </div>
+                  <button type="button" class="auth-action-btn quiz-challenge-begin-btn" data-action="begin-challenge" data-challenge-key="${escapeHtml(challenge.key)}"${!canStart ? ' disabled' : ''}>Begin Challenge</button>
+                </div>
+            `;
+        }).join('');
+        const grandUnlocked = isQuizChallengeGrandUnlocked(quizId);
+        return `
+            <div class="quiz-challenge-panel">
+              <div class="quiz-challenge-panel-heading">
+                <span>Challenges</span>
+                <span class="quiz-challenge-grand${grandUnlocked ? ' unlocked' : ''}">${grandUnlocked ? '🌟 Grand Trophy unlocked' : '☆ Grand Trophy locked'}</span>
+              </div>
+              ${tableNote ? `<div class="quiz-challenge-note quiz-challenge-warning">${escapeHtml(tableNote)}</div>` : ''}
+              ${disabledReason ? `<div class="quiz-challenge-note">${escapeHtml(disabledReason)}</div>` : `<div class="quiz-challenge-note">Begin a challenge to lock the required mode, Shuffle Questions, and Shuffle Answers until the attempt is finished.</div>`}
+              <div class="quiz-challenge-list">${challengeRows}</div>
+            </div>
+        `;
+    }
+
+    async function loadQuizChallengeAchievementsFromSupabase() {
+        state.auth.quizChallengeAchievements = new Map();
+        state.auth.quizChallengeUnavailable = false;
+
+        if (!state.auth.client || !state.auth.user?.id) {
+            return state.auth.quizChallengeAchievements;
+        }
+
+        try {
+            const { data, error } = await state.auth.client
+                .from(QUIZ_CHALLENGE_TABLE)
+                .select('quiz_id, challenge_key, completed_at')
+                .eq('user_id', state.auth.user.id);
+
+            if (error) throw error;
+
+            (data || []).forEach(row => {
+                setQuizChallengeAchievementLocal(row.quiz_id, row.challenge_key, row.completed_at || 'completed');
+            });
+        } catch (error) {
+            state.auth.quizChallengeUnavailable = true;
+            console.warn('Quiz challenge achievements table unavailable:', error);
+        }
+
+        return state.auth.quizChallengeAchievements;
+    }
+
+    async function persistQuizChallengeAchievement(quizId = '', challengeKey = '') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        const normalizedKey = normalizeSheetText(challengeKey);
+        if (!normalizedQuizId || !normalizedKey || !state.auth.client || !state.auth.user?.id) {
+            throw new Error('Challenge trophies require a signed-in Supabase user.');
+        }
+
+        const now = new Date().toISOString();
+        const payload = {
+            user_id: state.auth.user.id,
+            quiz_id: normalizedQuizId,
+            challenge_key: normalizedKey,
+            completed_at: now,
+            settings_snapshot: {
+                phase: '22BJ',
+                mode: getQuizChallengeDefinition(normalizedKey)?.mode || '',
+                shuffleQuestions: true,
+                shuffleAnswers: true
+            },
+            updated_at: now
+        };
+
+        const { error } = await state.auth.client
+            .from(QUIZ_CHALLENGE_TABLE)
+            .upsert(payload, { onConflict: 'user_id,quiz_id,challenge_key' });
+
+        if (error) throw error;
+        setQuizChallengeAchievementLocal(normalizedQuizId, normalizedKey, now);
+        return payload;
+    }
+
+    function isActiveQuizChallenge() {
+        return !!state.activeQuizChallenge?.challengeKey;
+    }
+
+    function clearActiveQuizChallenge() {
+        state.activeQuizChallenge = null;
+        updateSettingsAvailability();
+    }
+
+    function setChallengeModeSettings(challenge) {
+        const retentionMode = document.getElementById('retentionMode');
+        const masteryMode = document.getElementById('masteryMode');
+        const masteryCheckMode = document.getElementById('masteryCheckMode');
+        const progressMode = document.getElementById('progressMode');
+        const shuffleQuestions = document.getElementById('shuffleQuestions');
+        const shuffleAnswers = document.getElementById('shuffleAnswers');
+        if (retentionMode) retentionMode.checked = challenge.mode === 'retention';
+        if (masteryMode) masteryMode.checked = challenge.mode === 'mastery';
+        if (masteryCheckMode) masteryCheckMode.checked = challenge.mode === 'mastery_check';
+        if (progressMode) progressMode.checked = challenge.mode === 'progress';
+        if (shuffleQuestions) shuffleQuestions.checked = true;
+        if (shuffleAnswers) shuffleAnswers.checked = true;
+    }
+
+    async function beginQuizChallenge(quizId = '', challengeKey = '') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        const challenge = getQuizChallengeDefinition(challengeKey);
+        if (!normalizedQuizId || !challenge) {
+            setCreatorStatus('Could not start that challenge.', 'error');
+            return null;
+        }
+
+        const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
+        if (!managedQuiz || !canQuizUseChallengeSettings(managedQuiz)) {
+            setCreatorStatus('That quiz cannot start challenges because its question type does not support the required challenge settings.', 'error');
+            return null;
+        }
+
+
+        if (state.auth.studioHasUnsavedChanges) {
+            const saved = await autosaveStudioChanges({ reason: 'start this challenge', allowCreate: true });
+            if (!saved) return null;
+        }
+
+        setChallengeModeSettings(challenge);
+        const targetQuiz = await refreshQuizCatalog({ selectQuizId: `sb:${normalizedQuizId}`, loadSelectedQuiz: false });
+        if (!targetQuiz) throw new Error('Quiz not found');
+
+        state.activeQuizChallenge = {
+            quizId: normalizedQuizId,
+            challengeKey: challenge.key,
+            mode: challenge.mode,
+            startedAt: new Date().toISOString(),
+            completionInFlight: false,
+            completed: false
+        };
+
+        try {
+            await loadSelectedQuiz(targetQuiz.id, { preserveChallenge: true });
+        } catch (error) {
+            state.activeQuizChallenge = null;
+            updateSettingsAvailability();
+            throw error;
+        }
+        updateSettingsAvailability();
+        await closeQuizStudioPage(true);
+        setFeedback('Challenge started!', true);
+        return targetQuiz;
+    }
+
+    function isActiveChallengeComplete() {
+        const activeChallenge = state.activeQuizChallenge;
+        if (!activeChallenge?.challengeKey) return false;
+        const challenge = getQuizChallengeDefinition(activeChallenge.challengeKey);
+        if (!challenge) return false;
+
+        if (challenge.mode === 'progress') {
+            return isProgressMode() && state.normalFinished && getProgressMissedQuestions().length === 0;
+        }
+        if (challenge.mode === 'mastery') {
+            return isRetryMode() && state.questionQueue.length === 0;
+        }
+        if (challenge.mode === 'retention') {
+            return isRetentionMode() && state.retentionFinished;
+        }
+        if (challenge.mode === 'mastery_check') {
+            return isMasteryCheckMode() && state.masteryCheckFinished;
+        }
+        return false;
+    }
+
+    function renderQuizChallengeCompleteMessage(challenge, grandUnlocked = false, saved = true) {
+        elements.questionTextEl.style.display = 'block';
+        elements.questionTextEl.innerText = `🏆 ${challenge.title} Complete!`;
+        elements.optionsContainer.style.display = 'flex';
+        elements.optionsContainer.innerHTML = '';
+
+        const summary = document.createElement('div');
+        summary.className = 'quiz-challenge-complete-summary';
+
+        const message = document.createElement('div');
+        message.className = 'quiz-challenge-complete-message';
+        message.innerText = saved
+            ? `You mastered this challenge. ${challenge.title.replace(' Challenge', '')} Trophy unlocked.`
+            : `Challenge complete, but the trophy could not be saved permanently. Check the Supabase challenge table setup.`;
+        summary.appendChild(message);
+
+        if (grandUnlocked) {
+            const grand = document.createElement('div');
+            grand.className = 'quiz-challenge-grand-message';
+            grand.innerText = '🌟 Grand Trophy unlocked! You completed every challenge for this quiz.';
+            summary.appendChild(grand);
+        }
+
+        elements.optionsContainer.appendChild(summary);
+    }
+
+    function maybeCompleteActiveQuizChallenge() {
+        const activeChallenge = state.activeQuizChallenge;
+        if (!activeChallenge?.challengeKey || activeChallenge.completionInFlight || activeChallenge.completed) return;
+        if (!isActiveChallengeComplete()) return;
+
+        const challenge = getQuizChallengeDefinition(activeChallenge.challengeKey);
+        if (!challenge) return;
+
+        activeChallenge.completionInFlight = true;
+        persistQuizChallengeAchievement(activeChallenge.quizId, activeChallenge.challengeKey)
+            .then(() => {
+                activeChallenge.completed = true;
+                const grandUnlocked = isQuizChallengeGrandUnlocked(activeChallenge.quizId);
+                renderQuizChallengeCompleteMessage(challenge, grandUnlocked, true);
+                state.activeQuizChallenge = null;
+                renderQuizManagementList();
+            })
+            .catch(error => {
+                console.error('Could not save quiz challenge trophy:', error);
+                renderQuizChallengeCompleteMessage(challenge, false, false);
+                state.activeQuizChallenge = null;
+            })
+            .finally(() => {
+                activeChallenge.completionInFlight = false;
+                updateSettingsAvailability();
+            });
+    }
+
+    function maybeAutoFinishActiveQuizChallengeAfterAnswer() {
+        const activeChallenge = state.activeQuizChallenge;
+        if (!activeChallenge?.challengeKey || activeChallenge.completed || activeChallenge.completionInFlight) return false;
+
+        const challenge = getQuizChallengeDefinition(activeChallenge.challengeKey);
+        if (!challenge) return false;
+
+        if (challenge.mode === 'progress' && isProgressMode() && state.currentIndex >= state.questionQueue.length - 1 && !state.normalFinished) {
+            state.normalFinished = true;
+            showQuestion();
+            clearPendingLearningResource();
+            return true;
+        }
+
+        if (challenge.mode === 'mastery' && isRetryMode() && state.questionQueue.length === 0) {
+            showQuestion();
+            showPendingLearningResourceIfAny();
+            return true;
+        }
+
+        if (
+            challenge.mode === 'retention' &&
+            isRetentionMode() &&
+            state.pendingRetentionCorrect &&
+            state.currentIndex >= state.questionQueue.length - 1 &&
+            state.retentionSolvedIds.size === state.questionQueue.length
+        ) {
+            state.retentionFinished = true;
+            state.pendingRetentionCorrect = false;
+            state.pendingRetentionJump = false;
+            state.retentionAnswerLocked = false;
+            showQuestion();
+            showPendingLearningResourceIfAny();
+            return true;
+        }
+
+        if (challenge.mode === 'mastery_check' && isMasteryCheckMode()) {
+            if (state.masteryCheckPendingCheckpointComplete) {
+                finishMasteryCheckCheckpoint();
+                showQuestion();
+                showPendingLearningResourceIfAny();
+                return true;
+            }
+
+            if (
+                state.masteryCheckPendingAdvance &&
+                state.currentIndex >= state.questionQueue.length - 1 &&
+                !state.masteryCheckInCheckpoint &&
+                state.masteryCheckSegmentQuestions.length === 0
+            ) {
+                state.masteryCheckPendingAdvance = false;
+                state.masteryCheckFinished = true;
+                showQuestion();
+                showPendingLearningResourceIfAny();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function renderQuizManagementList() {
         if (!elements.studioQuizList) return;
 
@@ -2528,21 +2917,31 @@ MODIFICATION RULES FOR THIS APP
             const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
             const typeLabel = quiz.typeLabel || 'Mixed types';
             const folderOptions = buildStudioFolderSelectOptions(quiz.folderId);
+            const challengeBadges = renderQuizChallengeBadges(quiz);
+            const challengesExpanded = state.auth.expandedQuizChallengeIds.has(quiz.id);
+            const unlockedChallengeCount = QUIZ_CHALLENGES.filter(challenge => hasQuizChallengeAchievement(quiz.id, challenge.key)).length;
+            const challengePanel = challengesExpanded ? renderQuizChallengePanel(quiz) : '';
+            const challengeButtonLabel = challengesExpanded ? 'Hide Challenges' : `Challenges ${unlockedChallengeCount}/${QUIZ_CHALLENGES.length}`;
             return `
                 <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
                   <div class="studio-list-meta">
-                    <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
+                    <div class="studio-list-title-row">
+                      <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
+                      ${challengeBadges}
+                    </div>
                     <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)}</div>
                   </div>
                   <div class="studio-list-controls">
                     <input class="studio-inline-input" type="text" value="${escapeHtml(quiz.name)}" data-quiz-rename-input>
                     <select class="studio-inline-select" data-quiz-folder-select>${folderOptions}</select>
                     <button type="button" class="auth-action-btn" data-action="save-quiz">Save</button>
+                    <button type="button" class="auth-action-btn auth-secondary-btn quiz-challenge-toggle-btn" data-action="toggle-challenges" aria-expanded="${challengesExpanded ? 'true' : 'false'}">${escapeHtml(challengeButtonLabel)}</button>
                     <button type="button" class="auth-action-btn" data-action="load-quiz">Study</button>
                     <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
                     <button type="button" class="auth-action-btn auth-secondary-btn" data-action="duplicate-quiz">Duplicate</button>
                     <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-quiz">Delete</button>
                   </div>
+                  ${challengePanel}
                 </div>
             `;
         }).join('');
@@ -2855,6 +3254,7 @@ MODIFICATION RULES FOR THIS APP
                 };
             });
 
+            await loadQuizChallengeAchievementsFromSupabase();
             renderQuizManagementList();
             renderStudioHomeDashboard();
             populateExportBackupControls();
@@ -2862,6 +3262,7 @@ MODIFICATION RULES FOR THIS APP
         } catch (error) {
             console.error('Failed to load managed Supabase quizzes:', error);
             state.auth.managedQuizzes = [];
+            state.auth.quizChallengeAchievements = new Map();
             renderQuizManagementList();
             renderStudioHomeDashboard();
             return [];
@@ -6581,6 +6982,8 @@ MODIFICATION RULES FOR THIS APP
             state.auth.profile = null;
             state.auth.supabaseFolders = [];
             state.auth.managedQuizzes = [];
+            state.auth.quizChallengeAchievements = new Map();
+            state.auth.quizChallengeUnavailable = false;
             state.googleSheetsImportQuizzes = [];
             state.auth.currentStudioSection = 'home';
             state.auth.backupImportPayload = null;
@@ -8624,20 +9027,45 @@ function updateStarredQuestionAvailability() {
     }
 }
 
+function updateShuffleQuestionsAvailability() {
+    const shuffleQuestionsCheckbox = document.getElementById('shuffleQuestions');
+    const shuffleQuestionsSetting = document.getElementById('shuffleQuestionsSetting');
+    const challengeLocked = isActiveQuizChallenge();
+
+    if (challengeLocked && shuffleQuestionsCheckbox) {
+        shuffleQuestionsCheckbox.checked = true;
+    }
+
+    if (shuffleQuestionsCheckbox) {
+        shuffleQuestionsCheckbox.disabled = challengeLocked;
+    }
+
+    if (shuffleQuestionsSetting) {
+        shuffleQuestionsSetting.classList.toggle('disabled-setting', challengeLocked);
+        shuffleQuestionsSetting.classList.toggle('challenge-locked-setting', challengeLocked);
+    }
+}
+
 function updateShuffleAnswersAvailability() {
     const shuffleAnswersCheckbox = document.getElementById('shuffleAnswers');
     const shuffleAnswersSetting = document.getElementById('shuffleAnswersSetting');
     const supportsAnswerShuffle = state.questions.some(q =>
         q.type === 'multiple choice' || q.type === 'diagrams' || q.type === 'hierarchy' || q.type === 'classify'
     );
+    const challengeLocked = isActiveQuizChallenge();
 
-    shuffleAnswersCheckbox.disabled = !supportsAnswerShuffle;
-
-    if (shuffleAnswersSetting) {
-        shuffleAnswersSetting.classList.toggle('disabled-setting', !supportsAnswerShuffle);
+    if (challengeLocked) {
+        shuffleAnswersCheckbox.checked = true;
     }
 
-    if (!supportsAnswerShuffle) {
+    shuffleAnswersCheckbox.disabled = challengeLocked || !supportsAnswerShuffle;
+
+    if (shuffleAnswersSetting) {
+        shuffleAnswersSetting.classList.toggle('disabled-setting', challengeLocked || !supportsAnswerShuffle);
+        shuffleAnswersSetting.classList.toggle('challenge-locked-setting', challengeLocked);
+    }
+
+    if (!supportsAnswerShuffle && !challengeLocked) {
         shuffleAnswersCheckbox.checked = false;
     }
 }
@@ -8672,11 +9100,17 @@ function updateExclusiveModeAvailability() {
     const masteryActive = isRetryMode();
     const masteryCheckActive = isMasteryCheckMode();
     const progressActive = isProgressMode();
+    const challengeLocked = isActiveQuizChallenge();
 
-    setSettingDisabled('retentionModeSetting', 'retentionMode', masteryActive || masteryCheckActive || progressActive);
-    setSettingDisabled('masteryModeSetting', 'masteryMode', retentionActive || masteryCheckActive || progressActive);
-    setSettingDisabled('masteryCheckModeSetting', 'masteryCheckMode', retentionActive || masteryActive || progressActive);
-    setSettingDisabled('progressModeSetting', 'progressMode', retentionActive || masteryActive || masteryCheckActive);
+    setSettingDisabled('retentionModeSetting', 'retentionMode', challengeLocked || masteryActive || masteryCheckActive || progressActive);
+    setSettingDisabled('masteryModeSetting', 'masteryMode', challengeLocked || retentionActive || masteryCheckActive || progressActive);
+    setSettingDisabled('masteryCheckModeSetting', 'masteryCheckMode', challengeLocked || retentionActive || masteryActive || progressActive);
+    setSettingDisabled('progressModeSetting', 'progressMode', challengeLocked || retentionActive || masteryActive || masteryCheckActive);
+
+    ['retentionModeSetting', 'masteryModeSetting', 'masteryCheckModeSetting', 'progressModeSetting'].forEach(settingId => {
+        const card = document.getElementById(settingId);
+        if (card) card.classList.toggle('challenge-locked-setting', challengeLocked);
+    });
 }
 
 function updateRapidLearningResourcesCompatibility() {
@@ -8732,6 +9166,7 @@ function updateSettingsAvailability() {
     updateLearningResourcesAvailability();
     updateRapidLearningResourcesCompatibility();
     updateStarredQuestionAvailability();
+    updateShuffleQuestionsAvailability();
     updateShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
@@ -9304,6 +9739,8 @@ function clearActiveQuizSelection(message = 'Choose a folder and a quiz.') {
     state.questions = [];
     state.questionQueue = [];
     state.sourceQuestions = [];
+    state.activeQuizDescriptor = null;
+    state.activeQuizChallenge = null;
     state.emptyQuizMessage = '';
     resetModeState();
     updateSettingsAvailability();
@@ -9694,7 +10131,7 @@ function populateQuizDropdown(folderName) {
     return quizzesForFolder;
 }
 
-async function loadSelectedQuiz(selectorValue) {
+async function loadSelectedQuiz(selectorValue, options = {}) {
     if (!state.auth.user?.id) {
         throw new Error('Sign in required');
     }
@@ -9704,6 +10141,11 @@ async function loadSelectedQuiz(selectorValue) {
     if (!selectedQuiz) {
         throw new Error('Quiz not found');
     }
+
+    if (!options.preserveChallenge) {
+        state.activeQuizChallenge = null;
+    }
+    state.activeQuizDescriptor = selectedQuiz;
 
     if (selectedQuiz.source !== DATA_SOURCES.SUPABASE && selectedQuiz.source !== DATA_SOURCES.FOLDER_DECK) {
         throw new Error('Only signed-in Supabase quizzes can be studied from the app. Import Google Sheets quizzes into Supabase first.');
@@ -10089,7 +10531,7 @@ function removeFlashcardUI() {
 
 function clearProgressModeFinishUI() {
     if (!elements.optionsContainer) return;
-    elements.optionsContainer.querySelectorAll('.progress-mode-summary').forEach(node => node.remove());
+    elements.optionsContainer.querySelectorAll('.progress-mode-summary, .quiz-challenge-complete-summary').forEach(node => node.remove());
 }
 
 function clearQuestionUI() {
@@ -10272,6 +10714,10 @@ function applyQuestionOutcome(q, isCorrect, options = {}) {
         handleWrongAnswer();
     }
 
+    if (maybeAutoFinishActiveQuizChallengeAfterAnswer()) {
+        return;
+    }
+
     if (isRetryMode() || isProgressMode()) {
         updateProgress();
     }
@@ -10423,6 +10869,7 @@ function showQuestion() {
         updateProgress();
         updateNavigationButtons();
         syncQuestionStarButton();
+        maybeCompleteActiveQuizChallenge();
         return;
     }
 
@@ -13392,6 +13839,16 @@ if (elements.studioQuizList) {
         if (!item) return;
 
         const quizId = item.dataset.quizId;
+        if (e.target.matches('[data-action="toggle-challenges"]')) {
+            if (state.auth.expandedQuizChallengeIds.has(quizId)) {
+                state.auth.expandedQuizChallengeIds.delete(quizId);
+            } else {
+                state.auth.expandedQuizChallengeIds.add(quizId);
+            }
+            renderQuizManagementList();
+            return;
+        }
+
         if (e.target.matches('[data-action="save-quiz"]')) {
             const nameInput = item.querySelector('[data-quiz-rename-input]');
             const folderSelect = item.querySelector('[data-quiz-folder-select]');
@@ -13426,6 +13883,14 @@ if (elements.studioQuizList) {
             studySupabaseQuizFromStudio(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not load the quiz into the study view.', 'error');
+            });
+        }
+
+        if (e.target.matches('[data-action="begin-challenge"]')) {
+            const challengeKey = e.target.dataset.challengeKey || '';
+            beginQuizChallenge(quizId, challengeKey).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not start that challenge.', 'error');
             });
         }
     });

@@ -5949,3 +5949,153 @@ body.fullscreen-mode .progress-mode-summary {
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* Phase 22BG: Manage Quiz challenge trophies. */
+.studio-list-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quiz-challenge-badges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.quiz-challenge-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 24px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.quiz-challenge-badge.unlocked {
+  border-color: rgba(255, 214, 102, 0.55);
+  background: rgba(255, 214, 102, 0.16);
+  color: #ffe8a3;
+}
+
+.quiz-challenge-badge.grand.unlocked {
+  border-color: rgba(255, 231, 140, 0.7);
+}
+
+.quiz-challenge-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(190, 180, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.quiz-challenge-panel-heading,
+.quiz-challenge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.quiz-challenge-panel-heading {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.quiz-challenge-grand {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.quiz-challenge-grand.unlocked {
+  color: #ffe8a3;
+}
+
+.quiz-challenge-note,
+.quiz-challenge-row-description {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+}
+
+.quiz-challenge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.quiz-challenge-row {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.quiz-challenge-row.completed {
+  border: 1px solid rgba(255, 214, 102, 0.28);
+}
+
+.quiz-challenge-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.quiz-challenge-row-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.quiz-challenge-begin-btn {
+  flex: 0 0 auto;
+}
+
+.challenge-locked-setting {
+  outline: 1px solid rgba(255, 214, 102, 0.24);
+}
+
+.quiz-challenge-complete-summary {
+  width: min(520px, 100%);
+  margin: 0 auto;
+  padding: 16px;
+  border: 1px solid rgba(255, 214, 102, 0.38);
+  border-radius: 14px;
+  background: rgba(255, 214, 102, 0.1);
+  color: var(--color-text-main);
+  text-align: center;
+}
+
+.quiz-challenge-complete-message,
+.quiz-challenge-grand-message {
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.quiz-challenge-grand-message {
+  margin-top: 8px;
+  color: #ffe8a3;
+  font-weight: 700;
+}
+
+.quiz-challenge-warning {
+  color: #ffd9a8;
+}
+
+/* Phase 22BI: keep the per-quiz Challenges toggle compact on the row. */
+.quiz-challenge-toggle-btn {
+  white-space: nowrap;
+}
