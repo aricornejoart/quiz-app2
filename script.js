@@ -81,6 +81,7 @@ MODIFICATION RULES FOR THIS APP
 
     const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
     const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
+    const STUDIO_FOCUS_NEW_QUESTION_ID = '__studio_focus_new_question__';
 
     const state = {
         questions: [],
@@ -161,6 +162,7 @@ MODIFICATION RULES FOR THIS APP
             lastError: '',
             starringInFlight: false,
             studioQuestionSearchQuery: '',
+            studioFocusedQuestionId: '',
             studioHasUnsavedChanges: false,
             studioAutosaveTimerId: null,
             studioAutosaveInFlight: false,
@@ -4727,6 +4729,7 @@ MODIFICATION RULES FOR THIS APP
             cacheCurrentStudioQuestionDraft();
         }
         state.auth.editingQuestionId = row.id;
+        syncStudioQuestionFocusToEditor();
         state.auth.editingQuizType = 'flashcard';
         state.auth.pendingInsertAfterQuestionId = null;
         state.auth.studioPendingNewQuestionRow = null;
@@ -5029,6 +5032,48 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    function isStudioQuestionFocusMode() {
+        return !!normalizeSheetText(state.auth.studioFocusedQuestionId);
+    }
+
+    function clearStudioQuestionFocusMode(options = {}) {
+        if (!state.auth.studioFocusedQuestionId && !options.forceRender) return;
+        state.auth.studioFocusedQuestionId = '';
+        renderStudioQuestionList();
+        updateStudioQuestionNavigationUI();
+        if (options.status !== false) {
+            setCreatorStatus('Showing all questions in this quiz.', 'success');
+        }
+    }
+
+    function setStudioQuestionFocusMode(questionId, options = {}) {
+        const normalizedQuestionId = normalizeSheetText(questionId);
+        if (!normalizedQuestionId) {
+            clearStudioQuestionFocusMode(options);
+            return;
+        }
+
+        state.auth.studioFocusedQuestionId = normalizedQuestionId;
+        state.auth.studioQuestionSearchQuery = '';
+        if (elements.studioQuestionSearchInput) {
+            elements.studioQuestionSearchInput.value = '';
+        }
+        renderStudioQuestionList();
+        updateStudioQuestionNavigationUI();
+        if (options.status !== false) {
+            setCreatorStatus('Focus mode is showing only the current question.', 'success');
+        }
+    }
+
+    function syncStudioQuestionFocusToEditor() {
+        if (!isStudioQuestionFocusMode()) return;
+        state.auth.studioFocusedQuestionId = normalizeSheetText(state.auth.editingQuestionId) || STUDIO_FOCUS_NEW_QUESTION_ID;
+        state.auth.studioQuestionSearchQuery = '';
+        if (elements.studioQuestionSearchInput) {
+            elements.studioQuestionSearchInput.value = '';
+        }
+    }
+
     function getStudioQuestionChipLabel(questionType, index) {
         return String(index + 1);
     }
@@ -5095,23 +5140,39 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '').toLowerCase();
-        const filteredQuestions = !query
-            ? displayRows
-            : displayRows.filter((questionRow, filteredIndex) => {
+        const focusQuestionId = normalizeSheetText(state.auth.studioFocusedQuestionId || '');
+        const focusModeActive = !!focusQuestionId;
+        const focusNewDraftActive = focusModeActive && focusQuestionId === STUDIO_FOCUS_NEW_QUESTION_ID;
+        let filteredQuestions = displayRows;
+
+        if (focusModeActive) {
+            if (query) {
+                state.auth.studioQuestionSearchQuery = '';
+                if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+            }
+            filteredQuestions = focusNewDraftActive
+                ? []
+                : displayRows.filter(questionRow => questionRow.id === focusQuestionId);
+        } else if (query) {
+            filteredQuestions = displayRows.filter((questionRow, filteredIndex) => {
                 let previewIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
                 if (previewIndex === -1) previewIndex = filteredIndex;
                 const preview = getStudioQuestionPreviewLabel(questionRow, previewIndex).toLowerCase();
                 return preview.includes(query);
             });
-        if (!filteredQuestions.length) {
-            elements.studioQuestionList.innerHTML = '<div class="studio-list-empty">No questions match your search.</div>';
-            updateStudioQuestionNavigationUI();
-            return;
         }
 
         const editingType = getStudioCurrentQuizType();
+        if (!filteredQuestions.length && !focusNewDraftActive) {
+            const emptyLabel = focusModeActive
+                ? '<div class="studio-list-empty">Focused question is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
+                : '<div class="studio-list-empty">No questions match your search.</div>';
+            elements.studioQuestionList.innerHTML = emptyLabel;
+            updateStudioQuestionNavigationUI();
+            return;
+        }
         const sharedDiagramSourceQuestionId = editingType === 'diagrams' ? getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) : '';
-        const rowsHtml = filteredQuestions.map((questionRow, filteredIndex) => {
+        let rowsHtml = filteredQuestions.map((questionRow, filteredIndex) => {
             let index = displayRows.findIndex(question => question.id === questionRow.id);
             if (index === -1) index = filteredIndex;
             const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
@@ -5126,6 +5187,9 @@ MODIFICATION RULES FOR THIS APP
             const isSharedDiagramSource = !!sharedDiagramSourceQuestionId && questionRow.id === sharedDiagramSourceQuestionId;
             const sharedDiagramSourceBadge = isSharedDiagramSource ? '<span class="studio-question-shared-source-badge">Shared source</span>' : '';
             const dragTitle = questionType === 'flashcard' ? 'Drag to reorder this card' : 'Drag to reorder this question';
+            const focusControlHtml = focusModeActive
+                ? '<span class="studio-question-focus-badge">Focused</span><button type="button" class="studio-question-focus-btn" data-studio-show-all-questions="true">Show All</button>'
+                : `<button type="button" class="studio-question-focus-btn" data-studio-focus-question-id="${escapeHtml(questionRow.id)}">Focus</button>`;
 
             let itemContent = '';
             if (editingType === 'flashcard' && questionType === 'flashcard') {
@@ -5134,33 +5198,39 @@ MODIFICATION RULES FOR THIS APP
                 const termAttr = isPendingRow ? 'data-studio-pending-flashcard-term="true"' : `data-studio-flashcard-term-id="${escapeHtml(questionRow.id)}"`;
                 const definitionAttr = isPendingRow ? 'data-studio-pending-flashcard-definition="true"' : `data-studio-flashcard-definition-id="${escapeHtml(questionRow.id)}"`;
                 itemContent = `
-                    <div class="studio-flashcard-inline-fields">
-                      <label class="studio-flashcard-inline-field">
-                        <span>Term</span>
-                        <textarea rows="2" ${termAttr} placeholder="Term">${termValue}</textarea>
-                      </label>
-                      <label class="studio-flashcard-inline-field">
-                        <span>Definition</span>
-                        <textarea rows="2" ${definitionAttr} placeholder="Definition">${definitionValue}</textarea>
-                      </label>
+                    <div class="studio-question-content-stack">
+                      <div class="studio-question-focus-row">${focusControlHtml}</div>
+                      <div class="studio-flashcard-inline-fields">
+                        <label class="studio-flashcard-inline-field">
+                          <span>Term</span>
+                          <textarea rows="2" ${termAttr} placeholder="Term">${termValue}</textarea>
+                        </label>
+                        <label class="studio-flashcard-inline-field">
+                          <span>Definition</span>
+                          <textarea rows="2" ${definitionAttr} placeholder="Definition">${definitionValue}</textarea>
+                        </label>
+                      </div>
                     </div>
                 `;
             } else {
                 itemContent = `
-                    <button
-                      type="button"
-                      class="studio-question-list-main"
-                      data-studio-question-id="${escapeHtml(questionRow.id)}"
-                      aria-pressed="${isActive ? 'true' : 'false'}"
-                    >
-                      <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
-                      ${sharedDiagramSourceBadge}
-                    </button>
+                    <div class="studio-question-content-stack">
+                      <div class="studio-question-focus-row">${focusControlHtml}</div>
+                      <button
+                        type="button"
+                        class="studio-question-list-main"
+                        data-studio-question-id="${escapeHtml(questionRow.id)}"
+                        aria-pressed="${isActive ? 'true' : 'false'}"
+                      >
+                        <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
+                        ${sharedDiagramSourceBadge}
+                      </button>
+                    </div>
                 `;
             }
 
             const rowDropAttr = isPendingRow ? '' : `data-studio-drop-question-id="${escapeHtml(questionRow.id)}"`;
-            const handleAttrs = isUnsavedFlashcardRow
+            const handleAttrs = isUnsavedFlashcardRow || focusModeActive
                 ? 'disabled'
                 : `data-studio-drag-question-id="${escapeHtml(questionRow.id)}"`;
             const deleteAttrs = isPendingRow
@@ -5183,8 +5253,8 @@ MODIFICATION RULES FOR THIS APP
                         type="button"
                         class="studio-question-row-handle"
                         ${handleAttrs}
-                        title="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
-                        aria-label="${escapeHtml(isPendingRow ? 'Save the new card before reordering' : dragTitle)}"
+                        title="${escapeHtml(focusModeActive ? 'Show all questions before reordering' : (isPendingRow ? 'Save the new card before reordering' : dragTitle))}"
+                        aria-label="${escapeHtml(focusModeActive ? 'Show all questions before reordering' : (isPendingRow ? 'Save the new card before reordering' : dragTitle))}"
                       >☰</button>
                       <button
                         type="button"
@@ -5208,6 +5278,26 @@ MODIFICATION RULES FOR THIS APP
                 </div>
             `;
         }).join('');
+
+        if (focusNewDraftActive) {
+            const newItemLabel = editingType === 'flashcard' ? 'New Card' : 'New Question';
+            rowsHtml = `
+                <div class="studio-question-list-row">
+                  <div class="studio-question-list-item active" data-studio-row-question-id="${STUDIO_FOCUS_NEW_QUESTION_ID}">
+                    <div class="studio-question-row-controls" aria-label="${newItemLabel} controls">
+                      <span class="studio-question-chip">New</span>
+                    </div>
+                    <div class="studio-question-content-stack">
+                      <div class="studio-question-focus-row">
+                        <span class="studio-question-focus-badge">Focused</span>
+                        <button type="button" class="studio-question-focus-btn" data-studio-show-all-questions="true">Show All</button>
+                      </div>
+                      <div class="studio-question-label">${newItemLabel} is open in the editor below.</div>
+                    </div>
+                  </div>
+                </div>
+            `;
+        }
 
         const addTailHtml = editingType === 'flashcard'
             ? `
@@ -5355,6 +5445,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         state.auth.editingQuestionId = questionRow.id;
+        syncStudioQuestionFocusToEditor();
         state.auth.pendingInsertAfterQuestionId = null;
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
@@ -5505,7 +5596,7 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function beginStudioNewQuestion(insertAfterQuestionId = null) {
+    async function beginStudioNewQuestion(insertAfterQuestionId = null, options = {}) {
         if (state.auth.studioHasUnsavedChanges) {
             cacheCurrentStudioQuestionDraft();
         }
@@ -5518,6 +5609,13 @@ MODIFICATION RULES FOR THIS APP
             ? insertAfterQuestionId
             : null;
 
+        if (isStudioQuestionFocusMode() || options.focusNewQuestion) {
+            state.auth.studioFocusedQuestionId = STUDIO_FOCUS_NEW_QUESTION_ID;
+            state.auth.studioQuestionSearchQuery = '';
+            if (elements.studioQuestionSearchInput) {
+                elements.studioQuestionSearchInput.value = '';
+            }
+        }
         clearStudioQuestionInputs({ keepPendingInsert: !!validInsertAfterQuestionId, keepPendingDraft: getStudioCurrentQuizType() === 'flashcard' });
         state.auth.pendingInsertAfterQuestionId = validInsertAfterQuestionId;
         state.auth.studioPendingNewQuestionRow = getStudioCurrentQuizType() === 'flashcard'
@@ -5999,6 +6097,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizFolderSelect.value = '';
         }
         state.auth.studioQuestionSearchQuery = '';
+        state.auth.studioFocusedQuestionId = '';
         if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
         if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
         setEditorInlineFolderCreatorOpen(false);
@@ -8167,6 +8266,7 @@ MODIFICATION RULES FOR THIS APP
                 questionOverride: false
             });
             state.auth.studioQuestionSearchQuery = '';
+            state.auth.studioFocusedQuestionId = '';
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
             if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
             if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
@@ -13701,6 +13801,26 @@ if (elements.studioQuestionList) {
     };
 
     elements.studioQuestionList.addEventListener('click', e => {
+        const showAllButton = e.target.closest('[data-studio-show-all-questions]');
+        if (showAllButton) {
+            clearStudioQuestionFocusMode();
+            return;
+        }
+
+        const focusButton = e.target.closest('[data-studio-focus-question-id]');
+        if (focusButton) {
+            const questionId = normalizeSheetText(focusButton.dataset.studioFocusQuestionId || '');
+            if (questionId) {
+                loadStudioQuestionIntoEditor(questionId, { suppressStatus: true }).then(() => {
+                    setStudioQuestionFocusMode(questionId);
+                }).catch(err => {
+                    console.error(err);
+                    setCreatorStatus('Could not focus that question.', 'error');
+                });
+            }
+            return;
+        }
+
         const discardPendingButton = e.target.closest('[data-studio-discard-pending-card]');
         if (discardPendingButton) {
             state.auth.studioPendingNewQuestionRow = null;
@@ -13735,7 +13855,7 @@ if (elements.studioQuestionList) {
 
         const insertButton = e.target.closest('[data-studio-insert-after-question-id]');
         if (insertButton) {
-            beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId).catch(err => {
+            beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId, { focusNewQuestion: true }).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not insert a new question.', 'error');
             });
@@ -15018,15 +15138,20 @@ if (elements.createFlashcardDefinition) {
 
 if (elements.studioQuestionSearchInput) {
     elements.studioQuestionSearchInput.addEventListener('input', () => {
-        state.auth.studioQuestionSearchQuery = normalizeSheetText(elements.studioQuestionSearchInput.value || '');
+        const nextQuery = normalizeSheetText(elements.studioQuestionSearchInput.value || '');
+        if (nextQuery && isStudioQuestionFocusMode()) {
+            state.auth.studioFocusedQuestionId = '';
+        }
+        state.auth.studioQuestionSearchQuery = nextQuery;
         renderStudioQuestionList();
     });
 }
 
 if (elements.studioQuestionJumpBtn) {
     elements.studioQuestionJumpBtn.addEventListener('click', () => {
-        const targetIndex = Math.max(1, Number(elements.studioQuestionJumpInput?.value || 0));
-        if (!Number.isInteger(targetIndex) || targetIndex < 1) {
+        const rawJumpValue = normalizeSheetText(elements.studioQuestionJumpInput?.value || '');
+        const targetIndex = Number(rawJumpValue);
+        if (!rawJumpValue || !Number.isInteger(targetIndex) || targetIndex < 1) {
             setCreatorStatus('Enter a valid question number to jump to.', 'error');
             return;
         }
@@ -15035,7 +15160,21 @@ if (elements.studioQuestionJumpBtn) {
             setCreatorStatus('That question number does not exist in this quiz.', 'error');
             return;
         }
-        loadStudioQuestionIntoEditor(targetQuestion.id).catch(err => {
+
+        const wasFocusMode = isStudioQuestionFocusMode();
+        state.auth.studioQuestionSearchQuery = '';
+        if (elements.studioQuestionSearchInput) {
+            elements.studioQuestionSearchInput.value = '';
+        }
+        if (wasFocusMode) {
+            state.auth.studioFocusedQuestionId = targetQuestion.id;
+        }
+
+        loadStudioQuestionIntoEditor(targetQuestion.id, { suppressStatus: true }).then(() => {
+            revealStudioQuestionInList(targetQuestion.id);
+            const label = getStudioQuestionNavigationName(targetQuestion.question_type || getStudioCurrentQuizType(), targetIndex - 1);
+            setCreatorStatus(`${wasFocusMode ? 'Focus mode jumped to' : 'Jumped to'} ${label}.`, 'success');
+        }).catch(err => {
             console.error(err);
             setCreatorStatus('Could not jump to that question.', 'error');
         });
