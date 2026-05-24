@@ -506,6 +506,21 @@ MODIFICATION RULES FOR THIS APP
                     </label>
 
                     <label class="auth-field">
+                      <span>Import destination</span>
+                      <select id="importSourceDestinationModeSelect">
+                        <option value="new">Create new quiz</option>
+                        <option value="append">Add to existing quiz</option>
+                      </select>
+                    </label>
+
+                    <label id="importSourceAppendQuizField" class="auth-field hidden">
+                      <span>Existing quiz to add questions to</span>
+                      <select id="importSourceAppendQuizSelect">
+                        <option value="">Choose existing quiz</option>
+                      </select>
+                    </label>
+
+                    <label id="importSourceTargetFolderField" class="auth-field">
                       <span>Destination folder</span>
                       <select id="importTargetFolderSelect">
                         <option value="">Use or create source folder name</option>
@@ -551,11 +566,26 @@ MODIFICATION RULES FOR THIS APP
                     </label>
 
                     <label class="auth-field">
+                      <span>Import destination</span>
+                      <select id="importTemplateDestinationModeSelect">
+                        <option value="new">Create new quiz</option>
+                        <option value="append">Add to existing quiz</option>
+                      </select>
+                    </label>
+
+                    <label id="importTemplateAppendQuizField" class="auth-field hidden">
+                      <span>Existing quiz to add questions to</span>
+                      <select id="importTemplateAppendQuizSelect">
+                        <option value="">Choose existing quiz</option>
+                      </select>
+                    </label>
+
+                    <label id="importTemplateQuizNameField" class="auth-field">
                       <span>Quiz name in Supabase</span>
                       <input id="importTemplateQuizNameInput" type="text" placeholder="Leave blank to use the sheet tab name">
                     </label>
 
-                    <label class="auth-field">
+                    <label id="importTemplateTargetFolderField" class="auth-field">
                       <span>Destination folder</span>
                       <select id="importTemplateTargetFolderSelect">
                         <option value="">No folder</option>
@@ -745,11 +775,11 @@ MODIFICATION RULES FOR THIS APP
                       <button type="button" data-math-chem-insert="×" title="Multiply">×</button>
                       <button type="button" data-math-chem-insert="÷" title="Divide">÷</button>
                       <button type="button" data-math-chem-insert="()" title="Parentheses">()</button>
-                      <button type="button" data-math-chem-insert="x²" title="x squared">x²</button>
-                      <button type="button" data-math-chem-insert="x³" title="x cubed">x³</button>
-                      <button type="button" data-math-chem-insert="y²" title="y squared">y²</button>
-                      <button type="button" data-math-chem-insert="y³" title="y cubed">y³</button>
-                      <button type="button" data-math-chem-insert="x₁" title="x sub one">x₁</button>
+                      <button type="button" data-math-chem-insert="x{{sup:2}}" title="x squared">x<span class="math-chem-toolbar-script math-chem-toolbar-sup">2</span></button>
+                      <button type="button" data-math-chem-insert="x{{sup:3}}" title="x cubed">x<span class="math-chem-toolbar-script math-chem-toolbar-sup">3</span></button>
+                      <button type="button" data-math-chem-insert="y{{sup:2}}" title="y squared">y<span class="math-chem-toolbar-script math-chem-toolbar-sup">2</span></button>
+                      <button type="button" data-math-chem-insert="y{{sup:3}}" title="y cubed">y<span class="math-chem-toolbar-script math-chem-toolbar-sup">3</span></button>
+                      <button type="button" data-math-chem-insert="x{{sub:1}}" title="x sub one">x<span class="math-chem-toolbar-script math-chem-toolbar-sub">1</span></button>
                       <button type="button" data-math-chem-insert="+" title="Plus sign">+</button>
                       <button type="button" data-math-chem-insert="−" title="Minus sign">−</button>
                       <button type="button" data-math-chem-insert="=" title="Equals sign">=</button>
@@ -760,9 +790,9 @@ MODIFICATION RULES FOR THIS APP
                       <button type="button" data-math-chem-insert="p̂" title="p-hat">p̂</button>
                       <button type="button" data-math-chem-insert="μ" title="Population mean">μ</button>
                       <button type="button" data-math-chem-insert="σ" title="Population standard deviation">σ</button>
-                      <button type="button" data-math-chem-insert="σ²" title="Population variance">σ²</button>
+                      <button type="button" data-math-chem-insert="σ{{sup:2}}" title="Population variance">σ<span class="math-chem-toolbar-script math-chem-toolbar-sup">2</span></button>
                       <button type="button" data-math-chem-insert="s" title="Sample standard deviation">s</button>
-                      <button type="button" data-math-chem-insert="s²" title="Sample variance">s²</button>
+                      <button type="button" data-math-chem-insert="s{{sup:2}}" title="Sample variance">s<span class="math-chem-toolbar-script math-chem-toolbar-sup">2</span></button>
                       <button type="button" data-math-chem-insert="n" title="Sample size">n</button>
                       <button type="button" data-math-chem-insert="N" title="Population size">N</button>
                       <button type="button" data-math-chem-insert="Σ" title="Summation sigma">Σ</button>
@@ -772,8 +802,8 @@ MODIFICATION RULES FOR THIS APP
                       <button type="button" data-math-chem-insert="SE" title="Standard error">SE</button>
                       <button type="button" data-math-chem-insert="SD" title="Standard deviation">SD</button>
                       <button type="button" data-math-chem-insert="CI" title="Confidence interval">CI</button>
-                      <button type="button" data-math-chem-insert="H₀" title="Null hypothesis">H₀</button>
-                      <button type="button" data-math-chem-insert="H₁" title="Alternative hypothesis">H₁</button>
+                      <button type="button" data-math-chem-insert="H{{sub:0}}" title="Null hypothesis">H<span class="math-chem-toolbar-script math-chem-toolbar-sub">0</span></button>
+                      <button type="button" data-math-chem-insert="H{{sub:1}}" title="Alternative hypothesis">H<span class="math-chem-toolbar-script math-chem-toolbar-sub">1</span></button>
                       <button type="button" data-math-chem-insert="α" title="Alpha/significance level">α</button>
                       <button type="button" data-math-chem-insert="β" title="Beta">β</button>
                     </div>

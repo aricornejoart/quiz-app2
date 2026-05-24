@@ -1042,10 +1042,11 @@ body.classify-dragging {
 }
 
 .flashcard-side-text {
+  --sb-rich-base-size: 24px;
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
-  font-size: 24px;
+  font-size: var(--sb-rich-base-size);
   color: var(--color-text-main);
 }
 
@@ -1447,10 +1448,11 @@ body.classify-dragging {
 }
 
 .hint-content {
+  --sb-rich-base-size: 30px;
   white-space: pre-wrap;
   word-wrap: break-word;
   line-height: 1.6;
-  font-size: 30px;
+  font-size: var(--sb-rich-base-size);
   color: #e8e6ff;
 }
 
@@ -5495,11 +5497,12 @@ body.studio-question-dragging {
 
 
 .studio-rich-editor {
+  --sb-rich-base-size: 18px;
   width: 100%;
   min-height: 118px;
   max-height: 260px;
   overflow-y: auto;
-  font-size: 18px;
+  font-size: var(--sb-rich-base-size);
   line-height: 1.45;
   box-sizing: border-box;
   padding: 10px 11px;

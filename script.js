@@ -226,6 +226,10 @@ MODIFICATION RULES FOR THIS APP
         studioQuizList: document.getElementById('studioQuizList'),
         importSourceFolderSelect: document.getElementById('importSourceFolderSelect'),
         importSourceQuizSelect: document.getElementById('importSourceQuizSelect'),
+        importSourceDestinationModeSelect: document.getElementById('importSourceDestinationModeSelect'),
+        importSourceAppendQuizField: document.getElementById('importSourceAppendQuizField'),
+        importSourceAppendQuizSelect: document.getElementById('importSourceAppendQuizSelect'),
+        importSourceTargetFolderField: document.getElementById('importSourceTargetFolderField'),
         importTargetFolderSelect: document.getElementById('importTargetFolderSelect'),
         importSourceQuizBtn: document.getElementById('importSourceQuizBtn'),
         importEntireFolderSourceSelect: document.getElementById('importEntireFolderSourceSelect'),
@@ -233,7 +237,12 @@ MODIFICATION RULES FOR THIS APP
         importSourceFolderBtn: document.getElementById('importSourceFolderBtn'),
         importTemplateSheetInput: document.getElementById('importTemplateSheetInput'),
         importTemplateTabInput: document.getElementById('importTemplateTabInput'),
+        importTemplateDestinationModeSelect: document.getElementById('importTemplateDestinationModeSelect'),
+        importTemplateAppendQuizField: document.getElementById('importTemplateAppendQuizField'),
+        importTemplateAppendQuizSelect: document.getElementById('importTemplateAppendQuizSelect'),
+        importTemplateQuizNameField: document.getElementById('importTemplateQuizNameField'),
         importTemplateQuizNameInput: document.getElementById('importTemplateQuizNameInput'),
+        importTemplateTargetFolderField: document.getElementById('importTemplateTargetFolderField'),
         importTemplateTargetFolderSelect: document.getElementById('importTemplateTargetFolderSelect'),
         importTemplateSheetBtn: document.getElementById('importTemplateSheetBtn'),
         createFolderName: document.getElementById('createFolderName'),
@@ -739,9 +748,23 @@ MODIFICATION RULES FOR THIS APP
     const LEARNING_RESOURCES_ALLOWED_FONT_SIZES = new Set(['8', '9', '10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '28', '32']);
     const RICH_TEXT_LEGACY_BASELINE_FONT_SIZE = '15px';
     const RICH_TEXT_DEFAULT_FONT_SIZE = '18px';
+    const RICH_TEXT_BASE_FONT_SIZE = 18;
 
     function isLegacyRichDefaultFontSize(value) {
         return normalizeLearningResourcesFontSize(value) === RICH_TEXT_LEGACY_BASELINE_FONT_SIZE;
+    }
+
+    function isRichDefaultEditorFontSize(value) {
+        return normalizeLearningResourcesFontSize(value) === RICH_TEXT_DEFAULT_FONT_SIZE;
+    }
+
+    function isManualRichFontSizeElement(el) {
+        return normalizeSheetText(el?.getAttribute?.('data-sb-font-size')).toLowerCase() === 'manual';
+    }
+
+    function cleanupEmptyRichStyleAttribute(el) {
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
+        if (!normalizeSheetText(el.getAttribute('style'))) el.removeAttribute('style');
     }
 
     function isSafeLearningResourceColor(value) {
@@ -754,8 +777,41 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function normalizeLearningResourcesFontSize(value) {
-        const raw = normalizeSheetText(value).replace(/px$/i, '');
-        return LEARNING_RESOURCES_ALLOWED_FONT_SIZES.has(raw) ? raw + 'px' : '';
+        const raw = normalizeSheetText(value).trim();
+        if (!raw) return '';
+
+        const mappedRaw = normalizeSheetText(LEARNING_RESOURCES_FONT_SIZE_MAP[raw] || raw).trim();
+        const calcMatch = mappedRaw.match(/^calc\(\s*var\(\s*--sb-rich-base-size(?:\s*,\s*18px)?\s*\)\s*\*\s*([0-9.]+)\s*\)$/i);
+        if (calcMatch) {
+            const computedPx = Math.round(Number(calcMatch[1]) * RICH_TEXT_BASE_FONT_SIZE);
+            const computedRaw = String(computedPx);
+            return LEARNING_RESOURCES_ALLOWED_FONT_SIZES.has(computedRaw) ? computedRaw + 'px' : '';
+        }
+
+        const emMatch = mappedRaw.match(/^([0-9.]+)em$/i);
+        if (emMatch) {
+            const computedPx = Math.round(Number(emMatch[1]) * RICH_TEXT_BASE_FONT_SIZE);
+            const computedRaw = String(computedPx);
+            return LEARNING_RESOURCES_ALLOWED_FONT_SIZES.has(computedRaw) ? computedRaw + 'px' : '';
+        }
+
+        const pxMatch = mappedRaw.match(/^([0-9.]+)(?:px)?$/i);
+        if (!pxMatch) return '';
+        const numeric = Number(pxMatch[1]);
+        if (!Number.isFinite(numeric)) return '';
+        const normalizedRaw = String(Math.round(numeric));
+        return Math.abs(numeric - Math.round(numeric)) < 0.001 && LEARNING_RESOURCES_ALLOWED_FONT_SIZES.has(normalizedRaw)
+            ? normalizedRaw + 'px'
+            : '';
+    }
+
+    function toLearningResourcesRelativeFontSize(value) {
+        const normalizedPx = normalizeLearningResourcesFontSize(value);
+        if (!normalizedPx) return '';
+        const numericPx = Number(normalizedPx.replace(/px$/i, ''));
+        if (!Number.isFinite(numericPx) || numericPx <= 0) return '';
+        const scale = Number((numericPx / RICH_TEXT_BASE_FONT_SIZE).toFixed(4));
+        return `calc(var(--sb-rich-base-size, ${RICH_TEXT_DEFAULT_FONT_SIZE}) * ${scale})`;
     }
 
     function sanitizeLearningResourcesHtml(value) {
@@ -818,9 +874,12 @@ MODIFICATION RULES FOR THIS APP
             }
 
             const sourceSize = normalizeSheetText(node.getAttribute('size')) || normalizeSheetText(sourceStyle.fontSize);
-            const mappedSize = normalizeRichStyleValue('fontSize', LEARNING_RESOURCES_FONT_SIZE_MAP[sourceSize] || sourceSize);
-            if (mappedSize) {
+            const mappedSize = normalizeRichStyleValue('fontSize', sourceSize);
+            const hasManualFontSizeMarker = isManualRichFontSizeElement(node);
+            const isUnmarkedLegacyDefault = isLegacyRichDefaultFontSize(sourceSize) && !hasManualFontSizeMarker;
+            if (mappedSize && !isUnmarkedLegacyDefault && (hasManualFontSizeMarker || !isRichDefaultEditorFontSize(mappedSize))) {
                 styleParts.push(`font-size: ${mappedSize}`);
+                el.setAttribute('data-sb-font-size', 'manual');
             }
 
             if (styleParts.length) {
@@ -906,8 +965,7 @@ MODIFICATION RULES FOR THIS APP
             return LEARNING_RESOURCES_ALLOWED_FONTS.has(family) ? family : '';
         }
         if (property === 'fontSize') {
-            const normalizedSize = LEARNING_RESOURCES_FONT_SIZE_MAP[raw] || normalizeLearningResourcesFontSize(raw);
-            return isLegacyRichDefaultFontSize(normalizedSize) ? RICH_TEXT_DEFAULT_FONT_SIZE : normalizedSize;
+            return toLearningResourcesRelativeFontSize(raw);
         }
         if (property === 'color') return isSafeLearningResourceColor(raw) ? raw : '';
         if (property === 'fontWeight') {
@@ -947,7 +1005,12 @@ MODIFICATION RULES FOR THIS APP
         };
         Object.entries(candidates).forEach(([property, value]) => {
             const normalized = normalizeRichStyleValue(property, value);
-            if (normalized) styles[property] = normalized;
+            if (!normalized) return;
+            if (property === 'fontSize') {
+                if (isLegacyRichDefaultFontSize(value) && !isManualRichFontSizeElement(el)) return;
+                if (isRichDefaultEditorFontSize(normalized) && !isManualRichFontSizeElement(el)) return;
+            }
+            styles[property] = normalized;
         });
         return styles;
     }
@@ -969,26 +1032,37 @@ MODIFICATION RULES FOR THIS APP
         Object.entries(styles).forEach(([property, value]) => {
             const normalizedValue = normalizeRichStyleValue(property, value);
             if (!normalizedValue) return;
-            if (overwrite || !el.style[property]) el.style[property] = normalizedValue;
+            if (overwrite || !el.style[property]) {
+                el.style[property] = normalizedValue;
+                if (property === 'fontSize') el.setAttribute('data-sb-font-size', 'manual');
+            }
         });
     }
 
     function normalizeRichBaseStylesForTarget(baseStyles = {}, targetStyles = {}) {
         const nextStyles = { ...baseStyles };
-        if (!targetStyles.fontSize) {
-            if (!nextStyles.fontSize || isLegacyRichDefaultFontSize(nextStyles.fontSize)) {
-                nextStyles.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
-            }
-        } else if (isLegacyRichDefaultFontSize(targetStyles.fontSize)) {
-            targetStyles.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
+        if (nextStyles.fontSize && isLegacyRichDefaultFontSize(nextStyles.fontSize)) {
+            delete nextStyles.fontSize;
         }
         return nextStyles;
     }
 
     function normalizeLegacyRichDefaultFontSize(node) {
         if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-        if (isLegacyRichDefaultFontSize(node.style?.fontSize || '')) {
-            node.style.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
+        const nodeFontSize = node.style?.fontSize || '';
+        if (isLegacyRichDefaultFontSize(nodeFontSize) && !isManualRichFontSizeElement(node)) {
+            node.style.removeProperty('font-size');
+            node.removeAttribute('data-sb-font-size');
+            cleanupEmptyRichStyleAttribute(node);
+        } else if (nodeFontSize && isRichDefaultEditorFontSize(nodeFontSize) && !isManualRichFontSizeElement(node)) {
+            node.style.removeProperty('font-size');
+            cleanupEmptyRichStyleAttribute(node);
+        } else if (nodeFontSize) {
+            const normalizedFontSize = normalizeRichStyleValue('fontSize', nodeFontSize);
+            if (normalizedFontSize && node.style.fontSize !== normalizedFontSize) {
+                node.style.fontSize = normalizedFontSize;
+                node.setAttribute('data-sb-font-size', 'manual');
+            }
         }
         Array.from(node.childNodes).forEach(normalizeLegacyRichDefaultFontSize);
     }
@@ -1105,7 +1179,7 @@ MODIFICATION RULES FOR THIS APP
             if (!currentStyles.fontSize) currentStyles.fontSize = normalizeRichStyleValue('fontSize', computed.fontSize || '');
         }
         if (!currentStyles.fontSize || isLegacyRichDefaultFontSize(currentStyles.fontSize)) {
-            currentStyles.fontSize = RICH_TEXT_DEFAULT_FONT_SIZE;
+            currentStyles.fontSize = normalizeRichStyleValue('fontSize', RICH_TEXT_DEFAULT_FONT_SIZE);
         }
         return currentStyles;
     }
@@ -3449,6 +3523,32 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function populateSelectWithSupabaseQuizTargets(selectEl, placeholder) {
+        if (!selectEl) return;
+        const previousValue = normalizeSheetText(selectEl.value);
+        selectEl.innerHTML = `<option value="">${placeholder}</option>`;
+        const sortedQuizzes = [...state.auth.managedQuizzes].sort(sortStudioRecentItems);
+        sortedQuizzes.forEach(quiz => {
+            const option = document.createElement('option');
+            option.value = quiz.id;
+            const countLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount || 0} questions`;
+            option.textContent = `${quiz.name} (${quiz.typeLabel || 'Unknown type'}, ${countLabel})`;
+            if (quiz.quizType === 'mixed') {
+                option.disabled = true;
+                option.textContent += ' — cannot append mixed-type quiz';
+            }
+            selectEl.appendChild(option);
+        });
+        const validIds = new Set(sortedQuizzes.filter(quiz => quiz.quizType !== 'mixed').map(quiz => quiz.id));
+        if (validIds.has(previousValue)) {
+            selectEl.value = previousValue;
+        }
+    }
+
+    function isImportAppendMode(selectEl) {
+        return normalizeSheetText(selectEl?.value) === 'append';
+    }
+
     function renderGoogleSheetsImportControls() {
         const creatorEnabled = state.auth.configured && !!state.auth.user;
         const sourceFolders = getGoogleSheetsFolderNames();
@@ -3458,6 +3558,16 @@ MODIFICATION RULES FOR THIS APP
         populateSelectWithSupabaseFolderTargets(elements.importTargetFolderSelect, 'Use or create source folder name');
         populateSelectWithSupabaseFolderTargets(elements.importEntireFolderTargetSelect, 'Use or create source folder name');
         populateSelectWithSupabaseFolderTargets(elements.importTemplateTargetFolderSelect, 'No folder');
+        populateSelectWithSupabaseQuizTargets(elements.importSourceAppendQuizSelect, 'Choose existing quiz');
+        populateSelectWithSupabaseQuizTargets(elements.importTemplateAppendQuizSelect, 'Choose existing quiz');
+
+        const sourceAppendMode = isImportAppendMode(elements.importSourceDestinationModeSelect);
+        const templateAppendMode = isImportAppendMode(elements.importTemplateDestinationModeSelect);
+        elements.importSourceAppendQuizField?.classList.toggle('hidden', !sourceAppendMode);
+        elements.importSourceTargetFolderField?.classList.toggle('hidden', sourceAppendMode);
+        elements.importTemplateAppendQuizField?.classList.toggle('hidden', !templateAppendMode);
+        elements.importTemplateQuizNameField?.classList.toggle('hidden', templateAppendMode);
+        elements.importTemplateTargetFolderField?.classList.toggle('hidden', templateAppendMode);
 
         if (elements.importSourceQuizSelect) {
             const selectedFolder = elements.importSourceFolderSelect?.value || '';
@@ -3478,7 +3588,6 @@ MODIFICATION RULES FOR THIS APP
 
         [
             elements.importSourceFolderSelect,
-            elements.importTargetFolderSelect,
             elements.importEntireFolderSourceSelect,
             elements.importEntireFolderTargetSelect
         ].forEach(el => {
@@ -3486,21 +3595,38 @@ MODIFICATION RULES FOR THIS APP
             el.disabled = !creatorEnabled || !sourceFolders.length;
         });
 
+        if (elements.importTargetFolderSelect) {
+            elements.importTargetFolderSelect.disabled = !creatorEnabled || !sourceFolders.length || sourceAppendMode;
+        }
+        if (elements.importSourceDestinationModeSelect) {
+            elements.importSourceDestinationModeSelect.disabled = !creatorEnabled;
+        }
+        if (elements.importSourceAppendQuizSelect) {
+            elements.importSourceAppendQuizSelect.disabled = !creatorEnabled || !sourceAppendMode || !state.auth.managedQuizzes.length;
+        }
         if (elements.importTemplateSheetInput) {
             elements.importTemplateSheetInput.disabled = !creatorEnabled;
         }
         if (elements.importTemplateTabInput) {
             elements.importTemplateTabInput.disabled = !creatorEnabled;
         }
+        if (elements.importTemplateDestinationModeSelect) {
+            elements.importTemplateDestinationModeSelect.disabled = !creatorEnabled;
+        }
+        if (elements.importTemplateAppendQuizSelect) {
+            elements.importTemplateAppendQuizSelect.disabled = !creatorEnabled || !templateAppendMode || !state.auth.managedQuizzes.length;
+        }
         if (elements.importTemplateQuizNameInput) {
-            elements.importTemplateQuizNameInput.disabled = !creatorEnabled;
+            elements.importTemplateQuizNameInput.disabled = !creatorEnabled || templateAppendMode;
         }
         if (elements.importTemplateTargetFolderSelect) {
-            elements.importTemplateTargetFolderSelect.disabled = !creatorEnabled;
+            elements.importTemplateTargetFolderSelect.disabled = !creatorEnabled || templateAppendMode;
         }
 
         if (elements.importSourceQuizBtn) {
-            const canImportSingle = creatorEnabled && !!elements.importSourceFolderSelect?.value && !!elements.importSourceQuizSelect?.value;
+            const hasAppendTarget = !sourceAppendMode || !!normalizeSheetText(elements.importSourceAppendQuizSelect?.value);
+            const canImportSingle = creatorEnabled && !!elements.importSourceFolderSelect?.value && !!elements.importSourceQuizSelect?.value && hasAppendTarget;
+            elements.importSourceQuizBtn.textContent = sourceAppendMode ? 'Add Questions to Quiz' : 'Import into Supabase';
             elements.importSourceQuizBtn.disabled = !canImportSingle;
         }
 
@@ -3512,7 +3638,9 @@ MODIFICATION RULES FOR THIS APP
         if (elements.importTemplateSheetBtn) {
             const hasSheetInput = !!normalizeSheetText(elements.importTemplateSheetInput?.value);
             const hasTabInput = !!normalizeSheetText(elements.importTemplateTabInput?.value);
-            elements.importTemplateSheetBtn.disabled = !(creatorEnabled && hasSheetInput && hasTabInput);
+            const hasAppendTarget = !templateAppendMode || !!normalizeSheetText(elements.importTemplateAppendQuizSelect?.value);
+            elements.importTemplateSheetBtn.textContent = templateAppendMode ? 'Add Questions to Quiz' : 'Import Sheet Template';
+            elements.importTemplateSheetBtn.disabled = !(creatorEnabled && hasSheetInput && hasTabInput && hasAppendTarget);
         }
     }
 
@@ -5707,6 +5835,8 @@ MODIFICATION RULES FOR THIS APP
             elements.createFolderBtn,
             elements.importSourceFolderSelect,
             elements.importSourceQuizSelect,
+            elements.importSourceDestinationModeSelect,
+            elements.importSourceAppendQuizSelect,
             elements.importTargetFolderSelect,
             elements.importSourceQuizBtn,
             elements.importEntireFolderSourceSelect,
@@ -5714,6 +5844,8 @@ MODIFICATION RULES FOR THIS APP
             elements.importSourceFolderBtn,
             elements.importTemplateSheetInput,
             elements.importTemplateTabInput,
+            elements.importTemplateDestinationModeSelect,
+            elements.importTemplateAppendQuizSelect,
             elements.importTemplateQuizNameInput,
             elements.importTemplateTargetFolderSelect,
             elements.importTemplateSheetBtn,
@@ -8431,6 +8563,79 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(question?.type).replace(/\s+/g, '_') || 'multiple_choice';
     }
 
+    function getImportQuizTypeLabel(quizType = '') {
+        const labels = {
+            multiple_choice: 'Multiple Choice',
+            flashcard: 'Flashcard',
+            hierarchy: 'Hierarchy',
+            classify: 'Classify',
+            diagrams: 'Diagrams',
+            mixed: 'Mixed types'
+        };
+        return labels[quizType] || normalizeSheetText(quizType).replace(/_/g, ' ') || 'Unknown type';
+    }
+
+    function normalizeSupabaseQuizId(value = '') {
+        const normalized = normalizeSheetText(value);
+        return normalized.startsWith('sb:') ? normalized.slice(3) : normalized;
+    }
+
+    async function getImportAppendTargetContext(quizId) {
+        const normalizedQuizId = normalizeSupabaseQuizId(quizId);
+        if (!normalizedQuizId) {
+            throw new Error('Choose the existing quiz you want to add questions to.');
+        }
+
+        let managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
+        if (!managedQuiz) {
+            await loadManagedSupabaseQuizzes();
+            managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
+        }
+        if (!managedQuiz) {
+            throw new Error('Could not find that existing quiz. Refresh Quiz Studio and try again.');
+        }
+
+        const rows = await fetchAllSupabaseRows(
+            () => state.auth.client
+                .from('questions')
+                .select('id, question_type, sort_order')
+                .eq('quiz_id', normalizedQuizId)
+                .order('sort_order', { ascending: true }),
+            { label: 'append target question rows' }
+        );
+        const questionRows = Array.isArray(rows) ? rows : [];
+        const types = questionRows.map(row => normalizeSheetText(row.question_type || 'multiple_choice') || 'multiple_choice');
+        const uniqueTypes = Array.from(new Set(types));
+        const quizType = uniqueTypes.length === 1
+            ? uniqueTypes[0]
+            : (questionRows.length ? 'mixed' : (managedQuiz.quizType || 'multiple_choice'));
+        const maxSortOrder = questionRows.reduce((maxValue, row, index) => {
+            const sortOrder = Number(row.sort_order);
+            return Math.max(maxValue, Number.isFinite(sortOrder) ? sortOrder : index);
+        }, -1);
+
+        return {
+            quizId: normalizedQuizId,
+            quizName: managedQuiz.name,
+            quizType,
+            questionCount: questionRows.length,
+            maxSortOrder,
+            folderId: managedQuiz.folderId || ''
+        };
+    }
+
+    function validateImportAppendTarget(appendContext, sourceQuizType) {
+        if (!appendContext?.quizId) {
+            throw new Error('Choose the existing quiz you want to add questions to.');
+        }
+        if (appendContext.quizType === 'mixed') {
+            throw new Error(`Cannot add questions to "${appendContext.quizName}" because it already contains mixed question types.`);
+        }
+        if (appendContext.questionCount > 0 && appendContext.quizType !== sourceQuizType) {
+            throw new Error(`Cannot add ${getImportQuizTypeLabel(sourceQuizType)} questions to "${appendContext.quizName}" because that quiz is ${getImportQuizTypeLabel(appendContext.quizType)}.`);
+        }
+    }
+
     function validateGoogleSheetImportQuestions(sourceQuestions, contextLabel = 'Google Sheet tab') {
         if (!Array.isArray(sourceQuestions) || !sourceQuestions.length) {
             throw new Error(`${contextLabel} does not have importable questions.`);
@@ -8692,20 +8897,22 @@ MODIFICATION RULES FOR THIS APP
 
     async function importGoogleSheetsQuestionsToSupabaseQuiz(quizId, questions, options = {}) {
         const total = questions.length;
+        const startSortOrder = Number.isFinite(Number(options.startSortOrder)) ? Number(options.startSortOrder) : 0;
         const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
         if (onProgress) onProgress({ phase: 'questions-start', current: 0, total });
         for (let index = 0; index < total; index += 1) {
             const question = questions[index];
+            const sortOrder = startSortOrder + index;
             const questionType = getQuestionTypeForImport(question);
             if (onProgress) onProgress({ phase: 'question', current: index + 1, total, questionType });
             if (questionType === 'flashcard') {
-                await importFlashcardQuestionToSupabase(quizId, question, index);
+                await importFlashcardQuestionToSupabase(quizId, question, sortOrder);
             } else if (questionType === 'hierarchy') {
-                await importHierarchyQuestionToSupabase(quizId, question, index);
+                await importHierarchyQuestionToSupabase(quizId, question, sortOrder);
             } else if (questionType === 'classify') {
-                await importClassifyQuestionToSupabase(quizId, question, index);
+                await importClassifyQuestionToSupabase(quizId, question, sortOrder);
             } else {
-                await importMultipleChoiceQuestionToSupabase(quizId, question, index);
+                await importMultipleChoiceQuestionToSupabase(quizId, question, sortOrder);
             }
             if (onProgress) onProgress({ phase: 'question-complete', current: index + 1, total, questionType });
         }
@@ -8718,6 +8925,8 @@ MODIFICATION RULES FOR THIS APP
             setCreatorProgressStatus(operationLabel, 'reading source questions');
         } else if (progress.phase === 'creating-quiz') {
             setCreatorProgressStatus(operationLabel, 'creating quiz');
+        } else if (progress.phase === 'appending-quiz') {
+            setCreatorProgressStatus(operationLabel, 'checking existing quiz');
         } else if ((progress.phase === 'question' || progress.phase === 'question-complete') && total) {
             setCreatorProgressStatus(operationLabel, `adding question ${current} of ${total}`);
         } else if (progress.phase === 'refreshing') {
@@ -8735,6 +8944,27 @@ MODIFICATION RULES FOR THIS APP
         if (onProgress) onProgress({ phase: 'reading', quizName: descriptor.name });
         const sourceQuestions = await loadQuestionsFromGoogleSheets(descriptor.sheet);
         const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'The selected Google Sheets quiz');
+
+        const appendToQuizId = normalizeSupabaseQuizId(options.appendToQuizId);
+        if (appendToQuizId) {
+            const appendContext = await getImportAppendTargetContext(appendToQuizId);
+            validateImportAppendTarget(appendContext, quizType);
+            if (onProgress) onProgress({ phase: 'appending-quiz', quizName: appendContext.quizName, total: sourceQuestions.length });
+            await importGoogleSheetsQuestionsToSupabaseQuiz(appendContext.quizId, sourceQuestions, {
+                startSortOrder: appendContext.maxSortOrder + 1,
+                onProgress: progress => onProgress?.({ ...progress, quizName: appendContext.quizName })
+            });
+            return {
+                quizId: appendContext.quizId,
+                quizName: appendContext.quizName,
+                sourceQuizName: descriptor.name,
+                questionCount: sourceQuestions.length,
+                totalQuestionCount: appendContext.questionCount + sourceQuestions.length,
+                quizType,
+                folderId: appendContext.folderId,
+                appended: true
+            };
+        }
 
         if (onProgress) onProgress({ phase: 'creating-quiz', quizName: descriptor.name, total: sourceQuestions.length });
         const folderId = await ensureImportTargetFolderId(targetFolderId, descriptor.folder);
@@ -8779,6 +9009,27 @@ MODIFICATION RULES FOR THIS APP
         const sourceQuestions = await loadQuestionsFromGoogleSheetDocument(sheetId, resolvedTabName);
         const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'That Google Sheet tab');
 
+        const appendToQuizId = normalizeSupabaseQuizId(options.appendToQuizId);
+        if (appendToQuizId) {
+            const appendContext = await getImportAppendTargetContext(appendToQuizId);
+            validateImportAppendTarget(appendContext, quizType);
+            if (onProgress) onProgress({ phase: 'appending-quiz', quizName: appendContext.quizName, total: sourceQuestions.length });
+            await importGoogleSheetsQuestionsToSupabaseQuiz(appendContext.quizId, sourceQuestions, {
+                startSortOrder: appendContext.maxSortOrder + 1,
+                onProgress: progress => onProgress?.({ ...progress, quizName: appendContext.quizName })
+            });
+            return {
+                quizId: appendContext.quizId,
+                quizName: appendContext.quizName,
+                sourceQuizName: resolvedTabName,
+                questionCount: sourceQuestions.length,
+                totalQuestionCount: appendContext.questionCount + sourceQuestions.length,
+                quizType,
+                folderId: appendContext.folderId,
+                appended: true
+            };
+        }
+
         if (onProgress) onProgress({ phase: 'creating-quiz', quizName: resolvedTabName, total: sourceQuestions.length });
         const folderId = normalizeSheetText(targetFolderId);
         const nextSortOrder = state.auth.managedQuizzes
@@ -8819,16 +9070,24 @@ MODIFICATION RULES FOR THIS APP
         }
 
         try {
+            const appendToQuizId = isImportAppendMode(elements.importSourceDestinationModeSelect)
+                ? normalizeSheetText(elements.importSourceAppendQuizSelect?.value)
+                : '';
             const targetFolderId = normalizeSheetText(elements.importTargetFolderSelect?.value);
             const result = await importGoogleSheetsQuizDescriptorToSupabase(quizDescriptor, targetFolderId, {
-                onProgress: progress => setImportProgressFromEvent('Importing quiz', progress)
+                appendToQuizId,
+                onProgress: progress => setImportProgressFromEvent(appendToQuizId ? 'Adding questions' : 'Importing quiz', progress)
             });
-            setCreatorProgressStatus('Importing quiz', 'refreshing Quiz Studio');
+            setCreatorProgressStatus(appendToQuizId ? 'Adding questions' : 'Importing quiz', 'refreshing Quiz Studio');
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
             renderGoogleSheetsImportControls();
             await setQuizStudioSection('manage');
-            setCreatorStatus(`Imported "${result.quizName}" into Supabase.`, 'success');
+            if (result.appended) {
+                setCreatorStatus(`Added ${result.questionCount} ${result.questionCount === 1 ? 'question' : 'questions'} to "${result.quizName}".`, 'success');
+            } else {
+                setCreatorStatus(`Imported "${result.quizName}" into Supabase.`, 'success');
+            }
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not import the Google Sheets quiz.', 'error');
@@ -8893,19 +9152,29 @@ MODIFICATION RULES FOR THIS APP
         }
 
         try {
+            const appendToQuizId = isImportAppendMode(elements.importTemplateDestinationModeSelect)
+                ? normalizeSheetText(elements.importTemplateAppendQuizSelect?.value)
+                : '';
             const result = await importGoogleSheetTemplateToSupabase(
                 elements.importTemplateSheetInput?.value,
                 elements.importTemplateTabInput?.value,
                 elements.importTemplateQuizNameInput?.value,
                 normalizeSheetText(elements.importTemplateTargetFolderSelect?.value),
-                { onProgress: progress => setImportProgressFromEvent('Importing template', progress) }
+                {
+                    appendToQuizId,
+                    onProgress: progress => setImportProgressFromEvent(appendToQuizId ? 'Adding questions' : 'Importing template', progress)
+                }
             );
-            setCreatorProgressStatus('Importing template', 'refreshing Quiz Studio');
+            setCreatorProgressStatus(appendToQuizId ? 'Adding questions' : 'Importing template', 'refreshing Quiz Studio');
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
             renderGoogleSheetsImportControls();
             await setQuizStudioSection('manage');
-            setCreatorStatus(`Imported "${result.quizName}" from the Google Sheet template.`, 'success');
+            if (result.appended) {
+                setCreatorStatus(`Added ${result.questionCount} ${result.questionCount === 1 ? 'question' : 'questions'} to "${result.quizName}".`, 'success');
+            } else {
+                setCreatorStatus(`Imported "${result.quizName}" from the Google Sheet template.`, 'success');
+            }
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not import that Google Sheet template.', 'error');
@@ -14115,7 +14384,7 @@ function updateRichToolbarChoice(styleName, value, fontFamilyBtn, fontSizeBtn) {
         fontFamilyBtn.title = normalizedValue ? `Font family: ${normalizedValue}` : 'Font family';
     }
     if (normalizedStyle === 'fontSize' && fontSizeBtn) {
-        const numericValue = normalizedValue.replace(/px$/i, '');
+        const numericValue = (normalizeLearningResourcesFontSize(normalizedValue) || RICH_TEXT_DEFAULT_FONT_SIZE).replace(/px$/i, '');
         fontSizeBtn.textContent = numericValue || String(parseInt(RICH_TEXT_DEFAULT_FONT_SIZE, 10) || 18);
         fontSizeBtn.title = `Font size: ${numericValue || String(parseInt(RICH_TEXT_DEFAULT_FONT_SIZE, 10) || 18)}`;
     }
@@ -14624,8 +14893,12 @@ if (elements.importTemplateSheetBtn) {
 }
 
 [
+    elements.importSourceDestinationModeSelect,
+    elements.importSourceAppendQuizSelect,
     elements.importTemplateSheetInput,
     elements.importTemplateTabInput,
+    elements.importTemplateDestinationModeSelect,
+    elements.importTemplateAppendQuizSelect,
     elements.importTemplateTargetFolderSelect
 ].forEach(el => {
     if (!el) return;
