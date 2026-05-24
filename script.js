@@ -5034,7 +5034,7 @@ MODIFICATION RULES FOR THIS APP
             const rowDropAttr = isPendingRow ? '' : `data-studio-drop-question-id="${escapeHtml(questionRow.id)}"`;
             const handleAttrs = isUnsavedFlashcardRow
                 ? 'disabled'
-                : `data-studio-drag-question-id="${escapeHtml(questionRow.id)}" draggable="true"`;
+                : `data-studio-drag-question-id="${escapeHtml(questionRow.id)}"`;
             const deleteAttrs = isPendingRow
                 ? 'data-studio-discard-pending-card="true"'
                 : (isLocalFlashcardRow ? `data-studio-discard-local-card="${escapeHtml(questionRow.id)}"` : `data-studio-delete-question-id="${escapeHtml(questionRow.id)}"`);
@@ -13071,16 +13071,9 @@ if (elements.closeQuizStudioBtn) {
     });
 }
 
-if (elements.quizStudioPage) {
-    elements.quizStudioPage.addEventListener('click', e => {
-        if (e.target === elements.quizStudioPage) {
-            closeQuizStudioPage().catch(err => {
-                console.error(err);
-                setCreatorStatus('Could not close Quiz Studio.', 'error');
-            });
-        }
-    });
-}
+// Keep Quiz Studio open when the user clicks outside the editor panel.
+// The editor should only close through the explicit X/close action so
+// accidental backdrop clicks do not send the user back to study mode.
 
 if (elements.addOptionFieldBtn) {
     elements.addOptionFieldBtn.addEventListener('click', () => {
@@ -13581,45 +13574,325 @@ if (elements.studioQuestionList) {
         }
     });
 
-    elements.studioQuestionList.addEventListener('dragstart', e => {
-        const handle = e.target.closest('[data-studio-drag-question-id]');
-        if (!handle) return;
-        state.auth.studioDraggingQuestionId = handle.dataset.studioDragQuestionId;
-        if (e.dataTransfer) {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', state.auth.studioDraggingQuestionId);
+    let studioQuestionPointerDrag = null;
+
+    function getStudioQuestionRowIdFromWrapper(rowWrapper) {
+        return normalizeSheetText(rowWrapper?.querySelector('[data-studio-row-question-id]')?.dataset.studioRowQuestionId || '');
+    }
+
+    function getStudioQuestionDropNeighborIds(placeholder, draggedQuestionId) {
+        const children = Array.from(elements.studioQuestionList?.children || []);
+        const placeholderIndex = children.indexOf(placeholder);
+        if (placeholderIndex === -1) return { previousId: '', nextId: '' };
+
+        let previousId = '';
+        for (let index = placeholderIndex - 1; index >= 0; index -= 1) {
+            const id = getStudioQuestionRowIdFromWrapper(children[index]);
+            if (id && id !== draggedQuestionId) {
+                previousId = id;
+                break;
+            }
         }
-        window.requestAnimationFrame(() => renderStudioQuestionList());
-    });
 
-    elements.studioQuestionList.addEventListener('dragend', () => {
-        state.auth.studioDraggingQuestionId = null;
-        clearStudioQuestionDropTargets();
+        let nextId = '';
+        for (let index = placeholderIndex + 1; index < children.length; index += 1) {
+            const id = getStudioQuestionRowIdFromWrapper(children[index]);
+            if (id && id !== draggedQuestionId) {
+                nextId = id;
+                break;
+            }
+        }
+
+        return { previousId, nextId };
+    }
+
+    async function reorderStudioQuestionFromDragDrop(draggedQuestionId, previousId, nextId) {
+        if (!state.auth.client || !draggedQuestionId) return;
+        if (state.auth.studioHasUnsavedChanges) {
+            cacheCurrentStudioQuestionDraft();
+        }
+
+        const orderedQuestionIds = state.auth.studioQuizQuestions.map(question => question.id);
+        const draggedIndex = orderedQuestionIds.indexOf(draggedQuestionId);
+        if (draggedIndex === -1) return;
+
+        orderedQuestionIds.splice(draggedIndex, 1);
+        if (nextId) {
+            const nextIndex = orderedQuestionIds.indexOf(nextId);
+            if (nextIndex !== -1) {
+                orderedQuestionIds.splice(nextIndex, 0, draggedQuestionId);
+            }
+        } else if (previousId) {
+            const previousIndex = orderedQuestionIds.indexOf(previousId);
+            if (previousIndex !== -1) {
+                orderedQuestionIds.splice(previousIndex + 1, 0, draggedQuestionId);
+            }
+        } else {
+            orderedQuestionIds.push(draggedQuestionId);
+        }
+
+        await reorderStudioQuizQuestionIds(orderedQuestionIds);
+        await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
         renderStudioQuestionList();
-    });
+        setCreatorStatus('Question order updated.', 'success');
+    }
 
-    elements.studioQuestionList.addEventListener('dragover', e => {
-        if (!state.auth.studioDraggingQuestionId) return;
-        const targetRow = e.target.closest('[data-studio-drop-question-id]');
-        if (!targetRow) return;
-        e.preventDefault();
-        clearStudioQuestionDropTargets();
-        targetRow.classList.add('drag-over');
-    });
+    function moveStudioQuestionDragPlaceholder(clientY) {
+        if (!studioQuestionPointerDrag?.placeholder || !elements.studioQuestionList) return;
+        const placeholder = studioQuestionPointerDrag.placeholder;
+        const rows = Array.from(elements.studioQuestionList.querySelectorAll('.studio-question-list-row'))
+            .filter(row => row !== studioQuestionPointerDrag.row && row !== placeholder && !row.classList.contains('studio-question-drag-source'));
 
-    elements.studioQuestionList.addEventListener('drop', e => {
-        const targetRow = e.target.closest('[data-studio-drop-question-id]');
-        if (!targetRow || !state.auth.studioDraggingQuestionId) return;
-        e.preventDefault();
-        const targetQuestionId = targetRow.dataset.studioDropQuestionId;
-        const draggedQuestionId = state.auth.studioDraggingQuestionId;
+        let inserted = false;
+        for (const row of rows) {
+            const rect = row.getBoundingClientRect();
+            const rowMidpoint = rect.top + (rect.height / 2);
+            if (clientY < rowMidpoint) {
+                if (placeholder.nextSibling !== row) {
+                    elements.studioQuestionList.insertBefore(placeholder, row);
+                }
+                inserted = true;
+                break;
+            }
+        }
+
+        if (!inserted) {
+            const tailAction = elements.studioQuestionList.querySelector('.studio-question-tail-action');
+            if (tailAction) {
+                elements.studioQuestionList.insertBefore(placeholder, tailAction);
+            } else {
+                elements.studioQuestionList.appendChild(placeholder);
+            }
+        }
+    }
+
+    function updateStudioQuestionDragGhost(clientX, clientY) {
+        if (!studioQuestionPointerDrag?.ghost) return;
+        studioQuestionPointerDrag.ghost.style.left = `${clientX - studioQuestionPointerDrag.offsetX}px`;
+        studioQuestionPointerDrag.ghost.style.top = `${clientY - studioQuestionPointerDrag.offsetY}px`;
+    }
+
+    function stopStudioQuestionAutoScroll() {
+        if (!studioQuestionPointerDrag) return;
+        studioQuestionPointerDrag.autoScrollDelta = 0;
+        if (studioQuestionPointerDrag.autoScrollFrame) {
+            cancelAnimationFrame(studioQuestionPointerDrag.autoScrollFrame);
+            studioQuestionPointerDrag.autoScrollFrame = 0;
+        }
+    }
+
+    function getStudioQuestionAutoScrollTarget() {
+        const studioPage = elements.quizStudioPage;
+        if (studioPage && !studioPage.classList.contains('hidden') && studioPage.scrollHeight > studioPage.clientHeight + 1) {
+            return studioPage;
+        }
+        const scrollingElement = document.scrollingElement || document.documentElement;
+        if (scrollingElement && scrollingElement.scrollHeight > scrollingElement.clientHeight + 1) {
+            return scrollingElement;
+        }
+        return null;
+    }
+
+    function getStudioQuestionAutoScrollBounds(target) {
+        if (!target || target === document.scrollingElement || target === document.documentElement || target === document.body) {
+            return { top: 0, bottom: window.innerHeight };
+        }
+        const rect = target.getBoundingClientRect();
+        return {
+            top: Math.max(0, rect.top),
+            bottom: Math.min(window.innerHeight, rect.bottom)
+        };
+    }
+
+    function scrollStudioQuestionAutoScrollTarget(target, delta) {
+        if (!target) return false;
+        const before = target === document.scrollingElement || target === document.documentElement || target === document.body
+            ? window.scrollY
+            : target.scrollTop;
+
+        if (target === document.scrollingElement || target === document.documentElement || target === document.body) {
+            window.scrollBy(0, delta);
+            return window.scrollY !== before;
+        }
+
+        target.scrollTop += delta;
+        return target.scrollTop !== before;
+    }
+
+    function runStudioQuestionAutoScroll() {
+        if (!studioQuestionPointerDrag || !studioQuestionPointerDrag.dragging || !studioQuestionPointerDrag.autoScrollDelta) {
+            stopStudioQuestionAutoScroll();
+            return;
+        }
+
+        const target = studioQuestionPointerDrag.autoScrollTarget || getStudioQuestionAutoScrollTarget();
+        studioQuestionPointerDrag.autoScrollTarget = target;
+        const didScroll = scrollStudioQuestionAutoScrollTarget(target, studioQuestionPointerDrag.autoScrollDelta);
+        if (!didScroll) {
+            stopStudioQuestionAutoScroll();
+            return;
+        }
+
+        updateStudioQuestionDragGhost(studioQuestionPointerDrag.lastClientX, studioQuestionPointerDrag.lastClientY);
+        moveStudioQuestionDragPlaceholder(studioQuestionPointerDrag.lastClientY);
+        studioQuestionPointerDrag.autoScrollFrame = requestAnimationFrame(runStudioQuestionAutoScroll);
+    }
+
+    function updateStudioQuestionAutoScroll(clientY) {
+        if (!studioQuestionPointerDrag?.dragging) return;
+        const target = getStudioQuestionAutoScrollTarget();
+        if (!target) {
+            stopStudioQuestionAutoScroll();
+            return;
+        }
+
+        const bounds = getStudioQuestionAutoScrollBounds(target);
+        const edgeSize = Math.min(120, Math.max(64, (bounds.bottom - bounds.top) * 0.22));
+        const maxScroll = 32;
+        let delta = 0;
+        if (clientY < bounds.top + edgeSize) {
+            delta = -Math.ceil(maxScroll * (1 - ((clientY - bounds.top) / edgeSize)));
+        } else if (clientY > bounds.bottom - edgeSize) {
+            delta = Math.ceil(maxScroll * (1 - ((bounds.bottom - clientY) / edgeSize)));
+        }
+
+        studioQuestionPointerDrag.autoScrollTarget = target;
+        studioQuestionPointerDrag.autoScrollDelta = delta;
+        if (delta && !studioQuestionPointerDrag.autoScrollFrame) {
+            studioQuestionPointerDrag.autoScrollFrame = requestAnimationFrame(runStudioQuestionAutoScroll);
+        } else if (!delta) {
+            stopStudioQuestionAutoScroll();
+        }
+    }
+
+    function beginStudioQuestionPointerDrag() {
+        if (!studioQuestionPointerDrag || studioQuestionPointerDrag.dragging) return;
+        const { row, item, startRect, startX, startY } = studioQuestionPointerDrag;
+        if (!row || !item || !elements.studioQuestionList) return;
+
+        studioQuestionPointerDrag.dragging = true;
+        state.auth.studioDraggingQuestionId = studioQuestionPointerDrag.questionId;
+        document.body.classList.add('studio-question-dragging');
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'studio-question-list-drag-placeholder';
+        placeholder.style.height = `${row.offsetHeight}px`;
+        placeholder.innerHTML = '<span>Drop question here</span>';
+        row.parentNode.insertBefore(placeholder, row);
+        row.classList.add('studio-question-drag-source');
+
+        const ghost = item.cloneNode(true);
+        ghost.classList.remove('active', 'drag-over', 'dragging');
+        ghost.classList.add('studio-question-list-drag-ghost');
+        ghost.style.width = `${startRect.width}px`;
+        document.body.appendChild(ghost);
+
+        studioQuestionPointerDrag.placeholder = placeholder;
+        studioQuestionPointerDrag.ghost = ghost;
+        updateStudioQuestionDragGhost(startX, startY);
+    }
+
+    function cleanupStudioQuestionPointerDrag({ rerender = false } = {}) {
+        if (!studioQuestionPointerDrag) return;
+        stopStudioQuestionAutoScroll();
+        window.removeEventListener('pointermove', handleStudioQuestionPointerMove);
+        window.removeEventListener('pointerup', handleStudioQuestionPointerUp);
+        window.removeEventListener('pointercancel', handleStudioQuestionPointerUp);
+        document.body.classList.remove('studio-question-dragging');
         state.auth.studioDraggingQuestionId = null;
         clearStudioQuestionDropTargets();
-        reorderStudioQuestionBeforeTarget(draggedQuestionId, targetQuestionId).catch(err => {
+
+        if (studioQuestionPointerDrag.ghost?.parentNode) {
+            studioQuestionPointerDrag.ghost.parentNode.removeChild(studioQuestionPointerDrag.ghost);
+        }
+        if (studioQuestionPointerDrag.placeholder?.parentNode) {
+            studioQuestionPointerDrag.placeholder.parentNode.removeChild(studioQuestionPointerDrag.placeholder);
+        }
+        studioQuestionPointerDrag.row?.classList.remove('studio-question-drag-source');
+        try {
+            studioQuestionPointerDrag.handle?.releasePointerCapture?.(studioQuestionPointerDrag.pointerId);
+        } catch (err) {
+            // Pointer capture may already be released by the browser.
+        }
+        studioQuestionPointerDrag = null;
+        if (rerender) renderStudioQuestionList();
+    }
+
+    function handleStudioQuestionPointerMove(e) {
+        if (!studioQuestionPointerDrag || e.pointerId !== studioQuestionPointerDrag.pointerId) return;
+        studioQuestionPointerDrag.lastClientX = e.clientX;
+        studioQuestionPointerDrag.lastClientY = e.clientY;
+        const distanceX = Math.abs(e.clientX - studioQuestionPointerDrag.startX);
+        const distanceY = Math.abs(e.clientY - studioQuestionPointerDrag.startY);
+        const movedEnough = distanceX > 4 || distanceY > 4;
+        if (!studioQuestionPointerDrag.dragging && !movedEnough) return;
+
+        e.preventDefault();
+        if (!studioQuestionPointerDrag.dragging) {
+            beginStudioQuestionPointerDrag();
+        }
+        updateStudioQuestionDragGhost(e.clientX, e.clientY);
+        moveStudioQuestionDragPlaceholder(e.clientY);
+        updateStudioQuestionAutoScroll(e.clientY);
+    }
+
+    function handleStudioQuestionPointerUp(e) {
+        if (!studioQuestionPointerDrag || e.pointerId !== studioQuestionPointerDrag.pointerId) return;
+        e.preventDefault();
+        const finishedDrag = studioQuestionPointerDrag.dragging;
+        const draggedQuestionId = studioQuestionPointerDrag.questionId;
+        const placeholder = studioQuestionPointerDrag.placeholder;
+        const { previousId, nextId } = finishedDrag
+            ? getStudioQuestionDropNeighborIds(placeholder, draggedQuestionId)
+            : { previousId: '', nextId: '' };
+        const draggedRow = studioQuestionPointerDrag.row;
+        if (finishedDrag && placeholder?.parentNode && draggedRow) {
+            placeholder.parentNode.insertBefore(draggedRow, placeholder);
+        }
+
+        cleanupStudioQuestionPointerDrag({ rerender: !finishedDrag });
+        if (!finishedDrag) return;
+
+        reorderStudioQuestionFromDragDrop(draggedQuestionId, previousId, nextId).catch(err => {
             console.error(err);
             setCreatorStatus('Could not reorder the question.', 'error');
             renderStudioQuestionList();
         });
+    }
+
+    elements.studioQuestionList.addEventListener('pointerdown', e => {
+        const handle = e.target.closest('[data-studio-drag-question-id]');
+        if (!handle || handle.disabled || e.button !== 0) return;
+        const questionId = normalizeSheetText(handle.dataset.studioDragQuestionId || '');
+        const row = handle.closest('.studio-question-list-row');
+        const item = handle.closest('.studio-question-list-item');
+        if (!questionId || !row || !item) return;
+
+        e.preventDefault();
+        const startRect = item.getBoundingClientRect();
+        studioQuestionPointerDrag = {
+            pointerId: e.pointerId,
+            questionId,
+            row,
+            item,
+            handle,
+            startX: e.clientX,
+            startY: e.clientY,
+            lastClientX: e.clientX,
+            lastClientY: e.clientY,
+            offsetX: e.clientX - startRect.left,
+            offsetY: e.clientY - startRect.top,
+            startRect,
+            dragging: false,
+            placeholder: null,
+            ghost: null,
+            autoScrollDelta: 0,
+            autoScrollFrame: 0
+        };
+        handle.setPointerCapture?.(e.pointerId);
+        window.addEventListener('pointermove', handleStudioQuestionPointerMove, { passive: false });
+        window.addEventListener('pointerup', handleStudioQuestionPointerUp);
+        window.addEventListener('pointercancel', handleStudioQuestionPointerUp);
     });
 }
 
