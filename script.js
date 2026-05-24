@@ -1554,6 +1554,51 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+
+    function createStudyLoadDiagnosticError(message, details = {}) {
+        const error = new Error(normalizeSheetText(message) || 'Could not load that quiz for study.');
+        error.name = 'StudyLoadDiagnosticError';
+        error.studyLoadDiagnostic = true;
+        error.details = details || {};
+        return error;
+    }
+
+    function getStudyLoadErrorMessage(error) {
+        const message = normalizeSheetText(error?.message || error);
+        if (error?.studyLoadDiagnostic && message) {
+            return `Study load issue: ${message}`;
+        }
+        return message ? `Study load issue: ${message}` : 'Could not load the quiz into the study view.';
+    }
+
+    function assertExpectedDetailRowsForStudyLoad(questionIds, detailRows, detailLabel, quizName = '') {
+        const expectedIds = (questionIds || []).map(normalizeSheetText).filter(Boolean);
+        const foundIds = new Set((detailRows || []).map(row => normalizeSheetText(row?.question_id)).filter(Boolean));
+        const missingIds = expectedIds.filter(id => !foundIds.has(id));
+        if (!missingIds.length) return;
+        const quizPart = normalizeSheetText(quizName) ? ` for "${normalizeSheetText(quizName)}"` : '';
+        throw createStudyLoadDiagnosticError(`${missingIds.length} of ${expectedIds.length} ${detailLabel} question detail row(s) are missing${quizPart}. Open the quiz in the editor and re-save the affected questions, or check the matching Supabase detail table.`, {
+            detailLabel,
+            expectedCount: expectedIds.length,
+            foundCount: foundIds.size,
+            missingQuestionIds: missingIds.slice(0, 10)
+        });
+    }
+
+    async function resolveSupabaseMediaReferencesForStudyLoad(value, contextLabel = 'This quiz') {
+        const refs = Array.from(collectSupabaseMediaReferences(value));
+        if (!refs.length) return value;
+        const urlMap = await createSignedMediaUrlMap(refs);
+        const missingRefs = refs.filter(ref => !urlMap.has(ref));
+        if (missingRefs.length) {
+            throw createStudyLoadDiagnosticError(`${contextLabel} has ${missingRefs.length} private image/media reference(s) that could not be loaded. The media_assets row or Storage object may be missing.`, {
+                contextLabel,
+                missingMediaRefs: missingRefs.slice(0, 10)
+            });
+        }
+        return replaceSupabaseMediaReferences(value, urlMap);
+    }
+
     function setPreviewImageSource(previewEl, sourceValue, callbacks = {}) {
         if (!previewEl) return;
         const normalizedSource = normalizeSheetText(sourceValue);
@@ -3263,18 +3308,23 @@ MODIFICATION RULES FOR THIS APP
         }
 
         try {
-            let [{ data: quizzes, error: quizzesError }, { data: questionRows, error: questionsError }] = await Promise.all([
+            const [quizResult, questionRows] = await Promise.all([
                 state.auth.client
                     .from('quizzes')
                     .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
                     .order('sort_order', { ascending: true })
                     .order('name', { ascending: true }),
-                state.auth.client
-                    .from('questions')
-                    .select('id, quiz_id, question_type, sort_order')
-                    .order('sort_order', { ascending: true })
+                fetchAllSupabaseRows(
+                    () => state.auth.client
+                        .from('questions')
+                        .select('id, quiz_id, question_type, sort_order')
+                        .order('quiz_id', { ascending: true })
+                        .order('sort_order', { ascending: true }),
+                    { label: 'managed quiz question rows' }
+                )
             ]);
 
+            let { data: quizzes, error: quizzesError } = quizResult;
             if (quizzesError && /updated_at/i.test(quizzesError.message || '')) {
                 const { data: fallbackQuizzes, error: fallbackQuizzesError } = await state.auth.client
                     .from('quizzes')
@@ -3286,7 +3336,6 @@ MODIFICATION RULES FOR THIS APP
             } else if (quizzesError) {
                 throw quizzesError;
             }
-            if (questionsError) throw questionsError;
 
             const questionMap = new Map();
             (questionRows || []).forEach(row => {
@@ -6158,13 +6207,38 @@ MODIFICATION RULES FOR THIS APP
         return data || null;
     }
 
+    async function fetchAllSupabaseRows(buildQuery, options = {}) {
+        const pageSize = Number(options.pageSize || 1000);
+        const label = normalizeSheetText(options.label || 'Supabase rows');
+        const maxRows = Number(options.maxRows || 50000);
+        const rows = [];
+        let from = 0;
+
+        while (true) {
+            const to = from + pageSize - 1;
+            const { data, error } = await buildQuery().range(from, to);
+            if (error) throw error;
+
+            const pageRows = Array.isArray(data) ? data : [];
+            rows.push(...pageRows);
+
+            if (pageRows.length < pageSize) break;
+            from += pageSize;
+            if (rows.length >= maxRows) {
+                throw new Error(`${label} exceeded the safe read limit of ${maxRows}.`);
+            }
+        }
+
+        return rows;
+    }
+
     async function refreshQuizCatalog(options = {}) {
         const previousQuizId = elements.quizSelector?.value || '';
         const targetQuizId = options.selectQuizId || previousQuizId;
 
         await populateFolderDropdown();
 
-        const targetQuiz = state.quizListCache.find(q => q.id === targetQuizId) || null;
+        const targetQuiz = getQuizBySelectorValue(targetQuizId);
         if (!targetQuiz) {
             if (options.clearIfMissing) {
                 resetQuizSelector();
@@ -6178,7 +6252,7 @@ MODIFICATION RULES FOR THIS APP
         }
         populateQuizDropdown(targetQuiz.folder);
         if (elements.quizSelector) {
-            elements.quizSelector.value = targetQuiz.id;
+            elements.quizSelector.value = encodeQuizSelectorValue(targetQuiz);
         }
 
         if (options.loadSelectedQuiz) {
@@ -9711,7 +9785,17 @@ function encodeQuizSelectorValue(quizDescriptor) {
 }
 
 function getQuizBySelectorValue(selectorValue) {
-    return state.quizListCache.find(q => q.id === selectorValue) || null;
+    const rawValue = normalizeSheetText(selectorValue);
+    if (!rawValue) return null;
+
+    const directMatch = state.quizListCache.find(q => q.id === rawValue);
+    if (directMatch) return directMatch;
+
+    const sourceQuizId = rawValue.startsWith('sb:') ? rawValue.slice(3) : rawValue;
+    return state.quizListCache.find(q =>
+        q.source === DATA_SOURCES.SUPABASE
+        && normalizeSheetText(q.sourceQuizId) === sourceQuizId
+    ) || null;
 }
 
 function buildFolderDeckDescriptors(quizDescriptors) {
@@ -10011,7 +10095,7 @@ async function loadQuizListFromSupabase() {
     }
 
     try {
-        const [{ data: folders, error: foldersError }, { data: quizzes, error: quizzesError }, { data: questionRows, error: questionsError }] = await Promise.all([
+        const [{ data: folders, error: foldersError }, { data: quizzes, error: quizzesError }, questionRows] = await Promise.all([
             state.auth.client
                 .from('folders')
                 .select('id, name, sort_order')
@@ -10023,14 +10107,17 @@ async function loadQuizListFromSupabase() {
                 .eq('is_archived', false)
                 .order('sort_order', { ascending: true })
                 .order('name', { ascending: true }),
-            state.auth.client
-                .from('questions')
-                .select('quiz_id, question_type')
+            fetchAllSupabaseRows(
+                () => state.auth.client
+                    .from('questions')
+                    .select('quiz_id, question_type')
+                    .order('quiz_id', { ascending: true }),
+                { label: 'quiz catalog question rows' }
+            )
         ]);
 
         if (foldersError) throw foldersError;
         if (quizzesError) throw quizzesError;
-        if (questionsError) throw questionsError;
 
         const folderMap = new Map((folders || []).map(folder => [folder.id, folder]));
         const quizTypeMap = new Map();
@@ -10043,13 +10130,12 @@ async function loadQuizListFromSupabase() {
         });
 
         return (quizzes || [])
-            .filter(quiz => {
-                const types = quizTypeMap.get(quiz.id) || [];
-                return types.length > 0 && types.every(type => type === 'multiple_choice' || type === 'flashcard' || type === 'hierarchy' || type === 'classify' || type === 'diagrams');
-            })
+            .filter(quiz => (quizTypeMap.get(quiz.id) || []).length > 0)
             .map(quiz => {
-                const types = quizTypeMap.get(quiz.id) || [];
-                const quizType = types[0] || 'multiple_choice';
+                const types = (quizTypeMap.get(quiz.id) || [])
+                    .map(type => normalizeSheetText(type || 'multiple_choice') || 'multiple_choice');
+                const uniqueTypes = Array.from(new Set(types));
+                const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : 'mixed';
                 const folder = folderMap.get(quiz.folder_id) || null;
                 return {
                     id: `sb:${quiz.id}`,
@@ -10087,6 +10173,8 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         return [];
     }
 
+    const quizName = normalizeSheetText(quizDescriptor?.name || 'this quiz');
+
     try {
         const [{ data: questionRows, error: questionsError }, { data: quizRow, error: quizError }] = await Promise.all([
             state.auth.client
@@ -10100,22 +10188,42 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 .eq('id', quizDescriptor.sourceQuizId)
                 .maybeSingle()
         ]);
-        if (questionsError) throw questionsError;
-        if (quizError) throw quizError;
+        if (questionsError) {
+            throw createStudyLoadDiagnosticError(`Could not read question rows for "${quizName}": ${questionsError.message || questionsError.details || questionsError}`);
+        }
+        if (quizError) {
+            throw createStudyLoadDiagnosticError(`Could not read quiz metadata for "${quizName}": ${quizError.message || quizError.details || quizError}`);
+        }
+
         const diagramSharing = getDiagramSharingFromDescription(quizRow?.description || '');
         const rows = questionRows || [];
+        const questionIds = rows.map(row => row.id).filter(Boolean);
+        if (!questionIds.length) {
+            throw createStudyLoadDiagnosticError(`"${quizName}" has no saved question rows.`);
+        }
+
+        const rowTypes = Array.from(new Set(rows.map(row => normalizeSheetText(row?.question_type || 'multiple_choice') || 'multiple_choice')));
+        if (rowTypes.length > 1) {
+            throw createStudyLoadDiagnosticError(`"${quizName}" has mixed question types (${rowTypes.join(', ')}). Study mode expects one quiz type per quiz.`);
+        }
+
+        const quizType = normalizeSheetText(quizDescriptor.quizType || rowTypes[0] || 'multiple_choice');
+        const supportedTypes = new Set(['multiple_choice', 'flashcard', 'hierarchy', 'classify', 'diagrams']);
+        if (!supportedTypes.has(quizType)) {
+            throw createStudyLoadDiagnosticError(`"${quizName}" uses unsupported question type "${quizType}".`);
+        }
+
         const sharedDiagramSourceQuestionId = getDiagramSharingSourceQuestionId(diagramSharing);
         const sharedDiagramSourceRow = sharedDiagramSourceQuestionId
             ? rows.find(row => normalizeSheetText(row?.id) === sharedDiagramSourceQuestionId)
             : null;
         const sharedDiagramSourceImageUrl = normalizeSheetText(sharedDiagramSourceRow?.image_url);
-        const questionIds = rows.map(row => row.id).filter(Boolean);
-        if (!questionIds.length) return [];
-        const quizType = normalizeSheetText(quizDescriptor.quizType || rows[0]?.question_type || 'multiple_choice');
+
         if (quizType === 'flashcard') {
             const detailRows = await loadFlashcardDetailsByQuestionIds(questionIds);
+            assertExpectedDetailRowsForStudyLoad(questionIds, detailRows, 'flashcard', quizName);
             const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-            return resolveSupabaseMediaReferences(rows.map(row => {
+            const questions = rows.map(row => {
                 const detail = detailMap.get(row.id);
                 if (!detail) return null;
                 return {
@@ -10132,12 +10240,16 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
-            }).filter(Boolean));
+            }).filter(Boolean);
+            if (!questions.length) throw createStudyLoadDiagnosticError(`No usable flashcards were built for "${quizName}".`);
+            return resolveSupabaseMediaReferencesForStudyLoad(questions, `Flashcard quiz "${quizName}"`);
         }
+
         if (quizType === 'hierarchy') {
             const detailRows = await loadHierarchyDetailsByQuestionIds(questionIds);
+            assertExpectedDetailRowsForStudyLoad(questionIds, detailRows, 'hierarchy', quizName);
             const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-            return resolveSupabaseMediaReferences(rows.map(row => {
+            const questions = rows.map(row => {
                 const detail = detailMap.get(row.id);
                 if (!detail) return null;
                 const itemDrafts = getHierarchyDraftsFromDetailRow(detail);
@@ -10160,12 +10272,16 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
-            }).filter(Boolean));
+            }).filter(Boolean);
+            if (!questions.length) throw createStudyLoadDiagnosticError(`No usable hierarchy questions were built for "${quizName}".`);
+            return resolveSupabaseMediaReferencesForStudyLoad(questions, `Hierarchy quiz "${quizName}"`);
         }
+
         if (quizType === 'classify') {
             const detailRows = await loadClassifyDetailsByQuestionIds(questionIds);
+            assertExpectedDetailRowsForStudyLoad(questionIds, detailRows, 'classify', quizName);
             const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-            return resolveSupabaseMediaReferences(rows.map(row => {
+            const questions = rows.map(row => {
                 const detail = detailMap.get(row.id);
                 if (!detail) return null;
                 const items = Array.isArray(detail.items_json) ? detail.items_json.map(item => ({
@@ -10194,11 +10310,15 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
                 };
-            }).filter(Boolean));
+            }).filter(Boolean);
+            if (!questions.length) throw createStudyLoadDiagnosticError(`No usable classify questions were built for "${quizName}".`);
+            return resolveSupabaseMediaReferencesForStudyLoad(questions, `Classify quiz "${quizName}"`);
         }
+
         const detailRows = await loadMultipleChoiceDetailsByQuestionIds(questionIds);
+        assertExpectedDetailRowsForStudyLoad(questionIds, detailRows, quizType === 'diagrams' ? 'diagram/multiple-choice' : 'multiple-choice', quizName);
         const detailMap = new Map((detailRows || []).map(row => [row.question_id, row]));
-        return resolveSupabaseMediaReferences(rows.map(row => {
+        const questions = rows.map(row => {
             const detail = detailMap.get(row.id);
             if (!detail) return null;
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
@@ -10235,10 +10355,13 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                 learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
             };
-        }).filter(Boolean));
+        }).filter(Boolean);
+        if (!questions.length) throw createStudyLoadDiagnosticError(`No usable ${quizType === 'diagrams' ? 'diagram' : 'multiple-choice'} questions were built for "${quizName}".`);
+        return resolveSupabaseMediaReferencesForStudyLoad(questions, `${quizType === 'diagrams' ? 'Diagram' : 'Multiple-choice'} quiz "${quizName}"`);
     } catch (error) {
         console.error('Failed to load Supabase quiz questions:', error);
-        return [];
+        if (error?.studyLoadDiagnostic) throw error;
+        throw createStudyLoadDiagnosticError(`Unexpected Supabase load failure for "${quizName}": ${error?.message || error}`);
     }
 }
 
@@ -10350,7 +10473,7 @@ async function loadSelectedQuiz(selectorValue, options = {}) {
     const loadedQuestions = await loadQuestionsForQuizDescriptor(selectedQuiz);
 
     if (!loadedQuestions.length) {
-        throw new Error('No state.questions found');
+        throw createStudyLoadDiagnosticError(`No usable questions were loaded for "${selectedQuiz.name || 'this quiz'}". This usually means the saved question rows do not match the quiz detail table, or every row was filtered out during study-load parsing.`);
     }
 
     await applyLoadedQuestions(loadedQuestions);
@@ -12803,7 +12926,7 @@ elements.quizSelector.addEventListener('change', async e => {
         await loadSelectedQuiz(selectedQuiz);
     } catch (err) {
         console.error(err);
-        clearActiveQuizSelection('Failed to load quiz.');
+        clearActiveQuizSelection(getStudyLoadErrorMessage(err));
     }
 });
 
@@ -13208,7 +13331,7 @@ if (elements.studioStudyQuizBtn) {
 
         studySupabaseQuizFromStudio(state.auth.editingQuizId).catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the quiz into the study view.', 'error');
+            setCreatorStatus(getStudyLoadErrorMessage(err), 'error');
         });
     });
 }
@@ -13981,7 +14104,7 @@ function handleStudioHomeQuizAction(e) {
     if (e.target.matches('[data-home-action="study-quiz"]')) {
         studySupabaseQuizFromStudio(quizId).catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the quiz into the study view.', 'error');
+            setCreatorStatus(getStudyLoadErrorMessage(err), 'error');
         });
     }
 }
@@ -14106,7 +14229,7 @@ if (elements.studioQuizList) {
             state.auth.openQuizActionMenuId = '';
             studySupabaseQuizFromStudio(quizId).catch(err => {
                 console.error(err);
-                setCreatorStatus('Could not load the quiz into the study view.', 'error');
+                setCreatorStatus(getStudyLoadErrorMessage(err), 'error');
             });
         }
 
@@ -14115,7 +14238,7 @@ if (elements.studioQuizList) {
             state.auth.openQuizActionMenuId = '';
             beginQuizChallenge(quizId, challengeKey).catch(err => {
                 console.error(err);
-                setCreatorStatus('Could not start that challenge.', 'error');
+                setCreatorStatus(err?.studyLoadDiagnostic ? getStudyLoadErrorMessage(err) : 'Could not start that challenge.', 'error');
             });
         }
     });
