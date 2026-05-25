@@ -7490,6 +7490,11 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function syncAuthFromSession(session) {
+        const previousUserId = normalizeSheetText(state.auth.user?.id);
+        const nextUserId = normalizeSheetText(session?.user?.id);
+        const sameSignedInUser = !!previousUserId && !!nextUserId && previousUserId === nextUserId;
+        const activeQuizWasLoaded = !!state.activeQuizDescriptor && Array.isArray(state.sourceQuestions) && state.sourceQuestions.length > 0;
+
         state.auth.session = session || null;
         state.auth.user = session?.user || null;
 
@@ -7521,12 +7526,23 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
+        if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+            clearActiveQuizSelection('Choose a folder and a quiz.');
+            return;
+        }
+
         if (state.sourceQuestions.length) {
             if (state.auth.user?.id) {
                 await hydrateStarredQuestionState(state.sourceQuestions);
             } else {
                 state.sourceQuestions.forEach(question => { question.isStarred = false; });
             }
+
+            if (sameSignedInUser && activeQuizWasLoaded) {
+                syncQuestionStarButton();
+                return;
+            }
+
             applyFilteredQuestionsToSession({ resetSession: true });
         }
     }
