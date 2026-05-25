@@ -924,6 +924,16 @@ body.active-question-classify #classifySubmit {
   opacity: 0.35;
 }
 
+.classify-item.classify-item-locked {
+  cursor: default;
+  transform: none;
+}
+
+.classify-item.classify-item-locked:hover {
+  background: var(--color-bg-option);
+  transform: none;
+}
+
 .classify-item:disabled {
   cursor: default;
   transform: none;
@@ -6246,4 +6256,16 @@ body.fullscreen-mode .progress-mode-summary {
 
 .studio-focus-show-all-inline {
   margin-left: 6px;
+}
+
+.studio-question-image-toggle-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: -2px;
+}
+
+.studio-question-image-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

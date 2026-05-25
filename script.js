@@ -147,6 +147,7 @@ MODIFICATION RULES FOR THIS APP
             quizStudioOpen: false,
             studioQuestionImageDataUrl: '',
             studioQuestionImageLabel: 'No question image selected.',
+            studioQuestionImagePanelOpen: false,
             studioLearningResourcesImageDataUrl: '',
             studioLearningResourcesImageLabel: 'No learning resources image selected.',
             studioFlashcardTermImageDataUrl: '',
@@ -176,6 +177,8 @@ MODIFICATION RULES FOR THIS APP
             mediaSignedUrlCache: new Map(),
             mathChemToolsExpanded: false,
             expandedOptionImageRows: new Set(),
+            expandedClassifyCategoryImageRows: new Set(),
+            expandedClassifyItemImageRows: new Set(),
             studioDiagramDraggingIndex: null,
             studioDiagramLabels: [],
             studioDiagramSharing: {
@@ -276,6 +279,9 @@ MODIFICATION RULES FOR THIS APP
         studioMoveQuestionUpBtn: document.getElementById('studioMoveQuestionUpBtn'),
         studioMoveQuestionDownBtn: document.getElementById('studioMoveQuestionDownBtn'),
         createQuestionPrompt: document.getElementById('createQuestionPrompt'),
+        createQuestionImageToggleRow: document.getElementById('createQuestionImageToggleRow'),
+        createQuestionImageToggleBtn: document.getElementById('createQuestionImageToggleBtn'),
+        createQuestionImagePanel: document.getElementById('createQuestionImagePanel'),
         createQuestionImageFile: document.getElementById('createQuestionImageFile'),
         createQuestionImageName: document.getElementById('createQuestionImageName'),
         createQuestionImageClearBtn: document.getElementById('createQuestionImageClearBtn'),
@@ -2541,6 +2547,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuestionImageFile.value = '';
         }
 
+        updateStudioQuestionImagePanelUI();
         updateStudioDiagramPreviewImage();
     }
 
@@ -2592,6 +2599,39 @@ MODIFICATION RULES FOR THIS APP
         return getStudioCurrentQuizType() === 'diagrams';
     }
 
+    function hasStudioQuestionImageValue() {
+        return !!normalizeSheetText(state.auth.studioQuestionImageDataUrl);
+    }
+
+    function updateStudioQuestionImagePanelUI() {
+        const collapseForClassify = isStudioClassifyMode();
+        const hasImage = hasStudioQuestionImageValue();
+        const isOpen = !collapseForClassify || !!state.auth.studioQuestionImagePanelOpen;
+
+        if (elements.createQuestionImageToggleRow) {
+            elements.createQuestionImageToggleRow.classList.toggle('hidden', !collapseForClassify);
+        }
+        if (elements.createQuestionImagePanel) {
+            elements.createQuestionImagePanel.classList.toggle('hidden', collapseForClassify && !isOpen);
+        }
+        if (elements.createQuestionImageToggleBtn) {
+            elements.createQuestionImageToggleBtn.classList.toggle('has-image', hasImage);
+            elements.createQuestionImageToggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            elements.createQuestionImageToggleBtn.textContent = isOpen ? 'Hide Image' : (hasImage ? 'Edit Image' : 'Image');
+            elements.createQuestionImageToggleBtn.title = isOpen
+                ? 'Hide Classification question image controls'
+                : (hasImage ? 'Edit Classification question image' : 'Show Classification question image controls');
+            elements.createQuestionImageToggleBtn.setAttribute('aria-label', elements.createQuestionImageToggleBtn.title);
+        }
+    }
+
+    function setStudioQuestionImagePanelOpen(forceOpen = null) {
+        state.auth.studioQuestionImagePanelOpen = typeof forceOpen === 'boolean'
+            ? forceOpen
+            : !state.auth.studioQuestionImagePanelOpen;
+        updateStudioQuestionImagePanelUI();
+    }
+
     function updateStudioEditorTypeUI() {
         const quizType = getStudioCurrentQuizType();
         const isFlashcard = quizType === 'flashcard';
@@ -2606,6 +2646,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
         if (elements.diagramEditorFields) elements.diagramEditorFields.classList.toggle('hidden', !isDiagrams);
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
+        updateStudioQuestionImagePanelUI();
         updateDiagramSharingControls();
         [elements.addOptionFieldBtn, elements.addOptionInlineBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !usesMultipleChoiceOptions);
@@ -4080,44 +4121,107 @@ MODIFICATION RULES FOR THIS APP
         }));
     }
 
+    function getStudioClassifyRowImageConfig(kind) {
+        const isCategory = kind === 'category';
+        return {
+            indexDataset: isCategory ? 'classifyCategoryIndex' : 'classifyItemIndex',
+            imageDataset: isCategory ? 'classifyCategoryImageUrl' : 'classifyItemImageUrl',
+            expandedRows: isCategory ? state.auth.expandedClassifyCategoryImageRows : state.auth.expandedClassifyItemImageRows,
+            toggleSelector: isCategory ? '[data-classify-category-image-toggle]' : '[data-classify-item-image-toggle]',
+            panelSelector: isCategory ? '[data-classify-category-image-panel]' : '[data-classify-item-image-panel]',
+            fileSelector: isCategory ? '[data-classify-category-image-file]' : '[data-classify-item-image-file]',
+            nameSelector: isCategory ? '[data-classify-category-image-name]' : '[data-classify-item-image-name]',
+            previewSelector: isCategory ? '[data-classify-category-image-preview]' : '[data-classify-item-image-preview]',
+            emptyLabel: isCategory ? 'No category image selected.' : 'No item image selected.',
+            subjectLabel: isCategory ? 'Category' : 'Item'
+        };
+    }
+
+    function updateStudioClassifyRowImageToggle(wrapper, kind) {
+        if (!wrapper) return;
+        const config = getStudioClassifyRowImageConfig(kind);
+        const rowIndex = Number(wrapper.dataset[config.indexDataset] || 0) || 0;
+        const panel = wrapper.querySelector(config.panelSelector);
+        const toggle = wrapper.querySelector(config.toggleSelector);
+        if (!toggle) return;
+        const hasImage = !!normalizeSheetText(wrapper.dataset[config.imageDataset]);
+        const isOpen = !!panel && !panel.classList.contains('hidden');
+        toggle.classList.toggle('has-image', hasImage);
+        toggle.textContent = isOpen ? 'Hide Image' : (hasImage ? 'Edit Image' : 'Image');
+        toggle.title = isOpen
+            ? `Hide ${config.subjectLabel} ${rowIndex} image controls`
+            : (hasImage ? `Edit ${config.subjectLabel} ${rowIndex} image` : `Show ${config.subjectLabel} ${rowIndex} image controls`);
+        toggle.setAttribute('aria-label', toggle.title);
+        toggle.setAttribute('aria-expanded', String(isOpen));
+    }
+
+    function setStudioClassifyRowImagePanelOpen(wrapper, kind, forceOpen = null) {
+        if (!wrapper) return;
+        const config = getStudioClassifyRowImageConfig(kind);
+        const rowIndex = wrapper.dataset[config.indexDataset] || '';
+        const panel = wrapper.querySelector(config.panelSelector);
+        if (!panel) return;
+        const nextOpen = forceOpen === null ? panel.classList.contains('hidden') : !!forceOpen;
+        panel.classList.toggle('hidden', !nextOpen);
+        if (nextOpen) {
+            config.expandedRows.add(rowIndex);
+            const previewEl = wrapper.querySelector(config.previewSelector);
+            if (previewEl) setPreviewImageSource(previewEl, wrapper.dataset[config.imageDataset] || '');
+        } else {
+            config.expandedRows.delete(rowIndex);
+        }
+        updateStudioClassifyRowImageToggle(wrapper, kind);
+    }
+
     function setStudioClassifyRowImageState(wrapper, kind, dataUrl = '', label = '') {
         if (!wrapper) return;
+        const config = getStudioClassifyRowImageConfig(kind);
         const normalizedDataUrl = normalizeSheetText(dataUrl);
-        const safeLabel = label || (kind === 'category' ? 'No category image selected.' : 'No item image selected.');
-        wrapper.dataset[kind === 'category' ? 'classifyCategoryImageUrl' : 'classifyItemImageUrl'] = normalizedDataUrl;
+        const safeLabel = label || config.emptyLabel;
+        wrapper.dataset[config.imageDataset] = normalizedDataUrl;
 
-        const fileNameEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-name]' : '[data-classify-item-image-name]');
+        const fileNameEl = wrapper.querySelector(config.nameSelector);
         if (fileNameEl) {
-            fileNameEl.textContent = normalizedDataUrl ? safeLabel : (kind === 'category' ? 'No category image selected.' : 'No item image selected.');
+            fileNameEl.textContent = normalizedDataUrl ? safeLabel : config.emptyLabel;
         }
 
-        const previewEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-preview]' : '[data-classify-item-image-preview]');
+        const previewEl = wrapper.querySelector(config.previewSelector);
         setPreviewImageSource(previewEl, normalizedDataUrl);
 
-        const inputEl = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-file]' : '[data-classify-item-image-file]');
+        const inputEl = wrapper.querySelector(config.fileSelector);
         if (!normalizedDataUrl && inputEl) {
             inputEl.value = '';
         }
+        updateStudioClassifyRowImageToggle(wrapper, kind);
     }
 
     function createStudioClassifyCategoryRow(index, categoryData = {}) {
         const wrapper = document.createElement('div');
         wrapper.className = 'studio-option-pair studio-classify-row';
         wrapper.dataset.classifyCategoryIndex = String(index + 1);
+        const categoryImageUrl = normalizeSheetText(categoryData.imageUrl);
+        const isImagePanelOpen = state.auth.expandedClassifyCategoryImageRows.has(String(index + 1));
         wrapper.innerHTML = `
             <label class="auth-field">
-              <span>Category ${index + 1} text (optional)</span>
+              <span class="studio-option-label-row">
+                <span>Category ${index + 1} text (optional)</span>
+                <span class="studio-option-label-actions">
+                  <button type="button" class="studio-option-image-toggle${categoryImageUrl ? ' has-image' : ''}" data-classify-category-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Category ${index + 1} image controls` : (categoryImageUrl ? `Edit Category ${index + 1} image` : `Show Category ${index + 1} image controls`)}" title="${isImagePanelOpen ? `Hide Category ${index + 1} image controls` : (categoryImageUrl ? `Edit Category ${index + 1} image` : `Show Category ${index + 1} image controls`)}">${isImagePanelOpen ? 'Hide Image' : (categoryImageUrl ? 'Edit Image' : 'Image')}</button>
+                </span>
+              </span>
               <input type="text" autocomplete="off" placeholder="Category ${index + 1}" data-classify-category-label>
             </label>
-            <label class="auth-field">
-              <span>Category ${index + 1} image (optional)</span>
-              <input type="file" accept="image/*" data-classify-category-image-file>
-            </label>
-            <div class="studio-file-row">
-              <div class="studio-file-name" data-classify-category-image-name>No category image selected.</div>
-              <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-category-image-clear>Clear</button>
+            <div class="studio-option-image-panel${isImagePanelOpen ? '' : ' hidden'}" data-classify-category-image-panel>
+              <label class="auth-field">
+                <span>Category ${index + 1} image (optional)</span>
+                <input type="file" accept="image/*" data-classify-category-image-file>
+              </label>
+              <div class="studio-file-row studio-option-image-row">
+                <div class="studio-file-name" data-classify-category-image-name>No category image selected.</div>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-category-image-clear>Clear</button>
+              </div>
+              <img class="studio-inline-image-preview hidden" alt="Category image preview" data-classify-category-image-preview>
             </div>
-            <img class="studio-inline-image-preview hidden" alt="Category image preview" data-classify-category-image-preview>
         `;
         const input = wrapper.querySelector('[data-classify-category-label]');
         if (input) input.value = normalizeSheetText(categoryData.label);
@@ -4142,20 +4246,29 @@ MODIFICATION RULES FOR THIS APP
         const wrapper = document.createElement('div');
         wrapper.className = 'studio-option-pair studio-classify-row';
         wrapper.dataset.classifyItemIndex = String(index + 1);
+        const itemImageUrl = normalizeSheetText(itemData.imageUrl);
+        const isImagePanelOpen = state.auth.expandedClassifyItemImageRows.has(String(index + 1));
         wrapper.innerHTML = `
             <label class="auth-field">
-              <span>Item ${index + 1} text (optional)</span>
+              <span class="studio-option-label-row">
+                <span>Item ${index + 1} text (optional)</span>
+                <span class="studio-option-label-actions">
+                  <button type="button" class="studio-option-image-toggle${itemImageUrl ? ' has-image' : ''}" data-classify-item-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Item ${index + 1} image controls` : (itemImageUrl ? `Edit Item ${index + 1} image` : `Show Item ${index + 1} image controls`)}" title="${isImagePanelOpen ? `Hide Item ${index + 1} image controls` : (itemImageUrl ? `Edit Item ${index + 1} image` : `Show Item ${index + 1} image controls`)}">${isImagePanelOpen ? 'Hide Image' : (itemImageUrl ? 'Edit Image' : 'Image')}</button>
+                </span>
+              </span>
               <input type="text" autocomplete="off" placeholder="Classify item ${index + 1}" data-classify-item-text>
             </label>
-            <label class="auth-field">
-              <span>Item ${index + 1} image (optional)</span>
-              <input type="file" accept="image/*" data-classify-item-image-file>
-            </label>
-            <div class="studio-file-row">
-              <div class="studio-file-name" data-classify-item-image-name>No item image selected.</div>
-              <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-item-image-clear>Clear</button>
+            <div class="studio-option-image-panel${isImagePanelOpen ? '' : ' hidden'}" data-classify-item-image-panel>
+              <label class="auth-field">
+                <span>Item ${index + 1} image (optional)</span>
+                <input type="file" accept="image/*" data-classify-item-image-file>
+              </label>
+              <div class="studio-file-row studio-option-image-row">
+                <div class="studio-file-name" data-classify-item-image-name>No item image selected.</div>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-item-image-clear>Clear</button>
+              </div>
+              <img class="studio-inline-image-preview hidden" alt="Item image preview" data-classify-item-image-preview>
             </div>
-            <img class="studio-inline-image-preview hidden" alt="Item image preview" data-classify-item-image-preview>
             <label class="auth-field">
               <span>Correct category</span>
               <select data-classify-item-category></select>
@@ -4268,13 +4381,30 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getClassifyDraftsFromDetailRow(detailRow) {
-        const categories = normalizeClassifyCategoriesDrafts((detailRow?.classifications_json || []).map(item => ({ label: item?.label, imageUrl: item?.imageUrl, id: item?.id })));
+        const rawCategories = Array.isArray(detailRow?.classifications_json)
+            ? detailRow.classifications_json.map(item => ({
+                label: normalizeSheetText(item?.label),
+                imageUrl: normalizeSheetText(item?.imageUrl),
+                id: normalizeSheetText(item?.id)
+            }))
+            : [];
+        const categories = normalizeClassifyCategoriesDrafts(rawCategories);
         const fallbackCategoryId = categories[0]?.id || 'class_1';
-        const items = normalizeClassifyItemsDrafts((detailRow?.items_json || []).map(item => ({
-            text: normalizeSheetText(item?.text || (item?.kind === 'image' ? '' : item?.raw)),
-            imageUrl: normalizeSheetText(item?.imageUrl),
-            categoryId: normalizeSheetText(item?.correctClassificationId) || fallbackCategoryId
-        })), categories);
+        const categoryIdMap = new Map();
+        rawCategories.forEach((category, index) => {
+            const nextCategoryId = categories[index]?.id || `class_${index + 1}`;
+            const originalId = normalizeSheetText(category?.id);
+            if (originalId) categoryIdMap.set(originalId, nextCategoryId);
+            categoryIdMap.set(`class_${index + 1}`, nextCategoryId);
+        });
+        const items = normalizeClassifyItemsDrafts((detailRow?.items_json || []).map(item => {
+            const savedCategoryId = normalizeSheetText(item?.correctClassificationId);
+            return {
+                text: normalizeSheetText(item?.text || (item?.kind === 'image' ? '' : item?.raw)),
+                imageUrl: normalizeSheetText(item?.imageUrl),
+                categoryId: categoryIdMap.get(savedCategoryId) || savedCategoryId || fallbackCategoryId
+            };
+        }), categories);
         return { categories, items };
     }
 
@@ -4695,6 +4825,9 @@ MODIFICATION RULES FOR THIS APP
     function applyStudioQuestionDraft(draft) {
         if (!draft) return;
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = draft.prompt || '';
+        state.auth.studioQuestionImagePanelOpen = false;
+        state.auth.expandedClassifyCategoryImageRows.clear();
+        state.auth.expandedClassifyItemImageRows.clear();
         setLearningResourcesEditorHtml(draft.learningResourcesHtml || '', '');
         setStudioQuestionImageState(draft.questionImage || '', draft.questionImageLabel || (draft.questionImage ? 'Existing question image saved.' : 'No question image selected.'));
         setStudioLearningResourcesImageState(draft.learningResourcesImage || '', draft.learningResourcesImageLabel || (draft.learningResourcesImage ? 'Existing learning resources image saved.' : 'No learning resources image selected.'));
@@ -4734,6 +4867,8 @@ MODIFICATION RULES FOR THIS APP
         state.auth.pendingInsertAfterQuestionId = null;
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.expandedOptionImageRows.clear();
+        state.auth.expandedClassifyCategoryImageRows.clear();
+        state.auth.expandedClassifyItemImageRows.clear();
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = normalizeSheetText(row.term_plain || row.prompt_plain);
         setFlashcardTermEditorHtml(row.term_html || '', normalizeSheetText(row.term_plain || row.prompt_plain));
         setFlashcardDefinitionEditorHtml(row.definition_html || '', normalizeSheetText(row.definition_plain));
@@ -5315,6 +5450,9 @@ MODIFICATION RULES FOR THIS APP
 
     function clearStudioQuestionInputs(options = {}) {
         state.auth.expandedOptionImageRows.clear();
+        state.auth.expandedClassifyCategoryImageRows.clear();
+        state.auth.expandedClassifyItemImageRows.clear();
+        state.auth.studioQuestionImagePanelOpen = false;
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
         setLearningResourcesEditorHtml('', '');
         if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
@@ -5450,6 +5588,9 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
         state.auth.expandedOptionImageRows.clear();
+        state.auth.expandedClassifyCategoryImageRows.clear();
+        state.auth.expandedClassifyItemImageRows.clear();
+        state.auth.studioQuestionImagePanelOpen = false;
 
         setLearningResourcesEditorHtml(questionRow.learning_resources_html, '');
         setStudioLearningResourcesImageState(
@@ -5978,6 +6119,7 @@ MODIFICATION RULES FOR THIS APP
             elements.studioMoveQuestionUpBtn,
             elements.studioMoveQuestionDownBtn,
             elements.createQuestionPrompt,
+            elements.createQuestionImageToggleBtn,
             elements.createQuestionImageFile,
             elements.createQuestionImageClearBtn,
             elements.addHierarchyItemBtn,
@@ -7535,6 +7677,7 @@ MODIFICATION RULES FOR THIS APP
         const dataUrl = await readFileAsDataUrl(file);
 
         if (type === 'question') {
+            setStudioQuestionImagePanelOpen(true);
             setStudioQuestionImageState(dataUrl, `Selected: ${file.name}`);
         } else if (type === 'term') {
             setStudioFlashcardTermImageState(dataUrl, `Selected: ${file.name}`);
@@ -12481,8 +12624,12 @@ function showClassify(q) {
     }
 
     const placements = new Map();
+    const progressLockedCorrectKeys = new Set();
+    const progressWrongKeys = new Set();
+    const useProgressClassifyRetry = isProgressMode();
     let selectedItemKey = null;
     let suppressClickRuntimeKey = null;
+    let progressClassifyNeedsRevision = false;
     let dragState = null;
 
     function preserveWindowScroll(fn) {
@@ -12584,17 +12731,41 @@ function showClassify(q) {
         }
     }
 
+    function refreshClassifySubmitLabel() {
+        if (!useProgressClassifyRetry) {
+            submit.innerText = 'Submit';
+            return;
+        }
+
+        submit.innerText = progressClassifyNeedsRevision ? 'Try Again' : 'Submit';
+    }
+
+    function markClassifyItemRevised(runtimeKey) {
+        if (!useProgressClassifyRetry) return;
+        if (progressLockedCorrectKeys.has(runtimeKey)) return;
+
+        progressWrongKeys.delete(runtimeKey);
+        progressClassifyNeedsRevision = false;
+        refreshClassifySubmitLabel();
+    }
+
     function moveSelectedItemTo(classificationId) {
         if (state.questionAnswered) return;
         if (!selectedItemKey) return;
+        if (useProgressClassifyRetry && progressLockedCorrectKeys.has(selectedItemKey)) return;
 
-        placements.set(selectedItemKey, normalizeClassificationId(classificationId));
+        const runtimeKey = selectedItemKey;
+        placements.set(runtimeKey, normalizeClassificationId(classificationId));
+        markClassifyItemRevised(runtimeKey);
         selectedItemKey = null;
         preserveWindowScroll(() => renderClassifyStatePreservingScroll());
     }
 
     function handleDroppedItem(runtimeKey, classificationId) {
+        if (useProgressClassifyRetry && progressLockedCorrectKeys.has(runtimeKey)) return;
+
         placements.set(runtimeKey, normalizeClassificationId(classificationId));
+        markClassifyItemRevised(runtimeKey);
         selectedItemKey = null;
         preserveWindowScroll(() => renderClassifyStatePreservingScroll());
     }
@@ -12604,8 +12775,12 @@ function showClassify(q) {
         btn.className = 'classify-item';
         btn.dataset.runtimeKey = item.runtimeKey;
         btn.setAttribute('role', 'button');
-        btn.setAttribute('tabindex', state.questionAnswered ? '-1' : '0');
+        const isProgressLockedCorrect = useProgressClassifyRetry && progressLockedCorrectKeys.has(item.runtimeKey);
+        const isProgressWrong = useProgressClassifyRetry && progressWrongKeys.has(item.runtimeKey);
+
+        btn.setAttribute('tabindex', state.questionAnswered || isProgressLockedCorrect ? '-1' : '0');
         btn.setAttribute('aria-label', item.ariaLabel || 'Classify item');
+        btn.classList.toggle('classify-item-locked', isProgressLockedCorrect);
 
         const content = document.createElement('div');
         content.className = 'classify-item-content';
@@ -12659,7 +12834,11 @@ function showClassify(q) {
             btn.classList.add('selected');
         }
 
-        if (state.questionAnswered) {
+        if (isProgressLockedCorrect) {
+            btn.classList.add('option-correct');
+        } else if (isProgressWrong) {
+            btn.classList.add('option-incorrect');
+        } else if (state.questionAnswered) {
             const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
             const correctId = normalizeClassificationId(item.correctClassificationId);
 
@@ -12671,7 +12850,7 @@ function showClassify(q) {
         }
 
         btn.addEventListener('pointerdown', e => {
-            if (state.questionAnswered) return;
+            if (state.questionAnswered || isProgressLockedCorrect) return;
             if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
 
             cleanupDragState();
@@ -12703,7 +12882,7 @@ function showClassify(q) {
             e.stopPropagation();
             btn.blur();
 
-            if (state.questionAnswered) return;
+            if (state.questionAnswered || isProgressLockedCorrect) return;
             if (suppressClickRuntimeKey === item.runtimeKey) {
                 suppressClickRuntimeKey = null;
                 return;
@@ -12714,7 +12893,7 @@ function showClassify(q) {
         });
 
         btn.addEventListener('keydown', e => {
-            if (state.questionAnswered) return;
+            if (state.questionAnswered || isProgressLockedCorrect) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 btn.click();
@@ -12885,9 +13064,64 @@ function showClassify(q) {
         if (state.questionAnswered) return;
         if (isRetentionMode() && state.retentionAnswerLocked) return;
 
-        state.questionAnswered = true;
+        if (useProgressClassifyRetry && progressClassifyNeedsRevision) {
+            progressClassifyNeedsRevision = false;
+            refreshClassifySubmitLabel();
+            setFeedback('Move the red items, then submit again.', false);
+            return;
+        }
+
         selectedItemKey = null;
         cleanupDragState();
+
+        if (useProgressClassifyRetry) {
+            let placedAnyThisAttempt = false;
+
+            items.forEach(item => {
+                if (progressLockedCorrectKeys.has(item.runtimeKey)) return;
+
+                const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
+                const correctId = normalizeClassificationId(item.correctClassificationId);
+
+                if (!placedId) {
+                    return;
+                }
+
+                placedAnyThisAttempt = true;
+
+                if (placedId === correctId) {
+                    progressLockedCorrectKeys.add(item.runtimeKey);
+                    progressWrongKeys.delete(item.runtimeKey);
+                } else {
+                    progressWrongKeys.add(item.runtimeKey);
+                }
+            });
+
+            const allCorrect = items.every(item => progressLockedCorrectKeys.has(item.runtimeKey));
+
+            if (!allCorrect) {
+                const hasWrongItems = progressWrongKeys.size > 0;
+                const keepGoingMessage = placedAnyThisAttempt || progressLockedCorrectKeys.size > 0
+                    ? 'Correct items locked. Keep going.'
+                    : 'Move any item, then submit.';
+                progressClassifyNeedsRevision = hasWrongItems;
+                refreshClassifySubmitLabel();
+                preserveWindowScroll(() => renderClassifyStatePreservingScroll());
+                setFeedback(hasWrongItems ? 'Try again.' : keepGoingMessage, !hasWrongItems);
+                updateNavigationButtons();
+                return;
+            }
+
+            state.questionAnswered = true;
+            progressClassifyNeedsRevision = false;
+            refreshClassifySubmitLabel();
+            preserveWindowScroll(() => renderClassifyStatePreservingScroll());
+            setClassifyInteractionEnabled(false);
+            applyQuestionOutcome(q, true);
+            return;
+        }
+
+        state.questionAnswered = true;
 
         const allCorrect = items.every(item => {
             const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
@@ -12915,6 +13149,7 @@ function showClassify(q) {
     elements.questionContainer.appendChild(container);
     elements.questionContainer.appendChild(submit);
 
+    refreshClassifySubmitLabel();
     renderClassifyState();
     setClassifyInteractionEnabled(true);
 }
@@ -13613,6 +13848,7 @@ if (elements.createClassifyCategoriesContainer) {
         readFileAsDataUrl(fileInput.files?.[0]).then(dataUrl => {
             setStudioClassifyRowImageState(row, 'category', dataUrl, fileInput.files?.[0] ? `Selected: ${fileInput.files[0].name}` : '');
             refreshStudioClassifyItemCategoryOptions();
+            setStudioDirtyState(true);
         }).catch(err => {
             console.error(err);
             setCreatorStatus('Could not load the category image.', 'error');
@@ -13620,11 +13856,19 @@ if (elements.createClassifyCategoriesContainer) {
     });
 
     elements.createClassifyCategoriesContainer.addEventListener('click', event => {
+        const toggle = event.target.closest('[data-classify-category-image-toggle]');
+        if (toggle) {
+            event.preventDefault();
+            setStudioClassifyRowImagePanelOpen(toggle.closest('[data-classify-category-index]'), 'category');
+            return;
+        }
+
         const clearBtn = event.target.closest('[data-classify-category-image-clear]');
         if (!clearBtn) return;
         const row = clearBtn.closest('[data-classify-category-index]');
         setStudioClassifyRowImageState(row, 'category');
         refreshStudioClassifyItemCategoryOptions();
+        setStudioDirtyState(true);
     });
 
     elements.createClassifyCategoriesContainer.addEventListener('input', event => {
@@ -13641,6 +13885,7 @@ if (elements.createClassifyItemsContainer) {
         const row = fileInput.closest('[data-classify-item-index]');
         readFileAsDataUrl(fileInput.files?.[0]).then(dataUrl => {
             setStudioClassifyRowImageState(row, 'item', dataUrl, fileInput.files?.[0] ? `Selected: ${fileInput.files[0].name}` : '');
+            setStudioDirtyState(true);
         }).catch(err => {
             console.error(err);
             setCreatorStatus('Could not load the item image.', 'error');
@@ -13648,10 +13893,18 @@ if (elements.createClassifyItemsContainer) {
     });
 
     elements.createClassifyItemsContainer.addEventListener('click', event => {
+        const toggle = event.target.closest('[data-classify-item-image-toggle]');
+        if (toggle) {
+            event.preventDefault();
+            setStudioClassifyRowImagePanelOpen(toggle.closest('[data-classify-item-index]'), 'item');
+            return;
+        }
+
         const clearBtn = event.target.closest('[data-classify-item-image-clear]');
         if (!clearBtn) return;
         const row = clearBtn.closest('[data-classify-item-index]');
         setStudioClassifyRowImageState(row, 'item');
+        setStudioDirtyState(true);
     });
 }
 
@@ -14389,6 +14642,12 @@ if (elements.goToSharedDiagramSourceBtn) {
             console.error(err);
             setCreatorStatus('Could not load the shared diagram source question.', 'error');
         });
+    });
+}
+
+if (elements.createQuestionImageToggleBtn) {
+    elements.createQuestionImageToggleBtn.addEventListener('click', () => {
+        setStudioQuestionImagePanelOpen();
     });
 }
 

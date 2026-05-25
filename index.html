@@ -669,13 +669,18 @@ MODIFICATION RULES FOR THIS APP
                       <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
                     </label>
 
-                    <label class="auth-field">
-                      <span>Question image (optional)</span>
-                      <input id="createQuestionImageFile" type="file" accept="image/*">
-                    </label>
-                    <div class="studio-file-row">
-                      <div id="createQuestionImageName" class="studio-file-name">No question image selected.</div>
-                      <button id="createQuestionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                    <div id="createQuestionImageToggleRow" class="studio-question-image-toggle-row hidden">
+                      <button id="createQuestionImageToggleBtn" type="button" class="studio-option-image-toggle" aria-expanded="false">Image</button>
+                    </div>
+                    <div id="createQuestionImagePanel" class="studio-question-image-panel">
+                      <label class="auth-field">
+                        <span>Question image (optional)</span>
+                        <input id="createQuestionImageFile" type="file" accept="image/*">
+                      </label>
+                      <div class="studio-file-row">
+                        <div id="createQuestionImageName" class="studio-file-name">No question image selected.</div>
+                        <button id="createQuestionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                      </div>
                     </div>
                   </div>
 
