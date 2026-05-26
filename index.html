@@ -224,6 +224,52 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card" id="progressModeSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="progressMode">Progress</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="progressModeHelp"
+                    aria-label="About Progress"
+                    aria-expanded="false"
+                    aria-controls="progressModeHelp"
+                  >?</button>
+                </div>
+                <div id="progressModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Shows a score at the end and lets you retry only missed questions in the same session. Cannot be used with Retention, Mastery, or Mastery Check.
+                </div>
+                <label class="toggle-switch" for="progressMode" aria-label="Progress toggle">
+                  <input type="checkbox" id="progressMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
+              <div class="setting-card" id="learningResourcesModeSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="learningResourcesMode">Learning Resources</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="learningResourcesModeHelp"
+                    aria-label="About Learning Resources"
+                    aria-expanded="false"
+                    aria-controls="learningResourcesModeHelp"
+                  >?</button>
+                </div>
+                <div id="learningResourcesModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Shows study support after a wrong answer when available.
+                </div>
+                <label class="toggle-switch" for="learningResourcesMode" aria-label="Learning Resources toggle">
+                  <input type="checkbox" id="learningResourcesMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
               <div class="setting-card settings-full-span" id="timerModeSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="timerMode">Timer Mode</label>
@@ -310,23 +356,23 @@ MODIFICATION RULES FOR THIS APP
                 </div>
               </div>
 
-              <div class="setting-card" id="progressModeSetting">
+              <div class="setting-card" id="unstarOnWrongSetting">
                 <div class="setting-title-row">
-                  <label class="setting-title" for="progressMode">Progress</label>
+                  <label class="setting-title" for="unstarOnWrongMode">Unstar on Wrong</label>
                   <button
                     type="button"
                     class="setting-help-btn"
-                    data-help-target="progressModeHelp"
-                    aria-label="About Progress"
+                    data-help-target="unstarOnWrongHelp"
+                    aria-label="About Unstar on Wrong"
                     aria-expanded="false"
-                    aria-controls="progressModeHelp"
+                    aria-controls="unstarOnWrongHelp"
                   >?</button>
                 </div>
-                <div id="progressModeHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Shows a score at the end and lets you retry only missed questions in the same session. Cannot be used with Retention, Mastery, or Mastery Check.
+                <div id="unstarOnWrongHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  When enabled, a starred question is unstarred if you answer it wrong. Turn off Exclude Starred so starred questions appear in the deck.
                 </div>
-                <label class="toggle-switch" for="progressMode" aria-label="Progress toggle">
-                  <input type="checkbox" id="progressMode">
+                <label class="toggle-switch" for="unstarOnWrongMode" aria-label="Unstar on Wrong toggle">
+                  <input type="checkbox" id="unstarOnWrongMode">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
                   </span>
@@ -350,29 +396,6 @@ MODIFICATION RULES FOR THIS APP
                 </div>
                 <label class="toggle-switch" for="excludeStarredQuestions" aria-label="Exclude Starred toggle">
                   <input type="checkbox" id="excludeStarredQuestions">
-                  <span class="toggle-track" aria-hidden="true">
-                    <span class="toggle-thumb"></span>
-                  </span>
-                </label>
-              </div>
-
-              <div class="setting-card" id="learningResourcesModeSetting">
-                <div class="setting-title-row">
-                  <label class="setting-title" for="learningResourcesMode">Learning Resources</label>
-                  <button
-                    type="button"
-                    class="setting-help-btn"
-                    data-help-target="learningResourcesModeHelp"
-                    aria-label="About Learning Resources"
-                    aria-expanded="false"
-                    aria-controls="learningResourcesModeHelp"
-                  >?</button>
-                </div>
-                <div id="learningResourcesModeHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Shows study support after a wrong answer when available.
-                </div>
-                <label class="toggle-switch" for="learningResourcesMode" aria-label="Learning Resources toggle">
-                  <input type="checkbox" id="learningResourcesMode">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
                   </span>

@@ -23,6 +23,7 @@ MODIFICATION RULES FOR THIS APP
         studioAutosaveDelayMs: 10 * 60 * 1000,
         studyTimerStorageKey: 'studyBunnyTimerSettingsV1',
         autoStarStorageKey: 'studyBunnyAutoStarSettingsV1',
+        unstarOnWrongStorageKey: 'studyBunnyUnstarOnWrongSettingsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
         dataSource: 'google_sheets',
@@ -119,6 +120,10 @@ MODIFICATION RULES FOR THIS APP
             disqualifiedQuestionKeys: new Set(),
             pendingQuestionKeys: new Set(),
             excludedQuestionKeys: new Set()
+        },
+        unstarOnWrong: {
+            enabled: false,
+            pendingQuestionKeys: new Set()
         },
         isAppFullscreen: false,
 
@@ -422,6 +427,7 @@ MODIFICATION RULES FOR THIS APP
         autoStarCustomSeconds: document.getElementById('autoStarCustomSeconds'),
         autoStarCustomRow: document.getElementById('autoStarCustomRow'),
         autoStarDetails: document.getElementById('autoStarDetails'),
+        unstarOnWrongMode: document.getElementById('unstarOnWrongMode'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
         questionStarBtn: document.getElementById('questionStarBtn'),
@@ -10297,6 +10303,76 @@ function maybeAutoStarQuestionFromOutcome(question, isCorrect) {
     }
 }
 
+
+function serializeUnstarOnWrongSettings() {
+    return {
+        enabled: !!state.unstarOnWrong.enabled
+    };
+}
+
+function saveUnstarOnWrongSettings() {
+    try {
+        localStorage.setItem(CONFIG.unstarOnWrongStorageKey, JSON.stringify(serializeUnstarOnWrongSettings()));
+    } catch (err) {
+        console.warn('Could not save Unstar on Wrong settings:', err);
+    }
+}
+
+function loadUnstarOnWrongSettings() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(CONFIG.unstarOnWrongStorageKey) || 'null');
+    } catch (err) {
+        saved = null;
+    }
+
+    if (saved && typeof saved === 'object') {
+        state.unstarOnWrong.enabled = !!saved.enabled;
+    }
+
+    syncUnstarOnWrongSettingsUI();
+}
+
+function syncUnstarOnWrongSettingsUI() {
+    if (elements.unstarOnWrongMode) elements.unstarOnWrongMode.checked = !!state.unstarOnWrong.enabled;
+}
+
+function readUnstarOnWrongSettingsFromUI() {
+    state.unstarOnWrong.enabled = !!elements.unstarOnWrongMode?.checked;
+    syncUnstarOnWrongSettingsUI();
+    saveUnstarOnWrongSettings();
+}
+
+async function persistUnstarOnWrongForQuestion(question) {
+    const key = getAutoStarQuestionKey(question);
+    if (!key || state.unstarOnWrong.pendingQuestionKeys.has(key)) return;
+    if (!state.unstarOnWrong.enabled || isExcludeStarredEnabled()) return;
+    if (!canPersistQuestionStarState(question) || !question.isStarred) return;
+
+    state.unstarOnWrong.pendingQuestionKeys.add(key);
+
+    try {
+        await persistQuestionStarState(question, false);
+        applyQuestionStarStateAcrossDeck(question.sourceQuestionId, false);
+
+        const currentQuestion = state.questionQueue[state.currentIndex];
+        if (getAutoStarQuestionKey(currentQuestion) === key && state.questionAnswered) {
+            setFeedback('Incorrect — unstarred ★', false);
+        }
+    } catch (error) {
+        console.error('Could not unstar question after wrong answer:', error);
+    } finally {
+        state.unstarOnWrong.pendingQuestionKeys.delete(key);
+        syncQuestionStarButton();
+        updateProgress();
+    }
+}
+
+function maybeUnstarQuestionFromOutcome(question, isCorrect) {
+    if (isCorrect) return;
+    persistUnstarOnWrongForQuestion(question);
+}
+
 function canPersistQuestionStarState(question = state.questionQueue[state.currentIndex]) {
     return !!(state.auth.client && state.auth.user?.id && question?.sourceQuestionId);
 }
@@ -10435,6 +10511,37 @@ function updateAutoStarAvailability() {
     }
 
     syncAutoStarSettingsUI();
+}
+
+
+function updateUnstarOnWrongAvailability() {
+    const card = document.getElementById('unstarOnWrongSetting');
+    const help = document.getElementById('unstarOnWrongHelp');
+    const canUseUnstar = !!(state.auth.client && state.auth.user?.id);
+    const pausedByExclude = isExcludeStarredEnabled();
+
+    if (elements.unstarOnWrongMode) {
+        elements.unstarOnWrongMode.disabled = !canUseUnstar || pausedByExclude;
+        if (!canUseUnstar && elements.unstarOnWrongMode.checked) {
+            elements.unstarOnWrongMode.checked = false;
+            state.unstarOnWrong.enabled = false;
+            saveUnstarOnWrongSettings();
+        }
+    }
+
+    if (card) {
+        card.classList.toggle('disabled-setting', !canUseUnstar || pausedByExclude);
+    }
+
+    if (help && !canUseUnstar) {
+        help.innerText = 'Sign in to use Unstar on Wrong. It saves changes to your Supabase question memory.';
+    } else if (help && pausedByExclude) {
+        help.innerText = 'Turn off Exclude Starred to review starred questions and let wrong answers unstar them.';
+    } else if (help) {
+        help.innerText = 'When enabled, a starred question is unstarred if you answer it wrong. This can be used with or without Auto-Star.';
+    }
+
+    syncUnstarOnWrongSettingsUI();
 }
 
 function updateShuffleQuestionsAvailability() {
@@ -10577,6 +10684,7 @@ function updateSettingsAvailability() {
     updateRapidLearningResourcesCompatibility();
     updateStarredQuestionAvailability();
     updateAutoStarAvailability();
+    updateUnstarOnWrongAvailability();
     updateShuffleQuestionsAvailability();
     updateShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
@@ -12281,6 +12389,7 @@ function applyQuestionOutcome(q, isCorrect, options = {}) {
     const { useSideFeedback = true } = options;
     recordProgressModeOutcome(q, isCorrect);
     maybeAutoStarQuestionFromOutcome(q, isCorrect);
+    maybeUnstarQuestionFromOutcome(q, isCorrect);
     if (state.studyTimer.scope === 'question') {
         stopStudyTimer({ clearDisplay: false });
     }
@@ -14240,8 +14349,8 @@ document.getElementById('learningResourcesMode').onchange = e => {
 
 if (elements.excludeStarredQuestions) {
     elements.excludeStarredQuestions.addEventListener('change', () => {
+        updateSettingsAvailability();
         if (!state.sourceQuestions.length) {
-            updateSettingsAvailability();
             return;
         }
         applyFilteredQuestionsToSession({ resetSession: true });
@@ -14275,6 +14384,13 @@ if (elements.excludeStarredQuestions) {
         });
     }
 });
+
+if (elements.unstarOnWrongMode) {
+    elements.unstarOnWrongMode.addEventListener('change', () => {
+        readUnstarOnWrongSettingsFromUI();
+        updateSettingsAvailability();
+    });
+}
 
 if (elements.questionStarBtn) {
     elements.questionStarBtn.addEventListener('click', () => {
@@ -16430,6 +16546,7 @@ window.addEventListener('orientationchange', handleViewportChange);
         updateViewportClasses();
         loadStudyTimerSettings();
         loadAutoStarSettings();
+        loadUnstarOnWrongSettings();
         updateAuthUI();
         await bootstrapSupabase();
 
