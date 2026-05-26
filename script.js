@@ -22,6 +22,7 @@ MODIFICATION RULES FOR THIS APP
         speedDelay: 300,
         studioAutosaveDelayMs: 10 * 60 * 1000,
         studyTimerStorageKey: 'studyBunnyTimerSettingsV1',
+        autoStarStorageKey: 'studyBunnyAutoStarSettingsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
         dataSource: 'google_sheets',
@@ -106,6 +107,17 @@ MODIFICATION RULES FOR THIS APP
             intervalId: null,
             expired: false,
             sessionToken: 0
+        },
+        autoStar: {
+            enabled: false,
+            preset: '5',
+            customSeconds: 5,
+            currentAttemptKey: '',
+            currentQuestionKey: '',
+            questionStartedAt: 0,
+            disqualifiedQuestionKeys: new Set(),
+            pendingQuestionKeys: new Set(),
+            excludedQuestionKeys: new Set()
         },
         isAppFullscreen: false,
 
@@ -395,6 +407,11 @@ MODIFICATION RULES FOR THIS APP
         timerCustomSeconds: document.getElementById('timerCustomSeconds'),
         timerCustomRow: document.getElementById('timerCustomRow'),
         timerDetails: document.getElementById('timerDetails'),
+        autoStarMode: document.getElementById('autoStarMode'),
+        autoStarPresetSelect: document.getElementById('autoStarPresetSelect'),
+        autoStarCustomSeconds: document.getElementById('autoStarCustomSeconds'),
+        autoStarCustomRow: document.getElementById('autoStarCustomRow'),
+        autoStarDetails: document.getElementById('autoStarDetails'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
         questionStarBtn: document.getElementById('questionStarBtn'),
@@ -9836,6 +9853,192 @@ function restartStudyTimerAfterSettingsChange() {
     updateProgress();
 }
 
+// ================= AUTO-STAR HELPERS =================
+function sanitizeAutoStarSeconds(value, fallback = 5) {
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, 24 * 60 * 60);
+}
+
+function getAutoStarThresholdSeconds() {
+    if (!state.autoStar.enabled) return 0;
+    if (state.autoStar.preset === 'custom') {
+        return sanitizeAutoStarSeconds(state.autoStar.customSeconds, 5);
+    }
+    return sanitizeAutoStarSeconds(state.autoStar.preset, 5);
+}
+
+function serializeAutoStarSettings() {
+    return {
+        enabled: !!state.autoStar.enabled,
+        preset: ['5', '10', '30', '60', 'custom'].includes(String(state.autoStar.preset)) ? String(state.autoStar.preset) : '5',
+        customSeconds: sanitizeAutoStarSeconds(state.autoStar.customSeconds, 5)
+    };
+}
+
+function saveAutoStarSettings() {
+    try {
+        localStorage.setItem(CONFIG.autoStarStorageKey, JSON.stringify(serializeAutoStarSettings()));
+    } catch (err) {
+        console.warn('Could not save Auto-Star settings:', err);
+    }
+}
+
+function loadAutoStarSettings() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(CONFIG.autoStarStorageKey) || 'null');
+    } catch (err) {
+        saved = null;
+    }
+
+    if (saved && typeof saved === 'object') {
+        state.autoStar.enabled = !!saved.enabled;
+        state.autoStar.preset = ['5', '10', '30', '60', 'custom'].includes(String(saved.preset)) ? String(saved.preset) : '5';
+        state.autoStar.customSeconds = sanitizeAutoStarSeconds(saved.customSeconds, 5);
+    }
+
+    syncAutoStarSettingsUI();
+}
+
+function syncAutoStarSettingsUI() {
+    if (elements.autoStarMode) elements.autoStarMode.checked = !!state.autoStar.enabled;
+    if (elements.autoStarPresetSelect) elements.autoStarPresetSelect.value = state.autoStar.preset;
+    if (elements.autoStarCustomSeconds) elements.autoStarCustomSeconds.value = String(state.autoStar.customSeconds || 5);
+
+    const showDetails = !!state.autoStar.enabled;
+    const showCustom = state.autoStar.preset === 'custom';
+    if (elements.autoStarDetails) elements.autoStarDetails.classList.toggle('hidden', !showDetails);
+    if (elements.autoStarCustomRow) elements.autoStarCustomRow.classList.toggle('hidden', !showDetails || !showCustom);
+}
+
+function readAutoStarSettingsFromUI() {
+    state.autoStar.enabled = !!elements.autoStarMode?.checked;
+    state.autoStar.preset = ['5', '10', '30', '60', 'custom'].includes(String(elements.autoStarPresetSelect?.value)) ? String(elements.autoStarPresetSelect.value) : '5';
+    state.autoStar.customSeconds = sanitizeAutoStarSeconds(elements.autoStarCustomSeconds?.value, state.autoStar.customSeconds || 5);
+    syncAutoStarSettingsUI();
+    saveAutoStarSettings();
+}
+
+function getAutoStarQuestionKey(question) {
+    return normalizeSheetText(question?.sourceQuestionId || question?.id || '');
+}
+
+function startAutoStarQuestionWindow(question) {
+    const key = getAutoStarQuestionKey(question);
+    state.autoStar.currentQuestionKey = key;
+    state.autoStar.currentAttemptKey = key ? `${key}:${state.currentIndex}:${Date.now()}` : '';
+    state.autoStar.questionStartedAt = key ? Date.now() : 0;
+}
+
+function markAutoStarQuestionDisqualified(question) {
+    const key = getAutoStarQuestionKey(question);
+    if (key) state.autoStar.disqualifiedQuestionKeys.add(key);
+}
+
+function markAutoStarredQuestionExcludedInSession(question) {
+    if (!isExcludeStarredEnabled()) return;
+
+    const key = getAutoStarQuestionKey(question);
+    if (key) state.autoStar.excludedQuestionKeys.add(key);
+}
+
+function unmarkAutoStarredQuestionExcludedInSession(question) {
+    const key = getAutoStarQuestionKey(question);
+    if (key) state.autoStar.excludedQuestionKeys.delete(key);
+}
+
+function removeAutoStarredQuestionFromFutureQueue(question) {
+    if (!isExcludeStarredEnabled()) return;
+
+    const key = getAutoStarQuestionKey(question);
+    if (!key) return;
+
+    state.questionQueue = state.questionQueue.filter((item, index) => {
+        if (index === state.currentIndex) return true;
+        return getAutoStarQuestionKey(item) !== key;
+    });
+}
+
+function advancePastAutoStarredExcludedCurrentQuestion() {
+    if (!state.questionAnswered || !isExcludeStarredEnabled()) return false;
+
+    const currentQuestion = state.questionQueue[state.currentIndex];
+    const key = getAutoStarQuestionKey(currentQuestion);
+    if (!key || !state.autoStar.excludedQuestionKeys.has(key)) return false;
+
+    const previousIndex = state.currentIndex;
+    state.questionQueue = state.questionQueue.filter(question => getAutoStarQuestionKey(question) !== key);
+    state.questions = state.questions.filter(question => getAutoStarQuestionKey(question) !== key);
+    state.autoStar.excludedQuestionKeys.delete(key);
+
+    if (!state.questionQueue.length) {
+        state.currentIndex = 0;
+        if (isRetentionMode()) {
+            state.retentionFinished = true;
+        } else if (isMasteryCheckMode()) {
+            state.masteryCheckFinished = true;
+        } else {
+            state.normalFinished = true;
+        }
+    } else {
+        state.currentIndex = Math.min(previousIndex, state.questionQueue.length - 1);
+    }
+
+    showQuestion();
+    showPendingLearningResourceIfAny();
+    return true;
+}
+
+async function persistAutoStarForQuestion(question, elapsedMs) {
+    const key = getAutoStarQuestionKey(question);
+    if (!key || state.autoStar.pendingQuestionKeys.has(key)) return;
+    if (!canPersistQuestionStarState(question) || question.isStarred) return;
+
+    state.autoStar.pendingQuestionKeys.add(key);
+    markAutoStarredQuestionExcludedInSession(question);
+    syncQuestionStarButton();
+
+    try {
+        await persistQuestionStarState(question, true);
+        applyQuestionStarStateAcrossDeck(question.sourceQuestionId, true);
+        removeAutoStarredQuestionFromFutureQueue(question);
+
+        const currentQuestion = state.questionQueue[state.currentIndex];
+        if (getAutoStarQuestionKey(currentQuestion) === key && state.questionAnswered) {
+            setFeedback('Auto-starred ★', true);
+        }
+    } catch (error) {
+        unmarkAutoStarredQuestionExcludedInSession(question);
+        console.error('Could not Auto-Star question:', error);
+    } finally {
+        state.autoStar.pendingQuestionKeys.delete(key);
+        syncQuestionStarButton();
+        updateProgress();
+    }
+}
+
+function maybeAutoStarQuestionFromOutcome(question, isCorrect) {
+    const key = getAutoStarQuestionKey(question);
+    if (!key) return;
+
+    if (!isCorrect) {
+        markAutoStarQuestionDisqualified(question);
+        return;
+    }
+
+    const thresholdSeconds = getAutoStarThresholdSeconds();
+    if (!state.autoStar.enabled || !thresholdSeconds) return;
+    if (!canPersistQuestionStarState(question) || question.isStarred) return;
+    if (state.autoStar.disqualifiedQuestionKeys.has(key)) return;
+    if (state.autoStar.currentQuestionKey !== key || !state.autoStar.questionStartedAt) return;
+
+    const elapsedMs = Math.max(0, Date.now() - state.autoStar.questionStartedAt);
+    if (elapsedMs <= thresholdSeconds * 1000) {
+        persistAutoStarForQuestion(question, elapsedMs);
+    }
+}
+
 function canPersistQuestionStarState(question = state.questionQueue[state.currentIndex]) {
     return !!(state.auth.client && state.auth.user?.id && question?.sourceQuestionId);
 }
@@ -9947,6 +10150,33 @@ function updateStarredQuestionAvailability() {
     } else if (starSettingHelp) {
         starSettingHelp.innerText = 'Hides starred questions from the active study deck without removing the saved stars.';
     }
+}
+
+function updateAutoStarAvailability() {
+    const card = document.getElementById('autoStarModeSetting');
+    const help = document.getElementById('autoStarModeHelp');
+    const canUseAutoStar = !!(state.auth.client && state.auth.user?.id);
+
+    if (elements.autoStarMode) {
+        elements.autoStarMode.disabled = !canUseAutoStar;
+        if (!canUseAutoStar && elements.autoStarMode.checked) {
+            elements.autoStarMode.checked = false;
+            state.autoStar.enabled = false;
+            saveAutoStarSettings();
+        }
+    }
+
+    if (card) {
+        card.classList.toggle('disabled-setting', !canUseAutoStar);
+    }
+
+    if (help && !canUseAutoStar) {
+        help.innerText = 'Sign in to use Auto-Star. It saves stars to your Supabase question memory.';
+    } else if (help) {
+        help.innerText = 'Automatically stars signed-in Supabase questions answered correctly within the selected time. Runs in the background and can be used with Timer Mode.';
+    }
+
+    syncAutoStarSettingsUI();
 }
 
 function updateShuffleQuestionsAvailability() {
@@ -10088,6 +10318,7 @@ function updateSettingsAvailability() {
     updateLearningResourcesAvailability();
     updateRapidLearningResourcesCompatibility();
     updateStarredQuestionAvailability();
+    updateAutoStarAvailability();
     updateShuffleQuestionsAvailability();
     updateShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
@@ -11791,6 +12022,7 @@ async function toggleCurrentQuestionStarState() {
 function applyQuestionOutcome(q, isCorrect, options = {}) {
     const { useSideFeedback = true } = options;
     recordProgressModeOutcome(q, isCorrect);
+    maybeAutoStarQuestionFromOutcome(q, isCorrect);
     if (state.studyTimer.scope === 'question') {
         stopStudyTimer({ clearDisplay: false });
     }
@@ -11980,6 +12212,7 @@ function showQuestion() {
 
     const q = state.questionQueue[state.currentIndex];
     state.currentQuestionType = q.type || '';
+    startAutoStarQuestionWindow(q);
     syncStudyTimerForCurrentQuestion();
     updateViewportClasses();
     elements.optionsContainer.style.display = 'none';
@@ -13373,6 +13606,9 @@ function showClassify(q) {
 
             if (!allCorrect) {
                 const hasWrongItems = progressWrongKeys.size > 0;
+                if (hasWrongItems) {
+                    markAutoStarQuestionDisqualified(q);
+                }
                 const keepGoingMessage = placedAnyThisAttempt || progressLockedCorrectKeys.size > 0
                     ? 'Correct items locked. Keep going.'
                     : 'Move any item, then submit.';
@@ -13436,6 +13672,10 @@ function nextQuestion() {
     if (isQuizFinished()) {
         showQuestion();
         showPendingLearningResourceIfAny();
+        return;
+    }
+
+    if (advancePastAutoStarredExcludedCurrentQuestion()) {
         return;
     }
 
@@ -13622,6 +13862,12 @@ function resetModeState() {
     state.currentIndex = 0;
     state.studyTimer.sessionToken += 1;
     stopStudyTimer({ clearDisplay: false });
+    state.autoStar.currentAttemptKey = '';
+    state.autoStar.currentQuestionKey = '';
+    state.autoStar.questionStartedAt = 0;
+    state.autoStar.disqualifiedQuestionKeys = new Set();
+    state.autoStar.pendingQuestionKeys = new Set();
+    state.autoStar.excludedQuestionKeys = new Set();
 
     state.pendingRetentionJump = false;
     state.pendingRetentionCorrect = false;
@@ -13753,6 +13999,20 @@ if (elements.excludeStarredQuestions) {
         control.addEventListener('input', () => {
             readStudyTimerSettingsFromUI();
             restartStudyTimerAfterSettingsChange();
+        });
+    }
+});
+
+[elements.autoStarMode, elements.autoStarPresetSelect, elements.autoStarCustomSeconds].forEach(control => {
+    if (!control) return;
+    control.addEventListener('change', () => {
+        readAutoStarSettingsFromUI();
+        updateSettingsAvailability();
+    });
+    if (control === elements.autoStarCustomSeconds) {
+        control.addEventListener('input', () => {
+            readAutoStarSettingsFromUI();
+            updateSettingsAvailability();
         });
     }
 });
@@ -15841,6 +16101,7 @@ window.addEventListener('orientationchange', handleViewportChange);
         applyResponsiveControlText();
         updateViewportClasses();
         loadStudyTimerSettings();
+        loadAutoStarSettings();
         updateAuthUI();
         await bootstrapSupabase();
 
