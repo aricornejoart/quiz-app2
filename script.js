@@ -12054,7 +12054,11 @@ function getMasteryCheckCompletedForProgressBar(total) {
     if (!isMasteryCheckMode()) return 0;
     if (state.masteryCheckFinished) return total;
 
-    const masteredCount = state.masteryCheckMasteredIds.size;
+    const activeQuestionIds = new Set((state.questions || []).map(question => question.id));
+    const masteredCount = [...state.masteryCheckMasteredIds]
+        .filter(questionId => activeQuestionIds.has(questionId))
+        .length;
+
     return masteredCount + state.currentIndex;
 }
 
