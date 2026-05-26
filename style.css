@@ -6309,3 +6309,47 @@ body.fullscreen-mode .progress-mode-summary {
   flex-direction: column;
   gap: 8px;
 }
+
+/* Phase 22CJ Manage Quiz and Folder filtering */
+.studio-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin: 12px 0 10px;
+}
+
+.studio-filter-field,
+.studio-search-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: min(220px, 100%);
+  flex: 1;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.studio-filter-field input,
+.studio-filter-field select,
+.studio-search-field input {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--color-bg-control-hover);
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.studio-filter-status {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(159, 144, 255, 0.26);
+  background: rgba(159, 144, 255, 0.08);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}

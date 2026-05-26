@@ -80,6 +80,7 @@ MODIFICATION RULES FOR THIS APP
 
     const QUIZ_CHALLENGE_GRAND_KEY = 'all_shuffle_mode_trophies';
     const QUIZ_CHALLENGE_TABLE = 'user_quiz_challenge_achievements';
+    const STUDIO_ACTIVITY_TABLE = 'user_studio_activity';
 
     const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
     const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
@@ -167,8 +168,12 @@ MODIFICATION RULES FOR THIS APP
             managedQuizzes: [],
             quizChallengeAchievements: new Map(),
             quizChallengeUnavailable: false,
+            studioActivity: { quizzes: new Map(), folders: new Map(), unavailable: false },
             expandedQuizChallengeIds: new Set(),
             openQuizActionMenuId: '',
+            studioQuizSearchQuery: '',
+            studioQuizFolderFilterId: '',
+            studioFolderSearchQuery: '',
             quizStudioOpen: false,
             studioQuestionImageDataUrl: '',
             studioQuestionImageLabel: 'No question image selected.',
@@ -242,6 +247,11 @@ MODIFICATION RULES FOR THIS APP
         studioRecentQuizList: document.getElementById('studioRecentQuizList'),
         studioRecentFolderList: document.getElementById('studioRecentFolderList'),
         studioProgressPanel: document.getElementById('studioProgressPanel'),
+        studioFolderSearchInput: document.getElementById('studioFolderSearchInput'),
+        studioQuizSearchInput: document.getElementById('studioQuizSearchInput'),
+        studioQuizFolderFilterSelect: document.getElementById('studioQuizFolderFilterSelect'),
+        studioQuizClearFiltersBtn: document.getElementById('studioQuizClearFiltersBtn'),
+        studioQuizFilterStatus: document.getElementById('studioQuizFilterStatus'),
         exportQuizSelect: document.getElementById('exportQuizSelect'),
         exportFolderSelect: document.getElementById('exportFolderSelect'),
         exportQuizBtn: document.getElementById('exportQuizBtn'),
@@ -2712,6 +2722,90 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function getStudioFolderSearchQuery() {
+        return normalizeSheetText(state.auth.studioFolderSearchQuery || elements.studioFolderSearchInput?.value || '').toLowerCase();
+    }
+
+    function getStudioQuizSearchQuery() {
+        return normalizeSheetText(state.auth.studioQuizSearchQuery || elements.studioQuizSearchInput?.value || '').toLowerCase();
+    }
+
+    function getStudioQuizFolderFilterId() {
+        return normalizeSheetText(state.auth.studioQuizFolderFilterId || elements.studioQuizFolderFilterSelect?.value || '');
+    }
+
+    function getFolderQuizStats(folderId = '') {
+        const normalizedFolderId = normalizeSheetText(folderId);
+        const quizzes = state.auth.managedQuizzes.filter(quiz => normalizeSheetText(quiz.folderId) === normalizedFolderId);
+        return {
+            quizCount: quizzes.length,
+            questionCount: quizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0)
+        };
+    }
+
+    function populateStudioQuizFolderFilter() {
+        if (!elements.studioQuizFolderFilterSelect) return;
+        const previousValue = getStudioQuizFolderFilterId();
+        const options = ['<option value="">All folders</option>', '<option value="__none__">No folder</option>'];
+        state.auth.supabaseFolders.forEach(folder => {
+            const isSelected = folder.id === previousValue ? ' selected' : '';
+            options.push(`<option value="${escapeHtml(folder.id)}"${isSelected}>${escapeHtml(folder.name)}</option>`);
+        });
+        elements.studioQuizFolderFilterSelect.innerHTML = options.join('');
+        const validIds = new Set(['', '__none__', ...state.auth.supabaseFolders.map(folder => folder.id)]);
+        if (validIds.has(previousValue)) {
+            elements.studioQuizFolderFilterSelect.value = previousValue;
+        } else {
+            elements.studioQuizFolderFilterSelect.value = '';
+            state.auth.studioQuizFolderFilterId = '';
+        }
+    }
+
+    function getFilteredManagedQuizzes() {
+        const searchQuery = getStudioQuizSearchQuery();
+        const folderFilterId = getStudioQuizFolderFilterId();
+        return [...state.auth.managedQuizzes].filter(quiz => {
+            if (folderFilterId === '__none__' && normalizeSheetText(quiz.folderId)) return false;
+            if (folderFilterId && folderFilterId !== '__none__' && normalizeSheetText(quiz.folderId) !== folderFilterId) return false;
+            if (!searchQuery) return true;
+            const haystack = `${quiz.name || ''} ${quiz.folderName || ''}`.toLowerCase();
+            return haystack.includes(searchQuery);
+        });
+    }
+
+    function updateStudioQuizFilterStatus(renderedCount = 0) {
+        if (!elements.studioQuizFilterStatus) return;
+        const searchQuery = getStudioQuizSearchQuery();
+        const folderFilterId = getStudioQuizFolderFilterId();
+        const folderName = folderFilterId === '__none__'
+            ? 'No folder'
+            : state.auth.supabaseFolders.find(folder => folder.id === folderFilterId)?.name || '';
+        const parts = [];
+        if (folderFilterId) parts.push(`Folder: ${folderName || 'Unknown folder'}`);
+        if (searchQuery) parts.push(`Search: ${searchQuery}`);
+        if (!parts.length) {
+            elements.studioQuizFilterStatus.classList.add('hidden');
+            elements.studioQuizFilterStatus.textContent = '';
+            if (elements.studioQuizClearFiltersBtn) elements.studioQuizClearFiltersBtn.disabled = true;
+            return;
+        }
+        elements.studioQuizFilterStatus.classList.remove('hidden');
+        elements.studioQuizFilterStatus.textContent = `Showing ${renderedCount} matching quiz${renderedCount === 1 ? '' : 'zes'} · ${parts.join(' · ')}`;
+        if (elements.studioQuizClearFiltersBtn) elements.studioQuizClearFiltersBtn.disabled = false;
+    }
+
+    async function openManageQuizzesForFolder(folderId = '') {
+        const normalizedFolderId = normalizeSheetText(folderId);
+        state.auth.studioQuizFolderFilterId = normalizedFolderId;
+        state.auth.studioQuizSearchQuery = '';
+        if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
+        populateStudioQuizFolderFilter();
+        if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = normalizedFolderId;
+        renderQuizManagementList();
+        await recordStudioFolderActivity(normalizedFolderId, 'opened_folder_filter');
+        await setQuizStudioSection('manage');
+    }
+
     function renderFolderManagementList() {
         if (!elements.studioFolderList) return;
 
@@ -2725,19 +2819,32 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        elements.studioFolderList.innerHTML = state.auth.supabaseFolders.map(folder => `
+        const searchQuery = getStudioFolderSearchQuery();
+        const foldersToRender = state.auth.supabaseFolders.filter(folder => !searchQuery || String(folder.name || '').toLowerCase().includes(searchQuery));
+        if (!foldersToRender.length) {
+            elements.studioFolderList.innerHTML = createStudioEmptyState('No matching folders', 'Clear or change the folder search to see more folders.', [{ label: 'Clear Search', action: 'clear-folder-search' }]);
+            return;
+        }
+
+        elements.studioFolderList.innerHTML = foldersToRender.map(folder => {
+            const stats = getFolderQuizStats(folder.id);
+            const quizLabel = stats.quizCount === 1 ? '1 quiz' : `${stats.quizCount} quizzes`;
+            const questionLabel = stats.questionCount === 1 ? '1 question' : `${stats.questionCount} questions`;
+            return `
             <div class="studio-list-item" data-folder-id="${escapeHtml(folder.id)}">
               <div class="studio-list-meta">
                 <div class="studio-list-title">${escapeHtml(folder.name)}</div>
-                <div class="studio-list-subtitle">Folder</div>
+                <div class="studio-list-subtitle">${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)}</div>
               </div>
               <div class="studio-list-controls">
                 <input class="studio-inline-input" type="text" value="${escapeHtml(folder.name)}" data-folder-rename-input>
+                <button type="button" class="auth-action-btn" data-action="view-folder-quizzes">View Quizzes</button>
                 <button type="button" class="auth-action-btn" data-action="save-folder">Save</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-folder">Delete</button>
               </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
 
@@ -2858,6 +2965,134 @@ MODIFICATION RULES FOR THIS APP
         }
 
         return state.auth.quizChallengeAchievements;
+    }
+
+    function setStudioActivityLocal(entityType = '', entityId = '', payload = {}) {
+        const type = normalizeSheetText(entityType);
+        const id = normalizeSheetText(entityId);
+        if (!type || !id) return;
+        const bucket = type === 'folder' ? state.auth.studioActivity.folders : state.auth.studioActivity.quizzes;
+        bucket.set(id, {
+            entityType: type,
+            entityId: id,
+            folderId: normalizeSheetText(payload.folderId),
+            lastActiveAt: normalizeSheetText(payload.lastActiveAt) || new Date().toISOString(),
+            lastActiveReason: normalizeSheetText(payload.lastActiveReason) || 'opened'
+        });
+    }
+
+    function getStudioActivityTime(entityType = '', entityId = '', fallback = '') {
+        const type = normalizeSheetText(entityType);
+        const id = normalizeSheetText(entityId);
+        const bucket = type === 'folder' ? state.auth.studioActivity.folders : state.auth.studioActivity.quizzes;
+        const activityTime = getStudioUpdatedTime(bucket.get(id)?.lastActiveAt);
+        return activityTime || getStudioUpdatedTime(fallback);
+    }
+
+    async function loadStudioActivityFromSupabase() {
+        state.auth.studioActivity.quizzes = new Map();
+        state.auth.studioActivity.folders = new Map();
+        state.auth.studioActivity.unavailable = false;
+
+        if (!state.auth.client || !state.auth.user?.id) {
+            return state.auth.studioActivity;
+        }
+
+        try {
+            const { data, error } = await state.auth.client
+                .from(STUDIO_ACTIVITY_TABLE)
+                .select('entity_type, entity_id, folder_id, last_active_at, last_active_reason')
+                .eq('user_id', state.auth.user.id);
+
+            if (error) throw error;
+
+            (data || []).forEach(row => {
+                setStudioActivityLocal(row.entity_type, row.entity_id, {
+                    folderId: row.folder_id,
+                    lastActiveAt: row.last_active_at,
+                    lastActiveReason: row.last_active_reason
+                });
+            });
+        } catch (error) {
+            state.auth.studioActivity.unavailable = true;
+            console.warn('Studio activity table unavailable:', error);
+        }
+
+        return state.auth.studioActivity;
+    }
+
+    async function recordStudioActivity(entityType = '', entityId = '', reason = 'opened', options = {}) {
+        const type = normalizeSheetText(entityType);
+        const id = normalizeSheetText(entityId);
+        if (!type || !id || !['quiz', 'folder'].includes(type)) return null;
+
+        const quiz = type === 'quiz' ? state.auth.managedQuizzes.find(item => item.id === id) : null;
+        const folderId = type === 'folder'
+            ? id
+            : normalizeSheetText(options.folderId || quiz?.folderId);
+        const now = new Date().toISOString();
+        const payload = {
+            user_id: state.auth.user?.id,
+            entity_type: type,
+            entity_id: id,
+            folder_id: folderId || null,
+            last_active_at: now,
+            last_active_reason: normalizeSheetText(reason) || 'opened',
+            updated_at: now
+        };
+
+        setStudioActivityLocal(type, id, {
+            folderId,
+            lastActiveAt: now,
+            lastActiveReason: payload.last_active_reason
+        });
+        if (type === 'quiz' && folderId) {
+            setStudioActivityLocal('folder', folderId, {
+                folderId,
+                lastActiveAt: now,
+                lastActiveReason: `quiz_${payload.last_active_reason}`
+            });
+        }
+        renderStudioHomeDashboard();
+
+        if (!state.auth.client || !state.auth.user?.id || state.auth.studioActivity.unavailable) {
+            return payload;
+        }
+
+        try {
+            const { error } = await state.auth.client
+                .from(STUDIO_ACTIVITY_TABLE)
+                .upsert(payload, { onConflict: 'user_id,entity_type,entity_id' });
+            if (error) throw error;
+
+            if (type === 'quiz' && folderId) {
+                const folderPayload = {
+                    user_id: state.auth.user.id,
+                    entity_type: 'folder',
+                    entity_id: folderId,
+                    folder_id: folderId,
+                    last_active_at: now,
+                    last_active_reason: `quiz_${payload.last_active_reason}`,
+                    updated_at: now
+                };
+                const { error: folderError } = await state.auth.client
+                    .from(STUDIO_ACTIVITY_TABLE)
+                    .upsert(folderPayload, { onConflict: 'user_id,entity_type,entity_id' });
+                if (folderError) throw folderError;
+            }
+        } catch (error) {
+            state.auth.studioActivity.unavailable = true;
+            console.warn('Could not save Studio activity:', error);
+        }
+        return payload;
+    }
+
+    function recordStudioQuizActivity(quizId = '', reason = 'opened') {
+        return recordStudioActivity('quiz', quizId, reason);
+    }
+
+    function recordStudioFolderActivity(folderId = '', reason = 'opened') {
+        return recordStudioActivity('folder', folderId, reason);
     }
 
     async function persistQuizChallengeAchievement(quizId = '', challengeKey = '') {
@@ -3172,7 +3407,16 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const quizzesToRender = [...state.auth.managedQuizzes].sort(sortStudioRecentItems);
+        populateStudioQuizFolderFilter();
+
+        const quizzesToRender = getFilteredManagedQuizzes().sort(sortStudioRecentItems);
+        updateStudioQuizFilterStatus(quizzesToRender.length);
+
+        if (!quizzesToRender.length) {
+            elements.studioQuizList.innerHTML = createStudioEmptyState('No matching quizzes', 'Clear or change your quiz search/folder filter to see more quizzes.', [{ label: 'Clear Filters', action: 'clear-quiz-filters' }]);
+            return;
+        }
+
         elements.studioQuizList.innerHTML = quizzesToRender.map(quiz => {
             const folderLabel = quiz.folderName || 'No folder';
             const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
@@ -3234,6 +3478,19 @@ MODIFICATION RULES FOR THIS APP
         if (sortDelta) return sortDelta;
 
         return String(a.name || '').localeCompare(String(b.name || ''));
+    }
+
+    function sortStudioActiveItems(entityType = 'quiz') {
+        return (a, b) => {
+            const activeDelta = getStudioActivityTime(entityType, b.id, b.updatedAt) - getStudioActivityTime(entityType, a.id, a.updatedAt);
+            if (activeDelta) return activeDelta;
+            return sortStudioRecentItems(a, b);
+        };
+    }
+
+    function getStudioActiveLabel(entityType = 'quiz', item = {}) {
+        const timestamp = getStudioActivityTime(entityType, item.id, item.updatedAt);
+        return timestamp ? formatStudioUpdatedLabel(new Date(timestamp).toISOString()) : 'No activity yet';
     }
 
     function getStudioQuizTypeCounts() {
@@ -3312,7 +3569,7 @@ MODIFICATION RULES FOR THIS APP
                 elements.studioRecentQuizList.innerHTML = createStudioEmptyState('No recent quizzes yet', 'Create or import a quiz and it will appear here for quick access.', [{ label: 'Create Quiz', action: 'open-editor' }, { label: 'Import Templates', action: 'open-import', secondary: true }]);
             } else {
                 elements.studioRecentQuizList.innerHTML = [...state.auth.managedQuizzes]
-                    .sort(sortStudioRecentItems)
+                    .sort(sortStudioActiveItems('quiz'))
                     .slice(0, 5)
                     .map(quiz => {
                         const folderLabel = quiz.folderName || 'No folder';
@@ -3322,7 +3579,7 @@ MODIFICATION RULES FOR THIS APP
                             <div class="studio-list-item studio-dashboard-item" data-home-quiz-id="${escapeHtml(quiz.id)}">
                               <div class="studio-list-meta">
                                 <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
-                                <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)} · Updated ${escapeHtml(formatStudioUpdatedLabel(quiz.updatedAt))}</div>
+                                <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)} · Active ${escapeHtml(getStudioActiveLabel('quiz', quiz))}</div>
                               </div>
                               <div class="studio-list-controls">
                                 <button type="button" class="auth-action-btn" data-home-action="edit-quiz">Edit</button>
@@ -3344,8 +3601,8 @@ MODIFICATION RULES FOR THIS APP
                     const quizzes = state.auth.managedQuizzes.filter(quiz => quiz.folderId === folder.id);
                     const quizCount = quizzes.length;
                     const questionCount = quizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0);
-                    const mostRecentQuizTime = quizzes.reduce((maxValue, quiz) => Math.max(maxValue, getStudioUpdatedTime(quiz.updatedAt)), 0);
-                    const folderTime = Math.max(getStudioUpdatedTime(folder.updatedAt), mostRecentQuizTime);
+                    const mostRecentQuizTime = quizzes.reduce((maxValue, quiz) => Math.max(maxValue, getStudioActivityTime('quiz', quiz.id, quiz.updatedAt)), 0);
+                    const folderTime = Math.max(getStudioActivityTime('folder', folder.id, folder.updatedAt), mostRecentQuizTime);
                     return {
                         ...folder,
                         quizCount,
@@ -3355,7 +3612,7 @@ MODIFICATION RULES FOR THIS APP
                 });
 
                 elements.studioRecentFolderList.innerHTML = folderRows
-                    .sort(sortStudioRecentItems)
+                    .sort(sortStudioActiveItems('folder'))
                     .slice(0, 5)
                     .map(folder => {
                         const quizLabel = folder.quizCount === 1 ? '1 quiz' : `${folder.quizCount} quizzes`;
@@ -3364,7 +3621,7 @@ MODIFICATION RULES FOR THIS APP
                             <div class="studio-list-item studio-dashboard-item" data-home-folder-id="${escapeHtml(folder.id)}">
                               <div class="studio-list-meta">
                                 <div class="studio-list-title">${escapeHtml(folder.name)}</div>
-                                <div class="studio-list-subtitle">${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)} · Updated ${escapeHtml(formatStudioUpdatedLabel(folder.updatedAt))}</div>
+                                <div class="studio-list-subtitle">${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)} · Active ${escapeHtml(getStudioActiveLabel('folder', folder))}</div>
                               </div>
                               <div class="studio-list-controls">
                                 <button type="button" class="auth-action-btn" data-home-action="open-folder">Manage</button>
@@ -3410,6 +3667,7 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.client || !state.auth.user?.id) {
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
+            populateStudioQuizFolderFilter();
             renderFolderManagementList();
             renderStudioHomeDashboard();
             return [];
@@ -3434,6 +3692,7 @@ MODIFICATION RULES FOR THIS APP
             console.error('Failed to load creator folders:', error);
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
+            populateStudioQuizFolderFilter();
             renderFolderManagementList();
             renderStudioHomeDashboard();
             return [];
@@ -3446,6 +3705,7 @@ MODIFICATION RULES FOR THIS APP
             updatedAt: normalizeSheetText(folder.updated_at)
         }));
         populateCreatorFolderSelect();
+        populateStudioQuizFolderFilter();
         renderFolderManagementList();
         renderStudioHomeDashboard();
         populateExportBackupControls();
@@ -3528,6 +3788,7 @@ MODIFICATION RULES FOR THIS APP
             });
 
             await loadQuizChallengeAchievementsFromSupabase();
+            await loadStudioActivityFromSupabase();
             renderQuizManagementList();
             renderStudioHomeDashboard();
             populateExportBackupControls();
@@ -6690,6 +6951,7 @@ MODIFICATION RULES FOR THIS APP
             throw new Error('Quiz not found');
         }
 
+        await recordStudioQuizActivity(normalizedQuizId, 'studied');
         await closeQuizStudioPage(true);
         return targetQuiz;
     }
@@ -7549,6 +7811,7 @@ MODIFICATION RULES FOR THIS APP
             state.auth.backupImportFileName = '';
             clearCreatorInputs();
             populateCreatorFolderSelect();
+            populateStudioQuizFolderFilter();
             renderFolderManagementList();
             renderQuizManagementList();
             renderStudioHomeDashboard();
@@ -8506,6 +8769,7 @@ MODIFICATION RULES FOR THIS APP
 
             updateCreateQuizModeUI();
             openQuizStudioPage('editor');
+            recordStudioQuizActivity(quizRow.id, 'edited').catch(err => console.warn(err));
             const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'classify question' : (state.auth.editingQuizType === 'diagrams' ? 'diagram question' : 'question')));
             setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${nextItemTypeLabel} below.`, 'success');
         } catch (error) {
@@ -8536,6 +8800,7 @@ MODIFICATION RULES FOR THIS APP
                 if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = folderId || '';
             }
 
+            await recordStudioQuizActivity(quizId, 'metadata_updated');
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${quizId}` });
             setCreatorStatus('Quiz details updated.', 'success');
@@ -15540,6 +15805,22 @@ function handleStudioEmptyStateAction(e) {
         return;
     }
 
+    if (action === 'clear-folder-search') {
+        state.auth.studioFolderSearchQuery = '';
+        if (elements.studioFolderSearchInput) elements.studioFolderSearchInput.value = '';
+        renderFolderManagementList();
+        return;
+    }
+
+    if (action === 'clear-quiz-filters') {
+        state.auth.studioQuizSearchQuery = '';
+        state.auth.studioQuizFolderFilterId = '';
+        if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
+        if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = '';
+        renderQuizManagementList();
+        return;
+    }
+
     if (action === 'open-backup') {
         setQuizStudioSection('backup').catch(err => {
             console.error(err);
@@ -15558,6 +15839,7 @@ function handleStudioHomeQuizAction(e) {
 
     const quizId = item.dataset.homeQuizId;
     if (e.target.matches('[data-home-action="edit-quiz"]')) {
+        recordStudioQuizActivity(quizId, 'edited').catch(err => console.warn(err));
         loadQuizIntoEditor(quizId).catch(err => {
             console.error(err);
             setCreatorStatus('Could not load the quiz editor.', 'error');
@@ -15565,6 +15847,7 @@ function handleStudioHomeQuizAction(e) {
     }
 
     if (e.target.matches('[data-home-action="study-quiz"]')) {
+        recordStudioQuizActivity(quizId, 'studied').catch(err => console.warn(err));
         studySupabaseQuizFromStudio(quizId).catch(err => {
             console.error(err);
             setCreatorStatus(getStudyLoadErrorMessage(err), 'error');
@@ -15577,9 +15860,10 @@ function handleStudioHomeFolderAction(e) {
     if (!item) return;
 
     if (e.target.matches('[data-home-action="open-folder"]')) {
-        setQuizStudioSection('folders').catch(err => {
+        const folderId = item.dataset.homeFolderId || '';
+        openManageQuizzesForFolder(folderId).catch(err => {
             console.error(err);
-            setCreatorStatus('Could not open folders.', 'error');
+            setCreatorStatus('Could not open that folder.', 'error');
         });
     }
 }
@@ -15598,6 +15882,22 @@ if (elements.studioFolderList) {
         if (!item) return;
 
         const folderId = item.dataset.folderId;
+        if (e.target.matches('[data-action="view-folder-quizzes"]')) {
+            openManageQuizzesForFolder(folderId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open that folder.', 'error');
+            });
+            return;
+        }
+
+        if (!e.target.closest('.studio-list-controls')) {
+            openManageQuizzesForFolder(folderId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open that folder.', 'error');
+            });
+            return;
+        }
+
         if (e.target.matches('[data-action="save-folder"]')) {
             const input = item.querySelector('[data-folder-rename-input]');
             handleRenameFolder(folderId, input?.value || '').catch(err => {
@@ -15664,6 +15964,7 @@ if (elements.studioQuizList) {
 
         if (action === 'edit-quiz') {
             state.auth.openQuizActionMenuId = '';
+            recordStudioQuizActivity(quizId, 'edited').catch(err => console.warn(err));
             loadQuizIntoEditor(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not load the quiz editor.', 'error');
@@ -15690,6 +15991,7 @@ if (elements.studioQuizList) {
 
         if (action === 'load-quiz') {
             state.auth.openQuizActionMenuId = '';
+            recordStudioQuizActivity(quizId, 'studied').catch(err => console.warn(err));
             studySupabaseQuizFromStudio(quizId).catch(err => {
                 console.error(err);
                 setCreatorStatus(getStudyLoadErrorMessage(err), 'error');
@@ -15699,6 +16001,7 @@ if (elements.studioQuizList) {
         if (action === 'begin-challenge') {
             const challengeKey = actionButton.dataset.challengeKey || '';
             state.auth.openQuizActionMenuId = '';
+            recordStudioQuizActivity(quizId, 'challenge_started').catch(err => console.warn(err));
             beginQuizChallenge(quizId, challengeKey).catch(err => {
                 console.error(err);
                 setCreatorStatus(err?.studyLoadDiagnostic ? getStudyLoadErrorMessage(err) : 'Could not start that challenge.', 'error');
@@ -15707,6 +16010,37 @@ if (elements.studioQuizList) {
     });
 }
 
+
+if (elements.studioFolderSearchInput) {
+    elements.studioFolderSearchInput.addEventListener('input', () => {
+        state.auth.studioFolderSearchQuery = normalizeSheetText(elements.studioFolderSearchInput.value);
+        renderFolderManagementList();
+    });
+}
+
+if (elements.studioQuizSearchInput) {
+    elements.studioQuizSearchInput.addEventListener('input', () => {
+        state.auth.studioQuizSearchQuery = normalizeSheetText(elements.studioQuizSearchInput.value);
+        renderQuizManagementList();
+    });
+}
+
+if (elements.studioQuizFolderFilterSelect) {
+    elements.studioQuizFolderFilterSelect.addEventListener('change', () => {
+        state.auth.studioQuizFolderFilterId = normalizeSheetText(elements.studioQuizFolderFilterSelect.value);
+        renderQuizManagementList();
+    });
+}
+
+if (elements.studioQuizClearFiltersBtn) {
+    elements.studioQuizClearFiltersBtn.addEventListener('click', () => {
+        state.auth.studioQuizSearchQuery = '';
+        state.auth.studioQuizFolderFilterId = '';
+        if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
+        if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = '';
+        renderQuizManagementList();
+    });
+}
 
 if (elements.exportQuizSelect) {
     elements.exportQuizSelect.addEventListener('change', populateExportBackupControls);

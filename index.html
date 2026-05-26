@@ -459,14 +459,14 @@ MODIFICATION RULES FOR THIS APP
               <section id="quizStudioHomeSection" class="quiz-studio-section is-active" data-studio-section="home" role="tabpanel">
                 <div class="studio-dashboard-grid">
                   <section class="creator-subsection quiz-studio-panel">
-                    <div class="creator-subsection-title">Recent Quizzes</div>
-                    <div class="creator-note">Quickly reopen or study the quizzes you edited most recently.</div>
+                    <div class="creator-subsection-title">Recently Active Quizzes</div>
+                    <div class="creator-note">Quickly reopen or study quizzes you recently studied, edited, challenged, or opened.</div>
                     <div id="studioRecentQuizList" class="studio-list studio-dashboard-list"></div>
                   </section>
 
                   <section class="creator-subsection quiz-studio-panel">
-                    <div class="creator-subsection-title">Recent Folders</div>
-                    <div class="creator-note">Jump back into folder management for your most recently updated folders.</div>
+                    <div class="creator-subsection-title">Recently Active Folders</div>
+                    <div class="creator-note">Jump back into folders you recently opened or studied from.</div>
                     <div id="studioRecentFolderList" class="studio-list studio-dashboard-list"></div>
                   </section>
 
@@ -492,6 +492,10 @@ MODIFICATION RULES FOR THIS APP
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Manage Folders</div>
                     <div class="creator-note">Rename folders or delete them. Deleting a folder keeps its quizzes but removes the folder assignment.</div>
+                    <label class="auth-field studio-search-field">
+                      <span>Search folders</span>
+                      <input id="studioFolderSearchInput" type="search" autocomplete="off" placeholder="Search folder names...">
+                    </label>
                     <div id="studioFolderList" class="studio-list"></div>
                   </section>
                 </div>
@@ -501,6 +505,20 @@ MODIFICATION RULES FOR THIS APP
                 <section class="creator-subsection quiz-studio-panel">
                   <div class="creator-subsection-title">Manage Quizzes</div>
                   <div class="creator-note">Edit quiz name, move a quiz to another folder, delete it, or open it in the editor to manage multiple questions or cards. In study mode, the quiz dropdown also includes a Study Entire Folder option.</div>
+                  <div class="studio-filter-bar" aria-label="Manage quiz filters">
+                    <label class="studio-filter-field">
+                      <span>Search quizzes</span>
+                      <input id="studioQuizSearchInput" type="search" autocomplete="off" placeholder="Search quiz names...">
+                    </label>
+                    <label class="studio-filter-field">
+                      <span>Folder</span>
+                      <select id="studioQuizFolderFilterSelect">
+                        <option value="">All folders</option>
+                      </select>
+                    </label>
+                    <button id="studioQuizClearFiltersBtn" type="button" class="auth-action-btn auth-secondary-btn">Clear</button>
+                  </div>
+                  <div id="studioQuizFilterStatus" class="studio-filter-status hidden"></div>
                   <div id="studioQuizList" class="studio-list"></div>
                 </section>
               </section>
