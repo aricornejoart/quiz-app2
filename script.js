@@ -11876,7 +11876,7 @@ function getMasteryCheckRemainingCount() {
     if (state.masteryCheckFinished) return 0;
 
     if (state.masteryCheckInCheckpoint) {
-        return Math.max(0, state.masteryCheckResumeQueue.length - state.currentIndex);
+        return Math.max(0, state.questionQueue.length - state.currentIndex);
     }
 
     return Math.max(0, state.questionQueue.length - state.currentIndex);
