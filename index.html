@@ -224,6 +224,53 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card settings-full-span" id="timerModeSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="timerMode">Timer Mode</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="timerModeHelp"
+                    aria-label="About Timer Mode"
+                    aria-expanded="false"
+                    aria-controls="timerModeHelp"
+                  >?</button>
+                </div>
+                <div id="timerModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Optional study timer. Pick one timer scope only: Folder, Quiz, or Question.
+                </div>
+                <label class="toggle-switch" for="timerMode" aria-label="Timer Mode toggle">
+                  <input type="checkbox" id="timerMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+                <div id="timerDetails" class="timer-settings-details hidden">
+                  <label class="timer-settings-field">
+                    <span>Timer for</span>
+                    <select id="timerScopeSelect">
+                      <option value="question">Each question</option>
+                      <option value="quiz">Whole quiz</option>
+                      <option value="folder">Whole folder/deck</option>
+                    </select>
+                  </label>
+                  <label class="timer-settings-field">
+                    <span>Time</span>
+                    <select id="timerPresetSelect">
+                      <option value="30">30 seconds</option>
+                      <option value="60">1 minute</option>
+                      <option value="1800">30 minutes</option>
+                      <option value="3600">1 hour</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </label>
+                  <label id="timerCustomRow" class="timer-settings-field hidden">
+                    <span>Custom seconds</span>
+                    <input id="timerCustomSeconds" type="number" min="1" max="86400" step="1" value="60">
+                  </label>
+                </div>
+              </div>
+
               <div class="setting-card" id="progressModeSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="progressMode">Progress</label>

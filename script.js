@@ -21,6 +21,7 @@ MODIFICATION RULES FOR THIS APP
         sheetId: '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E',
         speedDelay: 300,
         studioAutosaveDelayMs: 10 * 60 * 1000,
+        studyTimerStorageKey: 'studyBunnyTimerSettingsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
         dataSource: 'google_sheets',
@@ -94,6 +95,18 @@ MODIFICATION RULES FOR THIS APP
         emptyQuizMessage: '',
         activeQuizDescriptor: null,
         activeQuizChallenge: null,
+        studyTimer: {
+            enabled: false,
+            scope: 'question',
+            preset: '60',
+            customSeconds: 60,
+            activeKey: '',
+            deadlineMs: 0,
+            remainingMs: 0,
+            intervalId: null,
+            expired: false,
+            sessionToken: 0
+        },
         isAppFullscreen: false,
 
         pendingRetentionJump: false,
@@ -376,6 +389,12 @@ MODIFICATION RULES FOR THIS APP
         nextBtn: document.getElementById('nextBtn'),
         progressTextEl: document.getElementById('progressText'),
         progressSideFeedbackEl: document.getElementById('progressSideFeedback'),
+        timerMode: document.getElementById('timerMode'),
+        timerScopeSelect: document.getElementById('timerScopeSelect'),
+        timerPresetSelect: document.getElementById('timerPresetSelect'),
+        timerCustomSeconds: document.getElementById('timerCustomSeconds'),
+        timerCustomRow: document.getElementById('timerCustomRow'),
+        timerDetails: document.getElementById('timerDetails'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
         questionStarBtn: document.getElementById('questionStarBtn'),
@@ -9587,6 +9606,236 @@ function isExcludeStarredEnabled() {
     return !!elements.excludeStarredQuestions?.checked;
 }
 
+// ================= STUDY TIMER HELPERS =================
+function sanitizeStudyTimerSeconds(value, fallback = 60) {
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, 24 * 60 * 60);
+}
+
+function getStudyTimerDurationSeconds() {
+    if (!state.studyTimer.enabled) return 0;
+    if (state.studyTimer.preset === 'custom') {
+        return sanitizeStudyTimerSeconds(state.studyTimer.customSeconds, 60);
+    }
+    return sanitizeStudyTimerSeconds(state.studyTimer.preset, 60);
+}
+
+function formatStudyTimerDuration(ms) {
+    const safeMs = Math.max(0, Number(ms) || 0);
+    const totalSeconds = Math.ceil(safeMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function getStudyTimerDisplayText() {
+    if (!state.studyTimer.enabled || !state.studyTimer.activeKey || isQuizFinished()) return '';
+    return `⏱ ${formatStudyTimerDuration(state.studyTimer.remainingMs)}`;
+}
+
+function getStudyTimerSessionBaseKey() {
+    const descriptor = state.activeQuizDescriptor || {};
+    const descriptorKey = normalizeSheetText(descriptor.id || descriptor.sheetName || descriptor.name || descriptor.folder || 'active');
+    return `${state.studyTimer.scope}:${descriptorKey}:${state.studyTimer.sessionToken}`;
+}
+
+function getCurrentQuestionTimerKey(question) {
+    const q = question || state.questionQueue[state.currentIndex] || {};
+    const qKey = normalizeSheetText(q.id || q.sourceQuestionId || `index_${state.currentIndex}`);
+    return `${getStudyTimerSessionBaseKey()}:question:${qKey}:${state.currentIndex}`;
+}
+
+function stopStudyTimer({ clearDisplay = true } = {}) {
+    if (state.studyTimer.intervalId) {
+        clearInterval(state.studyTimer.intervalId);
+        state.studyTimer.intervalId = null;
+    }
+    state.studyTimer.activeKey = '';
+    state.studyTimer.deadlineMs = 0;
+    state.studyTimer.remainingMs = 0;
+    state.studyTimer.expired = false;
+    if (clearDisplay) updateProgress();
+}
+
+function tickStudyTimer() {
+    if (!state.studyTimer.enabled || !state.studyTimer.activeKey) return;
+    state.studyTimer.remainingMs = Math.max(0, state.studyTimer.deadlineMs - Date.now());
+    updateProgress();
+    if (state.studyTimer.remainingMs <= 0 && !state.studyTimer.expired) {
+        state.studyTimer.expired = true;
+        handleStudyTimerExpired();
+    }
+}
+
+function startStudyTimer(key, durationSeconds) {
+    const safeDuration = sanitizeStudyTimerSeconds(durationSeconds, 60);
+    if (!key || safeDuration <= 0) return;
+
+    if (state.studyTimer.activeKey === key && state.studyTimer.intervalId) {
+        tickStudyTimer();
+        return;
+    }
+
+    if (state.studyTimer.intervalId) {
+        clearInterval(state.studyTimer.intervalId);
+    }
+
+    state.studyTimer.activeKey = key;
+    state.studyTimer.deadlineMs = Date.now() + safeDuration * 1000;
+    state.studyTimer.remainingMs = safeDuration * 1000;
+    state.studyTimer.expired = false;
+    state.studyTimer.intervalId = setInterval(tickStudyTimer, 250);
+    tickStudyTimer();
+}
+
+function syncStudyTimerForCurrentQuestion() {
+    if (!state.studyTimer.enabled || !state.questions.length || isQuizFinished()) {
+        stopStudyTimer({ clearDisplay: false });
+        return;
+    }
+
+    const durationSeconds = getStudyTimerDurationSeconds();
+    if (!durationSeconds) {
+        stopStudyTimer({ clearDisplay: false });
+        return;
+    }
+
+    const currentQuestion = state.questionQueue[state.currentIndex];
+    if (!currentQuestion) {
+        stopStudyTimer({ clearDisplay: false });
+        return;
+    }
+
+    const scope = state.studyTimer.scope === 'folder' || state.studyTimer.scope === 'quiz' ? state.studyTimer.scope : 'question';
+    const key = scope === 'question' ? getCurrentQuestionTimerKey(currentQuestion) : getStudyTimerSessionBaseKey();
+    startStudyTimer(key, durationSeconds);
+}
+
+function disableCurrentQuestionInteractionsForTimer() {
+    setOptionButtonsEnabled(false);
+    setHierarchyInteractionEnabled(false);
+    setClassifyInteractionEnabled(false);
+    setFlashcardInteractionEnabled(false);
+}
+
+function markCurrentTimerQuestionWrong() {
+    const q = state.questionQueue[state.currentIndex];
+    if (!q || state.questionAnswered || isQuizFinished()) return;
+
+    state.questionAnswered = true;
+    disableCurrentQuestionInteractionsForTimer();
+    applyQuestionOutcome(q, false, { useSideFeedback: false });
+    setFeedback('Time expired!', false);
+
+    if (isSpeedMode()) {
+        setTimeout(nextQuestion, CONFIG.speedDelay);
+    }
+}
+
+function markRemainingProgressQuestionsMissed() {
+    if (!isProgressMode()) return;
+    for (let index = state.currentIndex; index < state.questionQueue.length; index += 1) {
+        const question = state.questionQueue[index];
+        if (question) recordProgressModeOutcome(question, false);
+    }
+}
+
+function finishStudyTimerSession() {
+    if (isQuizFinished()) return;
+    markRemainingProgressQuestionsMissed();
+
+    if (isRetentionMode()) {
+        state.retentionFinished = true;
+    } else if (isRetryMode()) {
+        state.questionQueue = [];
+        state.currentIndex = 0;
+    } else if (isMasteryCheckMode()) {
+        state.masteryCheckFinished = true;
+    } else {
+        state.normalFinished = true;
+    }
+
+    setFeedback('Time expired!', false);
+    showQuestion();
+}
+
+function handleStudyTimerExpired() {
+    if (!state.studyTimer.enabled || isQuizFinished()) return;
+    if (state.studyTimer.scope === 'question') {
+        markCurrentTimerQuestionWrong();
+    } else {
+        finishStudyTimerSession();
+    }
+}
+
+function serializeStudyTimerSettings() {
+    return {
+        enabled: !!state.studyTimer.enabled,
+        scope: ['folder', 'quiz', 'question'].includes(state.studyTimer.scope) ? state.studyTimer.scope : 'question',
+        preset: ['30', '60', '1800', '3600', 'custom'].includes(String(state.studyTimer.preset)) ? String(state.studyTimer.preset) : '60',
+        customSeconds: sanitizeStudyTimerSeconds(state.studyTimer.customSeconds, 60)
+    };
+}
+
+function saveStudyTimerSettings() {
+    try {
+        localStorage.setItem(CONFIG.studyTimerStorageKey, JSON.stringify(serializeStudyTimerSettings()));
+    } catch (err) {
+        console.warn('Could not save timer settings:', err);
+    }
+}
+
+function loadStudyTimerSettings() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(CONFIG.studyTimerStorageKey) || 'null');
+    } catch (err) {
+        saved = null;
+    }
+
+    if (saved && typeof saved === 'object') {
+        state.studyTimer.enabled = !!saved.enabled;
+        state.studyTimer.scope = ['folder', 'quiz', 'question'].includes(saved.scope) ? saved.scope : 'question';
+        state.studyTimer.preset = ['30', '60', '1800', '3600', 'custom'].includes(String(saved.preset)) ? String(saved.preset) : '60';
+        state.studyTimer.customSeconds = sanitizeStudyTimerSeconds(saved.customSeconds, 60);
+    }
+
+    syncStudyTimerSettingsUI();
+}
+
+function syncStudyTimerSettingsUI() {
+    if (elements.timerMode) elements.timerMode.checked = !!state.studyTimer.enabled;
+    if (elements.timerScopeSelect) elements.timerScopeSelect.value = state.studyTimer.scope;
+    if (elements.timerPresetSelect) elements.timerPresetSelect.value = state.studyTimer.preset;
+    if (elements.timerCustomSeconds) elements.timerCustomSeconds.value = String(state.studyTimer.customSeconds || 60);
+
+    const showDetails = !!state.studyTimer.enabled;
+    const showCustom = state.studyTimer.preset === 'custom';
+    if (elements.timerDetails) elements.timerDetails.classList.toggle('hidden', !showDetails);
+    if (elements.timerCustomRow) elements.timerCustomRow.classList.toggle('hidden', !showDetails || !showCustom);
+}
+
+function readStudyTimerSettingsFromUI() {
+    state.studyTimer.enabled = !!elements.timerMode?.checked;
+    state.studyTimer.scope = ['folder', 'quiz', 'question'].includes(elements.timerScopeSelect?.value) ? elements.timerScopeSelect.value : 'question';
+    state.studyTimer.preset = ['30', '60', '1800', '3600', 'custom'].includes(String(elements.timerPresetSelect?.value)) ? String(elements.timerPresetSelect.value) : '60';
+    state.studyTimer.customSeconds = sanitizeStudyTimerSeconds(elements.timerCustomSeconds?.value, state.studyTimer.customSeconds || 60);
+    syncStudyTimerSettingsUI();
+    saveStudyTimerSettings();
+}
+
+function restartStudyTimerAfterSettingsChange() {
+    state.studyTimer.sessionToken += 1;
+    stopStudyTimer({ clearDisplay: false });
+    syncStudyTimerForCurrentQuestion();
+    updateProgress();
+}
+
 function canPersistQuestionStarState(question = state.questionQueue[state.currentIndex]) {
     return !!(state.auth.client && state.auth.user?.id && question?.sourceQuestionId);
 }
@@ -11542,6 +11791,9 @@ async function toggleCurrentQuestionStarState() {
 function applyQuestionOutcome(q, isCorrect, options = {}) {
     const { useSideFeedback = true } = options;
     recordProgressModeOutcome(q, isCorrect);
+    if (state.studyTimer.scope === 'question') {
+        stopStudyTimer({ clearDisplay: false });
+    }
 
     if (isCorrect) {
         clearPendingLearningResource();
@@ -11633,7 +11885,9 @@ function updateProgress() {
     if (percent < 0) percent = 0;
     if (percent > 100) percent = 100;
 
-    elements.progressTextEl.innerText = isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`;
+    const timerText = getStudyTimerDisplayText();
+    const remainingText = isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`;
+    elements.progressTextEl.innerText = timerText ? `${remainingText}  ${timerText}` : remainingText;
 
     if (progressFillEl) {
         progressFillEl.style.width = `${percent}%`;
@@ -11701,6 +11955,7 @@ function showQuestion() {
     }
 
     if (isQuizFinished()) {
+        stopStudyTimer({ clearDisplay: false });
         if (isProgressMode()) {
             renderProgressModeFinishState();
         } else {
@@ -11725,6 +11980,7 @@ function showQuestion() {
 
     const q = state.questionQueue[state.currentIndex];
     state.currentQuestionType = q.type || '';
+    syncStudyTimerForCurrentQuestion();
     updateViewportClasses();
     elements.optionsContainer.style.display = 'none';
 
@@ -13364,6 +13620,8 @@ function prevQuestion() {
 // ================= RESET STATE =================
 function resetModeState() {
     state.currentIndex = 0;
+    state.studyTimer.sessionToken += 1;
+    stopStudyTimer({ clearDisplay: false });
 
     state.pendingRetentionJump = false;
     state.pendingRetentionCorrect = false;
@@ -13484,6 +13742,20 @@ if (elements.excludeStarredQuestions) {
         applyFilteredQuestionsToSession({ resetSession: true });
     });
 }
+
+[elements.timerMode, elements.timerScopeSelect, elements.timerPresetSelect, elements.timerCustomSeconds].forEach(control => {
+    if (!control) return;
+    control.addEventListener('change', () => {
+        readStudyTimerSettingsFromUI();
+        restartStudyTimerAfterSettingsChange();
+    });
+    if (control === elements.timerCustomSeconds) {
+        control.addEventListener('input', () => {
+            readStudyTimerSettingsFromUI();
+            restartStudyTimerAfterSettingsChange();
+        });
+    }
+});
 
 if (elements.questionStarBtn) {
     elements.questionStarBtn.addEventListener('click', () => {
@@ -15568,6 +15840,7 @@ window.addEventListener('orientationchange', handleViewportChange);
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         applyResponsiveControlText();
         updateViewportClasses();
+        loadStudyTimerSettings();
         updateAuthUI();
         await bootstrapSupabase();
 
