@@ -9931,11 +9931,6 @@ function startAutoStarQuestionWindow(question) {
     state.autoStar.questionStartedAt = key ? Date.now() : 0;
 }
 
-function markAutoStarQuestionDisqualified(question) {
-    const key = getAutoStarQuestionKey(question);
-    if (key) state.autoStar.disqualifiedQuestionKeys.add(key);
-}
-
 function markAutoStarredQuestionExcludedInSession(question) {
     if (!isExcludeStarredEnabled()) return;
 
@@ -10023,14 +10018,12 @@ function maybeAutoStarQuestionFromOutcome(question, isCorrect) {
     if (!key) return;
 
     if (!isCorrect) {
-        markAutoStarQuestionDisqualified(question);
         return;
     }
 
     const thresholdSeconds = getAutoStarThresholdSeconds();
     if (!state.autoStar.enabled || !thresholdSeconds) return;
     if (!canPersistQuestionStarState(question) || question.isStarred) return;
-    if (state.autoStar.disqualifiedQuestionKeys.has(key)) return;
     if (state.autoStar.currentQuestionKey !== key || !state.autoStar.questionStartedAt) return;
 
     const elapsedMs = Math.max(0, Date.now() - state.autoStar.questionStartedAt);
@@ -13606,9 +13599,6 @@ function showClassify(q) {
 
             if (!allCorrect) {
                 const hasWrongItems = progressWrongKeys.size > 0;
-                if (hasWrongItems) {
-                    markAutoStarQuestionDisqualified(q);
-                }
                 const keepGoingMessage = placedAnyThisAttempt || progressLockedCorrectKeys.size > 0
                     ? 'Correct items locked. Keep going.'
                     : 'Move any item, then submit.';
