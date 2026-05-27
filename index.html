@@ -132,6 +132,29 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card" id="globalShuffleAnswersSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="globalShuffleAnswers">Shuffle Answers Global</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="globalShuffleAnswersHelp"
+                    aria-label="About Shuffle Answers Global"
+                    aria-expanded="false"
+                    aria-controls="globalShuffleAnswersHelp"
+                  >?</button>
+                </div>
+                <div id="globalShuffleAnswersHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Pulls wrong options from other same-type multiple-choice or diagram questions while keeping the correct answer included.
+                </div>
+                <label class="toggle-switch" for="globalShuffleAnswers" aria-label="Shuffle Answers Global toggle">
+                  <input type="checkbox" id="globalShuffleAnswers">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
               <div class="setting-card" id="retentionModeSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="retentionMode">Retention</label>

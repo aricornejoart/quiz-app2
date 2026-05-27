@@ -25,6 +25,7 @@ MODIFICATION RULES FOR THIS APP
         autoStarStorageKey: 'studyBunnyAutoStarSettingsV1',
         unstarOnWrongStorageKey: 'studyBunnyUnstarOnWrongSettingsV1',
         hideAnswerFeedbackStorageKey: 'studyBunnyHideAnswerFeedbackSettingsV1',
+        globalShuffleAnswersStorageKey: 'studyBunnyGlobalShuffleAnswersSettingsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
         dataSource: 'google_sheets',
@@ -128,6 +129,9 @@ MODIFICATION RULES FOR THIS APP
         },
         answerFeedback: {
             hidden: false
+        },
+        globalShuffleAnswers: {
+            enabled: false
         },
         isAppFullscreen: false,
 
@@ -433,6 +437,7 @@ MODIFICATION RULES FOR THIS APP
         autoStarDetails: document.getElementById('autoStarDetails'),
         unstarOnWrongMode: document.getElementById('unstarOnWrongMode'),
         hideAnswerFeedbackMode: document.getElementById('hideAnswerFeedbackMode'),
+        globalShuffleAnswers: document.getElementById('globalShuffleAnswers'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
         questionStarBtn: document.getElementById('questionStarBtn'),
@@ -10445,6 +10450,45 @@ function readHideAnswerFeedbackSettingsFromUI() {
     }
 }
 
+function serializeGlobalShuffleAnswersSettings() {
+    return {
+        enabled: !!state.globalShuffleAnswers.enabled
+    };
+}
+
+function saveGlobalShuffleAnswersSettings() {
+    try {
+        localStorage.setItem(CONFIG.globalShuffleAnswersStorageKey, JSON.stringify(serializeGlobalShuffleAnswersSettings()));
+    } catch (err) {
+        console.warn('Could not save Shuffle Answers Global settings:', err);
+    }
+}
+
+function loadGlobalShuffleAnswersSettings() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(CONFIG.globalShuffleAnswersStorageKey) || 'null');
+    } catch (err) {
+        saved = null;
+    }
+
+    if (saved && typeof saved === 'object') {
+        state.globalShuffleAnswers.enabled = !!saved.enabled;
+    }
+
+    syncGlobalShuffleAnswersSettingsUI();
+}
+
+function syncGlobalShuffleAnswersSettingsUI() {
+    if (elements.globalShuffleAnswers) elements.globalShuffleAnswers.checked = !!state.globalShuffleAnswers.enabled;
+}
+
+function readGlobalShuffleAnswersSettingsFromUI() {
+    state.globalShuffleAnswers.enabled = !!elements.globalShuffleAnswers?.checked;
+    syncGlobalShuffleAnswersSettingsUI();
+    saveGlobalShuffleAnswersSettings();
+}
+
 function canPersistQuestionStarState(question = state.questionQueue[state.currentIndex]) {
     return !!(state.auth.client && state.auth.user?.id && question?.sourceQuestionId);
 }
@@ -10670,6 +10714,24 @@ function updateShuffleAnswersAvailability() {
     }
 }
 
+function updateGlobalShuffleAnswersAvailability() {
+    const globalShuffleAnswersCheckbox = elements.globalShuffleAnswers;
+    const globalShuffleAnswersSetting = document.getElementById('globalShuffleAnswersSetting');
+    const supportsGlobalAnswerShuffle = state.questions.some(isGlobalShuffleAnswersSupportedQuestion);
+
+    if (globalShuffleAnswersCheckbox) {
+        globalShuffleAnswersCheckbox.disabled = !supportsGlobalAnswerShuffle;
+    }
+
+    if (globalShuffleAnswersSetting) {
+        globalShuffleAnswersSetting.classList.toggle('disabled-setting', !supportsGlobalAnswerShuffle);
+    }
+
+    if (!supportsGlobalAnswerShuffle && globalShuffleAnswersCheckbox) {
+        globalShuffleAnswersCheckbox.checked = false;
+    }
+}
+
 function updateFlashcardFrontSettingVisibility() {
     if (!elements.flashcardFrontSetting) return;
     elements.flashcardFrontSetting.classList.toggle('hidden', !hasFlashcardsInDeck());
@@ -10769,8 +10831,10 @@ function updateSettingsAvailability() {
     updateAutoStarAvailability();
     updateUnstarOnWrongAvailability();
     syncHideAnswerFeedbackSettingsUI();
+    syncGlobalShuffleAnswersSettingsUI();
     updateShuffleQuestionsAvailability();
     updateShuffleAnswersAvailability();
+    updateGlobalShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
     updateNavigationButtons();
@@ -12734,6 +12798,105 @@ function showQuestion() {
 }
 
 // ================= MULTIPLE CHOICE =================
+function isGlobalShuffleAnswersSupportedQuestion(question = {}) {
+    return question?.type === 'multiple choice' || question?.type === 'diagrams';
+}
+
+function isGlobalShuffleAnswersEnabled() {
+    return !!state.globalShuffleAnswers.enabled;
+}
+
+function getMultipleChoiceOptionEntries(question = {}) {
+    return (question.options || []).map((optionText, index) => ({
+        text: normalizeSheetText(optionText),
+        image: normalizeSheetText((question.optionImages || [])[index]),
+        explanation: normalizeSheetText((question.explanations || [])[index])
+    })).filter(entry => entry.text || entry.image);
+}
+
+function getMultipleChoiceOptionValue(entry = {}) {
+    return normalizeSheetText(entry.text) || normalizeSheetText(entry.image);
+}
+
+function getMultipleChoiceOptionKey(entry = {}) {
+    return getMultipleChoiceOptionValue(entry).toLocaleLowerCase();
+}
+
+function getQuestionGlobalShuffleKey(question = {}) {
+    return normalizeSheetText(question?.id || question?.sourceQuestionId);
+}
+
+function findCorrectMultipleChoiceEntry(question = {}, optionEntries = []) {
+    const correctValue = normalizeSheetText(question.correct);
+    if (!correctValue) return null;
+
+    const match = optionEntries.find(entry => getMultipleChoiceOptionValue(entry) === correctValue);
+    if (match) return { ...match };
+
+    return {
+        text: correctValue,
+        image: '',
+        explanation: ''
+    };
+}
+
+function buildGlobalShuffleAnswerEntries(question = {}, localOptionEntries = []) {
+    if (!isGlobalShuffleAnswersEnabled() || !isGlobalShuffleAnswersSupportedQuestion(question)) {
+        return [...localOptionEntries];
+    }
+
+    const correctEntry = findCorrectMultipleChoiceEntry(question, localOptionEntries);
+    const correctValue = normalizeSheetText(question.correct);
+    const targetCount = Math.max(localOptionEntries.length, 1);
+
+    if (!correctEntry || !correctValue || targetCount <= 1) {
+        return [...localOptionEntries];
+    }
+
+    const currentQuestionKey = getQuestionGlobalShuffleKey(question);
+    const selected = [{ ...correctEntry }];
+    const usedKeys = new Set([getMultipleChoiceOptionKey(correctEntry)]);
+
+    const sourceQuestions = (state.questions.length ? state.questions : state.questionQueue)
+        .filter(candidate => {
+            if (!isGlobalShuffleAnswersSupportedQuestion(candidate)) return false;
+            if (candidate.type !== question.type) return false;
+            const candidateKey = getQuestionGlobalShuffleKey(candidate);
+            return !currentQuestionKey || candidateKey !== currentQuestionKey;
+        });
+
+    const globalDecoys = [];
+    sourceQuestions.forEach(candidate => {
+        getMultipleChoiceOptionEntries(candidate).forEach(entry => {
+            const value = getMultipleChoiceOptionValue(entry);
+            const key = getMultipleChoiceOptionKey(entry);
+            if (!value || value === correctValue || usedKeys.has(key)) return;
+            usedKeys.add(key);
+            globalDecoys.push({ ...entry });
+        });
+    });
+
+    shuffleArray(globalDecoys);
+
+    while (selected.length < targetCount && globalDecoys.length) {
+        selected.push(globalDecoys.shift());
+    }
+
+    if (selected.length < targetCount) {
+        localOptionEntries.forEach(entry => {
+            if (selected.length >= targetCount) return;
+            const value = getMultipleChoiceOptionValue(entry);
+            const key = getMultipleChoiceOptionKey(entry);
+            if (!value || value === correctValue || usedKeys.has(key)) return;
+            usedKeys.add(key);
+            selected.push({ ...entry });
+        });
+    }
+
+    shuffleArray(selected);
+    return selected;
+}
+
 function ensureMultipleChoiceOptionBlocks(count) {
     const container = elements.optionsContainer;
     const getBlocks = () => Array.from(container.querySelectorAll('.option-block'));
@@ -12764,11 +12927,7 @@ function showMC(q) {
     const container = elements.optionsContainer;
     container.style.display = 'flex';
 
-    let optionEntries = (q.options || []).map((optionText, index) => ({
-        text: normalizeSheetText(optionText),
-        image: normalizeSheetText((q.optionImages || [])[index]),
-        explanation: normalizeSheetText((q.explanations || [])[index])
-    })).filter(entry => entry.text || entry.image);
+    let optionEntries = buildGlobalShuffleAnswerEntries(q, getMultipleChoiceOptionEntries(q));
 
     if (document.getElementById('shuffleAnswers').checked) {
         shuffleArray(optionEntries);
@@ -14520,6 +14679,16 @@ if (elements.hideAnswerFeedbackMode) {
         updateSettingsAvailability();
         updateProgress();
         if (isQuizFinished()) {
+            showQuestion();
+        }
+    });
+}
+
+if (elements.globalShuffleAnswers) {
+    elements.globalShuffleAnswers.addEventListener('change', () => {
+        readGlobalShuffleAnswersSettingsFromUI();
+        updateSettingsAvailability();
+        if (!state.questionAnswered && isGlobalShuffleAnswersSupportedQuestion(state.questionQueue[state.currentIndex])) {
             showQuestion();
         }
     });
@@ -16681,6 +16850,7 @@ window.addEventListener('orientationchange', handleViewportChange);
         loadAutoStarSettings();
         loadUnstarOnWrongSettings();
         loadHideAnswerFeedbackSettings();
+        loadGlobalShuffleAnswersSettings();
         updateAuthUI();
         await bootstrapSupabase();
 
