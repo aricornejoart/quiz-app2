@@ -24,6 +24,7 @@ MODIFICATION RULES FOR THIS APP
         studyTimerStorageKey: 'studyBunnyTimerSettingsV1',
         autoStarStorageKey: 'studyBunnyAutoStarSettingsV1',
         unstarOnWrongStorageKey: 'studyBunnyUnstarOnWrongSettingsV1',
+        hideAnswerFeedbackStorageKey: 'studyBunnyHideAnswerFeedbackSettingsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
         dataSource: 'google_sheets',
@@ -124,6 +125,9 @@ MODIFICATION RULES FOR THIS APP
         unstarOnWrong: {
             enabled: false,
             pendingQuestionKeys: new Set()
+        },
+        answerFeedback: {
+            hidden: false
         },
         isAppFullscreen: false,
 
@@ -428,6 +432,7 @@ MODIFICATION RULES FOR THIS APP
         autoStarCustomRow: document.getElementById('autoStarCustomRow'),
         autoStarDetails: document.getElementById('autoStarDetails'),
         unstarOnWrongMode: document.getElementById('unstarOnWrongMode'),
+        hideAnswerFeedbackMode: document.getElementById('hideAnswerFeedbackMode'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
         questionStarBtn: document.getElementById('questionStarBtn'),
@@ -9890,6 +9895,10 @@ function isLearningResourcesMode() {
     return document.getElementById('learningResourcesMode').checked;
 }
 
+function isAnswerFeedbackHidden() {
+    return !!state.answerFeedback.hidden;
+}
+
 function isExcludeStarredEnabled() {
     return !!elements.excludeStarredQuestions?.checked;
 }
@@ -10373,6 +10382,69 @@ function maybeUnstarQuestionFromOutcome(question, isCorrect) {
     persistUnstarOnWrongForQuestion(question);
 }
 
+function serializeHideAnswerFeedbackSettings() {
+    return {
+        hidden: !!state.answerFeedback.hidden
+    };
+}
+
+function saveHideAnswerFeedbackSettings() {
+    try {
+        localStorage.setItem(CONFIG.hideAnswerFeedbackStorageKey, JSON.stringify(serializeHideAnswerFeedbackSettings()));
+    } catch (err) {
+        console.warn('Could not save Hide Feedback settings:', err);
+    }
+}
+
+function loadHideAnswerFeedbackSettings() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(CONFIG.hideAnswerFeedbackStorageKey) || 'null');
+    } catch (err) {
+        saved = null;
+    }
+
+    if (saved && typeof saved === 'object') {
+        state.answerFeedback.hidden = !!saved.hidden;
+    }
+
+    syncHideAnswerFeedbackSettingsUI();
+}
+
+function syncHideAnswerFeedbackSettingsUI() {
+    if (elements.hideAnswerFeedbackMode) elements.hideAnswerFeedbackMode.checked = !!state.answerFeedback.hidden;
+}
+
+function suppressVisibleAnswerFeedback() {
+    clearFeedback();
+    clearExplanations();
+    clearOptionFeedback();
+    clearOptionButtonStateClasses();
+
+    document.querySelectorAll('.hierarchy-feedback').forEach(fb => {
+        fb.innerText = '';
+        fb.classList.remove('correct-mark', 'incorrect-mark');
+    });
+
+    document.querySelectorAll('.hierarchy-item, .classify-item').forEach(item => {
+        item.classList.remove('option-correct', 'option-incorrect');
+    });
+
+    clearPendingLearningResource();
+    if (state.learningResourcesOverlayOpen) {
+        closeLearningResourcesOverlay();
+    }
+}
+
+function readHideAnswerFeedbackSettingsFromUI() {
+    state.answerFeedback.hidden = !!elements.hideAnswerFeedbackMode?.checked;
+    syncHideAnswerFeedbackSettingsUI();
+    saveHideAnswerFeedbackSettings();
+    if (isAnswerFeedbackHidden()) {
+        suppressVisibleAnswerFeedback();
+    }
+}
+
 function canPersistQuestionStarState(question = state.questionQueue[state.currentIndex]) {
     return !!(state.auth.client && state.auth.user?.id && question?.sourceQuestionId);
 }
@@ -10431,6 +10503,7 @@ function startProgressModeRetry() {
 }
 
 function canUseLearningResources() {
+    if (isAnswerFeedbackHidden()) return false;
     if (!isLearningResourcesMode()) return false;
     if (isMasteryCheckMode()) return true;
     return !isSpeedMode() && (isRetentionMode() || isRetryMode() || isProgressMode());
@@ -10443,21 +10516,31 @@ function hasFlashcardsInDeck() {
 function updateLearningResourcesAvailability() {
     const learningResourcesCheckbox = document.getElementById('learningResourcesMode');
     const learningResourcesSetting = document.getElementById('learningResourcesModeSetting');
+    const learningResourcesHelp = document.getElementById('learningResourcesModeHelp');
+    const feedbackHidden = isAnswerFeedbackHidden();
     const learningResourcesAllowed = isRetentionMode() || isRetryMode() || isMasteryCheckMode() || isProgressMode();
-    const learningResourcesDisabledForCompatibility = !learningResourcesAllowed || (isSpeedMode() && !isMasteryCheckMode());
+    const learningResourcesDisabledForCompatibility = feedbackHidden || !learningResourcesAllowed || (isSpeedMode() && !isMasteryCheckMode());
 
-    learningResourcesCheckbox.disabled = learningResourcesDisabledForCompatibility;
+    if (learningResourcesCheckbox) {
+        learningResourcesCheckbox.disabled = learningResourcesDisabledForCompatibility;
+    }
 
     if (learningResourcesSetting) {
         learningResourcesSetting.classList.toggle('disabled-setting', learningResourcesDisabledForCompatibility);
     }
 
-    if (!learningResourcesAllowed) {
-        learningResourcesCheckbox.checked = false;
+    if (learningResourcesHelp) {
+        learningResourcesHelp.innerText = feedbackHidden
+            ? 'Paused while Hide Feedback is on because wrong-answer resources would reveal missed questions.'
+            : 'Shows study support after a wrong answer when available.';
+    }
+
+    if (feedbackHidden || !learningResourcesAllowed) {
+        if (learningResourcesCheckbox) learningResourcesCheckbox.checked = false;
         clearPendingLearningResource();
     }
 
-    if (isSpeedMode() && !isMasteryCheckMode() && learningResourcesCheckbox.checked) {
+    if (isSpeedMode() && !isMasteryCheckMode() && learningResourcesCheckbox?.checked) {
         learningResourcesCheckbox.checked = false;
         clearPendingLearningResource();
     }
@@ -10685,6 +10768,7 @@ function updateSettingsAvailability() {
     updateStarredQuestionAvailability();
     updateAutoStarAvailability();
     updateUnstarOnWrongAvailability();
+    syncHideAnswerFeedbackSettingsUI();
     updateShuffleQuestionsAvailability();
     updateShuffleAnswersAvailability();
     updateFlashcardFrontSettingVisibility();
@@ -12318,6 +12402,11 @@ function setFeedback(text, isCorrect) {
     const fb = elements.progressSideFeedbackEl;
     if (!fb) return;
 
+    if (isAnswerFeedbackHidden()) {
+        clearFeedback();
+        return;
+    }
+
     fb.innerText = text;
     fb.classList.remove('correct', 'incorrect');
     fb.classList.add(isCorrect ? 'correct' : 'incorrect');
@@ -12443,13 +12532,21 @@ function updateProgress() {
     let completed = 0;
     let percent = 0;
     let useReviewProgressAppearance = false;
+    let overrideProgressText = '';
 
     if (isProgressMode()) {
         if (state.normalFinished) {
             const missedCount = getProgressMissedQuestions().length;
-            remaining = missedCount;
-            completed = total - missedCount;
-            percent = total > 0 ? (completed / total) * 100 : 0;
+            if (isAnswerFeedbackHidden()) {
+                remaining = 0;
+                completed = total;
+                percent = total > 0 ? 100 : 0;
+                overrideProgressText = missedCount > 0 ? 'Review ready' : 'Complete';
+            } else {
+                remaining = missedCount;
+                completed = total - missedCount;
+                percent = total > 0 ? (completed / total) * 100 : 0;
+            }
         } else {
             remaining = state.questionQueue.length - state.currentIndex;
             completed = total - remaining;
@@ -12489,7 +12586,7 @@ function updateProgress() {
     if (percent > 100) percent = 100;
 
     const timerText = getStudyTimerDisplayText();
-    const remainingText = isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`;
+    const remainingText = overrideProgressText || (isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`);
     elements.progressTextEl.innerText = timerText ? `${remainingText}  ${timerText}` : remainingText;
 
     if (progressFillEl) {
@@ -12510,9 +12607,12 @@ function renderProgressModeFinishState() {
     const missedQuestions = getProgressMissedQuestions();
     const missedCount = missedQuestions.length;
     const percent = getProgressScorePercent();
+    const hideFeedback = isAnswerFeedbackHidden();
 
     elements.questionTextEl.style.display = 'block';
-    elements.questionTextEl.innerText = percent >= 100 ? 'Progress Complete!' : (percent + '% complete');
+    elements.questionTextEl.innerText = hideFeedback
+        ? 'Progress Round Complete'
+        : (percent >= 100 ? 'Progress Complete!' : (percent + '% complete'));
     elements.optionsContainer.style.display = 'flex';
     elements.optionsContainer.innerHTML = '';
 
@@ -12522,11 +12622,19 @@ function renderProgressModeFinishState() {
     const message = document.createElement('div');
     message.className = 'progress-mode-message';
     if (missedCount > 0) {
-        const questionLabel = missedCount === 1 ? 'question' : 'questions';
-        const retryPrefix = state.progressRetryActive ? 'You still missed ' : 'You missed ';
-        message.innerText = retryPrefix + missedCount + ' ' + questionLabel + '. Try again with only the missed questions.';
+        if (hideFeedback) {
+            message.innerText = state.progressRetryActive
+                ? 'Review round complete. Continue with the remaining review set.'
+                : 'Round complete. Continue with the review set.';
+        } else {
+            const questionLabel = missedCount === 1 ? 'question' : 'questions';
+            const retryPrefix = state.progressRetryActive ? 'You still missed ' : 'You missed ';
+            message.innerText = retryPrefix + missedCount + ' ' + questionLabel + '. Try again with only the missed questions.';
+        }
     } else {
-        message.innerText = '100% complete. You finished this Progress Mode session.';
+        message.innerText = hideFeedback
+            ? 'Progress session complete.'
+            : '100% complete. You finished this Progress Mode session.';
     }
     summary.appendChild(message);
 
@@ -12534,7 +12642,7 @@ function renderProgressModeFinishState() {
         const retryBtn = document.createElement('button');
         retryBtn.type = 'button';
         retryBtn.className = 'auth-action-btn progress-mode-retry-btn';
-        retryBtn.innerText = 'Try Again';
+        retryBtn.innerText = hideFeedback ? 'Continue Review' : 'Try Again';
         retryBtn.addEventListener('click', startProgressModeRetry);
         summary.appendChild(retryBtn);
     }
@@ -12831,6 +12939,7 @@ function checkAnswer(selected, explanations) {
 
     const q = state.questionQueue[state.currentIndex];
     const isCorrect = selected === q.correct;
+    const hideFeedback = isAnswerFeedbackHidden();
 
     elements.optionsContainer.querySelectorAll('.option-block').forEach((block, i) => {
         if (block.style.display === 'none') return;
@@ -12840,21 +12949,23 @@ function checkAnswer(selected, explanations) {
         if (!btn || !explanationEl || !feedbackEl) return;
 
         btn.classList.remove('option-correct', 'option-incorrect');
-        setMathChemFormattedText(explanationEl, explanations[i] || '');
+        setMathChemFormattedText(explanationEl, hideFeedback ? '' : (explanations[i] || ''));
         const optionValue = btn.dataset.optionValue || btn.innerText;
 
-        if (optionValue === q.correct) {
-            btn.classList.add('option-correct');
-        } else if (optionValue === selected && !isCorrect) {
-            btn.classList.add('option-incorrect');
+        if (!hideFeedback) {
+            if (optionValue === q.correct) {
+                btn.classList.add('option-correct');
+            } else if (optionValue === selected && !isCorrect) {
+                btn.classList.add('option-incorrect');
+            }
         }
 
         feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
 
-        if (optionValue === q.correct) {
+        if (!hideFeedback && optionValue === q.correct) {
             feedbackEl.innerText = '✔';
             feedbackEl.classList.add('correct-mark');
-        } else if (optionValue === selected && !isCorrect) {
+        } else if (!hideFeedback && optionValue === selected && !isCorrect) {
             feedbackEl.innerText = '✖';
             feedbackEl.classList.add('incorrect-mark');
         } else {
@@ -13419,6 +13530,7 @@ function showHierarchy(q) {
 
         const rows = [...container.children];
         let allCorrect = true;
+        const hideFeedback = isAnswerFeedbackHidden();
 
         rows.forEach((r, i) => {
             const itemEl = r.querySelector('.hierarchy-item');
@@ -13429,13 +13541,21 @@ function showHierarchy(q) {
             fb.classList.remove('correct-mark', 'incorrect-mark');
 
             if (q.options.indexOf(text) === q.correctOrder[i] - 1) {
-                itemEl.classList.add('option-correct');
-                fb.innerText = '✔';
-                fb.classList.add('correct-mark');
+                if (!hideFeedback) {
+                    itemEl.classList.add('option-correct');
+                    fb.innerText = '✔';
+                    fb.classList.add('correct-mark');
+                } else {
+                    fb.innerText = '';
+                }
             } else {
-                itemEl.classList.add('option-incorrect');
-                fb.innerText = '✖';
-                fb.classList.add('incorrect-mark');
+                if (!hideFeedback) {
+                    itemEl.classList.add('option-incorrect');
+                    fb.innerText = '✖';
+                    fb.classList.add('incorrect-mark');
+                } else {
+                    fb.innerText = '';
+                }
                 allCorrect = false;
             }
         });
@@ -13502,7 +13622,7 @@ function showClassify(q) {
     const placements = new Map();
     const progressLockedCorrectKeys = new Set();
     const progressWrongKeys = new Set();
-    const useProgressClassifyRetry = isProgressMode();
+    const shouldUseProgressClassifyRetry = () => isProgressMode() && !isAnswerFeedbackHidden();
     let selectedItemKey = null;
     let suppressClickRuntimeKey = null;
     let progressClassifyNeedsRevision = false;
@@ -13608,7 +13728,7 @@ function showClassify(q) {
     }
 
     function refreshClassifySubmitLabel() {
-        if (!useProgressClassifyRetry) {
+        if (!shouldUseProgressClassifyRetry()) {
             submit.innerText = 'Submit';
             return;
         }
@@ -13617,7 +13737,7 @@ function showClassify(q) {
     }
 
     function markClassifyItemRevised(runtimeKey) {
-        if (!useProgressClassifyRetry) return;
+        if (!shouldUseProgressClassifyRetry()) return;
         if (progressLockedCorrectKeys.has(runtimeKey)) return;
 
         progressWrongKeys.delete(runtimeKey);
@@ -13628,7 +13748,7 @@ function showClassify(q) {
     function moveSelectedItemTo(classificationId) {
         if (state.questionAnswered) return;
         if (!selectedItemKey) return;
-        if (useProgressClassifyRetry && progressLockedCorrectKeys.has(selectedItemKey)) return;
+        if (shouldUseProgressClassifyRetry() && progressLockedCorrectKeys.has(selectedItemKey)) return;
 
         const runtimeKey = selectedItemKey;
         placements.set(runtimeKey, normalizeClassificationId(classificationId));
@@ -13638,7 +13758,7 @@ function showClassify(q) {
     }
 
     function handleDroppedItem(runtimeKey, classificationId) {
-        if (useProgressClassifyRetry && progressLockedCorrectKeys.has(runtimeKey)) return;
+        if (shouldUseProgressClassifyRetry() && progressLockedCorrectKeys.has(runtimeKey)) return;
 
         placements.set(runtimeKey, normalizeClassificationId(classificationId));
         markClassifyItemRevised(runtimeKey);
@@ -13651,8 +13771,8 @@ function showClassify(q) {
         btn.className = 'classify-item';
         btn.dataset.runtimeKey = item.runtimeKey;
         btn.setAttribute('role', 'button');
-        const isProgressLockedCorrect = useProgressClassifyRetry && progressLockedCorrectKeys.has(item.runtimeKey);
-        const isProgressWrong = useProgressClassifyRetry && progressWrongKeys.has(item.runtimeKey);
+        const isProgressLockedCorrect = shouldUseProgressClassifyRetry() && progressLockedCorrectKeys.has(item.runtimeKey);
+        const isProgressWrong = shouldUseProgressClassifyRetry() && progressWrongKeys.has(item.runtimeKey);
 
         btn.setAttribute('tabindex', state.questionAnswered || isProgressLockedCorrect ? '-1' : '0');
         btn.setAttribute('aria-label', item.ariaLabel || 'Classify item');
@@ -13710,18 +13830,20 @@ function showClassify(q) {
             btn.classList.add('selected');
         }
 
-        if (isProgressLockedCorrect) {
-            btn.classList.add('option-correct');
-        } else if (isProgressWrong) {
-            btn.classList.add('option-incorrect');
-        } else if (state.questionAnswered) {
-            const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
-            const correctId = normalizeClassificationId(item.correctClassificationId);
-
-            if (placedId && placedId === correctId) {
+        if (!isAnswerFeedbackHidden()) {
+            if (isProgressLockedCorrect) {
                 btn.classList.add('option-correct');
-            } else {
+            } else if (isProgressWrong) {
                 btn.classList.add('option-incorrect');
+            } else if (state.questionAnswered) {
+                const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
+                const correctId = normalizeClassificationId(item.correctClassificationId);
+
+                if (placedId && placedId === correctId) {
+                    btn.classList.add('option-correct');
+                } else {
+                    btn.classList.add('option-incorrect');
+                }
             }
         }
 
@@ -13940,7 +14062,7 @@ function showClassify(q) {
         if (state.questionAnswered) return;
         if (isRetentionMode() && state.retentionAnswerLocked) return;
 
-        if (useProgressClassifyRetry && progressClassifyNeedsRevision) {
+        if (shouldUseProgressClassifyRetry() && progressClassifyNeedsRevision) {
             progressClassifyNeedsRevision = false;
             refreshClassifySubmitLabel();
             setFeedback('Move the red items, then submit again.', false);
@@ -13950,7 +14072,7 @@ function showClassify(q) {
         selectedItemKey = null;
         cleanupDragState();
 
-        if (useProgressClassifyRetry) {
+        if (shouldUseProgressClassifyRetry()) {
             let placedAnyThisAttempt = false;
 
             items.forEach(item => {
@@ -14389,6 +14511,17 @@ if (elements.unstarOnWrongMode) {
     elements.unstarOnWrongMode.addEventListener('change', () => {
         readUnstarOnWrongSettingsFromUI();
         updateSettingsAvailability();
+    });
+}
+
+if (elements.hideAnswerFeedbackMode) {
+    elements.hideAnswerFeedbackMode.addEventListener('change', () => {
+        readHideAnswerFeedbackSettingsFromUI();
+        updateSettingsAvailability();
+        updateProgress();
+        if (isQuizFinished()) {
+            showQuestion();
+        }
     });
 }
 
@@ -16547,6 +16680,7 @@ window.addEventListener('orientationchange', handleViewportChange);
         loadStudyTimerSettings();
         loadAutoStarSettings();
         loadUnstarOnWrongSettings();
+        loadHideAnswerFeedbackSettings();
         updateAuthUI();
         await bootstrapSupabase();
 
