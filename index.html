@@ -448,6 +448,29 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card" id="onlyStarredQuestionsSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="onlyStarredQuestions">Only Starred</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="onlyStarredQuestionsHelp"
+                    aria-label="About Only Starred"
+                    aria-expanded="false"
+                    aria-controls="onlyStarredQuestionsHelp"
+                  >?</button>
+                </div>
+                <div id="onlyStarredQuestionsHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Shows only starred questions in the active study deck without removing saved stars.
+                </div>
+                <label class="toggle-switch" for="onlyStarredQuestions" aria-label="Only Starred toggle">
+                  <input type="checkbox" id="onlyStarredQuestions">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
               <div id="flashcardFrontSetting" class="flashcard-setting-group settings-full-span hidden">
                 <div class="flashcard-setting-title">Flashcard Front</div>
                 <div class="flashcard-setting-buttons">
@@ -822,6 +845,10 @@ MODIFICATION RULES FOR THIS APP
                       <label class="auth-field studio-question-search-field">
                         <span>Search questions</span>
                         <input id="studioQuestionSearchInput" type="text" autocomplete="off" placeholder="Search term, definition, or prompt">
+                      </label>
+                      <label class="studio-question-starred-filter" for="studioQuestionStarredOnly">
+                        <input id="studioQuestionStarredOnly" type="checkbox">
+                        <span>Starred only</span>
                       </label>
                       <div class="studio-question-jump-group">
                         <label class="auth-field studio-question-jump-field">

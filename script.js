@@ -206,6 +206,7 @@ MODIFICATION RULES FOR THIS APP
             lastError: '',
             starringInFlight: false,
             studioQuestionSearchQuery: '',
+            studioQuestionStarredOnly: false,
             studioFocusedQuestionId: '',
             studioHasUnsavedChanges: false,
             studioAutosaveTimerId: null,
@@ -310,6 +311,7 @@ MODIFICATION RULES FOR THIS APP
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
         studioQuestionList: document.getElementById('studioQuestionList'),
         studioQuestionSearchInput: document.getElementById('studioQuestionSearchInput'),
+        studioQuestionStarredOnly: document.getElementById('studioQuestionStarredOnly'),
         studioQuestionJumpInput: document.getElementById('studioQuestionJumpInput'),
         studioQuestionJumpBtn: document.getElementById('studioQuestionJumpBtn'),
         studioUnsavedChangesIndicator: document.getElementById('studioUnsavedChangesIndicator'),
@@ -440,6 +442,7 @@ MODIFICATION RULES FOR THIS APP
         globalShuffleAnswers: document.getElementById('globalShuffleAnswers'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
+        onlyStarredQuestions: document.getElementById('onlyStarredQuestions'),
         questionStarBtn: document.getElementById('questionStarBtn'),
         learningResourcesOverlay: document.getElementById('learningResourcesOverlay'),
         closeLearningResourcesBtn: document.getElementById('closeLearningResourcesBtn'),
@@ -3400,6 +3403,10 @@ MODIFICATION RULES FOR THIS APP
             state.sourceQuestions.forEach(applyReset);
             state.questions.forEach(applyReset);
             state.questionQueue.forEach(applyReset);
+            if (state.auth.editingQuizId === normalizedQuizId) {
+                state.auth.studioQuizQuestions.forEach(question => { question.isStarred = false; });
+                renderStudioQuestionList();
+            }
             syncQuestionStarButton();
             updateProgress();
 
@@ -3407,6 +3414,116 @@ MODIFICATION RULES FOR THIS APP
         } catch (error) {
             console.error('Could not reset starred questions:', error);
             setCreatorStatus(error.message || 'Could not reset starred questions.', 'error');
+        }
+    }
+
+
+    async function getManagedQuizQuestionIds(managedQuiz, quizId = '') {
+        let questionIds = Array.isArray(managedQuiz?.questionIds) ? managedQuiz.questionIds.filter(Boolean) : [];
+        if (questionIds.length || !state.auth.client || !quizId) return questionIds;
+
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .select('id')
+            .eq('quiz_id', quizId);
+        if (error) throw error;
+        return (data || []).map(row => row.id).filter(Boolean);
+    }
+
+    async function loadStarredQuestionIdsForQuiz(managedQuiz, quizId = '') {
+        const questionIds = await getManagedQuizQuestionIds(managedQuiz, quizId);
+        if (!questionIds.length || !state.auth.client || !state.auth.user?.id) return [];
+
+        const { data, error } = await state.auth.client
+            .from('user_question_state')
+            .select('question_id, is_starred')
+            .eq('user_id', state.auth.user.id)
+            .eq('is_starred', true)
+            .in('question_id', questionIds);
+        if (error) throw error;
+
+        const validQuestionIds = new Set(questionIds.map(id => normalizeSheetText(id)).filter(Boolean));
+        return Array.from(new Set((data || [])
+            .map(row => normalizeSheetText(row.question_id))
+            .filter(questionId => questionId && validQuestionIds.has(questionId))));
+    }
+
+    async function deleteStarredQuestionsForQuiz(quizId = '') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        if (!normalizedQuizId || !state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before deleting starred questions.', 'error');
+            return;
+        }
+
+        const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
+        if (!managedQuiz) {
+            setCreatorStatus('Could not find that quiz.', 'error');
+            return;
+        }
+
+        let starredQuestionIds = [];
+        try {
+            starredQuestionIds = await loadStarredQuestionIdsForQuiz(managedQuiz, normalizedQuizId);
+        } catch (error) {
+            console.error('Could not load starred questions before delete:', error);
+            setCreatorStatus(error.message || 'Could not load starred questions for this quiz.', 'error');
+            return;
+        }
+
+        if (!starredQuestionIds.length) {
+            setCreatorStatus('This quiz has no starred questions to delete.', 'error');
+            return;
+        }
+
+        const countLabel = starredQuestionIds.length === 1 ? '1 starred question' : `${starredQuestionIds.length} starred questions`;
+        if (!confirm(`Delete ${countLabel} from "${managedQuiz.name || 'this quiz'}"? This cannot be undone.`)) {
+            return;
+        }
+
+        setCreatorStatus('Deleting starred questions...');
+
+        try {
+            const mediaRefsToDelete = new Set();
+            for (let index = 0; index < starredQuestionIds.length; index += 1) {
+                const refs = await getQuestionMediaReferences(starredQuestionIds[index]);
+                refs.forEach(ref => mediaRefsToDelete.add(ref));
+            }
+
+            const { error } = await state.auth.client
+                .from('questions')
+                .delete()
+                .in('id', starredQuestionIds);
+            if (error) throw error;
+
+            await deleteSupabaseMediaReferences(mediaRefsToDelete);
+
+            const deletedIdSet = new Set(starredQuestionIds.map(id => normalizeSheetText(id)).filter(Boolean));
+            const removeDeletedSourceQuestion = question => !deletedIdSet.has(normalizeSheetText(question?.sourceQuestionId));
+            state.sourceQuestions = state.sourceQuestions.filter(removeDeletedSourceQuestion);
+            state.questions = state.questions.filter(removeDeletedSourceQuestion);
+            state.questionQueue = state.questionQueue.filter(removeDeletedSourceQuestion);
+
+            if (state.auth.editingQuizId === normalizedQuizId) {
+                const remainingRows = await loadStudioQuestionListForQuiz(normalizedQuizId);
+                const nextRow = remainingRows.find(row => row.id === state.auth.editingQuestionId) || remainingRows[0] || null;
+                if (nextRow) {
+                    await loadStudioQuestionIntoEditor(nextRow.id, { suppressStatus: true, force: true });
+                } else {
+                    clearStudioQuestionInputs();
+                }
+            }
+
+            syncQuestionStarButton();
+            updateProgress();
+            await refreshStudioManagementData();
+            const selectedQuizValue = elements.quizSelector?.value || '';
+            const selectedWasTargetQuiz = selectedQuizValue === `sb:${normalizedQuizId}`;
+            await refreshQuizCatalog({ selectQuizId: selectedWasTargetQuiz ? `sb:${normalizedQuizId}` : selectedQuizValue, loadSelectedQuiz: selectedWasTargetQuiz, clearIfMissing: false });
+
+            setCreatorStatus(`${countLabel} deleted.`, 'success');
+        } catch (error) {
+            console.error('Could not delete starred questions:', error);
+            setCreatorStatus(error.message || 'Could not delete starred questions.', 'error');
         }
     }
 
@@ -3464,6 +3581,7 @@ MODIFICATION RULES FOR THIS APP
                       <button type="button" class="auth-action-btn auth-secondary-btn studio-quiz-actions-toggle" data-action="toggle-quiz-actions" aria-haspopup="menu" aria-expanded="${actionMenuOpen ? 'true' : 'false'}" aria-label="More actions for ${escapeHtml(quiz.name)}">...</button>
                       <div class="studio-quiz-actions-menu${actionMenuOpen ? ' open' : ''}" role="menu">
                         <button type="button" role="menuitem" data-action="reset-starred">Reset Stars</button>
+                        <button type="button" role="menuitem" data-action="delete-starred">Delete Stars</button>
                         <button type="button" role="menuitem" data-action="duplicate-quiz">Duplicate</button>
                         <button type="button" role="menuitem" data-action="delete-quiz">Delete</button>
                       </div>
@@ -5591,6 +5709,7 @@ MODIFICATION RULES FOR THIS APP
         const focusQuestionId = normalizeSheetText(state.auth.studioFocusedQuestionId || '');
         const focusModeActive = !!focusQuestionId;
         const focusNewDraftActive = focusModeActive && focusQuestionId === STUDIO_FOCUS_NEW_QUESTION_ID;
+        const starredOnlyFilter = !!state.auth.studioQuestionStarredOnly;
         let filteredQuestions = displayRows;
 
         if (focusModeActive) {
@@ -5601,20 +5720,27 @@ MODIFICATION RULES FOR THIS APP
             filteredQuestions = focusNewDraftActive
                 ? []
                 : displayRows.filter(questionRow => questionRow.id === focusQuestionId);
-        } else if (query) {
-            filteredQuestions = displayRows.filter((questionRow, filteredIndex) => {
-                let previewIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
-                if (previewIndex === -1) previewIndex = filteredIndex;
-                const preview = getStudioQuestionPreviewLabel(questionRow, previewIndex).toLowerCase();
-                return preview.includes(query);
-            });
+        } else {
+            if (starredOnlyFilter) {
+                filteredQuestions = filteredQuestions.filter(questionRow => !!questionRow.isStarred);
+            }
+            if (query) {
+                filteredQuestions = filteredQuestions.filter((questionRow, filteredIndex) => {
+                    let previewIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
+                    if (previewIndex === -1) previewIndex = filteredIndex;
+                    const preview = getStudioQuestionPreviewLabel(questionRow, previewIndex).toLowerCase();
+                    return preview.includes(query);
+                });
+            }
         }
 
         const editingType = getStudioCurrentQuizType();
         if (!filteredQuestions.length && !focusNewDraftActive) {
             const emptyLabel = focusModeActive
                 ? '<div class="studio-list-empty">Focused question is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
-                : '<div class="studio-list-empty">No questions match your search.</div>';
+                : (starredOnlyFilter && !query
+                    ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
+                    : '<div class="studio-list-empty">No questions match your search.</div>');
             elements.studioQuestionList.innerHTML = emptyLabel;
             updateStudioQuestionNavigationUI();
             return;
@@ -5638,6 +5764,10 @@ MODIFICATION RULES FOR THIS APP
             const focusControlHtml = focusModeActive
                 ? '<span class="studio-question-focus-badge">Focused</span><button type="button" class="studio-question-focus-btn" data-studio-show-all-questions="true">Show All</button>'
                 : `<button type="button" class="studio-question-focus-btn" data-studio-focus-question-id="${escapeHtml(questionRow.id)}">Focus</button>`;
+            const isStarredRow = !!questionRow.isStarred;
+            const starBadgeHtml = isStarredRow
+                ? '<span class="studio-question-list-star" title="Starred question" aria-label="Starred question">★</span>'
+                : '';
 
             let itemContent = '';
             if (editingType === 'flashcard' && questionType === 'flashcard') {
@@ -5691,10 +5821,11 @@ MODIFICATION RULES FOR THIS APP
             return `
                 <div class="studio-question-list-row">
                   <div
-                    class="studio-question-list-item${isActive ? ' active' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
+                    class="studio-question-list-item${isActive ? ' active' : ''}${isStarredRow ? ' starred' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
                     data-studio-row-question-id="${escapeHtml(questionRow.id)}"
                     ${isLocalFlashcardRow ? '' : rowDropAttr}
                   >
+                    ${starBadgeHtml}
                     <div class="studio-question-row-controls" aria-label="${escapeHtml(navigationName)} controls">
                       <span class="studio-question-chip">${escapeHtml(chipLabel)}</span>
                       <button
@@ -5834,9 +5965,21 @@ MODIFICATION RULES FOR THIS APP
         if (error) throw error;
 
         const rows = (data || []);
+        const questionIds = rows.map(row => row.id).filter(Boolean);
         const flashcardQuestionIds = rows.filter(row => row.question_type === 'flashcard').map(row => row.id);
-        const flashcardDetails = flashcardQuestionIds.length ? await loadFlashcardDetailsByQuestionIds(flashcardQuestionIds) : [];
+        const [flashcardDetails, starredStateRows] = await Promise.all([
+            flashcardQuestionIds.length ? loadFlashcardDetailsByQuestionIds(flashcardQuestionIds) : [],
+            (questionIds.length && state.auth.user?.id)
+                ? state.auth.client
+                    .from('user_question_state')
+                    .select('question_id, is_starred')
+                    .eq('user_id', state.auth.user.id)
+                    .in('question_id', questionIds)
+                : Promise.resolve({ data: [], error: null })
+        ]);
+        if (starredStateRows?.error) throw starredStateRows.error;
         const flashcardMap = new Map((flashcardDetails || []).map(row => [row.question_id, row]));
+        const starredMap = new Map((starredStateRows?.data || []).map(row => [normalizeSheetText(row.question_id), !!row.is_starred]));
 
         state.auth.studioQuizQuestions = rows.map(row => ({
             id: row.id,
@@ -5847,7 +5990,8 @@ MODIFICATION RULES FOR THIS APP
             definition_html: normalizeSheetText(flashcardMap.get(row.id)?.definition_html),
             question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
             image_url: normalizeSheetText(row.image_url),
-            sort_order: Number(row.sort_order ?? 0)
+            sort_order: Number(row.sort_order ?? 0),
+            isStarred: !!starredMap.get(normalizeSheetText(row.id))
         }));
         renderStudioQuestionList();
         return state.auth.studioQuizQuestions;
@@ -8740,8 +8884,10 @@ MODIFICATION RULES FOR THIS APP
                 questionOverride: false
             });
             state.auth.studioQuestionSearchQuery = '';
+            state.auth.studioQuestionStarredOnly = false;
             state.auth.studioFocusedQuestionId = '';
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+            if (elements.studioQuestionStarredOnly) elements.studioQuestionStarredOnly.checked = false;
             if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
             if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
@@ -9988,6 +10134,10 @@ function isExcludeStarredEnabled() {
     return !!elements.excludeStarredQuestions?.checked;
 }
 
+function isOnlyStarredEnabled() {
+    return !!elements.onlyStarredQuestions?.checked;
+}
+
 // ================= STUDY TIMER HELPERS =================
 function sanitizeStudyTimerSeconds(value, fallback = 60) {
     const parsed = Math.floor(Number(value));
@@ -10671,8 +10821,10 @@ function updateLearningResourcesAvailability() {
 }
 
 function updateStarredQuestionAvailability() {
-    const starSettingCard = document.getElementById('excludeStarredQuestionsSetting');
-    const starSettingHelp = document.getElementById('excludeStarredQuestionsHelp');
+    const excludeSettingCard = document.getElementById('excludeStarredQuestionsSetting');
+    const excludeSettingHelp = document.getElementById('excludeStarredQuestionsHelp');
+    const onlySettingCard = document.getElementById('onlyStarredQuestionsSetting');
+    const onlySettingHelp = document.getElementById('onlyStarredQuestionsHelp');
     const canUseStarred = !!(state.auth.client && state.auth.user?.id);
 
     if (elements.excludeStarredQuestions) {
@@ -10682,14 +10834,31 @@ function updateStarredQuestionAvailability() {
         }
     }
 
-    if (starSettingCard) {
-        starSettingCard.classList.toggle('disabled-setting', !canUseStarred);
+    if (elements.onlyStarredQuestions) {
+        elements.onlyStarredQuestions.disabled = !canUseStarred;
+        if (!canUseStarred) {
+            elements.onlyStarredQuestions.checked = false;
+        }
     }
 
-    if (starSettingHelp && !canUseStarred) {
-        starSettingHelp.innerText = 'Sign in to use starred-question memory.';
-    } else if (starSettingHelp) {
-        starSettingHelp.innerText = 'Hides starred questions from the active study deck without removing the saved stars.';
+    if (excludeSettingCard) {
+        excludeSettingCard.classList.toggle('disabled-setting', !canUseStarred);
+    }
+
+    if (onlySettingCard) {
+        onlySettingCard.classList.toggle('disabled-setting', !canUseStarred);
+    }
+
+    if (excludeSettingHelp && !canUseStarred) {
+        excludeSettingHelp.innerText = 'Sign in to use starred-question memory.';
+    } else if (excludeSettingHelp) {
+        excludeSettingHelp.innerText = 'Hides starred questions from the active study deck without removing the saved stars.';
+    }
+
+    if (onlySettingHelp && !canUseStarred) {
+        onlySettingHelp.innerText = 'Sign in to use starred-question memory.';
+    } else if (onlySettingHelp) {
+        onlySettingHelp.innerText = 'Shows only starred questions in the active study deck without removing saved stars.';
     }
 }
 
@@ -11480,10 +11649,13 @@ async function hydrateStarredQuestionState(questions) {
 
 function getFilteredSourceQuestions() {
     const sourceQuestions = Array.isArray(state.sourceQuestions) ? state.sourceQuestions : [];
-    if (!isExcludeStarredEnabled()) {
-        return [...sourceQuestions];
+    if (isOnlyStarredEnabled()) {
+        return sourceQuestions.filter(question => !!question.isStarred);
     }
-    return sourceQuestions.filter(question => !question.isStarred);
+    if (isExcludeStarredEnabled()) {
+        return sourceQuestions.filter(question => !question.isStarred);
+    }
+    return [...sourceQuestions];
 }
 
 function syncQuestionStarButton() {
@@ -11554,9 +11726,11 @@ function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestion
         state.normalFinished = false;
         state.retentionFinished = false;
         state.masteryCheckFinished = false;
-        state.emptyQuizMessage = isExcludeStarredEnabled() && state.sourceQuestions.length
-            ? 'All questions in this deck are currently starred and excluded.'
-            : 'This quiz has no questions.';
+        state.emptyQuizMessage = isOnlyStarredEnabled() && state.sourceQuestions.length
+            ? 'No starred questions are available in this deck.'
+            : (isExcludeStarredEnabled() && state.sourceQuestions.length
+                ? 'All questions in this deck are currently starred and excluded.'
+                : 'This quiz has no questions.');
     }
 
     updateSettingsAvailability();
@@ -12592,6 +12766,18 @@ function applyQuestionStarStateAcrossDeck(sourceQuestionId, isStarred) {
     state.sourceQuestions.forEach(applyState);
     state.questions.forEach(applyState);
     state.questionQueue.forEach(applyState);
+    if (Array.isArray(state.auth.studioQuizQuestions)) {
+        let changedStudioRow = false;
+        state.auth.studioQuizQuestions.forEach(question => {
+            if (normalizeSheetText(question?.id) === targetId) {
+                question.isStarred = !!isStarred;
+                changedStudioRow = true;
+            }
+        });
+        if (changedStudioRow && state.auth.quizStudioOpen) {
+            renderStudioQuestionList();
+        }
+    }
 }
 
 async function toggleCurrentQuestionStarState() {
@@ -14712,13 +14898,29 @@ document.getElementById('learningResourcesMode').onchange = e => {
     updateSettingsAvailability();
 };
 
+function handleStarredStudyFilterChange(changedFilter = '') {
+    if (changedFilter === 'exclude' && elements.excludeStarredQuestions?.checked && elements.onlyStarredQuestions) {
+        elements.onlyStarredQuestions.checked = false;
+    }
+    if (changedFilter === 'only' && elements.onlyStarredQuestions?.checked && elements.excludeStarredQuestions) {
+        elements.excludeStarredQuestions.checked = false;
+    }
+    updateSettingsAvailability();
+    if (!state.sourceQuestions.length) {
+        return;
+    }
+    applyFilteredQuestionsToSession({ resetSession: true });
+}
+
 if (elements.excludeStarredQuestions) {
     elements.excludeStarredQuestions.addEventListener('change', () => {
-        updateSettingsAvailability();
-        if (!state.sourceQuestions.length) {
-            return;
-        }
-        applyFilteredQuestionsToSession({ resetSession: true });
+        handleStarredStudyFilterChange('exclude');
+    });
+}
+
+if (elements.onlyStarredQuestions) {
+    elements.onlyStarredQuestions.addEventListener('change', () => {
+        handleStarredStudyFilterChange('only');
     });
 }
 
@@ -16454,6 +16656,16 @@ if (elements.studioQuizList) {
             return;
         }
 
+        if (action === 'delete-starred') {
+            state.auth.openQuizActionMenuId = '';
+            renderQuizManagementList();
+            deleteStarredQuestionsForQuiz(quizId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not delete starred questions.', 'error');
+            });
+            return;
+        }
+
         if (action === 'save-quiz') {
             const nameInput = item.querySelector('[data-quiz-rename-input]');
             const folderSelect = item.querySelector('[data-quiz-folder-select]');
@@ -16780,6 +16992,16 @@ if (elements.studioQuestionSearchInput) {
             state.auth.studioFocusedQuestionId = '';
         }
         state.auth.studioQuestionSearchQuery = nextQuery;
+        renderStudioQuestionList();
+    });
+}
+
+if (elements.studioQuestionStarredOnly) {
+    elements.studioQuestionStarredOnly.addEventListener('change', () => {
+        if (state.auth.studioFocusedQuestionId) {
+            state.auth.studioFocusedQuestionId = '';
+        }
+        state.auth.studioQuestionStarredOnly = !!elements.studioQuestionStarredOnly.checked;
         renderStudioQuestionList();
     });
 }
