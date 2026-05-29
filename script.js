@@ -2983,7 +2983,7 @@ MODIFICATION RULES FOR THIS APP
         const canStartAny = QUIZ_CHALLENGES.some(challenge => canQuizUseChallengeSettings(quiz, challenge));
         const disabledReason = canStartAny ? '' : 'Challenges require a compatible quiz type and settings so the challenge settings can be locked.';
         const tableNote = state.auth.quizChallengeUnavailable
-            ? 'Supabase challenge table is not available yet; install the Phase 22BG SQL before trophies can save permanently.'
+            ? 'Supabase challenge table needs the Phase 22DN SQL before all trophies can save permanently.'
             : '';
         const challengeRows = QUIZ_CHALLENGES.map(challenge => {
             const unlocked = hasQuizChallengeAchievement(quizId, challenge.key);
@@ -3308,7 +3308,7 @@ MODIFICATION RULES FOR THIS APP
         message.className = 'quiz-challenge-complete-message';
         message.innerText = saved
             ? `You mastered this challenge. ${challenge.title.replace(' Challenge', '')} Trophy unlocked.`
-            : `Challenge complete, but the trophy could not be saved permanently. Check the Supabase challenge table setup.`;
+            : `Challenge complete, but the trophy could not be saved permanently. Run the Phase 22DN Supabase challenge-key migration.`;
         summary.appendChild(message);
 
         if (grandUnlocked) {
