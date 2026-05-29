@@ -12392,14 +12392,11 @@ function expandQuestionsWithTetherBuildUp(selectedQuestions = [], sourceQuestion
 }
 
 function addMasteryCheckSegmentQuestionsWithTether(question) {
-    const segmentQuestions = expandQuestionsWithTetherBuildUp([question], state.questionQueue);
-    segmentQuestions.forEach(segmentQuestion => {
-        if (!segmentQuestion?.id) return;
-        if (state.masteryCheckSegmentIds.has(segmentQuestion.id)) return;
-        if (state.masteryCheckMasteredIds.has(segmentQuestion.id)) return;
-        state.masteryCheckSegmentIds.add(segmentQuestion.id);
-        state.masteryCheckSegmentQuestions.push(segmentQuestion);
-    });
+    if (!question?.id) return;
+    if (state.masteryCheckSegmentIds.has(question.id)) return;
+    if (state.masteryCheckMasteredIds.has(question.id)) return;
+    state.masteryCheckSegmentIds.add(question.id);
+    state.masteryCheckSegmentQuestions.push(question);
 }
 
 function updateBuildUpProgressIndicator() {
