@@ -224,29 +224,6 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
-              <div class="setting-card" id="rapidModeSetting">
-                <div class="setting-title-row">
-                  <label class="setting-title" for="rapidMode">Rapid</label>
-                  <button
-                    type="button"
-                    class="setting-help-btn"
-                    data-help-target="rapidModeHelp"
-                    aria-label="About Rapid"
-                    aria-expanded="false"
-                    aria-controls="rapidModeHelp"
-                  >?</button>
-                </div>
-                <div id="rapidModeHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Speeds up quiz flow with less interruption.
-                </div>
-                <label class="toggle-switch" for="rapidMode" aria-label="Rapid toggle">
-                  <input type="checkbox" id="rapidMode">
-                  <span class="toggle-track" aria-hidden="true">
-                    <span class="toggle-thumb"></span>
-                  </span>
-                </label>
-              </div>
-
               <div class="setting-card" id="progressModeSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="progressMode">Progress</label>
@@ -264,6 +241,29 @@ MODIFICATION RULES FOR THIS APP
                 </div>
                 <label class="toggle-switch" for="progressMode" aria-label="Progress toggle">
                   <input type="checkbox" id="progressMode">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
+              <div class="setting-card" id="rapidModeSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="rapidMode">Rapid</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="rapidModeHelp"
+                    aria-label="About Rapid"
+                    aria-expanded="false"
+                    aria-controls="rapidModeHelp"
+                  >?</button>
+                </div>
+                <div id="rapidModeHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Speeds up quiz flow with less interruption.
+                </div>
+                <label class="toggle-switch" for="rapidMode" aria-label="Rapid toggle">
+                  <input type="checkbox" id="rapidMode">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
                   </span>
@@ -846,10 +846,14 @@ MODIFICATION RULES FOR THIS APP
                         <span>Search questions</span>
                         <input id="studioQuestionSearchInput" type="text" autocomplete="off" placeholder="Search term, definition, or prompt">
                       </label>
-                      <label class="studio-question-starred-filter" for="studioQuestionStarredOnly">
-                        <input id="studioQuestionStarredOnly" type="checkbox">
-                        <span>Starred only</span>
-                      </label>
+                      <button
+                        id="studioQuestionStarredOnly"
+                        type="button"
+                        class="studio-question-starred-filter-btn"
+                        aria-pressed="false"
+                        title="Show only starred questions"
+                        aria-label="Show only starred questions"
+                      >Starred only</button>
                       <div class="studio-question-jump-group">
                         <label class="auth-field studio-question-jump-field">
                           <span>Jump to #</span>

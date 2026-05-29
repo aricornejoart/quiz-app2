@@ -5612,6 +5612,14 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function syncStudioQuestionStarredFilterButton() {
+        if (!elements.studioQuestionStarredOnly) return;
+        const active = !!state.auth.studioQuestionStarredOnly;
+        elements.studioQuestionStarredOnly.classList.toggle('active', active);
+        elements.studioQuestionStarredOnly.setAttribute('aria-pressed', active ? 'true' : 'false');
+        elements.studioQuestionStarredOnly.title = active ? 'Clear starred-only filter' : 'Show only starred questions';
+    }
+
     function setStudioQuestionFocusMode(questionId, options = {}) {
         const normalizedQuestionId = normalizeSheetText(questionId);
         if (!normalizedQuestionId) {
@@ -5684,6 +5692,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function renderStudioQuestionList() {
+        syncStudioQuestionStarredFilterButton();
         if (!elements.studioQuestionList) return;
 
         if (!state.auth.user?.id) {
@@ -6696,8 +6705,10 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizFolderSelect.value = '';
         }
         state.auth.studioQuestionSearchQuery = '';
+        state.auth.studioQuestionStarredOnly = false;
         state.auth.studioFocusedQuestionId = '';
         if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+        syncStudioQuestionStarredFilterButton();
         if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
         setEditorInlineFolderCreatorOpen(false);
 
@@ -9061,7 +9072,7 @@ MODIFICATION RULES FOR THIS APP
             state.auth.studioQuestionStarredOnly = false;
             state.auth.studioFocusedQuestionId = '';
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
-            if (elements.studioQuestionStarredOnly) elements.studioQuestionStarredOnly.checked = false;
+            syncStudioQuestionStarredFilterButton();
             if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
             if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
@@ -17171,12 +17182,16 @@ if (elements.studioQuestionSearchInput) {
 }
 
 if (elements.studioQuestionStarredOnly) {
-    elements.studioQuestionStarredOnly.addEventListener('change', () => {
+    elements.studioQuestionStarredOnly.addEventListener('click', () => {
         if (state.auth.studioFocusedQuestionId) {
             state.auth.studioFocusedQuestionId = '';
         }
-        state.auth.studioQuestionStarredOnly = !!elements.studioQuestionStarredOnly.checked;
+        state.auth.studioQuestionStarredOnly = !state.auth.studioQuestionStarredOnly;
         renderStudioQuestionList();
+        setCreatorStatus(
+            state.auth.studioQuestionStarredOnly ? 'Showing starred questions only.' : 'Showing all questions in this quiz.',
+            'success'
+        );
     });
 }
 
