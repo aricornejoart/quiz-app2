@@ -11250,8 +11250,12 @@ function startProgressModeRetry() {
     const missedQuestions = getProgressMissedQuestions();
     if (!missedQuestions.length) return;
 
+    const retryQuestions = isTetherBuildUpEnabled()
+        ? expandQuestionsWithTetherBuildUp(missedQuestions, state.questions)
+        : missedQuestions;
+
     state.progressRetryActive = true;
-    state.questionQueue = [...missedQuestions];
+    state.questionQueue = buildStudyQuestionQueue(retryQuestions, { shuffle: false });
     state.currentIndex = 0;
     state.normalFinished = false;
     state.questionAnswered = false;
@@ -12322,6 +12326,80 @@ function getBuildUpRunQuestionsInQueue(queue = state.questionQueue, index = stat
     const { start, end, key } = getBuildUpRunBoundsInQueue(source, index);
     if (!key) return source[index] ? [source[index]] : [];
     return source.slice(start, end + 1);
+}
+
+function getTetherQuestionIdentity(question = {}) {
+    return normalizeSheetText(question?.id || question?.sourceQuestionId || '');
+}
+
+function getTetherRunBoundsInQueue(queue = state.questionQueue, index = state.currentIndex) {
+    const source = Array.isArray(queue) ? queue : [];
+    if (!isTetherBuildUpEnabled() || !source.length) {
+        const safeIndex = Number.isFinite(index) ? Math.max(0, Math.min(index, Math.max(0, source.length - 1))) : 0;
+        return { start: safeIndex, end: safeIndex, key: '' };
+    }
+    return getBuildUpRunBoundsInQueue(source, index);
+}
+
+function snapIndexToTetherBuildUpRunStart(queue = state.questionQueue, index = state.currentIndex) {
+    const source = Array.isArray(queue) ? queue : [];
+    if (!source.length) return 0;
+    const safeIndex = Number.isFinite(index) ? Math.max(0, Math.min(index, source.length - 1)) : 0;
+    if (!isTetherBuildUpEnabled()) return safeIndex;
+    const { start, key } = getBuildUpRunBoundsInQueue(source, safeIndex);
+    return key ? start : safeIndex;
+}
+
+function isAtEndOfTetherBuildUpRun(queue = state.questionQueue, index = state.currentIndex) {
+    if (!isTetherBuildUpEnabled()) return true;
+    const source = Array.isArray(queue) ? queue : [];
+    if (!source.length) return true;
+    const safeIndex = Number.isFinite(index) ? Math.max(0, Math.min(index, source.length - 1)) : 0;
+    const { end, key } = getBuildUpRunBoundsInQueue(source, safeIndex);
+    return !key || safeIndex >= end;
+}
+
+function expandQuestionsWithTetherBuildUp(selectedQuestions = [], sourceQuestions = state.questions) {
+    const selected = (Array.isArray(selectedQuestions) ? selectedQuestions : []).filter(Boolean);
+    if (!selected.length) return [];
+    if (!isTetherBuildUpEnabled()) return [...selected];
+
+    const source = (Array.isArray(sourceQuestions) && sourceQuestions.length ? sourceQuestions : selected).filter(Boolean);
+    const selectedIds = new Set(selected.map(getTetherQuestionIdentity).filter(Boolean));
+    const selectedBuildUpKeys = new Set(selected.map(getBuildUpGroupKey).filter(Boolean));
+
+    const expanded = [];
+    const seen = new Set();
+
+    const addQuestion = question => {
+        const id = getTetherQuestionIdentity(question);
+        const fallbackKey = id || `${expanded.length}:${normalizeSheetText(question?.question || '')}`;
+        if (seen.has(fallbackKey)) return;
+        seen.add(fallbackKey);
+        expanded.push(question);
+    };
+
+    source.forEach(question => {
+        const id = getTetherQuestionIdentity(question);
+        const buildUpKey = getBuildUpGroupKey(question);
+        if ((id && selectedIds.has(id)) || (buildUpKey && selectedBuildUpKeys.has(buildUpKey))) {
+            addQuestion(question);
+        }
+    });
+
+    selected.forEach(addQuestion);
+    return expanded;
+}
+
+function addMasteryCheckSegmentQuestionsWithTether(question) {
+    const segmentQuestions = expandQuestionsWithTetherBuildUp([question], state.questionQueue);
+    segmentQuestions.forEach(segmentQuestion => {
+        if (!segmentQuestion?.id) return;
+        if (state.masteryCheckSegmentIds.has(segmentQuestion.id)) return;
+        if (state.masteryCheckMasteredIds.has(segmentQuestion.id)) return;
+        state.masteryCheckSegmentIds.add(segmentQuestion.id);
+        state.masteryCheckSegmentQuestions.push(segmentQuestion);
+    });
 }
 
 function updateBuildUpProgressIndicator() {
@@ -13642,9 +13720,15 @@ function renderProgressModeFinishState() {
                 ? 'Review round complete. Continue with the remaining review set.'
                 : 'Round complete. Continue with the review set.';
         } else {
-            const questionLabel = missedCount === 1 ? 'question' : 'questions';
-            const retryPrefix = state.progressRetryActive ? 'You still missed ' : 'You missed ';
-            message.innerText = retryPrefix + missedCount + ' ' + questionLabel + '. Try again with only the missed questions.';
+            if (isTetherBuildUpEnabled()) {
+                const reviewCount = expandQuestionsWithTetherBuildUp(missedQuestions, state.questions).length;
+                const questionLabel = reviewCount === 1 ? 'question' : 'questions';
+                message.innerText = 'Review set ready with ' + reviewCount + ' ' + questionLabel + '. Build Up strings stay together.';
+            } else {
+                const questionLabel = missedCount === 1 ? 'question' : 'questions';
+                const retryPrefix = state.progressRetryActive ? 'You still missed ' : 'You missed ';
+                message.innerText = retryPrefix + missedCount + ' ' + questionLabel + '. Try again with only the missed questions.';
+            }
         }
     } else {
         message.innerText = hideFeedback
@@ -13957,16 +14041,22 @@ function handleWrongAnswer() {
     }
 
     if (isRetryMode()) {
-        const wrongQuestion = q;
+        const tetherBounds = getTetherRunBoundsInQueue(state.questionQueue, state.currentIndex);
+        const shouldMoveTetherRun = isTetherBuildUpEnabled()
+            && tetherBounds.key
+            && tetherBounds.end > tetherBounds.start;
 
-        state.questionQueue.splice(state.currentIndex, 1);
+        const moveStart = shouldMoveTetherRun ? tetherBounds.start : state.currentIndex;
+        const moveCount = shouldMoveTetherRun ? (tetherBounds.end - tetherBounds.start + 1) : 1;
+        const movingQuestions = state.questionQueue.splice(moveStart, moveCount);
 
-        let insertIndex = state.currentIndex + 3;
+        let insertIndex = moveStart + 3;
         if (insertIndex > state.questionQueue.length) {
             insertIndex = state.questionQueue.length;
         }
 
-        state.questionQueue.splice(insertIndex, 0, wrongQuestion);
+        state.questionQueue.splice(insertIndex, 0, ...movingQuestions);
+        state.currentIndex = Math.min(moveStart, Math.max(0, state.questionQueue.length - 1));
         state.pendingMasteryAdvance = true;
         return;
     }
@@ -13992,10 +14082,26 @@ function handleCorrectAnswer() {
     }
 
     if (isRetryMode()) {
-        state.questionQueue.splice(state.currentIndex, 1);
+        const tetherBounds = getTetherRunBoundsInQueue(state.questionQueue, state.currentIndex);
+        const shouldKeepTetherRun = isTetherBuildUpEnabled()
+            && tetherBounds.key
+            && tetherBounds.end > tetherBounds.start;
 
-        if (state.questionQueue.length === 0) {
-            state.currentIndex = 0;
+        if (shouldKeepTetherRun && state.currentIndex < tetherBounds.end) {
+            state.currentIndex += 1;
+            state.pendingMasteryAdvance = true;
+            return;
+        }
+
+        if (shouldKeepTetherRun) {
+            state.questionQueue.splice(tetherBounds.start, tetherBounds.end - tetherBounds.start + 1);
+            state.currentIndex = Math.min(tetherBounds.start, Math.max(0, state.questionQueue.length - 1));
+        } else {
+            state.questionQueue.splice(state.currentIndex, 1);
+
+            if (state.questionQueue.length === 0) {
+                state.currentIndex = 0;
+            }
         }
 
         state.pendingMasteryAdvance = true;
@@ -14018,15 +14124,13 @@ function handleCorrectAnswer() {
             return;
         }
 
-        if (!state.masteryCheckSegmentIds.has(q.id) && !state.masteryCheckMasteredIds.has(q.id)) {
-            state.masteryCheckSegmentIds.add(q.id);
-            state.masteryCheckSegmentQuestions.push(q);
-        }
+        addMasteryCheckSegmentQuestionsWithTether(q);
 
         const atCheckpointBoundary = state.masteryCheckSegmentQuestions.length >= 10;
         const atEndOfRemainingPool = state.currentIndex >= state.questionQueue.length - 1;
+        const canStartCheckpointWithoutSplittingString = isAtEndOfTetherBuildUpRun(state.questionQueue, state.currentIndex);
 
-        if (atCheckpointBoundary || (atEndOfRemainingPool && state.masteryCheckSegmentQuestions.length > 0)) {
+        if ((atCheckpointBoundary && canStartCheckpointWithoutSplittingString) || (atEndOfRemainingPool && state.masteryCheckSegmentQuestions.length > 0)) {
             state.masteryCheckPendingCheckpointStart = true;
             state.masteryCheckPendingAdvance = false;
         } else {
@@ -15281,7 +15385,7 @@ function nextQuestion() {
 
     if (isRetentionMode()) {
         if (state.pendingRetentionJump) {
-            state.currentIndex = Math.max(0, state.currentIndex - 3);
+            state.currentIndex = snapIndexToTetherBuildUpRunStart(state.questionQueue, state.currentIndex - 3);
             state.pendingRetentionJump = false;
             state.pendingRetentionCorrect = false;
             state.retentionAnswerLocked = false;
@@ -15346,7 +15450,7 @@ function nextQuestion() {
 
     if (isMasteryCheckMode()) {
         if (state.masteryCheckPendingJump) {
-            state.currentIndex = Math.max(0, state.currentIndex - 3);
+            state.currentIndex = snapIndexToTetherBuildUpRunStart(state.questionQueue, state.currentIndex - 3);
             state.masteryCheckPendingJump = false;
             state.masteryCheckPendingAdvance = false;
             showQuestion();
