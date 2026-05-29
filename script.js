@@ -8826,25 +8826,199 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    async function loadFolderDeleteTargets(folderId) {
+        const normalizedFolderId = normalizeSheetText(folderId);
+        if (!normalizedFolderId || !state.auth.client || !state.auth.user?.id) {
+            throw new Error('Sign in before deleting folders.');
+        }
+
+        const cachedFolder = state.auth.supabaseFolders.find(folder => folder.id === normalizedFolderId) || null;
+        let folderName = cachedFolder?.name || '';
+        if (!folderName) {
+            const { data: folderRow, error: folderError } = await state.auth.client
+                .from('folders')
+                .select('id, name')
+                .eq('id', normalizedFolderId)
+                .maybeSingle();
+            if (folderError) throw folderError;
+            folderName = normalizeFolderName(folderRow?.name || 'this folder');
+        }
+
+        const quizRows = await fetchAllSupabaseRows(
+            () => state.auth.client
+                .from('quizzes')
+                .select('id, name')
+                .eq('folder_id', normalizedFolderId),
+            { label: 'folder quizzes' }
+        );
+        const quizIds = Array.from(new Set((quizRows || []).map(row => normalizeSheetText(row.id)).filter(Boolean)));
+        const questionRows = quizIds.length
+            ? await fetchAllSupabaseRows(
+                () => state.auth.client
+                    .from('questions')
+                    .select('id, quiz_id')
+                    .in('quiz_id', quizIds),
+                { label: 'folder questions' }
+            )
+            : [];
+
+        return {
+            folderId: normalizedFolderId,
+            folderName: folderName || 'this folder',
+            quizIds,
+            quizCount: quizIds.length,
+            questionIds: Array.from(new Set((questionRows || []).map(row => normalizeSheetText(row.id)).filter(Boolean))),
+            questionCount: (questionRows || []).length
+        };
+    }
+
+    async function deleteStudioActivityForDeletedFolder(folderId, quizIds = []) {
+        if (!state.auth.client || !state.auth.user?.id) return;
+        if (state.auth.studioActivity?.unavailable) return;
+
+        try {
+            const safeQuizIds = Array.from(new Set((quizIds || []).map(normalizeSheetText).filter(Boolean)));
+            if (safeQuizIds.length) {
+                const { error: quizActivityError } = await state.auth.client
+                    .from(STUDIO_ACTIVITY_TABLE)
+                    .delete()
+                    .eq('user_id', state.auth.user.id)
+                    .eq('entity_type', 'quiz')
+                    .in('entity_id', safeQuizIds);
+                if (quizActivityError) throw quizActivityError;
+            }
+
+            const { error: folderActivityError } = await state.auth.client
+                .from(STUDIO_ACTIVITY_TABLE)
+                .delete()
+                .eq('user_id', state.auth.user.id)
+                .eq('entity_type', 'folder')
+                .eq('entity_id', folderId);
+            if (folderActivityError) throw folderActivityError;
+        } catch (error) {
+            console.warn('Could not delete Studio activity rows for deleted folder:', error);
+            state.auth.studioActivity.unavailable = true;
+        }
+    }
+
+    async function deleteChallengeRowsForQuizzes(quizIds = []) {
+        if (!state.auth.client || !state.auth.user?.id) return;
+        const safeQuizIds = Array.from(new Set((quizIds || []).map(normalizeSheetText).filter(Boolean)));
+        if (!safeQuizIds.length || state.auth.quizChallengeUnavailable) return;
+
+        const { error } = await state.auth.client
+            .from(QUIZ_CHALLENGE_TABLE)
+            .delete()
+            .eq('user_id', state.auth.user.id)
+            .in('quiz_id', safeQuizIds);
+
+        if (error) {
+            console.warn('Could not delete challenge rows before folder cascade delete:', error);
+            state.auth.quizChallengeUnavailable = true;
+        }
+    }
+
+    function clearDeletedFolderLocalState(targets) {
+        const deletedQuizIds = new Set((targets?.quizIds || []).map(normalizeSheetText).filter(Boolean));
+        const deletedQuestionIds = new Set((targets?.questionIds || []).map(normalizeSheetText).filter(Boolean));
+
+        deletedQuizIds.forEach(quizId => {
+            state.auth.quizChallengeAchievements.delete(quizId);
+            state.auth.studioActivity?.quizzes?.delete(quizId);
+        });
+        if (targets?.folderId) {
+            state.auth.studioActivity?.folders?.delete(targets.folderId);
+        }
+
+        if (deletedQuestionIds.size) {
+            const keepQuestion = question => !deletedQuestionIds.has(normalizeSheetText(question?.sourceQuestionId));
+            state.sourceQuestions = state.sourceQuestions.filter(keepQuestion);
+            state.questions = state.questions.filter(keepQuestion);
+            state.questionQueue = state.questionQueue.filter(keepQuestion);
+        }
+
+        if (state.auth.editingQuizId && deletedQuizIds.has(normalizeSheetText(state.auth.editingQuizId))) {
+            clearCreatorInputs();
+            state.auth.studioQuizQuestions = [];
+            state.auth.studioHasUnsavedChanges = false;
+            renderStudioQuestionList();
+        }
+
+        if (normalizeSheetText(state.auth.studioQuizFolderFilterId) === targets?.folderId) {
+            state.auth.studioQuizFolderFilterId = '';
+        }
+    }
+
     async function handleDeleteFolder(folderId) {
-        if (!confirm('Delete this folder? Quizzes inside it will keep existing but move to no folder.')) {
+        let targets = null;
+        try {
+            targets = await loadFolderDeleteTargets(folderId);
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not inspect the folder before deleting.', 'error');
+            return;
+        }
+
+        const quizLabel = targets.quizCount === 1 ? '1 quiz' : `${targets.quizCount} quizzes`;
+        const questionLabel = targets.questionCount === 1 ? '1 question' : `${targets.questionCount} questions`;
+        const confirmMessage = targets.quizCount
+            ? `Delete folder "${targets.folderName}" and all contents? This will permanently delete ${quizLabel} and ${questionLabel}. This cannot be undone.`
+            : `Delete folder "${targets.folderName}"? This folder has no quizzes. This cannot be undone.`;
+        if (!confirm(confirmMessage)) {
             return;
         }
 
         try {
-            const { error } = await state.auth.client
+            setCreatorProgressStatus('Deleting folder', targets.quizCount ? 'checking linked media' : 'removing empty folder');
+            const mediaRefsToDelete = new Set();
+            for (let index = 0; index < targets.quizIds.length; index += 1) {
+                const quizId = targets.quizIds[index];
+                setCreatorProgressStatus('Deleting folder', `checking quiz media ${index + 1} of ${targets.quizIds.length}`);
+                const refs = await getQuizMediaReferences(quizId);
+                refs.forEach(ref => mediaRefsToDelete.add(ref));
+            }
+
+            if (targets.quizIds.length) {
+                await deleteChallengeRowsForQuizzes(targets.quizIds);
+                await deleteStudioActivityForDeletedFolder(targets.folderId, targets.quizIds);
+
+                setCreatorProgressStatus('Deleting folder', `removing ${quizLabel}`);
+                const { error: quizDeleteError } = await state.auth.client
+                    .from('quizzes')
+                    .delete()
+                    .in('id', targets.quizIds);
+                if (quizDeleteError) throw quizDeleteError;
+            } else {
+                await deleteStudioActivityForDeletedFolder(targets.folderId, []);
+            }
+
+            setCreatorProgressStatus('Deleting folder', 'removing folder');
+            const { error: folderDeleteError } = await state.auth.client
                 .from('folders')
                 .delete()
-                .eq('id', folderId);
+                .eq('id', targets.folderId);
+            if (folderDeleteError) throw folderDeleteError;
 
-            if (error) throw error;
+            const mediaCount = mediaRefsToDelete.size;
+            setCreatorProgressStatus('Deleting folder', mediaCount ? `cleaning ${mediaCount} linked ${mediaCount === 1 ? 'media file' : 'media files'}` : 'no linked media to clean');
+            await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
+            clearDeletedFolderLocalState(targets);
+            syncQuestionStarButton();
+            updateProgress();
+
+            setCreatorProgressStatus('Deleting folder', 'refreshing Quiz Studio');
+            const selectedQuizValue = elements.quizSelector?.value || '';
+            const selectedQuizId = normalizeSheetText(selectedQuizValue).startsWith('sb:') ? selectedQuizValue.slice(3) : '';
+            const selectedFolderValue = normalizeFolderName(elements.folderSelector?.value || '');
+            const currentSelectedWasDeleted = !!selectedQuizId && targets.quizIds.includes(selectedQuizId);
+            const currentFolderDeckWasDeleted = selectedQuizValue.startsWith('fd:') && selectedFolderValue === normalizeFolderName(targets.folderName);
             await refreshStudioManagementData();
-            await refreshQuizCatalog();
-            setCreatorStatus('Folder deleted.', 'success');
+            await refreshQuizCatalog({ clearIfMissing: currentSelectedWasDeleted || currentFolderDeckWasDeleted });
+            setCreatorStatus(`Folder deleted with ${quizLabel} and ${questionLabel}.`, 'success');
         } catch (error) {
             console.error(error);
-            setCreatorStatus(error.message || 'Could not delete the folder.', 'error');
+            setCreatorStatus(error.message || 'Could not delete the folder and its contents.', 'error');
         }
     }
 
