@@ -444,6 +444,7 @@ MODIFICATION RULES FOR THIS APP
         hideAnswerFeedbackMode: document.getElementById('hideAnswerFeedbackMode'),
         globalShuffleAnswers: document.getElementById('globalShuffleAnswers'),
         allowBuildUp: document.getElementById('allowBuildUp'),
+        tetherBuildUp: document.getElementById('tetherBuildUp'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
         onlyStarredQuestions: document.getElementById('onlyStarredQuestions'),
@@ -10620,6 +10621,10 @@ function isOnlyStarredEnabled() {
     return !!elements.onlyStarredQuestions?.checked;
 }
 
+function isTetherBuildUpSupportedModeActive() {
+    return isRetentionMode() || isRetryMode() || isMasteryCheckMode() || isProgressMode();
+}
+
 // ================= STUDY TIMER HELPERS =================
 function sanitizeStudyTimerSeconds(value, fallback = 60) {
     const parsed = Math.floor(Number(value));
@@ -11308,36 +11313,42 @@ function updateStarredQuestionAvailability() {
     const onlySettingCard = document.getElementById('onlyStarredQuestionsSetting');
     const onlySettingHelp = document.getElementById('onlyStarredQuestionsHelp');
     const canUseStarred = !!(state.auth.client && state.auth.user?.id);
+    const buildUpActive = isAllowBuildUpEnabled() || isTetherBuildUpEnabled();
+    const starredDisabled = !canUseStarred || buildUpActive;
 
     if (elements.excludeStarredQuestions) {
-        elements.excludeStarredQuestions.disabled = !canUseStarred;
-        if (!canUseStarred) {
+        elements.excludeStarredQuestions.disabled = starredDisabled;
+        if (starredDisabled) {
             elements.excludeStarredQuestions.checked = false;
         }
     }
 
     if (elements.onlyStarredQuestions) {
-        elements.onlyStarredQuestions.disabled = !canUseStarred;
-        if (!canUseStarred) {
+        elements.onlyStarredQuestions.disabled = starredDisabled;
+        if (starredDisabled) {
             elements.onlyStarredQuestions.checked = false;
         }
     }
 
     if (excludeSettingCard) {
-        excludeSettingCard.classList.toggle('disabled-setting', !canUseStarred);
+        excludeSettingCard.classList.toggle('disabled-setting', starredDisabled);
     }
 
     if (onlySettingCard) {
-        onlySettingCard.classList.toggle('disabled-setting', !canUseStarred);
+        onlySettingCard.classList.toggle('disabled-setting', starredDisabled);
     }
 
-    if (excludeSettingHelp && !canUseStarred) {
+    if (excludeSettingHelp && buildUpActive) {
+        excludeSettingHelp.innerText = 'Unavailable while Build Up is on because starred filters can split a Build Up string.';
+    } else if (excludeSettingHelp && !canUseStarred) {
         excludeSettingHelp.innerText = 'Sign in to use starred-question memory.';
     } else if (excludeSettingHelp) {
         excludeSettingHelp.innerText = 'Hides starred questions from the active study deck without removing the saved stars.';
     }
 
-    if (onlySettingHelp && !canUseStarred) {
+    if (onlySettingHelp && buildUpActive) {
+        onlySettingHelp.innerText = 'Unavailable while Build Up is on because starred filters can split a Build Up string.';
+    } else if (onlySettingHelp && !canUseStarred) {
         onlySettingHelp.innerText = 'Sign in to use starred-question memory.';
     } else if (onlySettingHelp) {
         onlySettingHelp.innerText = 'Shows only starred questions in the active study deck without removing saved stars.';
@@ -11487,6 +11498,39 @@ function updateAllowBuildUpAvailability() {
     }
 }
 
+function updateTetherBuildUpAvailability() {
+    const tetherCheckbox = elements.tetherBuildUp;
+    const tetherSetting = document.getElementById('tetherBuildUpSetting');
+    const tetherHelp = document.getElementById('tetherBuildUpHelp');
+    const allowBuildUpActive = isAllowBuildUpEnabled();
+    const supportedModeActive = isTetherBuildUpSupportedModeActive();
+    const hasBuildUpStrings = state.questions.some(isBuildUpSupportedQuestion);
+    const canUseTether = hasBuildUpStrings && allowBuildUpActive && supportedModeActive;
+
+    if (tetherCheckbox) {
+        tetherCheckbox.disabled = !canUseTether;
+        if (!canUseTether) {
+            tetherCheckbox.checked = false;
+        }
+    }
+
+    if (tetherSetting) {
+        tetherSetting.classList.toggle('disabled-setting', !canUseTether);
+    }
+
+    if (tetherHelp) {
+        if (!hasBuildUpStrings) {
+            tetherHelp.innerText = 'Available when multiple-choice questions include Build Up string values from import or editor tools.';
+        } else if (!allowBuildUpActive) {
+            tetherHelp.innerText = 'Turn on Allow Build Up first.';
+        } else if (!supportedModeActive) {
+            tetherHelp.innerText = 'Available with Retention, Progress, Mastery, or Mastery Check mode.';
+        } else {
+            tetherHelp.innerText = 'Keeps full Build Up strings together when compatible study modes repeat, review, or jump through questions.';
+        }
+    }
+}
+
 function updateFlashcardFrontSettingVisibility() {
     if (!elements.flashcardFrontSetting) return;
     elements.flashcardFrontSetting.classList.toggle('hidden', !hasFlashcardsInDeck());
@@ -11582,7 +11626,6 @@ function updateSettingsAvailability() {
     updateExclusiveModeAvailability();
     updateLearningResourcesAvailability();
     updateRapidLearningResourcesCompatibility();
-    updateStarredQuestionAvailability();
     updateAutoStarAvailability();
     updateUnstarOnWrongAvailability();
     syncHideAnswerFeedbackSettingsUI();
@@ -11591,6 +11634,8 @@ function updateSettingsAvailability() {
     updateShuffleAnswersAvailability();
     updateGlobalShuffleAnswersAvailability();
     updateAllowBuildUpAvailability();
+    updateTetherBuildUpAvailability();
+    updateStarredQuestionAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
     updateNavigationButtons();
@@ -12216,6 +12261,10 @@ function isAllowBuildUpEnabled() {
     return !!elements.allowBuildUp?.checked;
 }
 
+function isTetherBuildUpEnabled() {
+    return !!elements.tetherBuildUp?.checked && isAllowBuildUpEnabled() && isTetherBuildUpSupportedModeActive();
+}
+
 function getBuildUpGroupKey(question = {}) {
     const buildUp = normalizeBuildUpValue(question?.buildUp);
     if (!buildUp || question?.type !== 'multiple choice') return '';
@@ -12246,6 +12295,33 @@ function getCurrentBuildUpProgressLabel() {
 
     const positionInString = currentIndex - startIndex + 1;
     return `Build Up ${positionInString} of ${totalInString}`;
+}
+
+function getBuildUpRunBoundsInQueue(queue = state.questionQueue, index = state.currentIndex) {
+    const source = Array.isArray(queue) ? queue : [];
+    const safeIndex = Number.isFinite(index) ? Math.max(0, Math.min(index, source.length - 1)) : 0;
+    const activeKey = getBuildUpGroupKey(source[safeIndex]);
+    if (!activeKey) return { start: safeIndex, end: safeIndex, key: '' };
+
+    let start = safeIndex;
+    while (start > 0 && getBuildUpGroupKey(source[start - 1]) === activeKey) {
+        start -= 1;
+    }
+
+    let end = safeIndex;
+    while (end < source.length - 1 && getBuildUpGroupKey(source[end + 1]) === activeKey) {
+        end += 1;
+    }
+
+    return { start, end, key: activeKey };
+}
+
+function getBuildUpRunQuestionsInQueue(queue = state.questionQueue, index = state.currentIndex) {
+    const source = Array.isArray(queue) ? queue : [];
+    if (!source.length) return [];
+    const { start, end, key } = getBuildUpRunBoundsInQueue(source, index);
+    if (!key) return source[index] ? [source[index]] : [];
+    return source.slice(start, end + 1);
 }
 
 function updateBuildUpProgressIndicator() {
@@ -15585,12 +15661,28 @@ if (elements.globalShuffleAnswers) {
 
 if (elements.allowBuildUp) {
     elements.allowBuildUp.addEventListener('change', () => {
+        if (elements.allowBuildUp.checked) {
+            if (elements.excludeStarredQuestions) elements.excludeStarredQuestions.checked = false;
+            if (elements.onlyStarredQuestions) elements.onlyStarredQuestions.checked = false;
+        } else if (elements.tetherBuildUp) {
+            elements.tetherBuildUp.checked = false;
+        }
         updateSettingsAvailability();
         if (state.sourceQuestions.length) {
             applyFilteredQuestionsToSession({ resetSession: true });
         } else {
             restartQuiz();
         }
+    });
+}
+
+if (elements.tetherBuildUp) {
+    elements.tetherBuildUp.addEventListener('change', () => {
+        if (elements.tetherBuildUp.checked) {
+            if (elements.excludeStarredQuestions) elements.excludeStarredQuestions.checked = false;
+            if (elements.onlyStarredQuestions) elements.onlyStarredQuestions.checked = false;
+        }
+        updateSettingsAvailability();
     });
 }
 
