@@ -180,6 +180,17 @@ body.fullscreen-mode .bottom-controls {
   color: var(--color-text-soft);
 }
 
+#progressBuildUpText {
+  margin: 0 0 10px;
+  color: #d8ccff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .progress-bar-row {
   display: flex;
   align-items: center;
@@ -1942,6 +1953,11 @@ body.fullscreen-mode .hint-overlay {
     flex-shrink: 0;
   }
 
+  #progressBuildUpText {
+    margin: 0 0 10px;
+    font-size: 14px;
+  }
+
   .progress-bar-row {
     flex: 1;
     min-width: 0;
@@ -2234,6 +2250,11 @@ body.fullscreen-mode .hint-overlay {
   #progressText {
     font-size: 13px;
     flex-shrink: 0;
+  }
+
+  #progressBuildUpText {
+    margin: 0 0 8px;
+    font-size: 13px;
   }
 
   .progress-bar-row {

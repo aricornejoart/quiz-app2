@@ -109,29 +109,6 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
-              <div class="setting-card" id="allowBuildUpSetting">
-                <div class="setting-title-row">
-                  <label class="setting-title" for="allowBuildUp">Allow Build Up</label>
-                  <button
-                    type="button"
-                    class="setting-help-btn"
-                    data-help-target="allowBuildUpHelp"
-                    aria-label="About Allow Build Up"
-                    aria-expanded="false"
-                    aria-controls="allowBuildUpHelp"
-                  >?</button>
-                </div>
-                <div id="allowBuildUpHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.
-                </div>
-                <label class="toggle-switch" for="allowBuildUp" aria-label="Allow Build Up toggle">
-                  <input type="checkbox" id="allowBuildUp">
-                  <span class="toggle-track" aria-hidden="true">
-                    <span class="toggle-thumb"></span>
-                  </span>
-                </label>
-              </div>
-
               <div class="setting-card" id="shuffleAnswersSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="shuffleAnswers">Shuffle Answers</label>
@@ -172,6 +149,29 @@ MODIFICATION RULES FOR THIS APP
                 </div>
                 <label class="toggle-switch" for="globalShuffleAnswers" aria-label="Shuffle Answers Global toggle">
                   <input type="checkbox" id="globalShuffleAnswers">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
+              <div class="setting-card" id="allowBuildUpSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="allowBuildUp">Allow Build Up</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="allowBuildUpHelp"
+                    aria-label="About Allow Build Up"
+                    aria-expanded="false"
+                    aria-controls="allowBuildUpHelp"
+                  >?</button>
+                </div>
+                <div id="allowBuildUpHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.
+                </div>
+                <label class="toggle-switch" for="allowBuildUp" aria-label="Allow Build Up toggle">
+                  <input type="checkbox" id="allowBuildUp">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
                   </span>
@@ -1298,6 +1298,7 @@ MODIFICATION RULES FOR THIS APP
   <div class="quiz-area">
     <div class="question-container">
       <div id="feedback"></div>
+      <div id="progressBuildUpText" class="hidden" aria-live="polite"></div>
       <div id="questionText">Loading...</div>
 
       <div class="options">

@@ -427,6 +427,7 @@ MODIFICATION RULES FOR THIS APP
         restartBtn: document.getElementById('restartBtn'),
         nextBtn: document.getElementById('nextBtn'),
         progressTextEl: document.getElementById('progressText'),
+        progressBuildUpTextEl: document.getElementById('progressBuildUpText'),
         progressSideFeedbackEl: document.getElementById('progressSideFeedback'),
         timerMode: document.getElementById('timerMode'),
         timerScopeSelect: document.getElementById('timerScopeSelect'),
@@ -12222,6 +12223,39 @@ function getBuildUpGroupKey(question = {}) {
     return `${scope}::${buildUp.toLocaleLowerCase()}`;
 }
 
+function getCurrentBuildUpProgressLabel() {
+    if (!isAllowBuildUpEnabled()) return '';
+    const queue = Array.isArray(state.questionQueue) ? state.questionQueue : [];
+    const currentIndex = Number.isFinite(state.currentIndex) ? state.currentIndex : 0;
+    const currentQuestion = queue[currentIndex];
+    const activeKey = getBuildUpGroupKey(currentQuestion);
+    if (!activeKey) return '';
+
+    let startIndex = currentIndex;
+    while (startIndex > 0 && getBuildUpGroupKey(queue[startIndex - 1]) === activeKey) {
+        startIndex -= 1;
+    }
+
+    let endIndex = currentIndex;
+    while (endIndex < queue.length - 1 && getBuildUpGroupKey(queue[endIndex + 1]) === activeKey) {
+        endIndex += 1;
+    }
+
+    const totalInString = endIndex - startIndex + 1;
+    if (totalInString <= 1) return '';
+
+    const positionInString = currentIndex - startIndex + 1;
+    return `Build Up ${positionInString} of ${totalInString}`;
+}
+
+function updateBuildUpProgressIndicator() {
+    const indicator = elements.progressBuildUpTextEl;
+    if (!indicator) return;
+    const label = getCurrentBuildUpProgressLabel();
+    indicator.textContent = label;
+    indicator.classList.toggle('hidden', !label);
+}
+
 function buildQuestionBlocksPreservingBuildUp(questions = []) {
     const source = Array.isArray(questions) ? questions : [];
     if (!isAllowBuildUpEnabled()) {
@@ -13492,6 +13526,7 @@ function updateProgress() {
     const timerText = getStudyTimerDisplayText();
     const remainingText = overrideProgressText || (isNarrowIPhoneViewport() ? `${remaining}` : `${remaining} remaining`);
     elements.progressTextEl.innerText = timerText ? `${remainingText}  ${timerText}` : remainingText;
+    updateBuildUpProgressIndicator();
 
     if (progressFillEl) {
         progressFillEl.style.width = `${percent}%`;
