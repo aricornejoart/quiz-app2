@@ -78,6 +78,42 @@ MODIFICATION RULES FOR THIS APP
             shortLabel: 'P',
             trophy: '🏆',
             description: 'Complete Progress mode with locked challenge settings.'
+        },
+        {
+            key: 'build_up_mastery_shuffle_answers',
+            mode: 'mastery',
+            title: 'Build Up Mastery Challenge',
+            shortLabel: 'BM',
+            trophy: '🏆',
+            requiresBuildUp: true,
+            description: 'Complete Mastery mode with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
+        },
+        {
+            key: 'build_up_retention_shuffle_answers',
+            mode: 'retention',
+            title: 'Build Up Retention Challenge',
+            shortLabel: 'BR',
+            trophy: '🏆',
+            requiresBuildUp: true,
+            description: 'Complete Retention mode with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
+        },
+        {
+            key: 'build_up_mastery_check_shuffle_answers',
+            mode: 'mastery_check',
+            title: 'Build Up Mastery Check Challenge',
+            shortLabel: 'BC',
+            trophy: '🏆',
+            requiresBuildUp: true,
+            description: 'Complete Mastery Check with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
+        },
+        {
+            key: 'build_up_progress_shuffle_answers',
+            mode: 'progress',
+            title: 'Build Up Progress Challenge',
+            shortLabel: 'BP',
+            trophy: '🏆',
+            requiresBuildUp: true,
+            description: 'Complete Progress mode with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
         }
     ]);
 
@@ -2912,10 +2948,21 @@ MODIFICATION RULES FOR THIS APP
         return QUIZ_CHALLENGES.every(challenge => hasQuizChallengeAchievement(quizId, challenge.key));
     }
 
-    function canQuizUseChallengeSettings(quiz = {}) {
+    function canQuizUseChallengeSettings(quiz = {}, challenge = null) {
         const quizType = normalizeSheetText(quiz.quizType || quiz.type || '');
         if (!Number(quiz.questionCount || 0)) return false;
+        if (challenge?.requiresBuildUp) {
+            return quizType === 'multiple_choice' && !!quiz.hasBuildUpStrings;
+        }
         return quizType !== 'flashcard';
+    }
+
+    function getQuizChallengeDisabledReason(quiz = {}, challenge = null) {
+        if (canQuizUseChallengeSettings(quiz, challenge)) return '';
+        if (challenge?.requiresBuildUp) {
+            return 'Build Up challenges require a multiple-choice quiz with at least one Build Up string.';
+        }
+        return 'Challenges require a quiz type with answer choices so the challenge settings can be locked.';
     }
 
     function renderQuizChallengeBadges(quiz) {
@@ -2933,20 +2980,22 @@ MODIFICATION RULES FOR THIS APP
 
     function renderQuizChallengePanel(quiz) {
         const quizId = normalizeSheetText(quiz?.id);
-        const canStart = canQuizUseChallengeSettings(quiz);
-        const disabledReason = canStart ? '' : 'Challenges require a quiz type with answer choices so the challenge settings can be locked.';
+        const canStartAny = QUIZ_CHALLENGES.some(challenge => canQuizUseChallengeSettings(quiz, challenge));
+        const disabledReason = canStartAny ? '' : 'Challenges require a compatible quiz type and settings so the challenge settings can be locked.';
         const tableNote = state.auth.quizChallengeUnavailable
             ? 'Supabase challenge table is not available yet; install the Phase 22BG SQL before trophies can save permanently.'
             : '';
         const challengeRows = QUIZ_CHALLENGES.map(challenge => {
             const unlocked = hasQuizChallengeAchievement(quizId, challenge.key);
+            const canStartChallenge = canQuizUseChallengeSettings(quiz, challenge);
+            const challengeReason = getQuizChallengeDisabledReason(quiz, challenge);
             return `
-                <div class="quiz-challenge-row${unlocked ? ' completed' : ''}">
+                <div class="quiz-challenge-row${unlocked ? ' completed' : ''}${challenge.requiresBuildUp ? ' build-up' : ''}">
                   <div class="quiz-challenge-row-main">
                     <div class="quiz-challenge-row-title"><span>${unlocked ? '🏆' : '○'}</span> ${escapeHtml(challenge.title)}</div>
-                    <div class="quiz-challenge-row-description">${escapeHtml(challenge.description)}</div>
+                    <div class="quiz-challenge-row-description">${escapeHtml(challenge.description)}${challengeReason ? ` ${escapeHtml(challengeReason)}` : ''}</div>
                   </div>
-                  <button type="button" class="auth-action-btn quiz-challenge-begin-btn" data-action="begin-challenge" data-challenge-key="${escapeHtml(challenge.key)}"${!canStart ? ' disabled' : ''}>Begin Challenge</button>
+                  <button type="button" class="auth-action-btn quiz-challenge-begin-btn" data-action="begin-challenge" data-challenge-key="${escapeHtml(challenge.key)}"${!canStartChallenge ? ' disabled' : ''}>Begin Challenge</button>
                 </div>
             `;
         }).join('');
@@ -2958,7 +3007,7 @@ MODIFICATION RULES FOR THIS APP
                 <span class="quiz-challenge-grand${grandUnlocked ? ' unlocked' : ''}">${grandUnlocked ? '🌟 Grand Trophy unlocked' : '☆ Grand Trophy locked'}</span>
               </div>
               ${tableNote ? `<div class="quiz-challenge-note quiz-challenge-warning">${escapeHtml(tableNote)}</div>` : ''}
-              ${disabledReason ? `<div class="quiz-challenge-note">${escapeHtml(disabledReason)}</div>` : `<div class="quiz-challenge-note">Begin a challenge to lock the required mode, Shuffle Questions, and Shuffle Answers until the attempt is finished.</div>`}
+              ${disabledReason ? `<div class="quiz-challenge-note">${escapeHtml(disabledReason)}</div>` : `<div class="quiz-challenge-note">Begin a challenge to lock the required mode, Shuffle Questions, Shuffle Answers, and any challenge-specific settings until the attempt is finished.</div>`}
               <div class="quiz-challenge-list">${challengeRows}</div>
             </div>
         `;
@@ -3133,10 +3182,11 @@ MODIFICATION RULES FOR THIS APP
             challenge_key: normalizedKey,
             completed_at: now,
             settings_snapshot: {
-                phase: '22BJ',
+                phase: '22DM',
                 mode: getQuizChallengeDefinition(normalizedKey)?.mode || '',
                 shuffleQuestions: true,
-                shuffleAnswers: true
+                shuffleAnswers: true,
+                allowBuildUp: !!getQuizChallengeDefinition(normalizedKey)?.requiresBuildUp
             },
             updated_at: now
         };
@@ -3166,12 +3216,16 @@ MODIFICATION RULES FOR THIS APP
         const progressMode = document.getElementById('progressMode');
         const shuffleQuestions = document.getElementById('shuffleQuestions');
         const shuffleAnswers = document.getElementById('shuffleAnswers');
+        const allowBuildUp = elements.allowBuildUp;
+        const tetherBuildUp = elements.tetherBuildUp;
         if (retentionMode) retentionMode.checked = challenge.mode === 'retention';
         if (masteryMode) masteryMode.checked = challenge.mode === 'mastery';
         if (masteryCheckMode) masteryCheckMode.checked = challenge.mode === 'mastery_check';
         if (progressMode) progressMode.checked = challenge.mode === 'progress';
         if (shuffleQuestions) shuffleQuestions.checked = true;
         if (shuffleAnswers) shuffleAnswers.checked = true;
+        if (allowBuildUp) allowBuildUp.checked = !!challenge.requiresBuildUp;
+        if (tetherBuildUp && !challenge.requiresBuildUp) tetherBuildUp.checked = false;
     }
 
     async function beginQuizChallenge(quizId = '', challengeKey = '') {
@@ -3183,8 +3237,8 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
-        if (!managedQuiz || !canQuizUseChallengeSettings(managedQuiz)) {
-            setCreatorStatus('That quiz cannot start challenges because its question type does not support the required challenge settings.', 'error');
+        if (!managedQuiz || !canQuizUseChallengeSettings(managedQuiz, challenge)) {
+            setCreatorStatus(getQuizChallengeDisabledReason(managedQuiz, challenge) || 'That quiz cannot start this challenge.', 'error');
             return null;
         }
 
@@ -3860,7 +3914,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         try {
-            const [quizResult, questionRows] = await Promise.all([
+            const [quizResult, questionRows, multipleChoiceRows] = await Promise.all([
                 state.auth.client
                     .from('quizzes')
                     .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
@@ -3873,6 +3927,12 @@ MODIFICATION RULES FOR THIS APP
                         .order('quiz_id', { ascending: true })
                         .order('sort_order', { ascending: true }),
                     { label: 'managed quiz question rows' }
+                ),
+                fetchAllSupabaseRows(
+                    () => state.auth.client
+                        .from('multiple_choice_questions')
+                        .select('question_id, options_json'),
+                    { label: 'managed quiz multiple-choice metadata rows' }
                 )
             ]);
 
@@ -3897,6 +3957,11 @@ MODIFICATION RULES FOR THIS APP
                 questionMap.get(row.quiz_id).push(row);
             });
 
+            const multipleChoiceMetadataByQuestionId = new Map();
+            (multipleChoiceRows || []).forEach(row => {
+                multipleChoiceMetadataByQuestionId.set(row.question_id, row);
+            });
+
             state.auth.managedQuizzes = (quizzes || []).map(quiz => {
                 const folder = state.auth.supabaseFolders.find(item => item.id === quiz.folder_id) || null;
                 const rows = questionMap.get(quiz.id) || [];
@@ -3911,6 +3976,11 @@ MODIFICATION RULES FOR THIS APP
                     diagrams: 'Diagrams',
                     mixed: 'Mixed types'
                 };
+                const hasBuildUpStrings = rows.some(row => {
+                    if (normalizeSheetText(row.question_type) !== 'multiple_choice') return false;
+                    const detail = multipleChoiceMetadataByQuestionId.get(row.id);
+                    return !!getBuildUpValueFromOptionsJson(detail?.options_json);
+                });
                 return {
                     id: quiz.id,
                     name: normalizeSheetText(quiz.name),
@@ -3920,6 +3990,7 @@ MODIFICATION RULES FOR THIS APP
                     questionIds: rows.map(row => row.id).filter(Boolean),
                     quizType,
                     typeLabel: typeLabelMap[quizType] || 'Mixed types',
+                    hasBuildUpStrings,
                     sortOrder: Number(quiz.sort_order ?? 0),
                     updatedAt: normalizeSheetText(quiz.updated_at),
                     firstQuestionId: rows[0]?.id || ''
@@ -11483,22 +11554,30 @@ function updateAllowBuildUpAvailability() {
     const allowBuildUpSetting = document.getElementById('allowBuildUpSetting');
     const allowBuildUpHelp = document.getElementById('allowBuildUpHelp');
     const hasBuildUpStrings = state.questions.some(isBuildUpSupportedQuestion);
+    const activeChallenge = getQuizChallengeDefinition(state.activeQuizChallenge?.challengeKey || '');
+    const challengeLocked = !!activeChallenge?.requiresBuildUp;
 
     if (allowBuildUpCheckbox) {
-        allowBuildUpCheckbox.disabled = !hasBuildUpStrings;
-        if (!hasBuildUpStrings) {
+        if (challengeLocked) {
+            allowBuildUpCheckbox.checked = true;
+        }
+        allowBuildUpCheckbox.disabled = challengeLocked || !hasBuildUpStrings;
+        if (!hasBuildUpStrings && !challengeLocked) {
             allowBuildUpCheckbox.checked = false;
         }
     }
 
     if (allowBuildUpSetting) {
-        allowBuildUpSetting.classList.toggle('disabled-setting', !hasBuildUpStrings);
+        allowBuildUpSetting.classList.toggle('disabled-setting', challengeLocked || !hasBuildUpStrings);
+        allowBuildUpSetting.classList.toggle('challenge-locked-setting', challengeLocked);
     }
 
     if (allowBuildUpHelp) {
-        allowBuildUpHelp.innerText = hasBuildUpStrings
-            ? 'Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.'
-            : 'Available when multiple-choice questions include Build Up string values from import or editor tools.';
+        allowBuildUpHelp.innerText = challengeLocked
+            ? 'Locked on for this Build Up challenge.'
+            : (hasBuildUpStrings
+                ? 'Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.'
+                : 'Available when multiple-choice questions include Build Up string values from import or editor tools.');
     }
 }
 
