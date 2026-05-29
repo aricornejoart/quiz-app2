@@ -648,7 +648,7 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
                     <div class="creator-subsection-title">Template Downloads</div>
-                    <div class="creator-note">Download CSV starter templates, paste them into Google Sheets, then import the finished sheet tab below. Blank templates include headers only; example templates include one sample row.</div>
+                    <div class="creator-note">Download CSV starter templates, paste them into Google Sheets, then import the finished sheet tab below. Multiple-choice templates include an optional section column for auto-splitting one sheet into section quizzes. Blank templates include headers only; example templates include one sample row.</div>
                     <div class="studio-template-grid">
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-template-download="multiple_choice" data-template-variant="blank">Blank Multiple Choice</button>
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-template-download="flashcard" data-template-variant="blank">Blank Flashcard</button>
@@ -726,7 +726,7 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Import Google Sheet Template</div>
-                    <div class="creator-note">Paste a Google Sheet URL or sheet ID from your template, enter the tab name, choose where it should go in Supabase, and optionally set the quiz name now instead of importing from the shared catalog first.</div>
+                    <div class="creator-note">Paste a Google Sheet URL or sheet ID from your template, enter the tab name, choose where it should go in Supabase, and optionally set the base quiz name. If the sheet includes section values, Study Bunny creates one quiz per section and appends the section with a dash.</div>
 
                     <label class="auth-field">
                       <span>Google Sheet URL or ID</span>
@@ -755,7 +755,7 @@ MODIFICATION RULES FOR THIS APP
 
                     <label id="importTemplateQuizNameField" class="auth-field">
                       <span>Quiz name in Supabase</span>
-                      <input id="importTemplateQuizNameInput" type="text" placeholder="Leave blank to use the sheet tab name">
+                      <input id="importTemplateQuizNameInput" type="text" placeholder="Base name; sections become Name - 7.1">
                     </label>
 
                     <label id="importTemplateTargetFolderField" class="auth-field">

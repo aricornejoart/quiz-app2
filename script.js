@@ -1357,14 +1357,14 @@ MODIFICATION RULES FOR THIS APP
             return rows;
         }
         const rows = [[
-            'Question', 'multiple choice',
+            'Question', 'multiple choice', 'section',
             'option_1', 'option_2', 'option_3', 'option_4', 'option_5', 'option_6',
             'correct_option',
             'option_1_explanation', 'option_2_explanation', 'option_3_explanation', 'option_4_explanation', 'option_5_explanation', 'option_6_explanation',
             'Question image URL', 'Learning resources', 'Learning resources image URL'
         ]];
         if (isExample) rows.push([
-            'Which organelle makes most cellular ATP?', '',
+            'Which organelle makes most cellular ATP?', '', '7.1',
             'Nucleus', 'Mitochondria', 'Ribosome', 'Golgi apparatus', 'Chloroplast', 'Lysosome',
             '2',
             'The nucleus stores DNA.', 'Mitochondria produce most ATP during cellular respiration.', 'Ribosomes build proteins.', 'The Golgi modifies and packages molecules.', 'Chloroplasts perform photosynthesis in plant cells.', 'Lysosomes digest cellular waste.',
@@ -9569,6 +9569,33 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
+
+    function normalizeImportSectionValue(value) {
+        return normalizeSheetText(value).replace(/^'+/, '').replace(/\s+/g, ' ');
+    }
+
+    function getSectionedImportGroups(sourceQuestions = []) {
+        const groups = [];
+        const groupMap = new Map();
+        sourceQuestions.forEach(question => {
+            const section = normalizeImportSectionValue(question?.section);
+            const key = section || '__unsectioned__';
+            if (!groupMap.has(key)) {
+                const group = { section, questions: [] };
+                groupMap.set(key, group);
+                groups.push(group);
+            }
+            groupMap.get(key).questions.push(question);
+        });
+        return groups;
+    }
+
+    function buildSectionedImportQuizName(baseQuizName, fallbackQuizName, section = '') {
+        const resolvedBase = normalizeSheetText(baseQuizName) || normalizeSheetText(fallbackQuizName) || 'Imported quiz';
+        const resolvedSection = normalizeImportSectionValue(section);
+        return resolvedSection ? `${resolvedBase} - ${resolvedSection}` : resolvedBase;
+    }
+
     async function importGoogleSheetTemplateToSupabase(sheetInput, sheetTabName, quizName, targetFolderId = '', options = {}) {
         const sheetId = extractGoogleSheetId(sheetInput);
         if (!sheetId) {
@@ -9606,31 +9633,67 @@ MODIFICATION RULES FOR THIS APP
             };
         }
 
-        if (onProgress) onProgress({ phase: 'creating-quiz', quizName: resolvedTabName, total: sourceQuestions.length });
         const folderId = normalizeSheetText(targetFolderId);
         const nextSortOrder = state.auth.managedQuizzes
             .filter(quiz => (quiz.folderId || '') === (folderId || ''))
             .reduce((maxValue, quiz) => Math.max(maxValue, Number(quiz.sortOrder ?? 0)), -1) + 1;
-        const finalQuizName = normalizeSheetText(quizName) || resolvedTabName;
+        const sectionGroups = getSectionedImportGroups(sourceQuestions);
+        const createdQuizzes = [];
 
-        const { data: quizRow, error: quizError } = await state.auth.client
-            .from('quizzes')
-            .insert({
-                user_id: state.auth.user.id,
-                folder_id: folderId || null,
-                name: finalQuizName,
-                description: '',
-                sort_order: nextSortOrder,
-                is_archived: false
-            })
-            .select('id')
-            .single();
-        if (quizError) throw quizError;
+        for (let groupIndex = 0; groupIndex < sectionGroups.length; groupIndex += 1) {
+            const group = sectionGroups[groupIndex];
+            const finalQuizName = buildSectionedImportQuizName(quizName, resolvedTabName, group.section);
+            if (onProgress) {
+                onProgress({
+                    phase: 'creating-quiz',
+                    quizName: finalQuizName,
+                    total: group.questions.length,
+                    groupCurrent: groupIndex + 1,
+                    groupTotal: sectionGroups.length
+                });
+            }
 
-        await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, sourceQuestions, {
-            onProgress: progress => onProgress?.({ ...progress, quizName: finalQuizName })
-        });
-        return { quizId: quizRow.id, quizName: finalQuizName, questionCount: sourceQuestions.length, quizType, folderId };
+            const { data: quizRow, error: quizError } = await state.auth.client
+                .from('quizzes')
+                .insert({
+                    user_id: state.auth.user.id,
+                    folder_id: folderId || null,
+                    name: finalQuizName,
+                    description: '',
+                    sort_order: nextSortOrder + groupIndex,
+                    is_archived: false
+                })
+                .select('id')
+                .single();
+            if (quizError) throw quizError;
+
+            await importGoogleSheetsQuestionsToSupabaseQuiz(quizRow.id, group.questions, {
+                onProgress: progress => onProgress?.({
+                    ...progress,
+                    quizName: finalQuizName,
+                    groupCurrent: groupIndex + 1,
+                    groupTotal: sectionGroups.length
+                })
+            });
+            createdQuizzes.push({
+                quizId: quizRow.id,
+                quizName: finalQuizName,
+                section: group.section,
+                questionCount: group.questions.length
+            });
+        }
+
+        const firstCreatedQuiz = createdQuizzes[0] || null;
+        return {
+            quizId: firstCreatedQuiz?.quizId || '',
+            quizName: firstCreatedQuiz?.quizName || '',
+            questionCount: sourceQuestions.length,
+            quizType,
+            folderId,
+            quizzes: createdQuizzes,
+            createdQuizCount: createdQuizzes.length,
+            sectioned: createdQuizzes.some(item => normalizeImportSectionValue(item.section))
+        };
     }
 
     async function handleImportGoogleSheetsQuiz() {
@@ -9743,11 +9806,14 @@ MODIFICATION RULES FOR THIS APP
             );
             setCreatorProgressStatus(appendToQuizId ? 'Adding questions' : 'Importing template', 'refreshing Quiz Studio');
             await refreshStudioManagementData();
-            await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
+            await refreshQuizCatalog(result.quizId ? { selectQuizId: `sb:${result.quizId}` } : {});
             renderGoogleSheetsImportControls();
             await setQuizStudioSection('manage');
             if (result.appended) {
                 setCreatorStatus(`Added ${result.questionCount} ${result.questionCount === 1 ? 'question' : 'questions'} to "${result.quizName}".`, 'success');
+            } else if (result.sectioned && result.createdQuizCount > 1) {
+                const sectionSummary = result.quizzes.map(item => `${item.section || 'base'} (${item.questionCount})`).join(', ');
+                setCreatorStatus(`Imported ${result.createdQuizCount} section quizzes from the Google Sheet template: ${sectionSummary}.`, 'success');
             } else {
                 setCreatorStatus(`Imported "${result.quizName}" from the Google Sheet template.`, 'success');
             }
@@ -9811,6 +9877,20 @@ function getCellValue(cell) {
 
     if (cell.f !== null && cell.f !== undefined) {
         return normalizeSheetText(cell.f);
+    }
+
+    return '';
+}
+
+function getSectionCellValue(cell) {
+    if (!cell) return '';
+
+    if (cell.f !== null && cell.f !== undefined) {
+        return normalizeSheetText(cell.f);
+    }
+
+    if (cell.v !== null && cell.v !== undefined) {
+        return normalizeSheetText(cell.v);
     }
 
     return '';
@@ -12052,6 +12132,7 @@ function getMultipleChoiceSheetLayout(rows) {
     const correctHeaderKey = correctColumn >= 0 ? normalizeSheetHeaderKey(headers[correctColumn]) : '';
     const correctUsesOptionNumber = /correctoption|correctoptionnumber|correctoptionindex/.test(correctHeaderKey);
 
+    const sectionColumn = findSheetColumnByHeader(headers, ['Section', 'Section number', 'Textbook section', 'Subsection']);
     const imageColumn = findSheetColumnByHeader(headers, ['Question image URL', 'Question image', 'Image URL', 'Image']);
     const learningResourcesColumn = findSheetColumnByHeader(headers, ['Learning resources', 'Learning resource', 'Resources']);
     const learningResourcesImageColumn = findSheetColumnByHeader(headers, ['Learning resources image URL', 'Learning resource image URL', 'Resources image URL']);
@@ -12063,6 +12144,7 @@ function getMultipleChoiceSheetLayout(rows) {
             explanationColumns,
             correctColumn,
             correctUsesOptionNumber,
+            sectionColumn,
             imageColumn,
             learningResourcesColumn,
             learningResourcesImageColumn
@@ -12075,6 +12157,7 @@ function getMultipleChoiceSheetLayout(rows) {
         explanationColumns: new Map([[1, 7], [2, 8], [3, 9], [4, 10]]),
         correctColumn: 6,
         correctUsesOptionNumber: false,
+        sectionColumn: -1,
         imageColumn: 11,
         learningResourcesColumn: 12,
         learningResourcesImageColumn: 13
@@ -12125,6 +12208,7 @@ function parseMultipleChoiceQuestionsFromGoogleSheetRows(rows) {
                 layout.correctUsesOptionNumber
             ),
             explanations: optionDrafts.map(option => option.explanation),
+            section: layout.sectionColumn >= 0 ? getSectionCellValue(c[layout.sectionColumn]) : '',
             image: layout.imageColumn >= 0 ? getCellValue(c[layout.imageColumn]) : '',
             learningResources: layout.learningResourcesColumn >= 0 ? getCellValue(c[layout.learningResourcesColumn]) : '',
             learningResourcesImage: layout.learningResourcesImageColumn >= 0 ? getCellValue(c[layout.learningResourcesImageColumn]) : ''
