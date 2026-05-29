@@ -208,6 +208,7 @@ MODIFICATION RULES FOR THIS APP
             studioQuestionSearchQuery: '',
             studioQuestionStarredOnly: false,
             studioActiveBuildUpString: '',
+            studioFocusedBuildUpString: '',
             studioFocusedQuestionId: '',
             studioHasUnsavedChanges: false,
             studioAutosaveTimerId: null,
@@ -5638,6 +5639,53 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function isStudioBuildUpFocusMode() {
+        return getStudioCurrentQuizType() === 'multiple_choice' && !!normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
+    }
+
+    function clearStudioBuildUpFocusMode(options = {}) {
+        if (!state.auth.studioFocusedBuildUpString && !options.forceRender) return;
+        state.auth.studioFocusedBuildUpString = '';
+        renderStudioQuestionList();
+        updateStudioQuestionNavigationUI();
+        if (options.status !== false) {
+            setCreatorStatus('Showing all questions in this quiz.', 'success');
+        }
+    }
+
+    function clearStudioQuestionListFocusModes(options = {}) {
+        const hadFocus = !!state.auth.studioFocusedQuestionId || !!state.auth.studioFocusedBuildUpString;
+        state.auth.studioFocusedQuestionId = '';
+        state.auth.studioFocusedBuildUpString = '';
+        if (hadFocus || options.forceRender) {
+            renderStudioQuestionList();
+            updateStudioQuestionNavigationUI();
+        }
+        if ((hadFocus || options.forceRender) && options.status !== false) {
+            setCreatorStatus('Showing all questions in this quiz.', 'success');
+        }
+    }
+
+    function setStudioBuildUpFocusMode(buildUpValue, options = {}) {
+        const normalizedBuildUp = normalizeBuildUpValue(buildUpValue);
+        if (!normalizedBuildUp) {
+            clearStudioBuildUpFocusMode(options);
+            return;
+        }
+        state.auth.studioActiveBuildUpString = '';
+        state.auth.studioFocusedQuestionId = '';
+        state.auth.studioFocusedBuildUpString = normalizedBuildUp;
+        state.auth.studioQuestionSearchQuery = '';
+        state.auth.studioQuestionStarredOnly = false;
+        if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+        syncStudioQuestionStarredFilterButton();
+        renderStudioQuestionList();
+        updateStudioQuestionNavigationUI();
+        if (options.status !== false) {
+            setCreatorStatus(`Focusing Build Up string "${normalizedBuildUp}".`, 'success');
+        }
+    }
+
     function setStudioBuildUpEditMode(buildUpValue, options = {}) {
         const normalizedBuildUp = normalizeBuildUpValue(buildUpValue);
         if (!normalizedBuildUp) {
@@ -5645,6 +5693,7 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
         state.auth.studioActiveBuildUpString = normalizedBuildUp;
+        state.auth.studioFocusedBuildUpString = '';
         state.auth.studioFocusedQuestionId = '';
         state.auth.studioQuestionSearchQuery = '';
         state.auth.studioQuestionStarredOnly = false;
@@ -5771,6 +5820,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         state.auth.studioActiveBuildUpString = '';
+        state.auth.studioFocusedBuildUpString = '';
         state.auth.studioFocusedQuestionId = normalizedQuestionId;
         state.auth.studioQuestionSearchQuery = '';
         if (elements.studioQuestionSearchInput) {
@@ -5860,19 +5910,31 @@ MODIFICATION RULES FOR THIS APP
 
         const editingType = getStudioCurrentQuizType();
         const activeBuildUpString = normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
+        const focusedBuildUpString = normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
         const buildUpEditActive = editingType === 'multiple_choice' && !!activeBuildUpString;
+        let buildUpFocusActive = !buildUpEditActive && editingType === 'multiple_choice' && !!focusedBuildUpString;
         if (activeBuildUpString && editingType !== 'multiple_choice') {
             state.auth.studioActiveBuildUpString = '';
         }
+        if (focusedBuildUpString && editingType !== 'multiple_choice') {
+            state.auth.studioFocusedBuildUpString = '';
+            buildUpFocusActive = false;
+        }
         const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '').toLowerCase();
         const focusQuestionId = normalizeSheetText(state.auth.studioFocusedQuestionId || '');
-        const focusModeActive = !buildUpEditActive && !!focusQuestionId;
+        const focusModeActive = !buildUpEditActive && !buildUpFocusActive && !!focusQuestionId;
         const focusNewDraftActive = focusModeActive && focusQuestionId === STUDIO_FOCUS_NEW_QUESTION_ID;
-        const starredOnlyFilter = !buildUpEditActive && !!state.auth.studioQuestionStarredOnly;
+        const starredOnlyFilter = !buildUpEditActive && !buildUpFocusActive && !!state.auth.studioQuestionStarredOnly;
         let filteredQuestions = displayRows;
 
         if (buildUpEditActive) {
             filteredQuestions = displayRows.filter(questionRow => normalizeSheetText(questionRow.question_type || 'multiple_choice') === 'multiple_choice');
+        } else if (buildUpFocusActive) {
+            if (query) {
+                state.auth.studioQuestionSearchQuery = '';
+                if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+            }
+            filteredQuestions = displayRows.filter(questionRow => isSameBuildUpString(getStudioQuestionBuildUpValue(questionRow), focusedBuildUpString));
         } else if (focusModeActive) {
             if (query) {
                 state.auth.studioQuestionSearchQuery = '';
@@ -5898,11 +5960,13 @@ MODIFICATION RULES FOR THIS APP
         if (!filteredQuestions.length && !focusNewDraftActive) {
             const emptyLabel = buildUpEditActive
                 ? '<div class="studio-list-empty">This quiz has no multiple-choice questions available for Build Up string editing.</div>'
-                : (focusModeActive
-                    ? '<div class="studio-list-empty">Focused question is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
-                    : (starredOnlyFilter && !query
-                        ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
-                        : '<div class="studio-list-empty">No questions match your search.</div>'));
+                : (buildUpFocusActive
+                    ? '<div class="studio-list-empty">This Build Up string is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
+                    : (focusModeActive
+                        ? '<div class="studio-list-empty">Focused question is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
+                        : (starredOnlyFilter && !query
+                            ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
+                            : '<div class="studio-list-empty">No questions match your search.</div>')));
             elements.studioQuestionList.innerHTML = emptyLabel;
             updateStudioQuestionNavigationUI();
             return;
@@ -5929,16 +5993,20 @@ MODIFICATION RULES FOR THIS APP
             const isSharedDiagramSource = !!sharedDiagramSourceQuestionId && questionRow.id === sharedDiagramSourceQuestionId;
             const sharedDiagramSourceBadge = isSharedDiagramSource ? '<span class="studio-question-shared-source-badge">Shared source</span>' : '';
             const dragTitle = questionType === 'flashcard' ? 'Drag to reorder this card' : 'Drag to reorder this question';
-            const focusControlHtml = focusModeActive
-                ? '<span class="studio-question-focus-badge">Focused</span><button type="button" class="studio-question-focus-btn" data-studio-show-all-questions="true">Show All</button>'
-                : `<button type="button" class="studio-question-focus-btn" data-studio-focus-question-id="${escapeHtml(questionRow.id)}">Focus</button>`;
+            const questionBuildUpValue = getStudioQuestionBuildUpValue(questionRow);
+            const stringFocusControlHtml = questionBuildUpValue && !buildUpEditActive && !focusModeActive
+                ? `<button type="button" class="studio-question-focus-btn studio-question-focus-string-btn" data-studio-focus-build-up-string="${escapeHtml(questionBuildUpValue)}" title="Focus this Build Up string">String Focus</button>`
+                : '';
+            const focusControlHtml = (focusModeActive || buildUpFocusActive)
+                ? `<span class="studio-question-focus-badge${buildUpFocusActive ? ' string-focus' : ''}">${buildUpFocusActive ? 'String Focus' : 'Focused'}</span><button type="button" class="studio-question-focus-btn" data-studio-show-all-questions="true">Show All</button>`
+                : `<button type="button" class="studio-question-focus-btn" data-studio-focus-question-id="${escapeHtml(questionRow.id)}">Focus</button>${stringFocusControlHtml}`;
             const isStarredRow = !!questionRow.isStarred;
             const starBadgeHtml = isStarredRow
                 ? '<span class="studio-question-list-star" title="Starred question" aria-label="Starred question">★</span>'
                 : '';
-            const questionBuildUpValue = getStudioQuestionBuildUpValue(questionRow);
             const isBuildUpQuestionRow = editingType === 'multiple_choice' && questionType === 'multiple_choice' && !isPendingRow && !isLocalFlashcardRow;
             const isActiveBuildUpMember = buildUpEditActive && isSameBuildUpString(questionBuildUpValue, activeBuildUpString);
+            const isFocusedBuildUpMember = buildUpFocusActive && isSameBuildUpString(questionBuildUpValue, focusedBuildUpString);
             const isOtherBuildUpMember = buildUpEditActive && !!questionBuildUpValue && !isActiveBuildUpMember;
             const buildUpBadgeHtml = questionBuildUpValue
                 ? `<span class="studio-build-up-badge${isActiveBuildUpMember ? ' active' : ''}" title="Build Up string: ${escapeHtml(questionBuildUpValue)}">String</span>`
@@ -6005,7 +6073,7 @@ MODIFICATION RULES FOR THIS APP
             return `
                 <div class="studio-question-list-row">
                   <div
-                    class="studio-question-list-item${isActive ? ' active' : ''}${isStarredRow ? ' starred' : ''}${isActiveBuildUpMember ? ' build-up-member' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
+                    class="studio-question-list-item${isActive ? ' active' : ''}${isStarredRow ? ' starred' : ''}${isActiveBuildUpMember || isFocusedBuildUpMember ? ' build-up-member' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
                     data-studio-row-question-id="${escapeHtml(questionRow.id)}"
                     ${isLocalFlashcardRow ? '' : rowDropAttr}
                   >
@@ -6396,6 +6464,7 @@ MODIFICATION RULES FOR THIS APP
             : null;
 
         if (isStudioQuestionFocusMode() || options.focusNewQuestion) {
+            state.auth.studioFocusedBuildUpString = '';
             state.auth.studioFocusedQuestionId = STUDIO_FOCUS_NEW_QUESTION_ID;
             state.auth.studioQuestionSearchQuery = '';
             if (elements.studioQuestionSearchInput) {
@@ -6886,6 +6955,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioQuestionSearchQuery = '';
         state.auth.studioQuestionStarredOnly = false;
         state.auth.studioActiveBuildUpString = '';
+        state.auth.studioFocusedBuildUpString = '';
         state.auth.studioFocusedQuestionId = '';
         if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
         syncStudioQuestionStarredFilterButton();
@@ -9252,6 +9322,7 @@ MODIFICATION RULES FOR THIS APP
             state.auth.studioQuestionSearchQuery = '';
             state.auth.studioQuestionStarredOnly = false;
             state.auth.studioActiveBuildUpString = '';
+            state.auth.studioFocusedBuildUpString = '';
             state.auth.studioFocusedQuestionId = '';
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
             syncStudioQuestionStarredFilterButton();
@@ -16075,7 +16146,7 @@ if (elements.studioQuestionList) {
     elements.studioQuestionList.addEventListener('click', e => {
         const showAllButton = e.target.closest('[data-studio-show-all-questions]');
         if (showAllButton) {
-            clearStudioQuestionFocusMode();
+            clearStudioQuestionListFocusModes();
             return;
         }
 
@@ -16109,6 +16180,15 @@ if (elements.studioQuestionList) {
                 console.error(err);
                 setCreatorStatus(err.message || 'Could not remove that question from the string.', 'error');
             });
+            return;
+        }
+
+        const focusBuildUpButton = e.target.closest('[data-studio-focus-build-up-string]');
+        if (focusBuildUpButton) {
+            const buildUpValue = normalizeBuildUpValue(focusBuildUpButton.dataset.studioFocusBuildUpString || '');
+            if (buildUpValue) {
+                setStudioBuildUpFocusMode(buildUpValue);
+            }
             return;
         }
 
@@ -17535,6 +17615,9 @@ if (elements.studioQuestionSearchInput) {
         if (nextQuery && state.auth.studioActiveBuildUpString) {
             state.auth.studioActiveBuildUpString = '';
         }
+        if (nextQuery && state.auth.studioFocusedBuildUpString) {
+            state.auth.studioFocusedBuildUpString = '';
+        }
         state.auth.studioQuestionSearchQuery = nextQuery;
         renderStudioQuestionList();
     });
@@ -17547,6 +17630,9 @@ if (elements.studioQuestionStarredOnly) {
         }
         if (state.auth.studioActiveBuildUpString) {
             state.auth.studioActiveBuildUpString = '';
+        }
+        if (state.auth.studioFocusedBuildUpString) {
+            state.auth.studioFocusedBuildUpString = '';
         }
         state.auth.studioQuestionStarredOnly = !state.auth.studioQuestionStarredOnly;
         renderStudioQuestionList();
@@ -17572,6 +17658,7 @@ if (elements.studioQuestionJumpBtn) {
         }
 
         const wasFocusMode = isStudioQuestionFocusMode();
+        state.auth.studioFocusedBuildUpString = '';
         state.auth.studioQuestionSearchQuery = '';
         if (elements.studioQuestionSearchInput) {
             elements.studioQuestionSearchInput.value = '';

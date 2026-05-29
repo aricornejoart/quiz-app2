@@ -6282,10 +6282,10 @@ body.fullscreen-mode .progress-mode-summary {
   justify-content: center;
   min-height: 27px;
   padding: 1px 9px;
-  border: 1px solid rgba(159, 144, 255, 0.52);
+  border: 1px solid rgba(159, 144, 255, 0.86);
   border-radius: 999px;
-  background: rgba(124, 108, 255, 0.15);
-  color: #f0ecff;
+  background: rgba(124, 108, 255, 0.26);
+  color: #ffffff;
   cursor: pointer;
   font-size: 14px;
   font-weight: 800;
@@ -6297,8 +6297,8 @@ body.fullscreen-mode .progress-mode-summary {
 
 .studio-question-starred-filter-btn:hover,
 .studio-question-starred-filter-btn:focus-visible {
-  background: rgba(124, 108, 255, 0.24);
-  border-color: rgba(159, 144, 255, 0.86);
+  background: rgba(124, 108, 255, 0.34);
+  border-color: rgba(182, 171, 255, 0.94);
   color: #ffffff;
   transform: translateY(-1px);
   outline: none;
@@ -6342,10 +6342,10 @@ body.fullscreen-mode .progress-mode-summary {
 .studio-focus-show-all-inline {
   min-height: 26px;
   padding: 4px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(159, 144, 255, 0.86);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--color-text-main);
+  background: rgba(124, 108, 255, 0.26);
+  color: #ffffff;
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
@@ -6355,9 +6355,31 @@ body.fullscreen-mode .progress-mode-summary {
 
 .studio-question-focus-btn:hover,
 .studio-focus-show-all-inline:hover {
-  background: rgba(255, 255, 255, 0.13);
-  border-color: var(--color-border-strong);
+  border-color: rgba(182, 171, 255, 0.94);
+  background: rgba(124, 108, 255, 0.34);
+  color: #ffffff;
   transform: translateY(-1px);
+}
+
+
+.studio-question-focus-string-btn {
+  border-color: rgba(159, 144, 255, 0.86);
+  background: rgba(124, 108, 255, 0.26);
+  color: #ffffff;
+}
+
+.studio-question-focus-string-btn:hover,
+.studio-question-focus-string-btn:focus-visible {
+  border-color: rgba(182, 171, 255, 0.94);
+  background: rgba(124, 108, 255, 0.34);
+  color: #ffffff;
+}
+
+.studio-question-focus-badge.string-focus {
+  background: rgba(255, 183, 77, 0.28);
+  border-color: rgba(255, 183, 77, 0.82);
+  color: #fff7df;
+  box-shadow: 0 0 0 2px rgba(255, 183, 77, 0.18);
 }
 
 .studio-question-list-item.build-up-member {
