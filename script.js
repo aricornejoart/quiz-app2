@@ -207,6 +207,7 @@ MODIFICATION RULES FOR THIS APP
             starringInFlight: false,
             studioQuestionSearchQuery: '',
             studioQuestionStarredOnly: false,
+            studioActiveBuildUpString: '',
             studioFocusedQuestionId: '',
             studioHasUnsavedChanges: false,
             studioAutosaveTimerId: null,
@@ -440,6 +441,7 @@ MODIFICATION RULES FOR THIS APP
         unstarOnWrongMode: document.getElementById('unstarOnWrongMode'),
         hideAnswerFeedbackMode: document.getElementById('hideAnswerFeedbackMode'),
         globalShuffleAnswers: document.getElementById('globalShuffleAnswers'),
+        allowBuildUp: document.getElementById('allowBuildUp'),
 
         excludeStarredQuestions: document.getElementById('excludeStarredQuestions'),
         onlyStarredQuestions: document.getElementById('onlyStarredQuestions'),
@@ -1360,14 +1362,14 @@ MODIFICATION RULES FOR THIS APP
             return rows;
         }
         const rows = [[
-            'Question', 'multiple choice', 'section',
+            'Question', 'multiple choice', 'section', 'build_up',
             'option_1', 'option_2', 'option_3', 'option_4', 'option_5', 'option_6',
             'correct_option',
             'option_1_explanation', 'option_2_explanation', 'option_3_explanation', 'option_4_explanation', 'option_5_explanation', 'option_6_explanation',
             'Question image URL', 'Learning resources', 'Learning resources image URL'
         ]];
         if (isExample) rows.push([
-            'Which organelle makes most cellular ATP?', '', '7.1',
+            'Which organelle makes most cellular ATP?', '', '7.1', 'cell-organelle-case-1',
             'Nucleus', 'Mitochondria', 'Ribosome', 'Golgi apparatus', 'Chloroplast', 'Lysosome',
             '2',
             'The nucleus stores DNA.', 'Mitochondria produce most ATP during cellular respiration.', 'Ribosomes build proteins.', 'The Golgi modifies and packages molecules.', 'Chloroplasts perform photosynthesis in plant cells.', 'Lysosomes digest cellular waste.',
@@ -5612,6 +5614,147 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function getStudioQuestionBuildUpValue(questionRow = {}) {
+        return normalizeBuildUpValue(questionRow?.buildUp || questionRow?.build_up || questionRow?.buildUpGroup || questionRow?.build_up_group);
+    }
+
+    function isSameBuildUpString(firstValue = '', secondValue = '') {
+        const first = normalizeBuildUpValue(firstValue).toLowerCase();
+        const second = normalizeBuildUpValue(secondValue).toLowerCase();
+        return !!first && !!second && first === second;
+    }
+
+    function isStudioBuildUpEditMode() {
+        return getStudioCurrentQuizType() === 'multiple_choice' && !!normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
+    }
+
+    function clearStudioBuildUpEditMode(options = {}) {
+        if (!state.auth.studioActiveBuildUpString && !options.forceRender) return;
+        state.auth.studioActiveBuildUpString = '';
+        renderStudioQuestionList();
+        updateStudioQuestionNavigationUI();
+        if (options.status !== false) {
+            setCreatorStatus('Build Up string editing closed.', 'success');
+        }
+    }
+
+    function setStudioBuildUpEditMode(buildUpValue, options = {}) {
+        const normalizedBuildUp = normalizeBuildUpValue(buildUpValue);
+        if (!normalizedBuildUp) {
+            clearStudioBuildUpEditMode(options);
+            return;
+        }
+        state.auth.studioActiveBuildUpString = normalizedBuildUp;
+        state.auth.studioFocusedQuestionId = '';
+        state.auth.studioQuestionSearchQuery = '';
+        state.auth.studioQuestionStarredOnly = false;
+        if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+        syncStudioQuestionStarredFilterButton();
+        renderStudioQuestionList();
+        updateStudioQuestionNavigationUI();
+        if (options.status !== false) {
+            setCreatorStatus(`Editing Build Up string "${normalizedBuildUp}". Use Add and Remove to choose its questions.`, 'success');
+        }
+    }
+
+    function getNextStudioBuildUpStringName() {
+        const used = new Set((state.auth.studioQuizQuestions || [])
+            .map(question => getStudioQuestionBuildUpValue(question).toLowerCase())
+            .filter(Boolean));
+        let index = 1;
+        while (used.has(`string-${index}`)) index += 1;
+        return `string-${index}`;
+    }
+
+    function normalizeOptionsJsonForBuildUpUpdate(detailRow = {}) {
+        const rawOptions = getOptionsJsonOptions(detailRow?.options_json);
+        const sourceOptions = rawOptions.length
+            ? rawOptions
+            : getMultipleChoiceDraftsFromDetailRow(detailRow).map((draft, index) => ({
+                text: normalizeAuthoredMathChemText(draft.text),
+                explanation_html: buildStoredHtmlFromPlain(draft.explanation),
+                imageUrl: normalizeSheetText(draft.imageUrl),
+                imageLabel: normalizeSheetText(draft.imageLabel) || getOptionImageLabel(draft, index)
+            }));
+        return sourceOptions.map((option, index) => ({
+            text: normalizeSheetText(option?.text),
+            explanation_html: normalizeSheetText(option?.explanation_html || buildStoredHtmlFromPlain(option?.explanation || '')),
+            imageUrl: normalizeSheetText(option?.imageUrl || option?.image_url),
+            imageLabel: normalizeSheetText(option?.imageLabel || option?.image_label) || getOptionImageLabel(option, index)
+        })).filter(option => option.text || option.imageUrl);
+    }
+
+    async function updateStudioQuestionBuildUpString(questionId, nextBuildUpValue = '') {
+        const normalizedQuestionId = normalizeSheetText(questionId);
+        if (!state.auth.client || !state.auth.editingQuizId || !normalizedQuestionId) {
+            throw new Error('Select a saved multiple-choice question first.');
+        }
+        const questionRow = state.auth.studioQuizQuestions.find(question => normalizeSheetText(question.id) === normalizedQuestionId);
+        if (!questionRow || normalizeSheetText(questionRow.question_type || 'multiple_choice') !== 'multiple_choice') {
+            throw new Error('Build Up strings are only available for multiple-choice questions.');
+        }
+        const detail = await loadMultipleChoiceDetailByQuestionId(normalizedQuestionId);
+        if (!detail) throw new Error("Could not load this question's multiple-choice details.");
+        const optionPayload = normalizeOptionsJsonForBuildUpUpdate(detail);
+        const nextBuildUp = normalizeBuildUpValue(nextBuildUpValue);
+        const nextOptionsJson = buildMultipleChoiceOptionsJsonPayload(optionPayload, nextBuildUp);
+        const { error } = await state.auth.client
+            .from('multiple_choice_questions')
+            .update({ options_json: nextOptionsJson })
+            .eq('question_id', normalizedQuestionId);
+        if (error) {
+            const missingColumn = /options_json/i.test(error.message || '') || /options_json/i.test(error.details || '');
+            if (missingColumn) throw new Error('Run the Phase 6 Supabase migration before editing Build Up strings.');
+            throw error;
+        }
+        questionRow.buildUp = nextBuildUp;
+        return nextBuildUp;
+    }
+
+    async function handleStudioBuildUpStringButton(questionId) {
+        const normalizedQuestionId = normalizeSheetText(questionId);
+        const questionRow = getStudioQuestionRowById(normalizedQuestionId);
+        if (!questionRow) throw new Error('Could not find that question.');
+        let buildUpValue = getStudioQuestionBuildUpValue(questionRow);
+        if (!buildUpValue) {
+            buildUpValue = await updateStudioQuestionBuildUpString(normalizedQuestionId, getNextStudioBuildUpStringName());
+        }
+        setStudioBuildUpEditMode(buildUpValue);
+    }
+
+    async function handleStudioBuildUpAddQuestion(questionId) {
+        const activeBuildUp = normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
+        if (!activeBuildUp) throw new Error('Open a Build Up string first.');
+        const questionRow = getStudioQuestionRowById(questionId);
+        const existingBuildUp = getStudioQuestionBuildUpValue(questionRow);
+        if (existingBuildUp && !isSameBuildUpString(existingBuildUp, activeBuildUp)) {
+            throw new Error('This question is already in another string. Remove it from that string before adding it here.');
+        }
+        await updateStudioQuestionBuildUpString(questionId, activeBuildUp);
+        renderStudioQuestionList();
+        setCreatorStatus('Question added to this Build Up string.', 'success');
+    }
+
+    async function handleStudioBuildUpRemoveQuestion(questionId) {
+        const activeBuildUp = normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
+        if (!activeBuildUp) throw new Error('Open a Build Up string first.');
+        const questionRow = getStudioQuestionRowById(questionId);
+        if (!isSameBuildUpString(getStudioQuestionBuildUpValue(questionRow), activeBuildUp)) {
+            setCreatorStatus('That question is not in this Build Up string.', 'error');
+            return;
+        }
+        await updateStudioQuestionBuildUpString(questionId, '');
+        const remaining = (state.auth.studioQuizQuestions || []).some(question => isSameBuildUpString(getStudioQuestionBuildUpValue(question), activeBuildUp));
+        if (!remaining) {
+            state.auth.studioActiveBuildUpString = '';
+            renderStudioQuestionList();
+            setCreatorStatus('Question removed. That Build Up string is now empty.', 'success');
+            return;
+        }
+        renderStudioQuestionList();
+        setCreatorStatus('Question removed from this Build Up string.', 'success');
+    }
+
     function syncStudioQuestionStarredFilterButton() {
         if (!elements.studioQuestionStarredOnly) return;
         const active = !!state.auth.studioQuestionStarredOnly;
@@ -5627,6 +5770,7 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
+        state.auth.studioActiveBuildUpString = '';
         state.auth.studioFocusedQuestionId = normalizedQuestionId;
         state.auth.studioQuestionSearchQuery = '';
         if (elements.studioQuestionSearchInput) {
@@ -5714,14 +5858,22 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
+        const editingType = getStudioCurrentQuizType();
+        const activeBuildUpString = normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
+        const buildUpEditActive = editingType === 'multiple_choice' && !!activeBuildUpString;
+        if (activeBuildUpString && editingType !== 'multiple_choice') {
+            state.auth.studioActiveBuildUpString = '';
+        }
         const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '').toLowerCase();
         const focusQuestionId = normalizeSheetText(state.auth.studioFocusedQuestionId || '');
-        const focusModeActive = !!focusQuestionId;
+        const focusModeActive = !buildUpEditActive && !!focusQuestionId;
         const focusNewDraftActive = focusModeActive && focusQuestionId === STUDIO_FOCUS_NEW_QUESTION_ID;
-        const starredOnlyFilter = !!state.auth.studioQuestionStarredOnly;
+        const starredOnlyFilter = !buildUpEditActive && !!state.auth.studioQuestionStarredOnly;
         let filteredQuestions = displayRows;
 
-        if (focusModeActive) {
+        if (buildUpEditActive) {
+            filteredQuestions = displayRows.filter(questionRow => normalizeSheetText(questionRow.question_type || 'multiple_choice') === 'multiple_choice');
+        } else if (focusModeActive) {
             if (query) {
                 state.auth.studioQuestionSearchQuery = '';
                 if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
@@ -5743,19 +5895,26 @@ MODIFICATION RULES FOR THIS APP
             }
         }
 
-        const editingType = getStudioCurrentQuizType();
         if (!filteredQuestions.length && !focusNewDraftActive) {
-            const emptyLabel = focusModeActive
-                ? '<div class="studio-list-empty">Focused question is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
-                : (starredOnlyFilter && !query
-                    ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
-                    : '<div class="studio-list-empty">No questions match your search.</div>');
+            const emptyLabel = buildUpEditActive
+                ? '<div class="studio-list-empty">This quiz has no multiple-choice questions available for Build Up string editing.</div>'
+                : (focusModeActive
+                    ? '<div class="studio-list-empty">Focused question is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
+                    : (starredOnlyFilter && !query
+                        ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
+                        : '<div class="studio-list-empty">No questions match your search.</div>'));
             elements.studioQuestionList.innerHTML = emptyLabel;
             updateStudioQuestionNavigationUI();
             return;
         }
         const sharedDiagramSourceQuestionId = editingType === 'diagrams' ? getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) : '';
-        let rowsHtml = filteredQuestions.map((questionRow, filteredIndex) => {
+        const buildUpEditorBannerHtml = buildUpEditActive
+            ? `<div class="studio-build-up-editor-banner">
+                <div><strong>Editing String:</strong> ${escapeHtml(activeBuildUpString)} <span>Add or remove multiple-choice questions below. Normal question order controls the Build Up order.</span></div>
+                <button type="button" class="studio-build-up-done-btn" data-studio-build-up-clear="true">Done</button>
+              </div>`
+            : '';
+        let rowsHtml = buildUpEditorBannerHtml + filteredQuestions.map((questionRow, filteredIndex) => {
             let index = displayRows.findIndex(question => question.id === questionRow.id);
             if (index === -1) index = filteredIndex;
             const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
@@ -5777,6 +5936,22 @@ MODIFICATION RULES FOR THIS APP
             const starBadgeHtml = isStarredRow
                 ? '<span class="studio-question-list-star" title="Starred question" aria-label="Starred question">★</span>'
                 : '';
+            const questionBuildUpValue = getStudioQuestionBuildUpValue(questionRow);
+            const isBuildUpQuestionRow = editingType === 'multiple_choice' && questionType === 'multiple_choice' && !isPendingRow && !isLocalFlashcardRow;
+            const isActiveBuildUpMember = buildUpEditActive && isSameBuildUpString(questionBuildUpValue, activeBuildUpString);
+            const isOtherBuildUpMember = buildUpEditActive && !!questionBuildUpValue && !isActiveBuildUpMember;
+            const buildUpBadgeHtml = questionBuildUpValue
+                ? `<span class="studio-build-up-badge${isActiveBuildUpMember ? ' active' : ''}" title="Build Up string: ${escapeHtml(questionBuildUpValue)}">String</span>`
+                : '';
+            const buildUpControlHtml = isBuildUpQuestionRow
+                ? (buildUpEditActive
+                    ? `<span class="studio-build-up-edit-actions" aria-label="Build Up string actions">
+                        ${buildUpBadgeHtml}
+                        <button type="button" class="studio-build-up-action-btn add" data-studio-build-up-add-question-id="${escapeHtml(questionRow.id)}" ${isActiveBuildUpMember || isOtherBuildUpMember ? 'disabled' : ''} title="${escapeHtml(isOtherBuildUpMember ? 'This question is already in another string' : (isActiveBuildUpMember ? 'Already in this string' : 'Add to this string'))}">Add</button>
+                        <button type="button" class="studio-build-up-action-btn remove" data-studio-build-up-remove-question-id="${escapeHtml(questionRow.id)}" ${isActiveBuildUpMember ? '' : 'disabled'} title="${escapeHtml(isActiveBuildUpMember ? 'Remove from this string' : 'This question is not in this string')}">Remove</button>
+                      </span>`
+                    : `<button type="button" class="studio-build-up-string-btn${questionBuildUpValue ? ' has-string' : ''}" data-studio-build-up-string-question-id="${escapeHtml(questionRow.id)}" title="${escapeHtml(questionBuildUpValue ? `Edit Build Up string: ${questionBuildUpValue}` : 'Create a Build Up string from this question')}">${questionBuildUpValue ? 'Edit String' : 'String'}</button>${buildUpBadgeHtml}`)
+                : '';
 
             let itemContent = '';
             if (editingType === 'flashcard' && questionType === 'flashcard') {
@@ -5786,7 +5961,7 @@ MODIFICATION RULES FOR THIS APP
                 const definitionAttr = isPendingRow ? 'data-studio-pending-flashcard-definition="true"' : `data-studio-flashcard-definition-id="${escapeHtml(questionRow.id)}"`;
                 itemContent = `
                     <div class="studio-question-content-stack">
-                      <div class="studio-question-focus-row">${focusControlHtml}</div>
+                      <div class="studio-question-focus-row">${focusControlHtml}${buildUpControlHtml}</div>
                       <div class="studio-flashcard-inline-fields">
                         <label class="studio-flashcard-inline-field">
                           <span>Term</span>
@@ -5802,7 +5977,7 @@ MODIFICATION RULES FOR THIS APP
             } else {
                 itemContent = `
                     <div class="studio-question-content-stack">
-                      <div class="studio-question-focus-row">${focusControlHtml}</div>
+                      <div class="studio-question-focus-row">${focusControlHtml}${buildUpControlHtml}</div>
                       <button
                         type="button"
                         class="studio-question-list-main"
@@ -5830,7 +6005,7 @@ MODIFICATION RULES FOR THIS APP
             return `
                 <div class="studio-question-list-row">
                   <div
-                    class="studio-question-list-item${isActive ? ' active' : ''}${isStarredRow ? ' starred' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
+                    class="studio-question-list-item${isActive ? ' active' : ''}${isStarredRow ? ' starred' : ''}${isActiveBuildUpMember ? ' build-up-member' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
                     data-studio-row-question-id="${escapeHtml(questionRow.id)}"
                     ${isLocalFlashcardRow ? '' : rowDropAttr}
                   >
@@ -5976,8 +6151,10 @@ MODIFICATION RULES FOR THIS APP
         const rows = (data || []);
         const questionIds = rows.map(row => row.id).filter(Boolean);
         const flashcardQuestionIds = rows.filter(row => row.question_type === 'flashcard').map(row => row.id);
-        const [flashcardDetails, starredStateRows] = await Promise.all([
+        const multipleChoiceQuestionIds = rows.filter(row => row.question_type === 'multiple_choice').map(row => row.id);
+        const [flashcardDetails, multipleChoiceDetails, starredStateRows] = await Promise.all([
             flashcardQuestionIds.length ? loadFlashcardDetailsByQuestionIds(flashcardQuestionIds) : [],
+            multipleChoiceQuestionIds.length ? loadMultipleChoiceDetailsByQuestionIds(multipleChoiceQuestionIds) : [],
             (questionIds.length && state.auth.user?.id)
                 ? state.auth.client
                     .from('user_question_state')
@@ -5988,6 +6165,7 @@ MODIFICATION RULES FOR THIS APP
         ]);
         if (starredStateRows?.error) throw starredStateRows.error;
         const flashcardMap = new Map((flashcardDetails || []).map(row => [row.question_id, row]));
+        const multipleChoiceBuildUpMap = new Map((multipleChoiceDetails || []).map(row => [normalizeSheetText(row.question_id), getBuildUpValueFromOptionsJson(row.options_json)]));
         const starredMap = new Map((starredStateRows?.data || []).map(row => [normalizeSheetText(row.question_id), !!row.is_starred]));
 
         state.auth.studioQuizQuestions = rows.map(row => ({
@@ -6000,6 +6178,7 @@ MODIFICATION RULES FOR THIS APP
             question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
             image_url: normalizeSheetText(row.image_url),
             sort_order: Number(row.sort_order ?? 0),
+            buildUp: multipleChoiceBuildUpMap.get(normalizeSheetText(row.id)) || '',
             isStarred: !!starredMap.get(normalizeSheetText(row.id))
         }));
         renderStudioQuestionList();
@@ -6706,6 +6885,7 @@ MODIFICATION RULES FOR THIS APP
         }
         state.auth.studioQuestionSearchQuery = '';
         state.auth.studioQuestionStarredOnly = false;
+        state.auth.studioActiveBuildUpString = '';
         state.auth.studioFocusedQuestionId = '';
         if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
         syncStudioQuestionStarredFilterButton();
@@ -8485,6 +8665,7 @@ MODIFICATION RULES FOR THIS APP
             const savedExplanations = savedOptionDrafts.map(draft => draft.explanation);
             const savedOptionAnswerValues = savedOptionDrafts.map(getOptionAnswerValue);
             const savedCorrectAnswer = savedOptionAnswerValues[correctIndex] || correctAnswer;
+            const existingBuildUpValue = (!isDiagramQuestion && isEditingQuestion) ? await getMultipleChoiceBuildUpByQuestionId(questionId) : '';
             const optionPayload = savedOptionDrafts.map((draft, index) => ({
                 text: draft.text,
                 explanation_html: buildStoredHtmlFromPlain(draft.explanation),
@@ -8493,7 +8674,7 @@ MODIFICATION RULES FOR THIS APP
             }));
             const optionsJsonPayload = isDiagramQuestion
                 ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: !!nextDiagramSharing.questionOverride }
-                : optionPayload;
+                : buildMultipleChoiceOptionsJsonPayload(optionPayload, existingBuildUpValue);
             const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionsJsonPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) {
@@ -9070,6 +9251,7 @@ MODIFICATION RULES FOR THIS APP
             });
             state.auth.studioQuestionSearchQuery = '';
             state.auth.studioQuestionStarredOnly = false;
+            state.auth.studioActiveBuildUpString = '';
             state.auth.studioFocusedQuestionId = '';
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
             syncStudioQuestionStarredFilterButton();
@@ -9649,11 +9831,12 @@ MODIFICATION RULES FOR THIS APP
         const correctAnswer = normalizeSheetText(question.correct);
         const correctIndex = options.findIndex(option => option === correctAnswer);
         const optionPayload = options.map((optionText, index) => ({ text: optionText, explanation_html: buildStoredHtmlFromPlain(explanations[index] || '') }));
+        const optionsJsonPayload = buildMultipleChoiceOptionsJsonPayload(optionPayload, question.buildUp);
         const detailPayload = {
             question_id: questionId,
             correct_answer: correctAnswer,
             correct_explanation_html: buildStoredHtmlFromPlain(correctIndex >= 0 ? (explanations[correctIndex] || '') : ''),
-            options_json: optionPayload,
+            options_json: optionsJsonPayload,
             option_1_text: options[0] || '',
             option_1_explanation_html: buildStoredHtmlFromPlain(explanations[0] || ''),
             option_2_text: options[1] || '',
@@ -9903,6 +10086,48 @@ MODIFICATION RULES FOR THIS APP
 
     function normalizeImportSectionValue(value) {
         return normalizeSheetText(value).replace(/^'+/, '').replace(/\s+/g, ' ');
+    }
+
+    function normalizeBuildUpValue(value) {
+        return normalizeSheetText(value).replace(/^'+/, '').replace(/\s+/g, ' ');
+    }
+
+    function getBuildUpValueFromOptionsJson(optionsJson) {
+        if (!optionsJson || typeof optionsJson !== 'object') return '';
+        if (!Array.isArray(optionsJson)) {
+            return normalizeBuildUpValue(
+                optionsJson.buildUp
+                || optionsJson.build_up
+                || optionsJson.buildUpGroup
+                || optionsJson.build_up_group
+            );
+        }
+        const optionWithBuildUp = optionsJson.find(item => normalizeBuildUpValue(item?.buildUp || item?.build_up || item?.buildUpGroup || item?.build_up_group));
+        return normalizeBuildUpValue(
+            optionWithBuildUp?.buildUp
+            || optionWithBuildUp?.build_up
+            || optionWithBuildUp?.buildUpGroup
+            || optionWithBuildUp?.build_up_group
+        );
+    }
+
+    function buildMultipleChoiceOptionsJsonPayload(optionPayload = [], buildUpValue = '') {
+        const normalizedBuildUp = normalizeBuildUpValue(buildUpValue);
+        return normalizedBuildUp
+            ? { options: optionPayload, buildUp: normalizedBuildUp }
+            : optionPayload;
+    }
+
+    async function getMultipleChoiceBuildUpByQuestionId(questionId = '') {
+        const normalizedQuestionId = normalizeSheetText(questionId);
+        if (!normalizedQuestionId) return '';
+        try {
+            const detail = await loadMultipleChoiceDetailByQuestionId(normalizedQuestionId);
+            return getBuildUpValueFromOptionsJson(detail?.options_json);
+        } catch (error) {
+            console.warn('Could not load existing Build Up string metadata:', error);
+            return '';
+        }
     }
 
     function getSectionedImportGroups(sourceQuestions = []) {
@@ -11166,6 +11391,30 @@ function updateGlobalShuffleAnswersAvailability() {
     }
 }
 
+function updateAllowBuildUpAvailability() {
+    const allowBuildUpCheckbox = elements.allowBuildUp;
+    const allowBuildUpSetting = document.getElementById('allowBuildUpSetting');
+    const allowBuildUpHelp = document.getElementById('allowBuildUpHelp');
+    const hasBuildUpStrings = state.questions.some(isBuildUpSupportedQuestion);
+
+    if (allowBuildUpCheckbox) {
+        allowBuildUpCheckbox.disabled = !hasBuildUpStrings;
+        if (!hasBuildUpStrings) {
+            allowBuildUpCheckbox.checked = false;
+        }
+    }
+
+    if (allowBuildUpSetting) {
+        allowBuildUpSetting.classList.toggle('disabled-setting', !hasBuildUpStrings);
+    }
+
+    if (allowBuildUpHelp) {
+        allowBuildUpHelp.innerText = hasBuildUpStrings
+            ? 'Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.'
+            : 'Available when multiple-choice questions include Build Up string values from import or editor tools.';
+    }
+}
+
 function updateFlashcardFrontSettingVisibility() {
     if (!elements.flashcardFrontSetting) return;
     elements.flashcardFrontSetting.classList.toggle('hidden', !hasFlashcardsInDeck());
@@ -11269,6 +11518,7 @@ function updateSettingsAvailability() {
     updateShuffleQuestionsAvailability();
     updateShuffleAnswersAvailability();
     updateGlobalShuffleAnswersAvailability();
+    updateAllowBuildUpAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
     updateNavigationButtons();
@@ -11790,7 +12040,14 @@ async function loadQuestionsForQuizDescriptor(quizDescriptor) {
             && normalizeFolderName(item.folder) === normalizeFolderName(quizDescriptor.folder)
         );
 
-        const results = await Promise.all(memberQuizzes.map(item => loadQuestions(item)));
+        const results = await Promise.all(memberQuizzes.map(async item => {
+            const questions = await loadQuestions(item);
+            return questions.map(question => ({
+                ...question,
+                sourceQuizId: normalizeSheetText(question.sourceQuizId || item.sourceQuizId),
+                sourceQuizName: normalizeSheetText(item.name)
+            }));
+        }));
         return results.flat();
     }
 
@@ -11879,6 +12136,58 @@ function resetPendingStudyAdvanceFlags() {
     state.masteryCheckPendingCheckpointComplete = false;
 }
 
+function isBuildUpSupportedQuestion(question = {}) {
+    return question?.type === 'multiple choice' && !!normalizeBuildUpValue(question?.buildUp);
+}
+
+function isAllowBuildUpEnabled() {
+    return !!elements.allowBuildUp?.checked;
+}
+
+function getBuildUpGroupKey(question = {}) {
+    const buildUp = normalizeBuildUpValue(question?.buildUp);
+    if (!buildUp || question?.type !== 'multiple choice') return '';
+    const scope = normalizeSheetText(question?.sourceQuizId || state.activeQuizDescriptor?.sourceQuizId || state.activeQuizDescriptor?.id || 'active-quiz');
+    return `${scope}::${buildUp.toLocaleLowerCase()}`;
+}
+
+function buildQuestionBlocksPreservingBuildUp(questions = []) {
+    const source = Array.isArray(questions) ? questions : [];
+    if (!isAllowBuildUpEnabled()) {
+        return source.map(question => [question]);
+    }
+
+    const grouped = new Map();
+    source.forEach(question => {
+        const key = getBuildUpGroupKey(question);
+        if (!key) return;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(question);
+    });
+
+    const emittedGroups = new Set();
+    const blocks = [];
+    source.forEach(question => {
+        const key = getBuildUpGroupKey(question);
+        if (!key) {
+            blocks.push([question]);
+            return;
+        }
+        if (emittedGroups.has(key)) return;
+        emittedGroups.add(key);
+        blocks.push(grouped.get(key) || [question]);
+    });
+    return blocks;
+}
+
+function buildStudyQuestionQueue(questions = [], { shuffle = false } = {}) {
+    const blocks = buildQuestionBlocksPreservingBuildUp(questions);
+    if (shuffle) {
+        shuffleArray(blocks);
+    }
+    return blocks.flat();
+}
+
 function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestionId = '' } = {}) {
     const visibleQuestions = getFilteredSourceQuestions();
     state.emptyQuizMessage = '';
@@ -11890,11 +12199,9 @@ function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestion
     }
 
     state.questions = [...visibleQuestions];
-    state.questionQueue = [...visibleQuestions];
-
-    if (document.getElementById('shuffleQuestions').checked && resetSession) {
-        shuffleArray(state.questionQueue);
-    }
+    state.questionQueue = buildStudyQuestionQueue(visibleQuestions, {
+        shuffle: !!document.getElementById('shuffleQuestions')?.checked && resetSession
+    });
 
     if (preserveQuestionId) {
         const preservedIndex = state.questionQueue.findIndex(question => question.id === preserveQuestionId);
@@ -12297,6 +12604,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
             const explanations = optionDrafts.map(draft => draft.explanation);
             const correctAnswer = normalizeSheetText(detail.correct_answer);
+            const buildUp = quizType === 'multiple_choice' ? getBuildUpValueFromOptionsJson(detail.options_json) : '';
             const correctIndex = optionAnswerValues.findIndex(optionValue => optionValue === correctAnswer);
             if (correctIndex >= 0 && !explanations[correctIndex]) {
                 explanations[correctIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
@@ -12304,12 +12612,14 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             return {
                 id: `q_${state.questionIdCounter++}`,
                 sourceQuestionId: row.id,
+                sourceQuizId: normalizeSheetText(quizDescriptor.sourceQuizId),
                 question: getStoredTextForDisplay(row.prompt_plain, row.prompt_html),
                 type: quizType === 'diagrams' ? 'diagrams' : 'multiple choice',
                 options,
                 optionImages,
                 correct: correctAnswer,
                 explanations,
+                buildUp,
                 image: quizType === 'diagrams' ? diagramImage : normalizeSheetText(row.image_url),
                 diagramLabels,
                 learningResources: getStoredTextForDisplay('', row.learning_resources_html),
@@ -12492,6 +12802,7 @@ function getMultipleChoiceSheetLayout(rows) {
     const correctUsesOptionNumber = /correctoption|correctoptionnumber|correctoptionindex/.test(correctHeaderKey);
 
     const sectionColumn = findSheetColumnByHeader(headers, ['Section', 'Section number', 'Textbook section', 'Subsection']);
+    const buildUpColumn = findSheetColumnByHeader(headers, ['build_up', 'Build Up', 'Build Up Group', 'String', 'Question String', 'Case String']);
     const imageColumn = findSheetColumnByHeader(headers, ['Question image URL', 'Question image', 'Image URL', 'Image']);
     const learningResourcesColumn = findSheetColumnByHeader(headers, ['Learning resources', 'Learning resource', 'Resources']);
     const learningResourcesImageColumn = findSheetColumnByHeader(headers, ['Learning resources image URL', 'Learning resource image URL', 'Resources image URL']);
@@ -12504,6 +12815,7 @@ function getMultipleChoiceSheetLayout(rows) {
             correctColumn,
             correctUsesOptionNumber,
             sectionColumn,
+            buildUpColumn,
             imageColumn,
             learningResourcesColumn,
             learningResourcesImageColumn
@@ -12517,6 +12829,7 @@ function getMultipleChoiceSheetLayout(rows) {
         correctColumn: 6,
         correctUsesOptionNumber: false,
         sectionColumn: -1,
+        buildUpColumn: -1,
         imageColumn: 11,
         learningResourcesColumn: 12,
         learningResourcesImageColumn: 13
@@ -12568,6 +12881,7 @@ function parseMultipleChoiceQuestionsFromGoogleSheetRows(rows) {
             ),
             explanations: optionDrafts.map(option => option.explanation),
             section: layout.sectionColumn >= 0 ? getSectionCellValue(c[layout.sectionColumn]) : '',
+            buildUp: layout.buildUpColumn >= 0 ? normalizeBuildUpValue(getCellValue(c[layout.buildUpColumn])) : '',
             image: layout.imageColumn >= 0 ? getCellValue(c[layout.imageColumn]) : '',
             learningResources: layout.learningResourcesColumn >= 0 ? getCellValue(c[layout.learningResourcesColumn]) : '',
             learningResourcesImage: layout.learningResourcesImageColumn >= 0 ? getCellValue(c[layout.learningResourcesImageColumn]) : ''
@@ -15010,11 +15324,9 @@ function restartQuiz() {
     }
 
     resetModeState();
-    state.questionQueue = [...state.questions];
-
-    if (document.getElementById('shuffleQuestions').checked) {
-        shuffleArray(state.questionQueue);
-    }
+    state.questionQueue = buildStudyQuestionQueue(state.questions, {
+        shuffle: !!document.getElementById('shuffleQuestions')?.checked
+    });
 
     updateSettingsAvailability();
     showQuestion();
@@ -15161,6 +15473,17 @@ if (elements.globalShuffleAnswers) {
         updateSettingsAvailability();
         if (!state.questionAnswered && isGlobalShuffleAnswersSupportedQuestion(state.questionQueue[state.currentIndex])) {
             showQuestion();
+        }
+    });
+}
+
+if (elements.allowBuildUp) {
+    elements.allowBuildUp.addEventListener('change', () => {
+        updateSettingsAvailability();
+        if (state.sourceQuestions.length) {
+            applyFilteredQuestionsToSession({ resetSession: true });
+        } else {
+            restartQuiz();
         }
     });
 }
@@ -15753,6 +16076,39 @@ if (elements.studioQuestionList) {
         const showAllButton = e.target.closest('[data-studio-show-all-questions]');
         if (showAllButton) {
             clearStudioQuestionFocusMode();
+            return;
+        }
+
+        const buildUpClearButton = e.target.closest('[data-studio-build-up-clear]');
+        if (buildUpClearButton) {
+            clearStudioBuildUpEditMode();
+            return;
+        }
+
+        const buildUpStringButton = e.target.closest('[data-studio-build-up-string-question-id]');
+        if (buildUpStringButton) {
+            handleStudioBuildUpStringButton(buildUpStringButton.dataset.studioBuildUpStringQuestionId).catch(err => {
+                console.error(err);
+                setCreatorStatus(err.message || 'Could not open that Build Up string.', 'error');
+            });
+            return;
+        }
+
+        const buildUpAddButton = e.target.closest('[data-studio-build-up-add-question-id]');
+        if (buildUpAddButton && !buildUpAddButton.disabled) {
+            handleStudioBuildUpAddQuestion(buildUpAddButton.dataset.studioBuildUpAddQuestionId).catch(err => {
+                console.error(err);
+                setCreatorStatus(err.message || 'Could not add that question to the string.', 'error');
+            });
+            return;
+        }
+
+        const buildUpRemoveButton = e.target.closest('[data-studio-build-up-remove-question-id]');
+        if (buildUpRemoveButton && !buildUpRemoveButton.disabled) {
+            handleStudioBuildUpRemoveQuestion(buildUpRemoveButton.dataset.studioBuildUpRemoveQuestionId).catch(err => {
+                console.error(err);
+                setCreatorStatus(err.message || 'Could not remove that question from the string.', 'error');
+            });
             return;
         }
 
@@ -17176,6 +17532,9 @@ if (elements.studioQuestionSearchInput) {
         if (nextQuery && isStudioQuestionFocusMode()) {
             state.auth.studioFocusedQuestionId = '';
         }
+        if (nextQuery && state.auth.studioActiveBuildUpString) {
+            state.auth.studioActiveBuildUpString = '';
+        }
         state.auth.studioQuestionSearchQuery = nextQuery;
         renderStudioQuestionList();
     });
@@ -17185,6 +17544,9 @@ if (elements.studioQuestionStarredOnly) {
     elements.studioQuestionStarredOnly.addEventListener('click', () => {
         if (state.auth.studioFocusedQuestionId) {
             state.auth.studioFocusedQuestionId = '';
+        }
+        if (state.auth.studioActiveBuildUpString) {
+            state.auth.studioActiveBuildUpString = '';
         }
         state.auth.studioQuestionStarredOnly = !state.auth.studioQuestionStarredOnly;
         renderStudioQuestionList();

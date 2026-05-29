@@ -109,6 +109,29 @@ MODIFICATION RULES FOR THIS APP
                 </label>
               </div>
 
+              <div class="setting-card" id="allowBuildUpSetting">
+                <div class="setting-title-row">
+                  <label class="setting-title" for="allowBuildUp">Allow Build Up</label>
+                  <button
+                    type="button"
+                    class="setting-help-btn"
+                    data-help-target="allowBuildUpHelp"
+                    aria-label="About Allow Build Up"
+                    aria-expanded="false"
+                    aria-controls="allowBuildUpHelp"
+                  >?</button>
+                </div>
+                <div id="allowBuildUpHelp" class="setting-help-tooltip hidden" role="tooltip">
+                  Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.
+                </div>
+                <label class="toggle-switch" for="allowBuildUp" aria-label="Allow Build Up toggle">
+                  <input type="checkbox" id="allowBuildUp">
+                  <span class="toggle-track" aria-hidden="true">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                </label>
+              </div>
+
               <div class="setting-card" id="shuffleAnswersSetting">
                 <div class="setting-title-row">
                   <label class="setting-title" for="shuffleAnswers">Shuffle Answers</label>
@@ -671,7 +694,7 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
                     <div class="creator-subsection-title">Template Downloads</div>
-                    <div class="creator-note">Download CSV starter templates, paste them into Google Sheets, then import the finished sheet tab below. Multiple-choice templates include an optional section column for auto-splitting one sheet into section quizzes. Blank templates include headers only; example templates include one sample row.</div>
+                    <div class="creator-note">Download CSV starter templates, paste them into Google Sheets, then import the finished sheet tab below. Multiple-choice templates include optional section and build_up columns for auto-splitting one sheet into section quizzes and keeping Build Up strings together during study. Blank templates include headers only; example templates include one sample row.</div>
                     <div class="studio-template-grid">
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-template-download="multiple_choice" data-template-variant="blank">Blank Multiple Choice</button>
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-template-download="flashcard" data-template-variant="blank">Blank Flashcard</button>
@@ -749,7 +772,7 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Import Google Sheet Template</div>
-                    <div class="creator-note">Paste a Google Sheet URL or sheet ID from your template, enter the tab name, choose where it should go in Supabase, and optionally set the base quiz name. If the sheet includes section values, Study Bunny creates one quiz per section and appends the section with a dash.</div>
+                    <div class="creator-note">Paste a Google Sheet URL or sheet ID from your template, enter the tab name, choose where it should go in Supabase, and optionally set the base quiz name. If the sheet includes section values, Study Bunny creates one quiz per section and appends the section with a dash. If multiple-choice rows share a build_up value, Allow Build Up can keep those questions together during study.</div>
 
                     <label class="auth-field">
                       <span>Google Sheet URL or ID</span>
