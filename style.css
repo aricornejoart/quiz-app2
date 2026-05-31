@@ -3978,6 +3978,22 @@ body.fullscreen-mode.active-question-classify {
   }
 }
 
+@media screen and (max-width: 480px) and (orientation: portrait) {
+  @supports (-webkit-touch-callout: none) {
+    .auth-popup {
+      position: fixed;
+      top: calc(52px + env(safe-area-inset-top, 0px));
+      left: max(12px, env(safe-area-inset-left, 0px));
+      right: max(12px, env(safe-area-inset-right, 0px));
+      width: auto;
+      max-width: none;
+      max-height: calc(100svh - 70px - env(safe-area-inset-top, 0px));
+      overflow-y: auto;
+      box-sizing: border-box;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+}
 
 /* ===== Quiz Studio Page ===== */
 .quiz-studio-page {
