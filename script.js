@@ -52,32 +52,28 @@ MODIFICATION RULES FOR THIS APP
             mode: 'mastery',
             title: 'Mastery Challenge',
             shortLabel: 'M',
-            trophy: '🏆',
-            description: 'Complete Mastery mode with locked challenge settings.'
+            trophy: '🏆'
         },
         {
             key: 'retention_shuffle_answers',
             mode: 'retention',
             title: 'Retention Challenge',
             shortLabel: 'R',
-            trophy: '🏆',
-            description: 'Complete Retention mode with locked challenge settings.'
+            trophy: '🏆'
         },
         {
             key: 'mastery_check_shuffle_answers',
             mode: 'mastery_check',
             title: 'Mastery Check Challenge',
             shortLabel: 'C',
-            trophy: '🏆',
-            description: 'Complete Mastery Check with locked challenge settings.'
+            trophy: '🏆'
         },
         {
             key: 'progress_shuffle_answers',
             mode: 'progress',
             title: 'Progress Challenge',
             shortLabel: 'P',
-            trophy: '🏆',
-            description: 'Complete Progress mode with locked challenge settings.'
+            trophy: '🏆'
         },
         {
             key: 'build_up_mastery_shuffle_answers',
@@ -85,8 +81,7 @@ MODIFICATION RULES FOR THIS APP
             title: 'Build Up Mastery Challenge',
             shortLabel: 'BM',
             trophy: '🏆',
-            requiresBuildUp: true,
-            description: 'Complete Mastery mode with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
+            requiresBuildUp: true
         },
         {
             key: 'build_up_retention_shuffle_answers',
@@ -94,8 +89,7 @@ MODIFICATION RULES FOR THIS APP
             title: 'Build Up Retention Challenge',
             shortLabel: 'BR',
             trophy: '🏆',
-            requiresBuildUp: true,
-            description: 'Complete Retention mode with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
+            requiresBuildUp: true
         },
         {
             key: 'build_up_mastery_check_shuffle_answers',
@@ -103,8 +97,7 @@ MODIFICATION RULES FOR THIS APP
             title: 'Build Up Mastery Check Challenge',
             shortLabel: 'BC',
             trophy: '🏆',
-            requiresBuildUp: true,
-            description: 'Complete Mastery Check with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
+            requiresBuildUp: true
         },
         {
             key: 'build_up_progress_shuffle_answers',
@@ -112,8 +105,7 @@ MODIFICATION RULES FOR THIS APP
             title: 'Build Up Progress Challenge',
             shortLabel: 'BP',
             trophy: '🏆',
-            requiresBuildUp: true,
-            description: 'Complete Progress mode with Shuffle Questions, Shuffle Answers, and Build Up locked on.'
+            requiresBuildUp: true
         }
     ]);
 
@@ -2980,20 +2972,13 @@ MODIFICATION RULES FOR THIS APP
 
     function renderQuizChallengePanel(quiz) {
         const quizId = normalizeSheetText(quiz?.id);
-        const canStartAny = QUIZ_CHALLENGES.some(challenge => canQuizUseChallengeSettings(quiz, challenge));
-        const disabledReason = canStartAny ? '' : 'Challenges require a compatible quiz type and settings so the challenge settings can be locked.';
-        const tableNote = state.auth.quizChallengeUnavailable
-            ? 'Supabase challenge table needs the Phase 22DN SQL before all trophies can save permanently.'
-            : '';
         const challengeRows = QUIZ_CHALLENGES.map(challenge => {
             const unlocked = hasQuizChallengeAchievement(quizId, challenge.key);
             const canStartChallenge = canQuizUseChallengeSettings(quiz, challenge);
-            const challengeReason = getQuizChallengeDisabledReason(quiz, challenge);
             return `
                 <div class="quiz-challenge-row${unlocked ? ' completed' : ''}${challenge.requiresBuildUp ? ' build-up' : ''}">
                   <div class="quiz-challenge-row-main">
                     <div class="quiz-challenge-row-title"><span>${unlocked ? '🏆' : '○'}</span> ${escapeHtml(challenge.title)}</div>
-                    <div class="quiz-challenge-row-description">${escapeHtml(challenge.description)}${challengeReason ? ` ${escapeHtml(challengeReason)}` : ''}</div>
                   </div>
                   <button type="button" class="auth-action-btn quiz-challenge-begin-btn" data-action="begin-challenge" data-challenge-key="${escapeHtml(challenge.key)}"${!canStartChallenge ? ' disabled' : ''}>Begin Challenge</button>
                 </div>
@@ -3006,8 +2991,6 @@ MODIFICATION RULES FOR THIS APP
                 <span>Challenges</span>
                 <span class="quiz-challenge-grand${grandUnlocked ? ' unlocked' : ''}">${grandUnlocked ? '🌟 Grand Trophy unlocked' : '☆ Grand Trophy locked'}</span>
               </div>
-              ${tableNote ? `<div class="quiz-challenge-note quiz-challenge-warning">${escapeHtml(tableNote)}</div>` : ''}
-              ${disabledReason ? `<div class="quiz-challenge-note">${escapeHtml(disabledReason)}</div>` : `<div class="quiz-challenge-note">Begin a challenge to lock the required mode, Shuffle Questions, Shuffle Answers, and any challenge-specific settings until the attempt is finished.</div>`}
               <div class="quiz-challenge-list">${challengeRows}</div>
             </div>
         `;
