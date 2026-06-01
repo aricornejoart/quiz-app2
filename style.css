@@ -434,6 +434,25 @@ body.fullscreen-mode .bottom-controls {
   margin-top: 8px;
 }
 
+.option-delay-notice {
+  width: 100%;
+  max-width: var(--content-width);
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid rgba(159, 144, 255, 0.6);
+  border-radius: 12px;
+  background: rgba(124, 108, 255, 0.13);
+  color: #ded7ff;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+.options.option-delay-active .option-block {
+  display: none !important;
+}
+
 .option-block {
   display: flex;
   flex-direction: column;
@@ -5746,7 +5765,8 @@ body.fullscreen-mode .progress-mode-summary {
   }
 
   body.active-question-multiple-choice .optionBtn,
-  body.active-question-multiple-choice .explanation {
+  body.active-question-multiple-choice .explanation,
+  body.active-question-multiple-choice .option-delay-notice {
     width: 100%;
     max-width: none;
   }

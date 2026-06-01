@@ -22,6 +22,7 @@ MODIFICATION RULES FOR THIS APP
         speedDelay: 300,
         studioAutosaveDelayMs: 10 * 60 * 1000,
         studyTimerStorageKey: 'studyBunnyTimerSettingsV1',
+        optionDelayStorageKey: 'studyBunnyOptionDelaySettingsV1',
         autoStarStorageKey: 'studyBunnyAutoStarSettingsV1',
         unstarOnWrongStorageKey: 'studyBunnyUnstarOnWrongSettingsV1',
         hideAnswerFeedbackStorageKey: 'studyBunnyHideAnswerFeedbackSettingsV1',
@@ -139,6 +140,17 @@ MODIFICATION RULES FOR THIS APP
             intervalId: null,
             expired: false,
             sessionToken: 0
+        },
+        optionDelay: {
+            enabled: false,
+            preset: '10',
+            customSeconds: 10,
+            active: false,
+            timeoutId: null,
+            intervalId: null,
+            endsAt: 0,
+            releaseToken: 0,
+            studyTimerWasPaused: false
         },
         autoStar: {
             enabled: false,
@@ -463,6 +475,11 @@ MODIFICATION RULES FOR THIS APP
         timerCustomSeconds: document.getElementById('timerCustomSeconds'),
         timerCustomRow: document.getElementById('timerCustomRow'),
         timerDetails: document.getElementById('timerDetails'),
+        optionDelayMode: document.getElementById('optionDelayMode'),
+        optionDelayPresetSelect: document.getElementById('optionDelayPresetSelect'),
+        optionDelayCustomSeconds: document.getElementById('optionDelayCustomSeconds'),
+        optionDelayCustomRow: document.getElementById('optionDelayCustomRow'),
+        optionDelayDetails: document.getElementById('optionDelayDetails'),
         autoStarMode: document.getElementById('autoStarMode'),
         autoStarPresetSelect: document.getElementById('autoStarPresetSelect'),
         autoStarCustomSeconds: document.getElementById('autoStarCustomSeconds'),
@@ -10679,6 +10696,204 @@ function isTetherBuildUpSupportedModeActive() {
     return isRetentionMode() || isRetryMode() || isMasteryCheckMode() || isProgressMode();
 }
 
+// ================= OPTION DELAY HELPERS =================
+function sanitizeOptionDelaySeconds(value, fallback = 10) {
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, 300);
+}
+
+function isOptionDelaySupportedQuestion(question = {}) {
+    return question?.type === 'multiple choice' || question?.type === 'diagrams';
+}
+
+function isOptionDelayEnabledForQuestion(question = state.questionQueue[state.currentIndex]) {
+    return !!state.optionDelay.enabled && isOptionDelaySupportedQuestion(question);
+}
+
+function getOptionDelayDurationSeconds() {
+    if (!state.optionDelay.enabled) return 0;
+    if (state.optionDelay.preset === 'custom') {
+        return sanitizeOptionDelaySeconds(state.optionDelay.customSeconds, 10);
+    }
+    return sanitizeOptionDelaySeconds(state.optionDelay.preset, 10);
+}
+
+function ensureOptionDelayNotice() {
+    let notice = document.getElementById('optionDelayNotice');
+    if (!notice) {
+        notice = document.createElement('div');
+        notice.id = 'optionDelayNotice';
+        notice.className = 'option-delay-notice hidden';
+        notice.setAttribute('aria-live', 'polite');
+    }
+    if (notice.parentElement !== elements.optionsContainer) {
+        elements.optionsContainer.insertBefore(notice, elements.optionsContainer.firstChild);
+    }
+    return notice;
+}
+
+function setOptionDelayNoticeText() {
+    const notice = ensureOptionDelayNotice();
+    const remainingSeconds = Math.max(1, Math.ceil((state.optionDelay.endsAt - Date.now()) / 1000));
+    notice.innerText = `Options appear in ${remainingSeconds}s`;
+}
+
+function clearOptionDelay({ hideNotice = true } = {}) {
+    if (state.optionDelay.timeoutId) {
+        clearTimeout(state.optionDelay.timeoutId);
+        state.optionDelay.timeoutId = null;
+    }
+    if (state.optionDelay.intervalId) {
+        clearInterval(state.optionDelay.intervalId);
+        state.optionDelay.intervalId = null;
+    }
+    state.optionDelay.active = false;
+    state.optionDelay.endsAt = 0;
+    state.optionDelay.releaseToken += 1;
+    elements.optionsContainer.classList.remove('option-delay-active');
+    const notice = document.getElementById('optionDelayNotice');
+    if (notice && hideNotice) {
+        notice.classList.add('hidden');
+        notice.innerText = '';
+    }
+}
+
+function pauseStudyTimerForOptionDelay() {
+    if (!state.studyTimer.enabled) return;
+    state.optionDelay.studyTimerWasPaused = false;
+    if (state.studyTimer.intervalId) {
+        state.studyTimer.remainingMs = Math.max(0, state.studyTimer.deadlineMs - Date.now());
+        clearInterval(state.studyTimer.intervalId);
+        state.studyTimer.intervalId = null;
+        state.optionDelay.studyTimerWasPaused = !!state.studyTimer.activeKey;
+        updateProgress();
+        return;
+    }
+    if (state.studyTimer.activeKey && state.studyTimer.remainingMs > 0) {
+        state.optionDelay.studyTimerWasPaused = true;
+    }
+}
+
+function resumeStudyTimerAfterOptionDelay() {
+    if (!state.studyTimer.enabled || isQuizFinished()) return;
+    const scope = state.studyTimer.scope === 'folder' || state.studyTimer.scope === 'quiz' ? state.studyTimer.scope : 'question';
+
+    if (scope !== 'question' && state.optionDelay.studyTimerWasPaused && state.studyTimer.activeKey && state.studyTimer.remainingMs > 0) {
+        state.studyTimer.deadlineMs = Date.now() + state.studyTimer.remainingMs;
+        state.studyTimer.expired = false;
+        if (state.studyTimer.intervalId) clearInterval(state.studyTimer.intervalId);
+        state.studyTimer.intervalId = setInterval(tickStudyTimer, 250);
+        state.optionDelay.studyTimerWasPaused = false;
+        tickStudyTimer();
+        return;
+    }
+
+    state.optionDelay.studyTimerWasPaused = false;
+    syncStudyTimerForCurrentQuestion();
+}
+
+function revealOptionDelayOptions(token = state.optionDelay.releaseToken) {
+    if (token !== state.optionDelay.releaseToken) return;
+    clearOptionDelay({ hideNotice: true });
+    if (!state.questionAnswered && !isQuizFinished()) {
+        setOptionButtonsEnabled(true);
+    }
+    resumeStudyTimerAfterOptionDelay();
+    updateNavigationButtons();
+}
+
+function startOptionDelayForCurrentQuestion(question = state.questionQueue[state.currentIndex]) {
+    clearOptionDelay({ hideNotice: true });
+    if (!isOptionDelayEnabledForQuestion(question) || state.questionAnswered || isQuizFinished()) {
+        resumeStudyTimerAfterOptionDelay();
+        return;
+    }
+
+    const durationSeconds = getOptionDelayDurationSeconds();
+    if (!durationSeconds) {
+        resumeStudyTimerAfterOptionDelay();
+        return;
+    }
+
+    pauseStudyTimerForOptionDelay();
+    state.optionDelay.active = true;
+    state.optionDelay.releaseToken += 1;
+    const token = state.optionDelay.releaseToken;
+    state.optionDelay.endsAt = Date.now() + durationSeconds * 1000;
+    elements.optionsContainer.classList.add('option-delay-active');
+    const notice = ensureOptionDelayNotice();
+    notice.classList.remove('hidden');
+    setOptionDelayNoticeText();
+    setOptionButtonsEnabled(false);
+
+    state.optionDelay.intervalId = setInterval(() => {
+        if (token !== state.optionDelay.releaseToken) return;
+        setOptionDelayNoticeText();
+    }, 250);
+    state.optionDelay.timeoutId = setTimeout(() => revealOptionDelayOptions(token), durationSeconds * 1000);
+}
+
+function serializeOptionDelaySettings() {
+    return {
+        enabled: !!state.optionDelay.enabled,
+        preset: ['3', '5', '10', '15', 'custom'].includes(String(state.optionDelay.preset)) ? String(state.optionDelay.preset) : '10',
+        customSeconds: sanitizeOptionDelaySeconds(state.optionDelay.customSeconds, 10)
+    };
+}
+
+function saveOptionDelaySettings() {
+    try {
+        localStorage.setItem(CONFIG.optionDelayStorageKey, JSON.stringify(serializeOptionDelaySettings()));
+    } catch (err) {
+        console.warn('Could not save Option Delay settings:', err);
+    }
+}
+
+function loadOptionDelaySettings() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(CONFIG.optionDelayStorageKey) || 'null');
+    } catch (err) {
+        saved = null;
+    }
+
+    if (saved && typeof saved === 'object') {
+        state.optionDelay.enabled = !!saved.enabled;
+        state.optionDelay.preset = ['3', '5', '10', '15', 'custom'].includes(String(saved.preset)) ? String(saved.preset) : '10';
+        state.optionDelay.customSeconds = sanitizeOptionDelaySeconds(saved.customSeconds, 10);
+    }
+
+    syncOptionDelaySettingsUI();
+}
+
+function syncOptionDelaySettingsUI() {
+    if (elements.optionDelayMode) elements.optionDelayMode.checked = !!state.optionDelay.enabled;
+    if (elements.optionDelayPresetSelect) elements.optionDelayPresetSelect.value = state.optionDelay.preset;
+    if (elements.optionDelayCustomSeconds) elements.optionDelayCustomSeconds.value = String(state.optionDelay.customSeconds || 10);
+
+    const showDetails = !!state.optionDelay.enabled;
+    const showCustom = state.optionDelay.preset === 'custom';
+    if (elements.optionDelayDetails) elements.optionDelayDetails.classList.toggle('hidden', !showDetails);
+    if (elements.optionDelayCustomRow) elements.optionDelayCustomRow.classList.toggle('hidden', !showDetails || !showCustom);
+}
+
+function readOptionDelaySettingsFromUI() {
+    state.optionDelay.enabled = !!elements.optionDelayMode?.checked;
+    state.optionDelay.preset = ['3', '5', '10', '15', 'custom'].includes(String(elements.optionDelayPresetSelect?.value)) ? String(elements.optionDelayPresetSelect.value) : '10';
+    state.optionDelay.customSeconds = sanitizeOptionDelaySeconds(elements.optionDelayCustomSeconds?.value, state.optionDelay.customSeconds || 10);
+    syncOptionDelaySettingsUI();
+    saveOptionDelaySettings();
+}
+
+function restartOptionDelayAfterSettingsChange() {
+    clearOptionDelay({ hideNotice: true });
+    const currentQuestion = state.questionQueue[state.currentIndex];
+    if (!state.questionAnswered && isOptionDelayEnabledForQuestion(currentQuestion)) {
+        startOptionDelayForCurrentQuestion(currentQuestion);
+    }
+}
+
 // ================= STUDY TIMER HELPERS =================
 function sanitizeStudyTimerSeconds(value, fallback = 60) {
     const parsed = Math.floor(Number(value));
@@ -10786,6 +11001,13 @@ function syncStudyTimerForCurrentQuestion() {
 
     const scope = state.studyTimer.scope === 'folder' || state.studyTimer.scope === 'quiz' ? state.studyTimer.scope : 'question';
     const key = scope === 'question' ? getCurrentQuestionTimerKey(currentQuestion) : getStudyTimerSessionBaseKey();
+    if (scope !== 'question' && state.studyTimer.activeKey === key && !state.studyTimer.intervalId && state.studyTimer.remainingMs > 0) {
+        state.studyTimer.deadlineMs = Date.now() + state.studyTimer.remainingMs;
+        state.studyTimer.expired = false;
+        state.studyTimer.intervalId = setInterval(tickStudyTimer, 250);
+        tickStudyTimer();
+        return;
+    }
     startStudyTimer(key, durationSeconds);
 }
 
@@ -10905,7 +11127,11 @@ function readStudyTimerSettingsFromUI() {
 function restartStudyTimerAfterSettingsChange() {
     state.studyTimer.sessionToken += 1;
     stopStudyTimer({ clearDisplay: false });
-    syncStudyTimerForCurrentQuestion();
+    if (!state.optionDelay.active) {
+        syncStudyTimerForCurrentQuestion();
+    } else {
+        pauseStudyTimerForOptionDelay();
+    }
     updateProgress();
 }
 
@@ -11696,6 +11922,7 @@ function updateSettingsAvailability() {
     updateUnstarOnWrongAvailability();
     syncHideAnswerFeedbackSettingsUI();
     syncGlobalShuffleAnswersSettingsUI();
+    syncOptionDelaySettingsUI();
     updateShuffleQuestionsAvailability();
     updateShuffleAnswersAvailability();
     updateGlobalShuffleAnswersAvailability();
@@ -11916,7 +12143,7 @@ function isStudyKeyboardShortcutBlocked(event) {
 
 function activateVisibleAnswerShortcut(optionNumber) {
     if (!Number.isInteger(optionNumber) || optionNumber < 1 || optionNumber > 9) return false;
-    if (state.questionAnswered) return false;
+    if (state.questionAnswered || state.optionDelay.active) return false;
 
     const currentQuestion = state.questionQueue[state.currentIndex] || null;
     if (currentQuestion?.type === 'flashcard') {
@@ -13451,6 +13678,7 @@ function clearProgressModeFinishUI() {
 }
 
 function clearQuestionUI() {
+    clearOptionDelay({ hideNotice: true });
     clearProgressModeFinishUI();
     clearFeedback();
     clearExplanations();
@@ -13849,8 +14077,13 @@ function showQuestion() {
 
     const q = state.questionQueue[state.currentIndex];
     state.currentQuestionType = q.type || '';
+    const shouldDelayOptions = isOptionDelayEnabledForQuestion(q);
     startAutoStarQuestionWindow(q);
-    syncStudyTimerForCurrentQuestion();
+    if (shouldDelayOptions) {
+        pauseStudyTimerForOptionDelay();
+    } else {
+        syncStudyTimerForCurrentQuestion();
+    }
     updateViewportClasses();
     elements.optionsContainer.style.display = 'none';
 
@@ -14085,6 +14318,8 @@ function showMC(q) {
             }
         }
     });
+
+    startOptionDelayForCurrentQuestion(q);
 }
 
 // ================= WRONG ANSWER LOGIC =================
@@ -14203,6 +14438,7 @@ function handleCorrectAnswer() {
 // ================= ANSWER =================
 function checkAnswer(selected, explanations) {
     if (isQuizFinished()) return;
+    if (state.optionDelay.active) return;
     if (state.questionAnswered) return;
     if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
     if (isRetentionMode() && state.retentionAnswerLocked) return;
@@ -15776,6 +16012,20 @@ if (elements.onlyStarredQuestions) {
         control.addEventListener('input', () => {
             readStudyTimerSettingsFromUI();
             restartStudyTimerAfterSettingsChange();
+        });
+    }
+});
+
+[elements.optionDelayMode, elements.optionDelayPresetSelect, elements.optionDelayCustomSeconds].forEach(control => {
+    if (!control) return;
+    control.addEventListener('change', () => {
+        readOptionDelaySettingsFromUI();
+        restartOptionDelayAfterSettingsChange();
+    });
+    if (control === elements.optionDelayCustomSeconds) {
+        control.addEventListener('input', () => {
+            readOptionDelaySettingsFromUI();
+            restartOptionDelayAfterSettingsChange();
         });
     }
 });
@@ -18081,6 +18331,7 @@ window.addEventListener('orientationchange', handleViewportChange);
         applyResponsiveControlText();
         updateViewportClasses();
         loadStudyTimerSettings();
+        loadOptionDelaySettings();
         loadAutoStarSettings();
         loadUnstarOnWrongSettings();
         loadHideAnswerFeedbackSettings();
