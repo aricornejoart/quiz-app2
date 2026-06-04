@@ -12556,12 +12556,6 @@ function canUseStudySwipeNavigation(event) {
     return true;
 }
 
-function getStudySwipeMinimumDistance() {
-    const viewportWidth = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0);
-    if (!viewportWidth) return 110;
-    return Math.min(150, Math.max(110, viewportWidth * 0.28));
-}
-
 function handleStudySwipeStart(event) {
     if (!canUseStudySwipeNavigation(event)) {
         STUDY_SWIPE_NAVIGATION.tracking = false;
@@ -12591,24 +12585,17 @@ function handleStudySwipeEnd(event) {
     const absX = Math.abs(dx);
     const absY = Math.abs(dy);
     const elapsedMs = Date.now() - STUDY_SWIPE_NAVIGATION.startTime;
-    const minimumDistance = getStudySwipeMinimumDistance();
 
-    if (elapsedMs > 1000) return;
-    if (absX < minimumDistance) return;
-    if (absX < absY * 1.85) return;
-    if (absY > 54) return;
-
-    const wantsNext = dx > 0;
-    const targetButton = wantsNext ? elements.nextBtn : elements.prevBtn;
-    if (!targetButton || targetButton.disabled || targetButton.getAttribute('aria-disabled') === 'true') return;
+    if (dx <= 0) return;
+    if (!state.questionAnswered) return;
+    if (elapsedMs > 1200) return;
+    if (absX < 64) return;
+    if (absX < absY * 1.35) return;
+    if (absY > 80) return;
+    if (!elements.nextBtn || elements.nextBtn.disabled || elements.nextBtn.getAttribute('aria-disabled') === 'true') return;
 
     event.preventDefault();
-
-    if (wantsNext) {
-        nextQuestion();
-    } else {
-        prevQuestion();
-    }
+    nextQuestion();
 }
 
 function bindStudySwipeNavigation() {
