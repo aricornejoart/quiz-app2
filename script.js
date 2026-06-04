@@ -12504,6 +12504,117 @@ function handleStudyKeyboardShortcut(event) {
     return false;
 }
 
+// ================= STUDY SWIPE NAVIGATION =================
+const STUDY_SWIPE_NAVIGATION = {
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    tracking: false
+};
+
+function isAppleTouchStudyDevice() {
+    const userAgent = navigator.userAgent || '';
+    const platform = navigator.platform || '';
+    const touchPoints = Number(navigator.maxTouchPoints || 0);
+    return /iPad|iPhone|iPod/i.test(userAgent) || (platform === 'MacIntel' && touchPoints > 1);
+}
+
+function isStudySwipeNavigationSupportedQuestion() {
+    const currentQuestion = state.questionQueue[state.currentIndex] || null;
+    return currentQuestion?.type === 'multiple choice' && state.currentQuestionType === 'multiple choice';
+}
+
+function isStudySwipeNavigationBlockedTarget(target) {
+    if (!target || !target.closest) return false;
+    return !!target.closest([
+        'button',
+        'input',
+        'select',
+        'textarea',
+        'a',
+        'label',
+        '[contenteditable="true"]',
+        '.option-block',
+        '.utility-controls',
+        '.nav-buttons',
+        '#settingsPopup',
+        '#authPopup',
+        '#quizStudioPage',
+        '#learningResourcesOverlay',
+        '#flashcardImageOverlay'
+    ].join(','));
+}
+
+function canUseStudySwipeNavigation(event) {
+    if (!isAppleTouchStudyDevice()) return false;
+    if (!isStudySwipeNavigationSupportedQuestion()) return false;
+    if (state.optionDelay?.active) return false;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return false;
+    if (state.auth.quizStudioOpen || !elements.quizStudioPage?.classList.contains('hidden')) return false;
+    if (elements.authPopup && !elements.authPopup.classList.contains('hidden')) return false;
+    if (elements.settingsPopup && !elements.settingsPopup.classList.contains('hidden')) return false;
+    if (!state.questions.length || isQuizFinished()) return false;
+    if (event && isStudySwipeNavigationBlockedTarget(event.target)) return false;
+    return true;
+}
+
+function handleStudySwipeStart(event) {
+    if (!canUseStudySwipeNavigation(event)) {
+        STUDY_SWIPE_NAVIGATION.tracking = false;
+        return;
+    }
+
+    const touch = event.touches?.[0];
+    if (!touch) return;
+
+    STUDY_SWIPE_NAVIGATION.startX = touch.clientX;
+    STUDY_SWIPE_NAVIGATION.startY = touch.clientY;
+    STUDY_SWIPE_NAVIGATION.startTime = Date.now();
+    STUDY_SWIPE_NAVIGATION.tracking = true;
+}
+
+function handleStudySwipeEnd(event) {
+    if (!STUDY_SWIPE_NAVIGATION.tracking) return;
+    STUDY_SWIPE_NAVIGATION.tracking = false;
+
+    if (!canUseStudySwipeNavigation(event)) return;
+
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+
+    const dx = touch.clientX - STUDY_SWIPE_NAVIGATION.startX;
+    const dy = touch.clientY - STUDY_SWIPE_NAVIGATION.startY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    const elapsedMs = Date.now() - STUDY_SWIPE_NAVIGATION.startTime;
+
+    if (elapsedMs > 1200) return;
+    if (absX < 64) return;
+    if (absX < absY * 1.35) return;
+    if (absY > 80) return;
+
+    const wantsNext = dx > 0;
+    const targetButton = wantsNext ? elements.nextBtn : elements.prevBtn;
+    if (!targetButton || targetButton.disabled || targetButton.getAttribute('aria-disabled') === 'true') return;
+
+    event.preventDefault();
+
+    if (wantsNext) {
+        nextQuestion();
+    } else {
+        prevQuestion();
+    }
+}
+
+function bindStudySwipeNavigation() {
+    if (!elements.quizArea) return;
+    elements.quizArea.addEventListener('touchstart', handleStudySwipeStart, { passive: true });
+    elements.quizArea.addEventListener('touchend', handleStudySwipeEnd, { passive: false });
+    elements.quizArea.addEventListener('touchcancel', () => {
+        STUDY_SWIPE_NAVIGATION.tracking = false;
+    }, { passive: true });
+}
+
 // ================= LEARNING RESOURCES UI =================
 function clearPendingLearningResource() {
     state.pendingLearningResource = null;
@@ -16173,6 +16284,7 @@ function restartQuiz() {
 elements.nextBtn.onclick = nextQuestion;
 elements.prevBtn.onclick = prevQuestion;
 elements.restartBtn.onclick = restartQuiz;
+bindStudySwipeNavigation();
 
 document.getElementById('retentionMode').onchange = e => {
     if (e.target.checked) {
