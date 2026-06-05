@@ -8655,11 +8655,15 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function syncAuthFromSession(session) {
+    async function syncAuthFromSession(session, authEvent = '') {
         const previousUserId = normalizeSheetText(state.auth.user?.id);
         const nextUserId = normalizeSheetText(session?.user?.id);
         const sameSignedInUser = !!previousUserId && !!nextUserId && previousUserId === nextUserId;
         const activeQuizWasLoaded = !!state.activeQuizDescriptor && Array.isArray(state.sourceQuestions) && state.sourceQuestions.length > 0;
+
+        if (!session?.user?.id && previousUserId && authEvent !== 'SIGNED_OUT') {
+            return;
+        }
 
         state.auth.session = session || null;
         state.auth.user = session?.user || null;
@@ -8705,8 +8709,9 @@ MODIFICATION RULES FOR THIS APP
                 state.sourceQuestions.forEach(question => { question.isStarred = false; });
             }
 
-            if (sameSignedInUser && activeQuizWasLoaded) {
+            if (sameSignedInUser) {
                 syncQuestionStarButton();
+                updateProgress();
                 return;
             }
 
@@ -8734,8 +8739,8 @@ MODIFICATION RULES FOR THIS APP
             state.auth.client = factory(url, publishableKey);
             state.auth.initialized = true;
 
-            state.auth.client.auth.onAuthStateChange((_event, session) => {
-                syncAuthFromSession(session).catch(err => console.error(err));
+            state.auth.client.auth.onAuthStateChange((event, session) => {
+                syncAuthFromSession(session, event).catch(err => console.error(err));
             });
 
             const { data, error } = await state.auth.client.auth.getSession();
@@ -14714,8 +14719,43 @@ function buildGlobalShuffleAnswerEntries(question = {}, localOptionEntries = [])
     return selected;
 }
 
+function ensureOptionHideControl(block) {
+    if (!block) return null;
+    const feedback = block.querySelector('.option-feedback');
+    if (!feedback) return null;
+
+    let hideBtn = block.querySelector('.option-hide-btn');
+    if (!hideBtn) {
+        hideBtn = document.createElement('button');
+        hideBtn.type = 'button';
+        hideBtn.className = 'option-hide-btn';
+        hideBtn.setAttribute('aria-label', 'Hide option');
+        hideBtn.title = 'Hide option';
+        hideBtn.textContent = '⊘';
+    }
+
+    if (hideBtn.parentElement !== feedback) {
+        feedback.innerHTML = '';
+        feedback.appendChild(hideBtn);
+    }
+
+    return hideBtn;
+}
+
+function resetOptionFeedbackLane(block) {
+    if (!block) return null;
+    const feedback = block.querySelector('.option-feedback');
+    if (!feedback) return null;
+    feedback.innerText = '';
+    feedback.classList.remove('correct-mark', 'incorrect-mark');
+    return ensureOptionHideControl(block);
+}
+
 function ensureMultipleChoiceOptionBlocks(count) {
     const container = elements.optionsContainer;
+    let resetBtn = document.getElementById('resetHiddenOptionsBtn');
+    if (resetBtn) resetBtn.remove();
+
     const getBlocks = () => Array.from(container.querySelectorAll('.option-block'));
     let blocks = getBlocks();
 
@@ -14725,7 +14765,7 @@ function ensureMultipleChoiceOptionBlocks(count) {
         block.innerHTML = `
             <div class="option-row">
               <button class="optionBtn" type="button"></button>
-              <div class="option-feedback"></div>
+              <div class="option-feedback"><button class="option-hide-btn" type="button" aria-label="Hide option" title="Hide option">⊘</button></div>
             </div>
             <div class="explanation"></div>
         `;
@@ -14734,11 +14774,62 @@ function ensureMultipleChoiceOptionBlocks(count) {
     }
 
     blocks.forEach((block, index) => {
+        const hideBtn = resetOptionFeedbackLane(block);
+        block.classList.remove('option-eliminated');
         block.style.display = index < count ? '' : 'none';
+        if (hideBtn) {
+            hideBtn.disabled = false;
+            hideBtn.classList.remove('hidden');
+        }
     });
+
+    resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.id = 'resetHiddenOptionsBtn';
+    resetBtn.className = 'reset-hidden-options-btn hidden';
+    resetBtn.innerText = 'Reset hidden options';
+    resetBtn.addEventListener('click', resetHiddenOptions);
+    container.appendChild(resetBtn);
 
     return getBlocks();
 }
+
+function updateResetHiddenOptionsButton() {
+    const resetBtn = document.getElementById('resetHiddenOptionsBtn');
+    if (!resetBtn) return;
+    const hasHiddenOptions = Array.from(elements.optionsContainer.querySelectorAll('.option-block'))
+        .some(block => block.classList.contains('option-eliminated'));
+    resetBtn.classList.toggle('hidden', !hasHiddenOptions);
+}
+
+function resetHiddenOptions() {
+    elements.optionsContainer.querySelectorAll('.option-block.option-eliminated').forEach(block => {
+        block.classList.remove('option-eliminated');
+        block.style.display = '';
+    });
+    updateResetHiddenOptionsButton();
+}
+
+function revealHiddenOptionsForFeedback() {
+    resetHiddenOptions();
+    elements.optionsContainer.querySelectorAll('.option-hide-btn').forEach(button => {
+        button.disabled = true;
+        button.classList.add('hidden');
+    });
+}
+
+function handleHideOptionClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.questionAnswered || state.optionDelay.active) return;
+
+    const block = event.currentTarget?.closest('.option-block');
+    if (!block) return;
+    block.classList.add('option-eliminated');
+    block.style.display = 'none';
+    updateResetHiddenOptionsButton();
+}
+
 
 function showMC(q) {
     const container = elements.optionsContainer;
@@ -14758,7 +14849,15 @@ function showMC(q) {
         const fb = block.querySelector('.option-feedback');
         const entry = optionEntries[index] || null;
 
+        block.classList.remove('option-eliminated');
+
         if (entry && btn && exp && fb) {
+            const hideBtn = resetOptionFeedbackLane(block);
+            if (hideBtn) {
+                hideBtn.disabled = false;
+                hideBtn.classList.remove('hidden');
+                hideBtn.onclick = handleHideOptionClick;
+            }
             const optionValue = entry.text || entry.image;
             block.style.display = '';
             btn.style.display = entry.image ? 'flex' : 'block';
@@ -14790,8 +14889,12 @@ function showMC(q) {
             btn.classList.remove('option-correct', 'option-incorrect');
             btn.onclick = () => checkAnswer(optionValue, optionEntries.map(item => item.explanation));
             exp.innerText = '';
-            fb.innerText = '';
-            fb.classList.remove('correct-mark', 'incorrect-mark');
+            const activeHideBtn = resetOptionFeedbackLane(block);
+            if (activeHideBtn) {
+                activeHideBtn.disabled = false;
+                activeHideBtn.classList.remove('hidden');
+                activeHideBtn.onclick = handleHideOptionClick;
+            }
         } else {
             block.style.display = 'none';
             if (btn) {
@@ -14806,9 +14909,16 @@ function showMC(q) {
                 fb.innerText = '';
                 fb.classList.remove('correct-mark', 'incorrect-mark');
             }
+            const hideBtn = ensureOptionHideControl(block);
+            if (hideBtn) {
+                hideBtn.onclick = null;
+                hideBtn.disabled = true;
+                hideBtn.classList.add('hidden');
+            }
         }
     });
 
+    updateResetHiddenOptionsButton();
     startOptionDelayForCurrentQuestion(q);
 }
 
@@ -14934,6 +15044,7 @@ function checkAnswer(selected, explanations) {
     if (isRetentionMode() && state.retentionAnswerLocked) return;
 
     state.questionAnswered = true;
+    revealHiddenOptionsForFeedback();
     setOptionButtonsEnabled(false);
 
     const q = state.questionQueue[state.currentIndex];

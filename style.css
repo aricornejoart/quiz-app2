@@ -421,7 +421,7 @@ body.fullscreen-mode .bottom-controls {
 
 #questionText {
   max-width: var(--content-width);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.4;
   word-wrap: break-word;
 }
@@ -514,6 +514,8 @@ body.fullscreen-mode .bottom-controls {
 
 .option-feedback {
   width: 30px;
+  min-width: 30px;
+  height: 30px;
   text-align: center;
   font-size: 20px;
   font-weight: 900;
@@ -521,6 +523,9 @@ body.fullscreen-mode .bottom-controls {
   opacity: 1;
   line-height: 1;
   min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .option-feedback.correct-mark,
@@ -5608,8 +5613,8 @@ body.studio-question-dragging {
 .studio-rich-hidden-color {
   position: absolute;
   inset: 0;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   margin: 0;
   padding: 0;
   opacity: 0;
@@ -6720,6 +6725,125 @@ body.fullscreen-mode.active-question-multiple-choice .options::-webkit-scrollbar
   body.active-question-multiple-choice .options,
   body.fullscreen-mode.active-question-multiple-choice .options {
     max-height: min(64svh, 360px);
+  }
+}
+
+/* ===== Phase 22EC: Purple Option Scrollbar + Cross-Eliminate Options ===== */
+body.active-question-multiple-choice .options {
+  scrollbar-color: var(--color-border-strong) var(--color-bg-surface);
+}
+
+body.active-question-multiple-choice .options::-webkit-scrollbar-track {
+  background: var(--color-bg-surface);
+  border-radius: 999px;
+}
+
+body.active-question-multiple-choice .options::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--color-border-strong) 0%, var(--color-bg-control-hover) 100%);
+  border-radius: 999px;
+  border: 2px solid var(--color-bg-surface);
+}
+
+body.active-question-multiple-choice .options::-webkit-scrollbar-thumb:hover,
+body.active-question-multiple-choice .options:hover::-webkit-scrollbar-thumb,
+body.active-question-multiple-choice .options:focus-within::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #9486ff 0%, #6d5cff 100%);
+}
+
+.option-row {
+  width: 100%;
+  max-width: var(--content-width);
+}
+
+.option-row .optionBtn {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.option-hide-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(159, 144, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(124, 108, 255, 0.08);
+  color: rgba(224, 224, 255, 0.76);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.5;
+  touch-action: manipulation;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease, opacity 0.15s ease;
+}
+
+.option-hide-btn:hover,
+.option-hide-btn:focus-visible {
+  background: rgba(124, 108, 255, 0.18);
+  border-color: rgba(159, 144, 255, 0.5);
+  color: var(--color-text-main);
+  opacity: 1;
+}
+
+.option-hide-btn:active {
+  transform: scale(0.96);
+}
+
+.option-hide-btn:disabled {
+  cursor: default;
+  opacity: 0.35;
+  transform: none;
+}
+
+.option-block.option-eliminated {
+  display: none !important;
+}
+
+.reset-hidden-options-btn {
+  width: fit-content;
+  max-width: 100%;
+  align-self: center;
+  margin-top: 2px;
+  padding: 7px 11px;
+  border: 1px solid rgba(159, 144, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(124, 108, 255, 0.08);
+  color: rgba(224, 224, 255, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.reset-hidden-options-btn:hover {
+  background: rgba(124, 108, 255, 0.18);
+  border-color: rgba(159, 144, 255, 0.5);
+  color: var(--color-text-main);
+}
+
+.reset-hidden-options-btn:active {
+  transform: scale(0.98);
+}
+
+body.active-question-multiple-choice .option-row,
+body.active-question-multiple-choice .reset-hidden-options-btn {
+  max-width: none;
+}
+
+@media screen and (max-width: 600px) {
+  .option-hide-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+  }
+
+  .reset-hidden-options-btn {
+    font-size: 11px;
+    padding: 6px 10px;
   }
 }
 
