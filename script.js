@@ -3356,13 +3356,6 @@ MODIFICATION RULES FOR THIS APP
         const challenge = getQuizChallengeDefinition(activeChallenge.challengeKey);
         if (!challenge) return false;
 
-        if (challenge.mode === 'progress' && isProgressMode() && state.currentIndex >= state.questionQueue.length - 1 && !state.normalFinished) {
-            state.normalFinished = true;
-            showQuestion();
-            clearPendingLearningResource();
-            return true;
-        }
-
         if (challenge.mode === 'mastery' && isRetryMode() && state.questionQueue.length === 0) {
             showQuestion();
             showPendingLearningResourceIfAny();
@@ -5001,6 +4994,56 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
+    function buildStudioMultipleChoiceSearchText(detailRow = {}) {
+        if (!detailRow || typeof detailRow !== 'object') return '';
+        return [
+            detailRow.correct_answer
+        ].map(value => htmlToDisplayText(value) || normalizeSheetText(value)).filter(Boolean).join(' ');
+    }
+
+    function normalizeStudioSearchValue(value = '') {
+        return normalizeSheetText(htmlToDisplayText(value) || value)
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function getStudioQuestionSearchText(questionRow = {}, index = 0) {
+        const questionType = normalizeSheetText(questionRow?.question_type || 'multiple_choice');
+        return normalizeStudioSearchValue([
+            getStudioQuestionPreviewLabel(questionRow, index),
+            getStudioQuestionNavigationName(questionType, index),
+            questionType.replace(/_/g, ' '),
+            questionRow?.prompt_plain,
+            questionRow?.prompt_html,
+            questionRow?.term_plain,
+            questionRow?.term_html,
+            questionRow?.definition_plain,
+            questionRow?.definition_html,
+            questionRow?.buildUp,
+            questionRow?.build_up,
+            questionRow?.buildUpGroup,
+            questionRow?.build_up_group,
+            questionRow?.mc_search_text
+        ].filter(Boolean).join(' '));
+    }
+
+    function doesStudioQuestionMatchSearch(questionRow = {}, rawQuery = '', index = 0) {
+        const normalizedQuery = normalizeStudioSearchValue(rawQuery);
+        if (!normalizedQuery) return true;
+
+        const haystack = getStudioQuestionSearchText(questionRow, index);
+        if (!haystack) return false;
+        if (haystack.includes(normalizedQuery)) return true;
+
+        const queryTokens = normalizedQuery.split(' ').filter(Boolean);
+        return queryTokens.length > 0 && queryTokens.every(token => haystack.includes(token));
+    }
+
+
+
+
     function updateStudioUnsavedChangesIndicator() {
         if (!elements.studioUnsavedChangesIndicator) return;
         elements.studioUnsavedChangesIndicator.classList.toggle('hidden', !state.auth.studioHasUnsavedChanges);
@@ -5909,15 +5952,12 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getFilteredStudioQuizQuestions() {
-        const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '').toLowerCase();
+        const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '');
         if (!query) {
             return state.auth.studioQuizQuestions;
         }
 
-        return state.auth.studioQuizQuestions.filter((questionRow, index) => {
-            const preview = getStudioQuestionPreviewLabel(questionRow, index).toLowerCase();
-            return preview.includes(query);
-        });
+        return state.auth.studioQuizQuestions.filter((questionRow, index) => doesStudioQuestionMatchSearch(questionRow, query, index));
     }
 
     function isStudioQuestionFocusMode() {
@@ -6269,9 +6309,9 @@ MODIFICATION RULES FOR THIS APP
             if (query) {
                 filteredQuestions = filteredQuestions.filter((questionRow, filteredIndex) => {
                     let previewIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
+                    if (previewIndex === -1) previewIndex = displayRows.findIndex(question => question.id === questionRow.id);
                     if (previewIndex === -1) previewIndex = filteredIndex;
-                    const preview = getStudioQuestionPreviewLabel(questionRow, previewIndex).toLowerCase();
-                    return preview.includes(query);
+                    return doesStudioQuestionMatchSearch(questionRow, query, previewIndex);
                 });
             }
         }
@@ -6529,7 +6569,7 @@ MODIFICATION RULES FOR THIS APP
 
         const { data, error } = await state.auth.client
             .from('questions')
-            .select('id, prompt_plain, question_type, sort_order, image_url')
+            .select('id, prompt_html, prompt_plain, question_type, sort_order, image_url')
             .eq('quiz_id', quizId)
             .order('sort_order', { ascending: true });
 
@@ -6538,7 +6578,7 @@ MODIFICATION RULES FOR THIS APP
         const rows = (data || []);
         const questionIds = rows.map(row => row.id).filter(Boolean);
         const flashcardQuestionIds = rows.filter(row => row.question_type === 'flashcard').map(row => row.id);
-        const multipleChoiceQuestionIds = rows.filter(row => row.question_type === 'multiple_choice').map(row => row.id);
+        const multipleChoiceQuestionIds = rows.filter(row => row.question_type === 'multiple_choice' || row.question_type === 'diagrams').map(row => row.id);
         const [flashcardDetails, multipleChoiceDetails, starredStateRows] = await Promise.all([
             flashcardQuestionIds.length ? loadFlashcardDetailsByQuestionIds(flashcardQuestionIds) : [],
             multipleChoiceQuestionIds.length ? loadMultipleChoiceDetailsByQuestionIds(multipleChoiceQuestionIds) : [],
@@ -6552,22 +6592,30 @@ MODIFICATION RULES FOR THIS APP
         ]);
         if (starredStateRows?.error) throw starredStateRows.error;
         const flashcardMap = new Map((flashcardDetails || []).map(row => [row.question_id, row]));
+        const multipleChoiceDetailMap = new Map((multipleChoiceDetails || []).map(row => [normalizeSheetText(row.question_id), row]));
         const multipleChoiceBuildUpMap = new Map((multipleChoiceDetails || []).map(row => [normalizeSheetText(row.question_id), getBuildUpValueFromOptionsJson(row.options_json)]));
         const starredMap = new Map((starredStateRows?.data || []).map(row => [normalizeSheetText(row.question_id), !!row.is_starred]));
 
-        state.auth.studioQuizQuestions = rows.map(row => ({
-            id: row.id,
-            prompt_plain: normalizeSheetText(row.prompt_plain),
-            term_plain: normalizeSheetText(flashcardMap.get(row.id)?.term_plain),
-            term_html: normalizeSheetText(flashcardMap.get(row.id)?.term_html),
-            definition_plain: normalizeSheetText(flashcardMap.get(row.id)?.definition_plain),
-            definition_html: normalizeSheetText(flashcardMap.get(row.id)?.definition_html),
-            question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
-            image_url: normalizeSheetText(row.image_url),
-            sort_order: Number(row.sort_order ?? 0),
-            buildUp: multipleChoiceBuildUpMap.get(normalizeSheetText(row.id)) || '',
-            isStarred: !!starredMap.get(normalizeSheetText(row.id))
-        }));
+        state.auth.studioQuizQuestions = rows.map(row => {
+            const normalizedQuestionId = normalizeSheetText(row.id);
+            const flashcardDetail = flashcardMap.get(row.id) || {};
+            const multipleChoiceDetail = multipleChoiceDetailMap.get(normalizedQuestionId) || {};
+            return {
+                id: row.id,
+                prompt_plain: normalizeSheetText(row.prompt_plain),
+                prompt_html: normalizeSheetText(row.prompt_html),
+                term_plain: normalizeSheetText(flashcardDetail.term_plain),
+                term_html: normalizeSheetText(flashcardDetail.term_html),
+                definition_plain: normalizeSheetText(flashcardDetail.definition_plain),
+                definition_html: normalizeSheetText(flashcardDetail.definition_html),
+                question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
+                image_url: normalizeSheetText(row.image_url),
+                sort_order: Number(row.sort_order ?? 0),
+                buildUp: multipleChoiceBuildUpMap.get(normalizedQuestionId) || '',
+                mc_search_text: buildStudioMultipleChoiceSearchText(multipleChoiceDetail),
+                isStarred: !!starredMap.get(normalizedQuestionId)
+            };
+        });
         renderStudioQuestionList();
         return state.auth.studioQuizQuestions;
     }
