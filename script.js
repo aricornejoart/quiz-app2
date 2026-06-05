@@ -5041,6 +5041,86 @@ MODIFICATION RULES FOR THIS APP
         return queryTokens.length > 0 && queryTokens.every(token => haystack.includes(token));
     }
 
+    function getStudioSearchMatchRows(rawQuery = state.auth.studioQuestionSearchQuery || '') {
+        const query = normalizeSheetText(rawQuery || '');
+        if (!query) return [];
+
+        let rows = getStudioListRowsWithPendingDraft()
+            .filter(questionRow => {
+                const questionId = normalizeSheetText(questionRow?.id);
+                return !!questionId
+                    && questionId !== STUDIO_PENDING_NEW_FLASHCARD_ID
+                    && !isStudioLocalFlashcardId(questionId);
+            });
+
+        if (state.auth.studioQuestionStarredOnly) {
+            rows = rows.filter(questionRow => !!questionRow.isStarred);
+        }
+
+        return rows.filter((questionRow, filteredIndex) => {
+            let previewIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
+            if (previewIndex === -1) previewIndex = filteredIndex;
+            return doesStudioQuestionMatchSearch(questionRow, query, previewIndex);
+        });
+    }
+
+    let studioSearchAutoSelectTimerId = null;
+    let studioSearchAutoSelectToken = 0;
+
+    function clearStudioSearchAutoSelectTimer() {
+        if (!studioSearchAutoSelectTimerId) return;
+        clearTimeout(studioSearchAutoSelectTimerId);
+        studioSearchAutoSelectTimerId = null;
+    }
+
+    function clearStudioQuestionListFiltersForDirectSelection() {
+        state.auth.studioQuestionSearchQuery = '';
+        state.auth.studioQuestionStarredOnly = false;
+        state.auth.studioActiveBuildUpString = '';
+        state.auth.studioFocusedBuildUpString = '';
+        state.auth.studioFocusedQuestionId = '';
+        clearStudioSearchAutoSelectTimer();
+        if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
+        syncStudioQuestionStarredFilterButton();
+    }
+
+    function scheduleStudioSearchAutoSelect() {
+        clearStudioSearchAutoSelectTimer();
+        const query = normalizeSheetText(state.auth.studioQuestionSearchQuery || '');
+        if (!query || !state.auth.editingQuizId || state.auth.studioActiveBuildUpString || state.auth.studioFocusedBuildUpString || state.auth.studioFocusedQuestionId) return;
+
+        const token = ++studioSearchAutoSelectToken;
+        studioSearchAutoSelectTimerId = setTimeout(() => {
+            studioSearchAutoSelectTimerId = null;
+            autoSelectFirstStudioSearchResult(query, token).catch(error => {
+                console.error('Could not auto-select the first search result:', error);
+            });
+        }, 120);
+    }
+
+    async function autoSelectFirstStudioSearchResult(query, token = ++studioSearchAutoSelectToken) {
+        const normalizedQuery = normalizeSheetText(query || '');
+        if (!normalizedQuery || token !== studioSearchAutoSelectToken) return;
+
+        const firstMatch = getStudioSearchMatchRows(normalizedQuery)[0] || null;
+        const firstMatchId = normalizeSheetText(firstMatch?.id);
+        if (!firstMatchId || token !== studioSearchAutoSelectToken) return;
+        if (firstMatchId === normalizeSheetText(state.auth.editingQuestionId)) {
+            revealStudioQuestionInList(firstMatchId, { instant: true });
+            return;
+        }
+
+        if (state.auth.studioHasUnsavedChanges) {
+            cacheCurrentStudioQuestionDraft();
+        }
+
+        if (token !== studioSearchAutoSelectToken || normalizeSheetText(state.auth.studioQuestionSearchQuery || '') !== normalizedQuery) return;
+        await loadStudioQuestionIntoEditor(firstMatchId, { suppressStatus: true, revealInList: true });
+        if (token === studioSearchAutoSelectToken && normalizeSheetText(state.auth.studioQuestionSearchQuery || '') === normalizedQuery) {
+            revealStudioQuestionInList(firstMatchId, { instant: true });
+        }
+    }
+
 
 
 
@@ -9944,10 +10024,12 @@ MODIFICATION RULES FOR THIS APP
         try {
             const nextSortOrder = await getNextQuestionSortOrder(state.auth.editingQuizId);
             const duplicatedQuestionId = await duplicateQuestionRecord(state.auth.editingQuestionId, state.auth.editingQuizId, nextSortOrder);
+            clearStudioQuestionListFiltersForDirectSelection();
             await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
-            await loadStudioQuestionIntoEditor(duplicatedQuestionId, { suppressStatus: true, revealInList: true, focusListButton: true });
+            clearStudioQuestionListFiltersForDirectSelection();
+            await loadStudioQuestionIntoEditor(duplicatedQuestionId, { suppressStatus: true, revealInList: true, focusListButton: true, force: true });
             setCreatorStatus('Question duplicated and opened.', 'success');
         } catch (error) {
             console.error(error);
@@ -18569,6 +18651,7 @@ if (elements.studioQuestionSearchInput) {
         }
         state.auth.studioQuestionSearchQuery = nextQuery;
         renderStudioQuestionList();
+        scheduleStudioSearchAutoSelect();
     });
 }
 
