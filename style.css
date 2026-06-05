@@ -5771,6 +5771,34 @@ body.fullscreen-mode .progress-mode-summary {
     max-width: none;
   }
 
+  body.active-question-multiple-choice .options {
+    max-height: min(58vh, 560px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(224, 224, 255, 0.26) transparent;
+  }
+
+  body.active-question-multiple-choice .options::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  body.active-question-multiple-choice .options::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  body.active-question-multiple-choice .options::-webkit-scrollbar-thumb {
+    background: rgba(224, 224, 255, 0.18);
+    border-radius: 999px;
+  }
+
+  body.active-question-multiple-choice .options:hover::-webkit-scrollbar-thumb,
+  body.active-question-multiple-choice .options:focus-within::-webkit-scrollbar-thumb {
+    background: rgba(224, 224, 255, 0.28);
+  }
+
   body.active-question-multiple-choice .image-container img,
   body.active-question-multiple-choice #questionImage {
     display: block;
@@ -6627,3 +6655,71 @@ body.fullscreen-mode .progress-mode-summary {
   font-size: 13px;
   line-height: 1.4;
 }
+
+/* ===== Phase 22EB: Option-Only Scroll Container ===== */
+body.active-question-multiple-choice:not(.fullscreen-mode) .options {
+  max-height: min(56vh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(224, 224, 255, 0.22) transparent;
+}
+
+body.active-question-multiple-choice:not(.fullscreen-mode) .options::-webkit-scrollbar {
+  width: 6px;
+}
+
+body.active-question-multiple-choice:not(.fullscreen-mode) .options::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body.active-question-multiple-choice:not(.fullscreen-mode) .options::-webkit-scrollbar-thumb {
+  background: rgba(224, 224, 255, 0.16);
+  border-radius: 999px;
+}
+
+body.active-question-multiple-choice:not(.fullscreen-mode) .options:hover::-webkit-scrollbar-thumb,
+body.active-question-multiple-choice:not(.fullscreen-mode) .options:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(224, 224, 255, 0.26);
+}
+
+body.fullscreen-mode.active-question-multiple-choice .options {
+  max-height: min(58svh, 620px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(224, 224, 255, 0.22) transparent;
+}
+
+body.fullscreen-mode.active-question-multiple-choice .options::-webkit-scrollbar {
+  width: 6px;
+}
+
+body.fullscreen-mode.active-question-multiple-choice .options::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body.fullscreen-mode.active-question-multiple-choice .options::-webkit-scrollbar-thumb {
+  background: rgba(224, 224, 255, 0.16);
+  border-radius: 999px;
+}
+
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  body.active-question-multiple-choice:not(.fullscreen-mode) .options {
+    max-height: min(48svh, 430px);
+  }
+
+  body.fullscreen-mode.active-question-multiple-choice .options {
+    max-height: min(50svh, 470px);
+  }
+}
+
+@media screen and (orientation: landscape) and (max-height: 520px) {
+  body.active-question-multiple-choice .options,
+  body.fullscreen-mode.active-question-multiple-choice .options {
+    max-height: min(64svh, 360px);
+  }
+}
+
