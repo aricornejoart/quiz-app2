@@ -6847,3 +6847,10 @@ body.active-question-multiple-choice .reset-hidden-options-btn {
   }
 }
 
+/* ===== Phase 22EJ: Option Scroll Container Left Clip Buffer Tuning ===== */
+body.active-question-multiple-choice .options {
+  margin-left: -5px;
+  padding-left: 5px;
+  box-sizing: border-box;
+}
+
