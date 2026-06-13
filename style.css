@@ -1120,6 +1120,15 @@ body.classify-dragging {
   overflow: auto;
 }
 
+.flashcard-side-image-frame {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+}
+
 .flashcard-side-image {
   max-width: 100%;
   max-height: 320px;
@@ -1238,11 +1247,11 @@ body.classify-dragging {
 /* ===== Flashcard Image Zoom ===== */
 .flashcard-image-zoom-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 8px;
+  right: 8px;
   width: 34px;
   height: 34px;
-  background: rgba(42, 37, 64, 0.92);
+  background: rgba(42, 37, 64, 0.88);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
   border-radius: 8px;
@@ -1253,14 +1262,18 @@ body.classify-dragging {
   align-items: center;
   justify-content: center;
   z-index: 5;
-  transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+  opacity: 0.5;
+  transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease, opacity 0.15s ease;
 }
 
-.flashcard-image-zoom-btn:hover {
+.flashcard-image-zoom-btn:hover,
+.flashcard-image-zoom-btn:focus-visible {
   background: var(--color-bg-control-hover);
+  opacity: 1;
 }
 
 .flashcard-image-zoom-btn:active {
+  opacity: 1;
   transform: scale(0.98);
 }
 
@@ -1326,7 +1339,7 @@ body.classify-dragging {
   padding: 12px;
   box-sizing: border-box;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
 }
 
@@ -5846,8 +5859,20 @@ body.fullscreen-mode .progress-mode-summary {
   max-width: 100%;
 }
 
+.studio-editor-folder-field > select {
+  width: 100%;
+  min-width: 0;
+}
+
 .studio-editor-folder-row select {
   min-width: 0;
+}
+
+.studio-editor-folder-hint {
+  margin-top: -2px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-text-muted);
 }
 
 .studio-new-folder-toggle-btn {
@@ -6854,3 +6879,998 @@ body.active-question-multiple-choice .options {
   box-sizing: border-box;
 }
 
+
+/* ===== Phase 22EK: App Page Shell + Full-Screen Page Navigation ===== */
+body.app-home-first .container {
+  max-width: 100%;
+}
+
+body.app-home-first #authBtn {
+  display: none !important;
+}
+
+body.app-home-first .studio-home-top-btn {
+  display: inline-flex !important;
+}
+
+.quiz-studio-page {
+  background: var(--color-bg-app);
+  padding: max(10px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+}
+
+.quiz-studio-shell {
+  width: 100%;
+  min-height: calc(100svh - max(20px, env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px)));
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  border-color: rgba(190, 180, 255, 0.12);
+  box-shadow: none;
+  padding: 14px clamp(12px, 2vw, 28px) 18px;
+}
+
+.quiz-studio-appbar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0 12px;
+  background: linear-gradient(180deg, var(--color-bg-surface) 0%, rgba(33, 29, 52, 0.94) 100%);
+  border-bottom: 1px solid rgba(190, 180, 255, 0.12);
+}
+
+.quiz-studio-appbar-title {
+  min-width: 0;
+  flex: 1;
+  color: var(--color-text-main);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.quiz-studio-appbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.app-menu-btn,
+.close-app-menu-btn,
+.app-header-action-btn {
+  min-height: 38px;
+  border-radius: 10px;
+  background: var(--color-bg-control);
+  border: 1px solid var(--color-bg-control-hover);
+  color: var(--color-text-main);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+}
+
+.app-menu-btn,
+.close-app-menu-btn {
+  width: 42px;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.app-header-action-btn {
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-menu-btn:hover,
+.close-app-menu-btn:hover,
+.app-header-action-btn:hover {
+  background: var(--color-bg-control-hover);
+}
+
+.app-menu-btn:active,
+.close-app-menu-btn:active,
+.app-header-action-btn:active {
+  transform: scale(0.98);
+}
+
+.app-study-mode-btn {
+  border-color: var(--color-border-strong);
+}
+
+.quiz-studio-header {
+  padding: 18px 0 0;
+}
+
+.quiz-studio-title {
+  font-size: clamp(24px, 2.6vw, 36px);
+}
+
+.quiz-studio-subtitle {
+  max-width: 980px;
+}
+
+.app-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.app-page-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 2510;
+  width: min(340px, calc(100vw - 28px));
+  padding: max(16px, env(safe-area-inset-top, 0px)) 14px max(16px, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #181426;
+  border-right: 1px solid rgba(190, 180, 255, 0.16);
+  box-shadow: 18px 0 34px rgba(0, 0, 0, 0.42);
+}
+
+.app-page-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.app-page-menu-eyebrow {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-page-menu-title {
+  color: var(--color-text-main);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.quiz-studio-section-nav {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 0;
+}
+
+.quiz-studio-nav-btn {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 12px;
+  padding: 11px 13px;
+  text-align: left;
+}
+
+.app-menu-study-btn {
+  margin-top: 12px;
+  border-color: var(--color-border-strong);
+}
+
+.app-menu-secondary-btn {
+  opacity: 0.94;
+}
+
+.quiz-studio-sections {
+  flex: 1 1 auto;
+  margin-top: 18px;
+}
+
+.quiz-studio-section.is-active {
+  min-height: calc(100svh - 210px);
+}
+
+.studio-dashboard-grid,
+.studio-section-grid {
+  gap: clamp(14px, 2vw, 24px);
+}
+
+.quiz-studio-panel,
+.creator-subsection {
+  border-radius: 16px;
+}
+
+.auth-popup {
+  position: fixed;
+  top: max(64px, calc(52px + env(safe-area-inset-top, 0px)));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  z-index: 2600;
+}
+
+.settings-popup {
+  position: fixed;
+  top: max(64px, calc(52px + env(safe-area-inset-top, 0px)));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  z-index: 2600;
+}
+
+@media screen and (min-width: 1200px) {
+  .studio-dashboard-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .studio-section-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quiz-studio-page .studio-quiz-editor-panel {
+    min-height: calc(100svh - 230px);
+  }
+}
+
+@media screen and (max-width: 900px) {
+  .quiz-studio-shell {
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  .quiz-studio-appbar {
+    align-items: flex-start;
+  }
+
+  .quiz-studio-appbar-actions {
+    max-width: 60%;
+  }
+
+  .studio-dashboard-grid,
+  .studio-section-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media screen and (max-width: 560px) {
+  .quiz-studio-page {
+    padding: 0;
+  }
+
+  .quiz-studio-shell {
+    min-height: 100svh;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+
+  .quiz-studio-appbar {
+    gap: 8px;
+  }
+
+  .quiz-studio-appbar-title {
+    font-size: 16px;
+  }
+
+  .quiz-studio-appbar-actions {
+    gap: 6px;
+    max-width: none;
+  }
+
+  .app-header-action-btn {
+    min-height: 36px;
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+
+  .app-header-action-btn span {
+    display: none;
+  }
+
+  .app-study-mode-btn {
+    font-size: 12px;
+  }
+
+  .auth-popup,
+  .settings-popup {
+    left: max(10px, env(safe-area-inset-left, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    width: auto;
+  }
+}
+
+/* ===== Phase 22EL/22EN: Study Mode Single Background + Scroll-Aware Options =====
+   22EN restores the original Study Mode answer spacing while keeping the darker
+   single-background shell and the stronger hidden-option scroll visibility. */
+body.app-home-first .container {
+  background: transparent;
+  box-shadow: none;
+}
+
+body.app-home-first:not(.fullscreen-mode) .container {
+  border-radius: 0;
+}
+
+body.active-question-multiple-choice .options {
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: #a99cff rgba(24, 20, 38, 0.95);
+}
+
+body.active-question-multiple-choice .options.options-overflow-y {
+  padding-right: 10px;
+  border-right: 3px solid rgba(169, 156, 255, 0.72);
+}
+
+body.active-question-multiple-choice .options.options-can-scroll-up {
+  box-shadow: inset 0 16px 14px -16px rgba(169, 156, 255, 0.72);
+}
+
+body.active-question-multiple-choice .options.options-can-scroll-down {
+  box-shadow: inset 0 -18px 16px -17px rgba(169, 156, 255, 0.84);
+}
+
+body.active-question-multiple-choice .options.options-can-scroll-up.options-can-scroll-down {
+  box-shadow:
+    inset 0 16px 14px -16px rgba(169, 156, 255, 0.72),
+    inset 0 -18px 16px -17px rgba(169, 156, 255, 0.84);
+}
+
+body.active-question-multiple-choice .options::-webkit-scrollbar {
+  width: 12px;
+}
+
+body.active-question-multiple-choice .options::-webkit-scrollbar-track {
+  background: rgba(24, 20, 38, 0.95);
+  border-radius: 999px;
+}
+
+body.active-question-multiple-choice .options::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #b7adff 0%, var(--color-border-strong) 100%);
+  border-radius: 999px;
+  border: 2px solid rgba(24, 20, 38, 0.95);
+}
+
+body.active-question-multiple-choice .options::-webkit-scrollbar-thumb:hover,
+body.active-question-multiple-choice .options:hover::-webkit-scrollbar-thumb,
+body.active-question-multiple-choice .options:focus-within::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #d0c9ff 0%, #9486ff 100%);
+}
+
+@media screen and (max-width: 600px) {
+  body.active-question-multiple-choice .options.options-overflow-y {
+    padding-right: 8px;
+    border-right-width: 2px;
+  }
+}
+
+/* ===== Phase 22EO: Post-Answer Explanation Scroll Capacity Fix =====
+   Explanations can make the answer list taller after the user answers. The
+   options column now uses a JS-measured max-height based on the visible space
+   left under the current question, so expanded explanations scroll inside the
+   answer area instead of clipping below the viewport. */
+body.active-question-multiple-choice .question-container {
+  min-height: 0;
+}
+
+body.active-question-multiple-choice .options {
+  max-height: var(--study-options-scroll-max-height, min(56svh, 560px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+body.active-question-multiple-choice .options.options-overflow-y {
+  position: relative;
+}
+
+/* ===== Phase 22EP: Explanation Bottom Breathing Room =====
+   Keep the Phase 22EO adaptive options scroll container, but add a small
+   scrollable bottom cushion so the last explanation sentence can rise above
+   the bottom edge instead of visually clipping against it. */
+body.active-question-multiple-choice .options {
+  padding-bottom: 18px;
+  scroll-padding-bottom: 18px;
+}
+
+/* ===== Phase 22EQ: Normal Browser Mode Explanation Clip Guard =====
+   In non-fullscreen Study Mode, the app shell can be rendered through the
+   normal scaled container. The JS max-height now accounts for that rendered
+   scale; this small extra cushion keeps the final explanation line clear in
+   normal browser windows without changing the restored option spacing. */
+body.active-question-multiple-choice:not(.fullscreen-mode) .options {
+  padding-bottom: 24px;
+  scroll-padding-bottom: 24px;
+}
+
+/* Phase 22ER: quiz-completion challenge picker keeps the next challenge one tap away. */
+.completion-challenge-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  background: rgba(12, 10, 24, 0.78);
+  backdrop-filter: blur(8px);
+  overflow: auto;
+}
+
+.completion-challenge-modal {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100svh - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid rgba(190, 180, 255, 0.24);
+  border-radius: 18px;
+  background: rgba(30, 27, 46, 0.96);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  color: var(--color-text-main);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.close-completion-challenge-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--color-bg-control-hover);
+  border-radius: 10px;
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.close-completion-challenge-btn:hover {
+  background: var(--color-bg-control-hover);
+}
+
+.completion-challenge-eyebrow {
+  color: #ffe8a3;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.completion-challenge-title {
+  padding-right: 40px;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.completion-challenge-subtitle,
+.completion-challenge-status {
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.completion-challenge-status.is-error {
+  color: #ffb8c6;
+}
+
+.completion-challenge-status.is-success {
+  color: #b8f7c8;
+}
+
+.completion-challenge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.completion-challenge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.completion-challenge-row.completed {
+  border-color: rgba(255, 214, 102, 0.34);
+  background: rgba(255, 214, 102, 0.08);
+}
+
+.completion-challenge-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.completion-challenge-row-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-text-main);
+}
+
+.completion-challenge-row-note {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+}
+
+.completion-challenge-start-btn {
+  flex: 0 0 auto;
+  min-width: 82px;
+}
+
+.completion-challenge-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+@media (max-width: 560px) {
+  .completion-challenge-overlay {
+    align-items: stretch;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  .completion-challenge-modal {
+    width: 100%;
+    max-height: calc(100svh - 24px);
+    padding: 20px 16px 16px;
+  }
+
+  .completion-challenge-title {
+    font-size: 22px;
+  }
+
+  .completion-challenge-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .completion-challenge-start-btn,
+  .completion-challenge-actions .auth-action-btn {
+    width: 100%;
+  }
+}
+
+/* ===== Phase 22ES: Classes → Folders → Quizzes Organization ===== */
+.studio-manage-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.studio-manage-tab {
+  border: 1px solid rgba(159, 144, 255, 0.28);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-muted);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.studio-manage-tab:hover,
+.studio-manage-tab.active {
+  border-color: rgba(224, 224, 255, 0.5);
+  background: rgba(159, 144, 255, 0.18);
+  color: var(--color-text-main);
+}
+
+.studio-class-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(159, 144, 255, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.studio-class-group + .studio-class-group {
+  margin-top: 14px;
+}
+
+.studio-class-group-heading,
+.studio-class-folder-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.studio-class-group-title {
+  font-weight: 800;
+  color: var(--color-text-main);
+  font-size: 18px;
+}
+
+.studio-class-folder-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studio-class-folder-heading {
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(159, 144, 255, 0.1);
+  color: var(--color-text-main);
+  font-weight: 700;
+}
+
+.studio-class-folder-heading small {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.studio-class-folder-list {
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .studio-manage-tab {
+    flex: 1 1 calc(50% - 8px);
+    text-align: center;
+  }
+}
+
+/* ===== Phase 22ET: Quick Add Folders from Manage Quizzes Classes Tab ===== */
+.studio-class-group-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.studio-class-folder-quick-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed rgba(224, 224, 255, 0.34);
+  border-radius: 14px;
+  background: rgba(159, 144, 255, 0.08);
+}
+
+.studio-class-folder-quick-add-head,
+.studio-class-folder-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.studio-class-folder-quick-add-title {
+  color: var(--color-text-main);
+  font-weight: 800;
+}
+
+.studio-class-folder-add-row {
+  padding: 9px 10px;
+  border: 1px solid rgba(159, 144, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+@media (max-width: 640px) {
+  .studio-class-group-heading,
+  .studio-class-folder-quick-add-head,
+  .studio-class-folder-add-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .studio-class-group-actions,
+  .studio-class-folder-add-row .auth-action-btn,
+  .studio-class-folder-quick-add-head .auth-action-btn {
+    width: 100%;
+  }
+}
+
+/* Phase 22EV — Studio Image Editor */
+.studio-image-edit-btn.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: rgba(8, 6, 22, 0.78);
+  backdrop-filter: blur(12px);
+}
+
+.studio-image-editor-overlay.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-modal {
+  width: min(1120px, 96vw);
+  max-height: min(92vh, 980px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 24px;
+  background: rgba(23, 18, 48, 0.96);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  padding: 18px;
+}
+
+.studio-image-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.studio-image-editor-title {
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.studio-image-editor-subtitle,
+.studio-image-editor-status {
+  color: rgba(232, 226, 255, 0.78);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.studio-image-editor-subtitle:empty,
+.studio-image-editor-subtitle[hidden],
+.studio-image-editor-status:empty {
+  display: none !important;
+}
+
+.studio-image-editor-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.studio-image-editor-toolbar,
+.studio-image-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-image-tool.active {
+  border-color: rgba(250, 204, 21, 0.75);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.16);
+}
+
+.studio-image-arrow-tool.red {
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.studio-image-arrow-tool.green {
+  border-color: rgba(34, 197, 94, 0.55);
+}
+
+.studio-image-arrow-tool.blue {
+  border-color: rgba(59, 130, 246, 0.55);
+}
+
+.studio-image-arrow-tool.rgb {
+  border-color: rgba(250, 204, 21, 0.55);
+}
+
+.studio-image-editor-rgb-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.studio-image-editor-rgb-control input[type="color"] {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.studio-image-editor-canvas-wrap {
+  flex: 1 1 auto;
+  min-height: 260px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 24px 24px;
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  padding: 12px;
+}
+
+.studio-image-editor-canvas {
+  max-width: 100%;
+  max-height: 62vh;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  cursor: crosshair;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.35);
+  touch-action: none;
+}
+
+.studio-image-editor-action-spacer {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 760px) {
+  .studio-image-editor-modal {
+    width: 100%;
+    max-height: 94vh;
+    border-radius: 20px;
+    padding: 14px;
+  }
+
+  .studio-image-editor-canvas-wrap {
+    min-height: 220px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .studio-image-editor-canvas {
+    max-height: 56vh;
+  }
+
+  .studio-image-editor-actions .auth-action-btn,
+  .studio-image-editor-toolbar .auth-action-btn,
+  .studio-image-editor-rgb-control {
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  .studio-image-editor-action-spacer {
+    display: none;
+  }
+}
+
+
+/* Phase 22EY — centered study image zoom + compact image editor header */
+.flashcard-image-overlay {
+  align-items: center;
+  justify-content: center;
+}
+
+.flashcard-image-modal {
+  max-height: calc(100svh - 32px);
+}
+
+.flashcard-image-viewport {
+  align-items: center;
+  justify-content: center;
+  scroll-padding: 24px;
+}
+
+#flashcardZoomImage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+#questionImage.zoomed {
+  top: 50svh;
+  left: 50vw;
+  max-width: min(92vw, 1600px);
+  max-height: calc(100svh - 48px);
+  transform: translate(-50%, -50%);
+}
+
+.studio-image-editor-header {
+  align-items: center;
+}
+
+.studio-image-editor-title {
+  line-height: 1.15;
+}
+
+/* Phase 22EZ — keep diagram labels visible in the zoomed study image overlay */
+.flashcard-zoom-image-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  max-height: 100%;
+  line-height: 0;
+}
+
+.flashcard-zoom-image-wrap #flashcardZoomImage {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100svh - 140px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.flashcard-zoom-label-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  line-height: 1;
+}
+
+.flashcard-zoom-label-layer.hidden {
+  display: none !important;
+}
+
+.flashcard-zoom-label {
+  font-size: clamp(11px, 1.8vw, 20px);
+  padding: 4px 8px;
+  border-width: 2px;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 700px) {
+  .flashcard-zoom-image-wrap #flashcardZoomImage {
+    max-height: calc(100svh - 118px);
+  }
+
+  .flashcard-zoom-label {
+    font-size: clamp(10px, 3.6vw, 16px);
+    padding: 3px 6px;
+  }
+}
+
+
+/* Phase 22FB: keep flashcard zoom controls on the image without taking image space. */
+.flashcard-side-image-frame > .flashcard-image-zoom-btn {
+  opacity: 0.5;
+}
+
+.flashcard-side-image-frame > .flashcard-image-zoom-btn:hover,
+.flashcard-side-image-frame > .flashcard-image-zoom-btn:focus-visible,
+.flashcard-side-image-frame > .flashcard-image-zoom-btn:active {
+  opacity: 1;
+}

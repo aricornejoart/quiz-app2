@@ -117,6 +117,7 @@ MODIFICATION RULES FOR THIS APP
     const STUDIO_PENDING_NEW_FLASHCARD_ID = '__pending_new_flashcard__';
     const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
     const STUDIO_FOCUS_NEW_QUESTION_ID = '__studio_focus_new_question__';
+    const IMAGE_EDITOR_MAX_DIMENSION = 1800;
 
     const state = {
         questions: [],
@@ -209,6 +210,16 @@ MODIFICATION RULES FOR THIS APP
 
         flashcardImageZoomOpen: false,
         currentQuestionType: '',
+        optionsScroll: {
+            resizeObserver: null,
+            mutationObserver: null,
+            rafId: 0,
+            timeoutIds: []
+        },
+        completionChallengePrompt: {
+            open: false,
+            shownForSessionKey: ''
+        },
         activeDataSource: CONFIG.dataSource,
         auth: {
             client: null,
@@ -217,6 +228,8 @@ MODIFICATION RULES FOR THIS APP
             session: null,
             user: null,
             profile: null,
+            supabaseClasses: [],
+            supabaseClassesUnavailable: false,
             supabaseFolders: [],
             managedQuizzes: [],
             quizChallengeAchievements: new Map(),
@@ -226,6 +239,9 @@ MODIFICATION RULES FOR THIS APP
             openQuizActionMenuId: '',
             studioQuizSearchQuery: '',
             studioQuizFolderFilterId: '',
+            studioQuizClassFilterId: '',
+            studioQuizManageView: 'all',
+            studioClassQuickAddOpenId: '',
             studioFolderSearchQuery: '',
             quizStudioOpen: false,
             studioQuestionImageDataUrl: '',
@@ -267,6 +283,23 @@ MODIFICATION RULES FOR THIS APP
             expandedClassifyItemImageRows: new Set(),
             studioDiagramDraggingIndex: null,
             studioDiagramLabels: [],
+            imageEditor: {
+                open: false,
+                target: null,
+                sourceValue: '',
+                sourceLabel: '',
+                objectUrl: '',
+                image: null,
+                mode: 'crop',
+                crop: null,
+                shapes: [],
+                draftShape: null,
+                isDrawing: false,
+                dragStart: null,
+                history: [],
+                arrowColor: '#ef4444'
+            },
+            imageEditorDomBound: false,
             studioDiagramSharing: {
                 useSharedImage: false,
                 useSharedLabels: false,
@@ -285,6 +318,15 @@ MODIFICATION RULES FOR THIS APP
         quizSelector: document.getElementById('quizSelector'),
         authBtn: document.getElementById('authBtn'),
         studioHomeBtn: document.getElementById('studioHomeBtn'),
+        appMenuBtn: document.getElementById('appMenuBtn'),
+        closeAppMenuBtn: document.getElementById('closeAppMenuBtn'),
+        appMenuBackdrop: document.getElementById('appMenuBackdrop'),
+        appPageMenu: document.getElementById('appPageMenu'),
+        appAccountBtn: document.getElementById('appAccountBtn'),
+        appSettingsBtn: document.getElementById('appSettingsBtn'),
+        appMenuStudyModeBtn: document.getElementById('appMenuStudyModeBtn'),
+        appMenuAccountBtn: document.getElementById('appMenuAccountBtn'),
+        appMenuSettingsBtn: document.getElementById('appMenuSettingsBtn'),
         authPopup: document.getElementById('authPopup'),
         closeAuthBtn: document.getElementById('closeAuthBtn'),
         authStatus: document.getElementById('authStatus'),
@@ -303,8 +345,14 @@ MODIFICATION RULES FOR THIS APP
         studioRecentQuizList: document.getElementById('studioRecentQuizList'),
         studioRecentFolderList: document.getElementById('studioRecentFolderList'),
         studioProgressPanel: document.getElementById('studioProgressPanel'),
+        createClassName: document.getElementById('createClassName'),
+        createClassBtn: document.getElementById('createClassBtn'),
+        createFolderClassSelect: document.getElementById('createFolderClassSelect'),
+        studioClassList: document.getElementById('studioClassList'),
         studioFolderSearchInput: document.getElementById('studioFolderSearchInput'),
+        studioQuizManageTabs: Array.from(document.querySelectorAll('[data-studio-manage-view]')),
         studioQuizSearchInput: document.getElementById('studioQuizSearchInput'),
+        studioQuizClassFilterSelect: document.getElementById('studioQuizClassFilterSelect'),
         studioQuizFolderFilterSelect: document.getElementById('studioQuizFolderFilterSelect'),
         studioQuizClearFiltersBtn: document.getElementById('studioQuizClearFiltersBtn'),
         studioQuizFilterStatus: document.getElementById('studioQuizFilterStatus'),
@@ -343,6 +391,7 @@ MODIFICATION RULES FOR THIS APP
         importTemplateSheetBtn: document.getElementById('importTemplateSheetBtn'),
         createFolderName: document.getElementById('createFolderName'),
         createFolderBtn: document.getElementById('createFolderBtn'),
+        createQuizClassSelect: document.getElementById('createQuizClassSelect'),
         createQuizFolderSelect: document.getElementById('createQuizFolderSelect'),
         createQuizFolderNewBtn: document.getElementById('createQuizFolderNewBtn'),
         createQuizFolderInlineCreator: document.getElementById('createQuizFolderInlineCreator'),
@@ -376,6 +425,7 @@ MODIFICATION RULES FOR THIS APP
         createQuestionImagePanel: document.getElementById('createQuestionImagePanel'),
         createQuestionImageFile: document.getElementById('createQuestionImageFile'),
         createQuestionImageName: document.getElementById('createQuestionImageName'),
+        createQuestionImageEditBtn: document.getElementById('createQuestionImageEditBtn'),
         createQuestionImageClearBtn: document.getElementById('createQuestionImageClearBtn'),
         sharedQuestionEditorFields: document.getElementById('sharedQuestionEditorFields'),
         multipleChoiceEditorFields: document.getElementById('multipleChoiceEditorFields'),
@@ -400,9 +450,11 @@ MODIFICATION RULES FOR THIS APP
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
         createFlashcardTermImageFile: document.getElementById('createFlashcardTermImageFile'),
         createFlashcardTermImageName: document.getElementById('createFlashcardTermImageName'),
+        createFlashcardTermImageEditBtn: document.getElementById('createFlashcardTermImageEditBtn'),
         createFlashcardTermImageClearBtn: document.getElementById('createFlashcardTermImageClearBtn'),
         createFlashcardDefinitionImageFile: document.getElementById('createFlashcardDefinitionImageFile'),
         createFlashcardDefinitionImageName: document.getElementById('createFlashcardDefinitionImageName'),
+        createFlashcardDefinitionImageEditBtn: document.getElementById('createFlashcardDefinitionImageEditBtn'),
         createFlashcardDefinitionImageClearBtn: document.getElementById('createFlashcardDefinitionImageClearBtn'),
         flashcardRichToolbar: document.getElementById('flashcardRichToolbar'),
         createFlashcardFontFamilyBtn: document.getElementById('createFlashcardFontFamilyBtn'),
@@ -428,8 +480,22 @@ MODIFICATION RULES FOR THIS APP
         createLearningResourcesRichCommandChoices: Array.from(document.querySelectorAll('[data-rich-command-choice]')),
         createLearningResourcesImageFile: document.getElementById('createLearningResourcesImageFile'),
         createLearningResourcesImageName: document.getElementById('createLearningResourcesImageName'),
+        createLearningResourcesImageEditBtn: document.getElementById('createLearningResourcesImageEditBtn'),
         createLearningResourcesImageClearBtn: document.getElementById('createLearningResourcesImageClearBtn'),
         createOptionFieldsContainer: document.getElementById('createOptionFieldsContainer'),
+        studioImageEditorOverlay: document.getElementById('studioImageEditorOverlay'),
+        studioImageEditorCanvas: document.getElementById('studioImageEditorCanvas'),
+        studioImageEditorCloseBtn: document.getElementById('studioImageEditorCloseBtn'),
+        studioImageEditorCancelBtn: document.getElementById('studioImageEditorCancelBtn'),
+        studioImageEditorSaveBtn: document.getElementById('studioImageEditorSaveBtn'),
+        studioImageEditorApplyCropBtn: document.getElementById('studioImageEditorApplyCropBtn'),
+        studioImageEditorUndoBtn: document.getElementById('studioImageEditorUndoBtn'),
+        studioImageEditorResetBtn: document.getElementById('studioImageEditorResetBtn'),
+        studioImageEditorStatus: document.getElementById('studioImageEditorStatus'),
+        studioImageEditorTitle: document.getElementById('studioImageEditorTitle'),
+        studioImageEditorSubtitle: document.getElementById('studioImageEditorSubtitle'),
+        studioImageEditorArrowColorInput: document.getElementById('studioImageEditorArrowColorInput'),
+        studioImageEditorToolButtons: Array.from(document.querySelectorAll('[data-image-editor-tool]')),
         toggleMathChemToolsBtn: document.getElementById('toggleMathChemToolsBtn'),
         studioMathChemTools: document.getElementById('studioMathChemTools'),
         studioMathChemTabButtons: Array.from(document.querySelectorAll('[data-math-chem-tab]')),
@@ -501,6 +567,12 @@ MODIFICATION RULES FOR THIS APP
         learningResourcesImageEl: document.getElementById('learningResourcesImage'),
         learningResourcesImagePanel: document.getElementById('learningResourcesImagePanel'),
         learningResourcesTextPanel: document.getElementById('learningResourcesTextPanel'),
+        completionChallengeOverlay: document.getElementById('completionChallengeOverlay'),
+        completionChallengeList: document.getElementById('completionChallengeList'),
+        completionChallengeSubtitle: document.getElementById('completionChallengeSubtitle'),
+        completionChallengeStatus: document.getElementById('completionChallengeStatus'),
+        closeCompletionChallengeBtn: document.getElementById('closeCompletionChallengeBtn'),
+        completionChallengeLaterBtn: document.getElementById('completionChallengeLaterBtn'),
 
         questionTextEl: document.getElementById('questionText'),
         questionImage: document.getElementById('questionImage'),
@@ -518,15 +590,19 @@ MODIFICATION RULES FOR THIS APP
         flashcardImageOverlay: document.getElementById('flashcardImageOverlay'),
         closeFlashcardImageBtn: document.getElementById('closeFlashcardImageBtn'),
         flashcardImageViewport: document.getElementById('flashcardImageViewport'),
+        flashcardZoomImageWrap: document.getElementById('flashcardZoomImageWrap'),
         flashcardZoomImage: document.getElementById('flashcardZoomImage'),
+        flashcardZoomLabelLayer: document.getElementById('flashcardZoomLabelLayer'),
 
         settingHelpButtons: Array.from(document.querySelectorAll('.setting-help-btn'))
     };
 
     function mountFloatingPagesToBody() {
-        if (elements.quizStudioPage && elements.quizStudioPage.parentElement !== document.body) {
-            document.body.appendChild(elements.quizStudioPage);
-        }
+        [elements.quizStudioPage, elements.authPopup, elements.settingsPopup].forEach(floatingEl => {
+            if (floatingEl && floatingEl.parentElement !== document.body) {
+                document.body.appendChild(floatingEl);
+            }
+        });
     }
 
     // ================= SUPABASE FRONTEND BOOTSTRAP =================
@@ -1891,6 +1967,7 @@ MODIFICATION RULES FOR THIS APP
         }
         if (imageLabel) imageLabel.textContent = nextLabel;
         if (!normalizedValue && imageFile) imageFile.value = '';
+        updateStudioImageEditButton(row.querySelector('[data-option-image-edit]'), normalizedValue);
         updateStudioOptionImageToggle(row);
         if (imagePreview) setPreviewImageSource(imagePreview, normalizedValue);
     }
@@ -2662,6 +2739,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuestionImageFile.value = '';
         }
 
+        updateStudioImageEditButton(elements.createQuestionImageEditBtn, state.auth.studioQuestionImageDataUrl);
         updateStudioQuestionImagePanelUI();
         updateStudioDiagramPreviewImage();
     }
@@ -2677,6 +2755,7 @@ MODIFICATION RULES FOR THIS APP
         if (!dataUrl && elements.createLearningResourcesImageFile) {
             elements.createLearningResourcesImageFile.value = '';
         }
+        updateStudioImageEditButton(elements.createLearningResourcesImageEditBtn, state.auth.studioLearningResourcesImageDataUrl);
     }
 
 
@@ -2685,6 +2764,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioFlashcardTermImageLabel = label;
         if (elements.createFlashcardTermImageName) elements.createFlashcardTermImageName.textContent = label;
         if (!dataUrl && elements.createFlashcardTermImageFile) elements.createFlashcardTermImageFile.value = '';
+        updateStudioImageEditButton(elements.createFlashcardTermImageEditBtn, state.auth.studioFlashcardTermImageDataUrl);
     }
 
     function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.') {
@@ -2692,6 +2772,661 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioFlashcardDefinitionImageLabel = label;
         if (elements.createFlashcardDefinitionImageName) elements.createFlashcardDefinitionImageName.textContent = label;
         if (!dataUrl && elements.createFlashcardDefinitionImageFile) elements.createFlashcardDefinitionImageFile.value = '';
+        updateStudioImageEditButton(elements.createFlashcardDefinitionImageEditBtn, state.auth.studioFlashcardDefinitionImageDataUrl);
+    }
+
+
+    // ================= STUDIO IMAGE EDITOR =================
+    // Lightweight canvas editor for uploaded quiz images. The saved result reuses
+    // the existing image fields, so no Supabase schema change is required.
+    function updateStudioImageEditButton(button, value) {
+        if (!button) return;
+        const hasImage = !!normalizeSheetText(value);
+        button.classList.toggle('hidden', !hasImage);
+        button.disabled = !hasImage;
+    }
+
+    function refreshStudioImageEditorElements() {
+        elements.studioImageEditorOverlay = document.getElementById('studioImageEditorOverlay');
+        elements.studioImageEditorCanvas = document.getElementById('studioImageEditorCanvas');
+        elements.studioImageEditorCloseBtn = document.getElementById('studioImageEditorCloseBtn');
+        elements.studioImageEditorCancelBtn = document.getElementById('studioImageEditorCancelBtn');
+        elements.studioImageEditorSaveBtn = document.getElementById('studioImageEditorSaveBtn');
+        elements.studioImageEditorApplyCropBtn = document.getElementById('studioImageEditorApplyCropBtn');
+        elements.studioImageEditorUndoBtn = document.getElementById('studioImageEditorUndoBtn');
+        elements.studioImageEditorResetBtn = document.getElementById('studioImageEditorResetBtn');
+        elements.studioImageEditorStatus = document.getElementById('studioImageEditorStatus');
+        elements.studioImageEditorTitle = document.getElementById('studioImageEditorTitle');
+        elements.studioImageEditorSubtitle = document.getElementById('studioImageEditorSubtitle');
+        elements.studioImageEditorArrowColorInput = document.getElementById('studioImageEditorArrowColorInput');
+        elements.studioImageEditorToolButtons = Array.from(document.querySelectorAll('[data-image-editor-tool]'));
+    }
+
+    function ensureStudioImageEditorDom() {
+        if (!document.getElementById('studioImageEditorOverlay')) {
+            document.body.insertAdjacentHTML('beforeend', `
+                <div id="studioImageEditorOverlay" class="studio-image-editor-overlay hidden" aria-hidden="true">
+                  <div class="studio-image-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="studioImageEditorTitle">
+                    <div class="studio-image-editor-header">
+                      <div>
+                        <h3 id="studioImageEditorTitle">Edit Image</h3>
+                        <p id="studioImageEditorSubtitle" hidden></p>
+                      </div>
+                      <button id="studioImageEditorCloseBtn" type="button" class="auth-icon-btn" aria-label="Close image editor">×</button>
+                    </div>
+                    <div class="studio-image-editor-tools" aria-label="Image editor tools">
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="crop">Crop</button>
+                      <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-rect">Blur Box</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-oval">Blur Oval</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow-red">Red Arrow</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow-green">Green Arrow</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow-blue">Blue Arrow</button>
+                      <label class="studio-image-editor-rgb-control" title="Custom RGB arrow color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#ef4444" aria-label="Custom arrow color"></label>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow-custom">RGB Arrow</button>
+                      <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
+                      <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>
+                    </div>
+                    <div class="studio-image-editor-canvas-wrap">
+                      <canvas id="studioImageEditorCanvas"></canvas>
+                    </div>
+                    <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
+                    <div class="studio-image-editor-actions">
+                      <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
+                      <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
+                    </div>
+                  </div>
+                </div>
+            `);
+        }
+        if (!document.getElementById('studioImageEditorFallbackStyles')) {
+            const style = document.createElement('style');
+            style.id = 'studioImageEditorFallbackStyles';
+            style.textContent = `
+                .studio-image-editor-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(10,6,24,.72);backdrop-filter:blur(8px)}
+                .studio-image-editor-overlay.hidden{display:none!important}
+                .studio-image-editor-dialog{width:min(980px,96vw);max-height:min(92vh,920px);overflow:auto;border-radius:24px;padding:18px;background:#24134b;color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+                .studio-image-editor-header,.studio-image-editor-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+                .studio-image-editor-tools{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+                .studio-image-editor-tools .active{outline:2px solid rgba(250,204,21,.95)}
+                .studio-image-editor-canvas-wrap{display:flex;justify-content:center;align-items:center;min-height:260px;max-height:58vh;overflow:auto;border-radius:16px;background:rgba(0,0,0,.22);padding:12px}
+                #studioImageEditorCanvas{max-width:100%;height:auto;touch-action:none;background:#fff;border-radius:10px}
+                .studio-image-editor-status{min-height:1.4em;margin:10px 0;color:#fef3c7;font-weight:700}
+            `;
+            document.head.appendChild(style);
+        }
+        refreshStudioImageEditorElements();
+        bindStudioImageEditorEvents();
+        return !!(elements.studioImageEditorOverlay && elements.studioImageEditorCanvas);
+    }
+
+    function getCanvasBlobUrlFromSource(sourceValue) {
+        return resolveSupabaseMediaValue(sourceValue).then(async resolvedValue => {
+            const resolved = normalizeSheetText(resolvedValue);
+            if (!resolved) return '';
+            if (/^https?:\/\//i.test(resolved)) {
+                try {
+                    const response = await fetch(resolved, { mode: 'cors' });
+                    if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
+                    const blob = await response.blob();
+                    return URL.createObjectURL(blob);
+                } catch (error) {
+                    console.warn('Falling back to direct image load for editor:', error);
+                    return resolved;
+                }
+            }
+            return resolved;
+        });
+    }
+
+    function loadImageElement(src) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            if (/^https?:\/\//i.test(src)) image.crossOrigin = 'anonymous';
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('Could not load image for editing.'));
+            image.src = src;
+        });
+    }
+
+    function getImageEditorTargetInfo(target = {}) {
+        if (target.kind === 'option') {
+            const row = target.row;
+            const optionIndex = Number(row?.dataset.optionIndex || 0) || 0;
+            const imageInput = row?.querySelector('[data-option-image-url]');
+            const label = imageInput?.dataset.optionImageLabel || `Option ${optionIndex} image`;
+            return {
+                title: 'Edit Image',
+                sourceValue: imageInput?.value || '',
+                sourceLabel: label,
+                fallbackLabel: `Option ${optionIndex} edited image.`
+            };
+        }
+        if (target.kind === 'learning') {
+            return {
+                title: 'Edit Image',
+                sourceValue: state.auth.studioLearningResourcesImageDataUrl || '',
+                sourceLabel: state.auth.studioLearningResourcesImageLabel || 'Learning resources image',
+                fallbackLabel: 'Edited learning resources image.'
+            };
+        }
+        if (target.kind === 'classify-category' || target.kind === 'classify-item') {
+            const kind = target.kind === 'classify-category' ? 'category' : 'item';
+            const config = getStudioClassifyRowImageConfig(kind);
+            const wrapper = target.wrapper;
+            const rowIndex = Number(wrapper?.dataset?.[config.indexDataset] || 0) || 0;
+            const labelEl = wrapper?.querySelector(config.nameSelector);
+            const label = normalizeSheetText(labelEl?.textContent) || `${config.subjectLabel} ${rowIndex} image`;
+            return {
+                title: 'Edit Image',
+                sourceValue: wrapper?.dataset?.[config.imageDataset] || '',
+                sourceLabel: label,
+                fallbackLabel: `Edited ${config.subjectLabel.toLowerCase()} ${rowIndex} image.`
+            };
+        }
+        if (target.kind === 'flashcard-term') {
+            return {
+                title: 'Edit Image',
+                sourceValue: state.auth.studioFlashcardTermImageDataUrl || '',
+                sourceLabel: state.auth.studioFlashcardTermImageLabel || 'Term image',
+                fallbackLabel: 'Edited term image.'
+            };
+        }
+        if (target.kind === 'flashcard-definition') {
+            return {
+                title: 'Edit Image',
+                sourceValue: state.auth.studioFlashcardDefinitionImageDataUrl || '',
+                sourceLabel: state.auth.studioFlashcardDefinitionImageLabel || 'Definition image',
+                fallbackLabel: 'Edited definition image.'
+            };
+        }
+        const isDiagram = isStudioDiagramsMode();
+        return {
+            title: 'Edit Image',
+            sourceValue: state.auth.studioQuestionImageDataUrl || '',
+            sourceLabel: state.auth.studioQuestionImageLabel || 'Question image',
+            fallbackLabel: isDiagram ? 'Edited diagram image.' : 'Edited question image.'
+        };
+    }
+
+    function setImageEditorStatus(message) {
+        if (elements.studioImageEditorStatus) elements.studioImageEditorStatus.textContent = message || '';
+    }
+
+    function clearImageEditorObjectUrl() {
+        const editor = state.auth.imageEditor;
+        if (editor?.objectUrl && editor.objectUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(editor.objectUrl);
+        }
+        if (editor) editor.objectUrl = '';
+    }
+
+    function resetImageEditorState() {
+        clearImageEditorObjectUrl();
+        state.auth.imageEditor = {
+            open: false,
+            target: null,
+            sourceValue: '',
+            sourceLabel: '',
+            objectUrl: '',
+            originalDataUrl: '',
+            baseCanvas: null,
+            mode: 'crop',
+            draftShape: null,
+            isDrawing: false,
+            dragStart: null,
+            history: [],
+            arrowColor: '#ef4444'
+        };
+    }
+
+    function getImageEditorCanvasPoint(event) {
+        const canvas = elements.studioImageEditorCanvas;
+        if (!canvas) return null;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return {
+            x: Math.max(0, Math.min(canvas.width, ((event.clientX - rect.left) / rect.width) * canvas.width)),
+            y: Math.max(0, Math.min(canvas.height, ((event.clientY - rect.top) / rect.height) * canvas.height))
+        };
+    }
+
+    function normalizeEditorBox(start, end) {
+        const x1 = Math.min(start.x, end.x);
+        const y1 = Math.min(start.y, end.y);
+        const x2 = Math.max(start.x, end.x);
+        const y2 = Math.max(start.y, end.y);
+        return {
+            x: x1,
+            y: y1,
+            w: x2 - x1,
+            h: y2 - y1
+        };
+    }
+
+    function normalizeEditorHexColor(value, fallback = '#ef4444') {
+        const normalized = normalizeSheetText(value);
+        return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
+    }
+
+    function getEditorArrowColor(mode) {
+        if (mode === 'arrow-green') return '#22c55e';
+        if (mode === 'arrow-blue') return '#3b82f6';
+        if (mode === 'arrow-custom') {
+            const editor = state.auth.imageEditor;
+            const inputColor = elements.studioImageEditorArrowColorInput?.value;
+            return normalizeEditorHexColor(inputColor || editor?.arrowColor, '#ef4444');
+        }
+        return '#ef4444';
+    }
+
+    function drawEditorEllipsePath(ctx, shape) {
+        ctx.beginPath();
+        ctx.ellipse(shape.x + shape.w / 2, shape.y + shape.h / 2, Math.max(1, shape.w / 2), Math.max(1, shape.h / 2), 0, 0, Math.PI * 2);
+    }
+
+    function drawEditorArrow(ctx, shape, preview = false) {
+        const color = shape.color || '#ef4444';
+        const dx = shape.x2 - shape.x1;
+        const dy = shape.y2 - shape.y1;
+        const angle = Math.atan2(dy, dx);
+        const length = Math.hypot(dx, dy);
+        if (length < 8) return;
+        const headLength = Math.min(28, Math.max(14, length * 0.18));
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = preview ? 5 : 7;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalAlpha = preview ? 0.72 : 0.95;
+        ctx.beginPath();
+        ctx.moveTo(shape.x1, shape.y1);
+        ctx.lineTo(shape.x2, shape.y2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(shape.x2, shape.y2);
+        ctx.lineTo(shape.x2 - headLength * Math.cos(angle - Math.PI / 6), shape.y2 - headLength * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(shape.x2 - headLength * Math.cos(angle + Math.PI / 6), shape.y2 - headLength * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function renderImageEditorCanvas() {
+        const editor = state.auth.imageEditor;
+        const canvas = elements.studioImageEditorCanvas;
+        const baseCanvas = editor?.baseCanvas;
+        if (!canvas || !baseCanvas) return;
+        canvas.width = baseCanvas.width;
+        canvas.height = baseCanvas.height;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(baseCanvas, 0, 0);
+
+        const draft = editor.draftShape;
+        if (!draft) return;
+        ctx.save();
+        if (draft.type === 'crop') {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(draft.x, draft.y, draft.w, draft.h);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 6]);
+            ctx.strokeRect(draft.x, draft.y, draft.w, draft.h);
+        } else if (draft.type === 'blur-rect') {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 2;
+            ctx.fillRect(draft.x, draft.y, draft.w, draft.h);
+            ctx.strokeRect(draft.x, draft.y, draft.w, draft.h);
+        } else if (draft.type === 'blur-oval') {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 2;
+            drawEditorEllipsePath(ctx, draft);
+            ctx.fill();
+            ctx.stroke();
+        } else if (draft.type === 'arrow') {
+            drawEditorArrow(ctx, draft, true);
+        }
+        ctx.restore();
+    }
+
+    function pushImageEditorHistory() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.baseCanvas) return;
+        try {
+            editor.history.push(editor.baseCanvas.toDataURL('image/png'));
+            if (editor.history.length > 20) editor.history.shift();
+        } catch (error) {
+            console.warn('Could not store image editor undo history:', error);
+        }
+    }
+
+    function paintImageIntoBaseCanvas(image) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        const ratio = Math.min(1, IMAGE_EDITOR_MAX_DIMENSION / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+        const width = Math.max(1, Math.round((image.naturalWidth || image.width) * ratio));
+        const height = Math.max(1, Math.round((image.naturalHeight || image.height) * ratio));
+        const baseCanvas = document.createElement('canvas');
+        baseCanvas.width = width;
+        baseCanvas.height = height;
+        const ctx = baseCanvas.getContext('2d');
+        ctx.drawImage(image, 0, 0, width, height);
+        editor.baseCanvas = baseCanvas;
+        editor.draftShape = null;
+        renderImageEditorCanvas();
+    }
+
+    function applyImageEditorBlur(shape) {
+        const editor = state.auth.imageEditor;
+        const baseCanvas = editor?.baseCanvas;
+        if (!baseCanvas || shape.w < 4 || shape.h < 4) return;
+        pushImageEditorHistory();
+        const copy = document.createElement('canvas');
+        copy.width = baseCanvas.width;
+        copy.height = baseCanvas.height;
+        copy.getContext('2d').drawImage(baseCanvas, 0, 0);
+        const ctx = baseCanvas.getContext('2d');
+        ctx.save();
+        if (shape.type === 'blur-oval') {
+            drawEditorEllipsePath(ctx, shape);
+        } else {
+            ctx.beginPath();
+            ctx.rect(shape.x, shape.y, shape.w, shape.h);
+        }
+        ctx.clip();
+        ctx.filter = 'blur(12px)';
+        ctx.drawImage(copy, 0, 0);
+        ctx.filter = 'none';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        if (shape.type === 'blur-oval') {
+            drawEditorEllipsePath(ctx, shape);
+            ctx.fill();
+        } else {
+            ctx.fillRect(shape.x, shape.y, shape.w, shape.h);
+        }
+        ctx.restore();
+        editor.draftShape = null;
+        renderImageEditorCanvas();
+        setImageEditorStatus('Blur added. Add more shapes, undo, or save the edited image.');
+    }
+
+    function applyImageEditorArrow(shape) {
+        const editor = state.auth.imageEditor;
+        const baseCanvas = editor?.baseCanvas;
+        if (!baseCanvas) return;
+        if (Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1) < 8) return;
+        pushImageEditorHistory();
+        const ctx = baseCanvas.getContext('2d');
+        drawEditorArrow(ctx, shape, false);
+        editor.draftShape = null;
+        renderImageEditorCanvas();
+        setImageEditorStatus('Arrow added. Add more arrows/shapes, undo, or save the edited image.');
+    }
+
+    function applyImageEditorCrop() {
+        const editor = state.auth.imageEditor;
+        const baseCanvas = editor?.baseCanvas;
+        const crop = editor?.draftShape;
+        if (!baseCanvas || !crop || crop.type !== 'crop') {
+            setImageEditorStatus('Drag a crop box first, then choose Apply Crop.');
+            return;
+        }
+        const x = Math.max(0, Math.round(crop.x));
+        const y = Math.max(0, Math.round(crop.y));
+        const w = Math.min(baseCanvas.width - x, Math.round(crop.w));
+        const h = Math.min(baseCanvas.height - y, Math.round(crop.h));
+        if (w < 20 || h < 20) {
+            setImageEditorStatus('Crop area is too small. Drag a larger crop box.');
+            return;
+        }
+        pushImageEditorHistory();
+        const nextCanvas = document.createElement('canvas');
+        nextCanvas.width = w;
+        nextCanvas.height = h;
+        nextCanvas.getContext('2d').drawImage(baseCanvas, x, y, w, h, 0, 0, w, h);
+        editor.baseCanvas = nextCanvas;
+        editor.draftShape = null;
+        renderImageEditorCanvas();
+        setImageEditorStatus('Crop applied. Add blur/arrows or save the edited image.');
+    }
+
+    async function undoImageEditorAction() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.history?.length) {
+            setImageEditorStatus('Nothing to undo yet.');
+            return;
+        }
+        const previousDataUrl = editor.history.pop();
+        const image = await loadImageElement(previousDataUrl);
+        paintImageIntoBaseCanvas(image);
+        setImageEditorStatus('Last edit undone.');
+    }
+
+    async function resetImageEditorImage() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.originalDataUrl) return;
+        const image = await loadImageElement(editor.originalDataUrl);
+        editor.history = [];
+        paintImageIntoBaseCanvas(image);
+        setImageEditorStatus('Image reset to the version opened in the editor.');
+    }
+
+    function setImageEditorMode(mode) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        editor.mode = mode || 'crop';
+        if (editor.mode === 'arrow-custom') {
+            editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput?.value || editor.arrowColor, '#ef4444');
+        }
+        editor.draftShape = null;
+        elements.studioImageEditorToolButtons?.forEach(button => {
+            button.classList.toggle('active', normalizeSheetText(button.dataset.imageEditorTool) === editor.mode);
+        });
+        setImageEditorStatus('');
+        renderImageEditorCanvas();
+    }
+
+    function bindStudioImageEditorEvents() {
+        const overlay = elements.studioImageEditorOverlay;
+        if (!overlay || overlay.dataset.imageEditorEventsBound === 'true') return;
+        overlay.dataset.imageEditorEventsBound = 'true';
+        elements.studioImageEditorCloseBtn?.addEventListener('click', closeStudioImageEditor);
+        elements.studioImageEditorCancelBtn?.addEventListener('click', closeStudioImageEditor);
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) closeStudioImageEditor();
+        });
+        elements.studioImageEditorToolButtons?.forEach(button => {
+            button.addEventListener('click', () => setImageEditorMode(normalizeSheetText(button.dataset.imageEditorTool) || 'crop'));
+        });
+        elements.studioImageEditorArrowColorInput?.addEventListener('input', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput.value, '#ef4444');
+            if (editor.mode === 'arrow-custom') renderImageEditorCanvas();
+        });
+        if (elements.studioImageEditorCanvas) {
+            elements.studioImageEditorCanvas.addEventListener('pointerdown', handleImageEditorPointerDown);
+            elements.studioImageEditorCanvas.addEventListener('pointermove', handleImageEditorPointerMove);
+            elements.studioImageEditorCanvas.addEventListener('pointerup', handleImageEditorPointerUp);
+            elements.studioImageEditorCanvas.addEventListener('pointercancel', handleImageEditorPointerUp);
+        }
+        elements.studioImageEditorApplyCropBtn?.addEventListener('click', applyImageEditorCrop);
+        elements.studioImageEditorUndoBtn?.addEventListener('click', () => {
+            undoImageEditorAction().catch(err => {
+                console.error(err);
+                setImageEditorStatus('Could not undo that edit.');
+            });
+        });
+        elements.studioImageEditorResetBtn?.addEventListener('click', () => {
+            resetImageEditorImage().catch(err => {
+                console.error(err);
+                setImageEditorStatus('Could not reset the image.');
+            });
+        });
+        elements.studioImageEditorSaveBtn?.addEventListener('click', saveStudioImageEditorImage);
+    }
+
+    async function openStudioImageEditor(target = {}) {
+        if (!ensureStudioImageEditorDom()) {
+            setCreatorStatus('Image editor UI is missing. Update index.html and style.css from the latest package, then hard refresh.', 'error');
+            return;
+        }
+        const info = getImageEditorTargetInfo(target);
+        const sourceValue = normalizeSheetText(info.sourceValue);
+        if (!sourceValue) {
+            setCreatorStatus('Upload an image before using Edit Image.', 'error');
+            return;
+        }
+        resetImageEditorState();
+        const editor = state.auth.imageEditor;
+        editor.open = true;
+        editor.target = target;
+        editor.sourceValue = sourceValue;
+        editor.sourceLabel = info.sourceLabel || info.fallbackLabel;
+        editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput?.value || '#ef4444', '#ef4444');
+        if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = editor.arrowColor;
+        if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = 'Edit Image';
+        if (elements.studioImageEditorSubtitle) elements.studioImageEditorSubtitle.textContent = '';
+        if (elements.studioImageEditorSubtitle) elements.studioImageEditorSubtitle.hidden = true;
+        if (elements.studioImageEditorOverlay) {
+            elements.studioImageEditorOverlay.classList.remove('hidden');
+            elements.studioImageEditorOverlay.setAttribute('aria-hidden', 'false');
+        }
+        setImageEditorStatus('Loading image editor...');
+        try {
+            const objectUrl = await getCanvasBlobUrlFromSource(sourceValue);
+            editor.objectUrl = objectUrl;
+            const image = await loadImageElement(objectUrl);
+            paintImageIntoBaseCanvas(image);
+            try {
+                editor.originalDataUrl = editor.baseCanvas.toDataURL('image/png');
+            } catch (error) {
+                editor.originalDataUrl = '';
+            }
+            setImageEditorMode('crop');
+            setImageEditorStatus('');
+        } catch (error) {
+            console.error(error);
+            closeStudioImageEditor();
+            setCreatorStatus('Could not open that image for editing.', 'error');
+        }
+    }
+
+    function closeStudioImageEditor() {
+        if (elements.studioImageEditorOverlay) {
+            elements.studioImageEditorOverlay.classList.add('hidden');
+            elements.studioImageEditorOverlay.setAttribute('aria-hidden', 'true');
+        }
+        resetImageEditorState();
+    }
+
+    function applyStudioImageEditorResult(dataUrl) {
+        const editor = state.auth.imageEditor;
+        const target = editor?.target || {};
+        const labelRoot = getSelectedFileNameFromLabel(editor.sourceLabel) || 'edited-image.png';
+        const label = `Edited: ${labelRoot}`;
+        if (target.kind === 'option') {
+            setStudioOptionImageState(target.row, dataUrl, label);
+        } else if (target.kind === 'learning') {
+            setStudioLearningResourcesImageState(dataUrl, label);
+        } else if (target.kind === 'flashcard-term') {
+            setStudioFlashcardTermImageState(dataUrl, label);
+        } else if (target.kind === 'flashcard-definition') {
+            setStudioFlashcardDefinitionImageState(dataUrl, label);
+        } else if (target.kind === 'classify-category') {
+            setStudioClassifyRowImageState(target.wrapper, 'category', dataUrl, label);
+            refreshStudioClassifyItemCategoryOptions();
+        } else if (target.kind === 'classify-item') {
+            setStudioClassifyRowImageState(target.wrapper, 'item', dataUrl, label);
+        } else {
+            setStudioQuestionImagePanelOpen(true);
+            setStudioQuestionImageState(dataUrl, label);
+        }
+        setStudioDirtyState(true);
+        setCreatorStatus('Edited image applied. Save Changes to keep it.', 'success');
+    }
+
+    function saveStudioImageEditorImage() {
+        const editor = state.auth.imageEditor;
+        const baseCanvas = editor?.baseCanvas;
+        if (!baseCanvas) return;
+        try {
+            const editedDataUrl = baseCanvas.toDataURL('image/png');
+            applyStudioImageEditorResult(editedDataUrl);
+            closeStudioImageEditor();
+        } catch (error) {
+            console.error(error);
+            setImageEditorStatus('Could not save this image. Try re-uploading it, then edit again.');
+        }
+    }
+
+    function handleImageEditorPointerDown(event) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !editor.baseCanvas) return;
+        const point = getImageEditorCanvasPoint(event);
+        if (!point) return;
+        event.preventDefault();
+        editor.isDrawing = true;
+        editor.dragStart = point;
+        editor.draftShape = null;
+        elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+    }
+
+    function handleImageEditorPointerMove(event) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.isDrawing || !editor.dragStart) return;
+        const point = getImageEditorCanvasPoint(event);
+        if (!point) return;
+        event.preventDefault();
+        if (editor.mode === 'crop') {
+            const box = normalizeEditorBox(editor.dragStart, point);
+            editor.draftShape = { type: 'crop', ...box };
+        } else if (editor.mode === 'blur-rect' || editor.mode === 'blur-oval') {
+            const box = normalizeEditorBox(editor.dragStart, point);
+            editor.draftShape = { type: editor.mode, ...box };
+        } else if (editor.mode.startsWith('arrow-')) {
+            editor.draftShape = {
+                type: 'arrow',
+                color: getEditorArrowColor(editor.mode),
+                x1: editor.dragStart.x,
+                y1: editor.dragStart.y,
+                x2: point.x,
+                y2: point.y
+            };
+        }
+        renderImageEditorCanvas();
+    }
+
+    function handleImageEditorPointerUp(event) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.isDrawing) return;
+        event.preventDefault();
+        editor.isDrawing = false;
+        elements.studioImageEditorCanvas?.releasePointerCapture?.(event.pointerId);
+        const draft = editor.draftShape;
+        if (!draft) return;
+        if ((draft.type === 'blur-rect' || draft.type === 'blur-oval') && draft.w >= 4 && draft.h >= 4) {
+            applyImageEditorBlur(draft);
+            return;
+        }
+        if (draft.type === 'arrow') {
+            applyImageEditorArrow(draft);
+            return;
+        }
+        if (draft.type === 'crop') {
+            if (draft.w < 20 || draft.h < 20) {
+                editor.draftShape = null;
+                renderImageEditorCanvas();
+                setImageEditorStatus('Crop area is too small. Drag a larger crop box.');
+            } else {
+                setImageEditorStatus('Crop box ready. Choose Apply Crop to trim the image.');
+            }
+        }
     }
 
     function getStudioCurrentQuizType() {
@@ -2773,21 +3508,216 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    function populateCreatorFolderSelect() {
+    function getEditorSelectedClassId() {
+        const value = normalizeSheetText(elements.createQuizClassSelect?.value);
+        return value || '__none__';
+    }
+
+    function populateCreatorClassSelect(selectedValue = undefined) {
+        if (!elements.createQuizClassSelect) return;
+        const currentValue = selectedValue !== undefined ? selectedValue : elements.createQuizClassSelect.value;
+        populateClassSelect(elements.createQuizClassSelect, {
+            includeAll: false,
+            includeNone: true,
+            noneLabel: 'No class / General',
+            selectedValue: currentValue || '__none__'
+        });
+        elements.createQuizClassSelect.disabled = !!state.auth.supabaseClassesUnavailable || !(state.auth.configured && !!state.auth.user);
+    }
+
+    function getEditorFoldersForClass(classId = getEditorSelectedClassId()) {
+        const normalizedClassId = normalizeSheetText(classId || '__none__') || '__none__';
+        if (state.auth.supabaseClassesUnavailable) return [...state.auth.supabaseFolders];
+        if (normalizedClassId === '__none__') {
+            return state.auth.supabaseFolders.filter(folder => !normalizeSheetText(folder.classId));
+        }
+        return state.auth.supabaseFolders.filter(folder => normalizeSheetText(folder.classId) === normalizedClassId);
+    }
+
+    function getEditorClassIdForFolder(folderId = '') {
+        const normalizedFolderId = normalizeSheetText(folderId);
+        if (!normalizedFolderId || state.auth.supabaseClassesUnavailable) return '__none__';
+        return getFolderClassId(normalizedFolderId) || '__none__';
+    }
+
+    function selectEditorClassForFolder(folderId = '') {
+        const classId = getEditorClassIdForFolder(folderId);
+        populateCreatorClassSelect(classId);
+        return classId;
+    }
+
+    function populateCreatorFolderSelect(options = {}) {
         if (!elements.createQuizFolderSelect) return;
 
-        const previousValue = elements.createQuizFolderSelect.value;
-        elements.createQuizFolderSelect.innerHTML = '<option value="">No folder</option>';
+        const previousValue = normalizeSheetText(options.selectedFolderId ?? elements.createQuizFolderSelect.value);
+        const selectedClassId = normalizeSheetText(options.classId ?? getEditorSelectedClassId()) || '__none__';
+        const folders = getEditorFoldersForClass(selectedClassId);
+        const classLabel = selectedClassId === '__none__' ? 'No class / General' : (getSupabaseClassById(selectedClassId)?.name || 'selected class');
+        elements.createQuizFolderSelect.innerHTML = `<option value="">No folder</option>`;
 
-        state.auth.supabaseFolders.forEach(folder => {
+        folders.forEach(folder => {
             const option = document.createElement('option');
             option.value = folder.id;
             option.textContent = folder.name;
             elements.createQuizFolderSelect.appendChild(option);
         });
 
-        if (previousValue && state.auth.supabaseFolders.some(folder => folder.id === previousValue)) {
+        if (previousValue && folders.some(folder => folder.id === previousValue)) {
             elements.createQuizFolderSelect.value = previousValue;
+        } else {
+            elements.createQuizFolderSelect.value = '';
+        }
+
+        if (elements.createQuizFolderSelect) {
+            const folderCount = folders.length;
+            elements.createQuizFolderSelect.title = folderCount
+                ? `Showing ${folderCount} folder${folderCount === 1 ? '' : 's'} for ${classLabel}.`
+                : `No folders found for ${classLabel}. Use + New Folder to create one here.`;
+        }
+    }
+
+    function refreshEditorClassFolderSelectors(options = {}) {
+        const selectedFolderId = normalizeSheetText(options.selectedFolderId ?? elements.createQuizFolderSelect?.value);
+        const selectedClassId = options.classId !== undefined
+            ? (normalizeSheetText(options.classId) || '__none__')
+            : (selectedFolderId ? getEditorClassIdForFolder(selectedFolderId) : getEditorSelectedClassId());
+        populateCreatorClassSelect(selectedClassId);
+        populateCreatorFolderSelect({ classId: selectedClassId, selectedFolderId });
+    }
+
+    function normalizeClassName(value) {
+        return normalizeFolderName(value || '');
+    }
+
+    function canUseSupabaseClasses() {
+        return !!state.auth.client && !!state.auth.user?.id && !state.auth.supabaseClassesUnavailable;
+    }
+
+    function getSupabaseClassById(classId = '') {
+        const normalizedClassId = normalizeSheetText(classId);
+        if (!normalizedClassId) return null;
+        return state.auth.supabaseClasses.find(item => item.id === normalizedClassId) || null;
+    }
+
+    function getFolderById(folderId = '') {
+        const normalizedFolderId = normalizeSheetText(folderId);
+        if (!normalizedFolderId) return null;
+        return state.auth.supabaseFolders.find(item => item.id === normalizedFolderId) || null;
+    }
+
+    function getFolderClassId(folderId = '') {
+        return normalizeSheetText(getFolderById(folderId)?.classId || '');
+    }
+
+    function getFolderClassName(folderId = '') {
+        const folder = getFolderById(folderId);
+        if (!folder?.classId) return '';
+        return getSupabaseClassById(folder.classId)?.name || '';
+    }
+
+    function getQuizClassId(quiz = {}) {
+        return normalizeSheetText(quiz.classId || getFolderClassId(quiz.folderId));
+    }
+
+    function getQuizClassName(quiz = {}) {
+        const classId = getQuizClassId(quiz);
+        if (!classId) return '';
+        return quiz.className || getSupabaseClassById(classId)?.name || '';
+    }
+
+    function getClassFolderIds(classId = '') {
+        const normalizedClassId = normalizeSheetText(classId);
+        if (!normalizedClassId) return [];
+        return state.auth.supabaseFolders
+            .filter(folder => normalizeSheetText(folder.classId) === normalizedClassId)
+            .map(folder => folder.id);
+    }
+
+    function getFoldersAvailableForClassQuickAdd(classId = '') {
+        const normalizedClassId = normalizeSheetText(classId);
+        if (!normalizedClassId || normalizedClassId === '__none__') return [];
+        return [...state.auth.supabaseFolders]
+            .filter(folder => normalizeSheetText(folder.classId) !== normalizedClassId)
+            .sort((a, b) => {
+                const classA = getFolderClassName(a.id) || '';
+                const classB = getFolderClassName(b.id) || '';
+                if (!classA && classB) return -1;
+                if (classA && !classB) return 1;
+                return classA.localeCompare(classB) || String(a.name || '').localeCompare(String(b.name || ''));
+            });
+    }
+
+    function renderClassQuickAddFolderPanel(classRow = {}) {
+        const classId = normalizeSheetText(classRow.id);
+        if (!classId || classId === '__none__' || state.auth.studioClassQuickAddOpenId !== classId) return '';
+        const availableFolders = getFoldersAvailableForClassQuickAdd(classId);
+        const rows = availableFolders.map(folder => {
+            const currentClassName = getFolderClassName(folder.id) || 'No class / General';
+            const stats = getFolderQuizStats(folder.id);
+            const quizLabel = stats.quizCount === 1 ? '1 quiz' : `${stats.quizCount} quizzes`;
+            const moveLabel = normalizeSheetText(folder.classId) ? 'Move Here' : 'Add';
+            return `
+                <div class="studio-class-folder-add-row" data-class-add-folder-id="${escapeHtml(folder.id)}">
+                  <div class="studio-list-meta">
+                    <div class="studio-list-title">${escapeHtml(folder.name)}</div>
+                    <div class="studio-list-subtitle">Currently: ${escapeHtml(currentClassName)} · ${escapeHtml(quizLabel)}</div>
+                  </div>
+                  <button type="button" class="auth-action-btn" data-action="quick-add-folder-to-class">${escapeHtml(moveLabel)}</button>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="studio-class-folder-quick-add" data-class-quick-add-panel="${escapeHtml(classId)}">
+              <div class="studio-class-folder-quick-add-head">
+                <div>
+                  <div class="studio-class-folder-quick-add-title">Add existing folders to ${escapeHtml(classRow.name || 'this class')}</div>
+                  <div class="studio-list-subtitle">Choose a folder below. Folders already inside this class are hidden.</div>
+                </div>
+                <button type="button" class="auth-action-btn auth-secondary-btn" data-action="close-class-folder-add">Close</button>
+              </div>
+              ${rows || createStudioEmptyState('No folders available', 'Every existing folder is already inside this class. Create a new folder if you need another one.', [{ label: 'Create Folder', action: 'open-folders' }])}
+            </div>
+        `;
+    }
+
+    function populateClassSelect(selectEl, options = {}) {
+        if (!selectEl) return;
+        const includeAll = !!options.includeAll;
+        const includeNone = options.includeNone !== false;
+        const allLabel = options.allLabel || 'All classes';
+        const noneLabel = options.noneLabel || 'No class';
+        const previousValue = normalizeSheetText(options.selectedValue ?? selectEl.value ?? '');
+        const rows = [];
+        if (includeAll) rows.push(`<option value="">${escapeHtml(allLabel)}</option>`);
+        if (includeNone) rows.push(`<option value="__none__">${escapeHtml(noneLabel)}</option>`);
+        state.auth.supabaseClasses.forEach(classRow => {
+            const isSelected = classRow.id === previousValue ? ' selected' : '';
+            rows.push(`<option value="${escapeHtml(classRow.id)}"${isSelected}>${escapeHtml(classRow.name)}</option>`);
+        });
+        selectEl.innerHTML = rows.join('');
+        const validValues = new Set(['', '__none__', ...state.auth.supabaseClasses.map(classRow => classRow.id)]);
+        if (!includeAll && !previousValue) {
+            selectEl.value = includeNone ? '__none__' : '';
+        } else {
+            selectEl.value = validValues.has(previousValue) ? previousValue : (includeAll ? '' : '__none__');
+        }
+    }
+
+    function populateFolderClassSelects() {
+        populateClassSelect(elements.createFolderClassSelect, { includeAll: false, includeNone: true, noneLabel: 'No class / General' });
+        refreshEditorClassFolderSelectors();
+    }
+
+    function syncStudioManageTabs() {
+        const activeView = normalizeSheetText(state.auth.studioQuizManageView || 'all') || 'all';
+        elements.studioQuizManageTabs.forEach(button => {
+            const isActive = button.dataset.studioManageView === activeView;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        if (elements.studioQuizClassFilterSelect) {
+            elements.studioQuizClassFilterSelect.closest('.studio-filter-field')?.classList.toggle('hidden', activeView !== 'classes');
         }
     }
 
@@ -2803,6 +3733,15 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(state.auth.studioQuizFolderFilterId || elements.studioQuizFolderFilterSelect?.value || '');
     }
 
+    function getStudioQuizClassFilterId() {
+        return normalizeSheetText(state.auth.studioQuizClassFilterId || elements.studioQuizClassFilterSelect?.value || '');
+    }
+
+    function getStudioQuizManageView() {
+        const view = normalizeSheetText(state.auth.studioQuizManageView || 'all') || 'all';
+        return ['all', 'classes', 'folders', 'recent'].includes(view) ? view : 'all';
+    }
+
     function getFolderQuizStats(folderId = '') {
         const normalizedFolderId = normalizeSheetText(folderId);
         const quizzes = state.auth.managedQuizzes.filter(quiz => normalizeSheetText(quiz.folderId) === normalizedFolderId);
@@ -2812,16 +3751,47 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    function getClassQuizStats(classId = '') {
+        const normalizedClassId = normalizeSheetText(classId);
+        const quizzes = state.auth.managedQuizzes.filter(quiz => getQuizClassId(quiz) === normalizedClassId);
+        return {
+            folderCount: getClassFolderIds(normalizedClassId).length,
+            quizCount: quizzes.length,
+            questionCount: quizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0)
+        };
+    }
+
+    function populateStudioQuizClassFilter() {
+        if (!elements.studioQuizClassFilterSelect) return;
+        populateClassSelect(elements.studioQuizClassFilterSelect, { includeAll: true, includeNone: true, allLabel: 'All classes', noneLabel: 'No class / General', selectedValue: getStudioQuizClassFilterId() });
+        const validIds = new Set(['', '__none__', ...state.auth.supabaseClasses.map(classRow => classRow.id)]);
+        if (!validIds.has(state.auth.studioQuizClassFilterId)) {
+            state.auth.studioQuizClassFilterId = '';
+        }
+    }
+
+    function getFoldersForCurrentManageFilter() {
+        const view = getStudioQuizManageView();
+        const classFilterId = getStudioQuizClassFilterId();
+        if (view !== 'classes' || !classFilterId) return [...state.auth.supabaseFolders];
+        if (classFilterId === '__none__') {
+            return state.auth.supabaseFolders.filter(folder => !normalizeSheetText(folder.classId));
+        }
+        return state.auth.supabaseFolders.filter(folder => normalizeSheetText(folder.classId) === classFilterId);
+    }
+
     function populateStudioQuizFolderFilter() {
         if (!elements.studioQuizFolderFilterSelect) return;
         const previousValue = getStudioQuizFolderFilterId();
         const options = ['<option value="">All folders</option>', '<option value="__none__">No folder</option>'];
-        state.auth.supabaseFolders.forEach(folder => {
+        getFoldersForCurrentManageFilter().forEach(folder => {
             const isSelected = folder.id === previousValue ? ' selected' : '';
-            options.push(`<option value="${escapeHtml(folder.id)}"${isSelected}>${escapeHtml(folder.name)}</option>`);
+            const className = getFolderClassName(folder.id);
+            const label = className && getStudioQuizManageView() !== 'classes' ? `${className} / ${folder.name}` : folder.name;
+            options.push(`<option value="${escapeHtml(folder.id)}"${isSelected}>${escapeHtml(label)}</option>`);
         });
         elements.studioQuizFolderFilterSelect.innerHTML = options.join('');
-        const validIds = new Set(['', '__none__', ...state.auth.supabaseFolders.map(folder => folder.id)]);
+        const validIds = new Set(['', '__none__', ...getFoldersForCurrentManageFilter().map(folder => folder.id)]);
         if (validIds.has(previousValue)) {
             elements.studioQuizFolderFilterSelect.value = previousValue;
         } else {
@@ -2833,11 +3803,15 @@ MODIFICATION RULES FOR THIS APP
     function getFilteredManagedQuizzes() {
         const searchQuery = getStudioQuizSearchQuery();
         const folderFilterId = getStudioQuizFolderFilterId();
+        const classFilterId = getStudioQuizClassFilterId();
+        const manageView = getStudioQuizManageView();
         return [...state.auth.managedQuizzes].filter(quiz => {
+            if (manageView === 'classes' && classFilterId === '__none__' && getQuizClassId(quiz)) return false;
+            if (manageView === 'classes' && classFilterId && classFilterId !== '__none__' && getQuizClassId(quiz) !== classFilterId) return false;
             if (folderFilterId === '__none__' && normalizeSheetText(quiz.folderId)) return false;
             if (folderFilterId && folderFilterId !== '__none__' && normalizeSheetText(quiz.folderId) !== folderFilterId) return false;
             if (!searchQuery) return true;
-            const haystack = `${quiz.name || ''} ${quiz.folderName || ''}`.toLowerCase();
+            const haystack = `${quiz.name || ''} ${quiz.folderName || ''} ${getQuizClassName(quiz) || ''}`.toLowerCase();
             return haystack.includes(searchQuery);
         });
     }
@@ -2846,13 +3820,21 @@ MODIFICATION RULES FOR THIS APP
         if (!elements.studioQuizFilterStatus) return;
         const searchQuery = getStudioQuizSearchQuery();
         const folderFilterId = getStudioQuizFolderFilterId();
+        const classFilterId = getStudioQuizClassFilterId();
+        const manageView = getStudioQuizManageView();
         const folderName = folderFilterId === '__none__'
             ? 'No folder'
             : state.auth.supabaseFolders.find(folder => folder.id === folderFilterId)?.name || '';
-        const parts = [];
+        const className = classFilterId === '__none__'
+            ? 'No class / General'
+            : getSupabaseClassById(classFilterId)?.name || '';
+        const viewLabelMap = { all: 'All quizzes', classes: 'Classes', folders: 'Folders', recent: 'Recent' };
+        const parts = [`View: ${viewLabelMap[manageView] || 'All quizzes'}`];
+        if (manageView === 'classes' && classFilterId) parts.push(`Class: ${className || 'Unknown class'}`);
         if (folderFilterId) parts.push(`Folder: ${folderName || 'Unknown folder'}`);
         if (searchQuery) parts.push(`Search: ${searchQuery}`);
-        if (!parts.length) {
+        const onlyDefaultView = parts.length === 1 && manageView === 'all' && !searchQuery && !folderFilterId;
+        if (onlyDefaultView) {
             elements.studioQuizFilterStatus.classList.add('hidden');
             elements.studioQuizFilterStatus.textContent = '';
             if (elements.studioQuizClearFiltersBtn) elements.studioQuizClearFiltersBtn.disabled = true;
@@ -2865,14 +3847,75 @@ MODIFICATION RULES FOR THIS APP
 
     async function openManageQuizzesForFolder(folderId = '') {
         const normalizedFolderId = normalizeSheetText(folderId);
+        state.auth.studioQuizManageView = 'folders';
         state.auth.studioQuizFolderFilterId = normalizedFolderId;
+        state.auth.studioQuizClassFilterId = '';
         state.auth.studioQuizSearchQuery = '';
         if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
+        populateStudioQuizClassFilter();
         populateStudioQuizFolderFilter();
         if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = normalizedFolderId;
         renderQuizManagementList();
         await recordStudioFolderActivity(normalizedFolderId, 'opened_folder_filter');
         await setQuizStudioSection('manage');
+    }
+
+    async function openManageQuizzesForClass(classId = '', options = {}) {
+        const normalizedClassId = normalizeSheetText(classId);
+        const normalizedFolderId = normalizeSheetText(options.folderId || '');
+        state.auth.studioQuizManageView = 'classes';
+        state.auth.studioQuizClassFilterId = normalizedClassId || '';
+        state.auth.studioQuizFolderFilterId = normalizedFolderId;
+        state.auth.studioQuizSearchQuery = '';
+        if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
+        populateStudioQuizClassFilter();
+        if (elements.studioQuizClassFilterSelect) elements.studioQuizClassFilterSelect.value = normalizedClassId || '';
+        populateStudioQuizFolderFilter();
+        if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = normalizedFolderId;
+        renderQuizManagementList();
+        await setQuizStudioSection('manage');
+    }
+
+    function renderClassManagementList() {
+        if (!elements.studioClassList) return;
+
+        if (!state.auth.client || !state.auth.user?.id) {
+            elements.studioClassList.innerHTML = createStudioEmptyState('Sign in required', 'Sign in before managing your private classes.', [{ label: 'Open Account', action: 'open-auth' }]);
+            return;
+        }
+
+        if (state.auth.supabaseClassesUnavailable) {
+            elements.studioClassList.innerHTML = createStudioEmptyState('Class migration needed', 'Run the Phase 22ES Supabase SQL migration to create classes and assign folders to classes.', [{ label: 'Open Backup', action: 'open-backup', secondary: true }]);
+            return;
+        }
+
+        if (!state.auth.supabaseClasses.length) {
+            elements.studioClassList.innerHTML = createStudioEmptyState('No classes yet', 'Create a class like Microbiology, CNA, Anatomy, or Chemistry, then place folders inside it.', [{ label: 'Create Class', action: 'focus-create-class' }]);
+            return;
+        }
+
+        elements.studioClassList.innerHTML = [...state.auth.supabaseClasses]
+            .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+            .map(classRow => {
+                const stats = getClassQuizStats(classRow.id);
+                const folderLabel = stats.folderCount === 1 ? '1 folder' : `${stats.folderCount} folders`;
+                const quizLabel = stats.quizCount === 1 ? '1 quiz' : `${stats.quizCount} quizzes`;
+                const questionLabel = stats.questionCount === 1 ? '1 question' : `${stats.questionCount} questions`;
+                return `
+                    <div class="studio-list-item" data-class-id="${escapeHtml(classRow.id)}">
+                      <div class="studio-list-meta">
+                        <div class="studio-list-title">${escapeHtml(classRow.name)}</div>
+                        <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)}</div>
+                      </div>
+                      <div class="studio-list-controls">
+                        <input class="studio-inline-input" type="text" value="${escapeHtml(classRow.name)}" data-class-rename-input>
+                        <button type="button" class="auth-action-btn" data-action="view-class-quizzes">View Class</button>
+                        <button type="button" class="auth-action-btn" data-action="save-class">Save</button>
+                        <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-class">Delete</button>
+                      </div>
+                    </div>
+                `;
+            }).join('');
     }
 
     function renderFolderManagementList() {
@@ -2899,14 +3942,24 @@ MODIFICATION RULES FOR THIS APP
             const stats = getFolderQuizStats(folder.id);
             const quizLabel = stats.quizCount === 1 ? '1 quiz' : `${stats.quizCount} quizzes`;
             const questionLabel = stats.questionCount === 1 ? '1 question' : `${stats.questionCount} questions`;
+            const className = getFolderClassName(folder.id) || 'No class / General';
+            const classOptions = (() => {
+                const rows = ['<option value="__none__">No class / General</option>'];
+                state.auth.supabaseClasses.forEach(classRow => {
+                    const isSelected = classRow.id === normalizeSheetText(folder.classId) ? ' selected' : '';
+                    rows.push(`<option value="${escapeHtml(classRow.id)}"${isSelected}>${escapeHtml(classRow.name)}</option>`);
+                });
+                return rows.join('');
+            })();
             return `
             <div class="studio-list-item" data-folder-id="${escapeHtml(folder.id)}">
               <div class="studio-list-meta">
                 <div class="studio-list-title">${escapeHtml(folder.name)}</div>
-                <div class="studio-list-subtitle">${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)}</div>
+                <div class="studio-list-subtitle">${escapeHtml(className)} · ${escapeHtml(quizLabel)} · ${escapeHtml(questionLabel)}</div>
               </div>
               <div class="studio-list-controls">
                 <input class="studio-inline-input" type="text" value="${escapeHtml(folder.name)}" data-folder-rename-input>
+                <select class="studio-inline-select" data-folder-class-select ${state.auth.supabaseClassesUnavailable ? 'disabled' : ''}>${classOptions}</select>
                 <button type="button" class="auth-action-btn" data-action="view-folder-quizzes">View Quizzes</button>
                 <button type="button" class="auth-action-btn" data-action="save-folder">Save</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-action="delete-folder">Delete</button>
@@ -2922,7 +3975,9 @@ MODIFICATION RULES FOR THIS APP
         const options = ['<option value="">No folder</option>'];
         state.auth.supabaseFolders.forEach(folder => {
             const isSelected = folder.id === normalizedSelected ? ' selected' : '';
-            options.push(`<option value="${escapeHtml(folder.id)}"${isSelected}>${escapeHtml(folder.name)}</option>`);
+            const className = getFolderClassName(folder.id);
+            const label = className ? `${className} / ${folder.name}` : folder.name;
+            options.push(`<option value="${escapeHtml(folder.id)}"${isSelected}>${escapeHtml(label)}</option>`);
         });
         return options.join('');
     }
@@ -3011,6 +4066,133 @@ MODIFICATION RULES FOR THIS APP
               <div class="quiz-challenge-list">${challengeRows}</div>
             </div>
         `;
+    }
+
+
+    function getActiveCompletionChallengeQuiz() {
+        const activeDescriptor = state.activeQuizDescriptor || null;
+        if (!activeDescriptor || activeDescriptor.source !== DATA_SOURCES.SUPABASE) return null;
+
+        const quizId = normalizeSheetText(activeDescriptor.sourceQuizId || '').replace(/^sb:/, '');
+        if (!quizId) return null;
+
+        return state.auth.managedQuizzes.find(quiz => quiz.id === quizId) || null;
+    }
+
+    function getCompletionChallengePromptKey(quiz = null) {
+        const quizId = normalizeSheetText(quiz?.id);
+        if (!quizId) return '';
+        return `${quizId}:${state.questions.length}:${state.questionQueue.length}`;
+    }
+
+    function setCompletionChallengeStatus(message = '', variant = 'neutral') {
+        if (!elements.completionChallengeStatus) return;
+        elements.completionChallengeStatus.textContent = message;
+        elements.completionChallengeStatus.classList.remove('is-error', 'is-success');
+        if (variant === 'error') {
+            elements.completionChallengeStatus.classList.add('is-error');
+        } else if (variant === 'success') {
+            elements.completionChallengeStatus.classList.add('is-success');
+        }
+    }
+
+    function setCompletionChallengeButtonsDisabled(disabled = false) {
+        if (!elements.completionChallengeOverlay) return;
+        elements.completionChallengeOverlay.querySelectorAll('[data-completion-challenge-key]').forEach(button => {
+            const blocked = button.dataset.challengeBlocked === 'true';
+            button.disabled = !!disabled || blocked;
+        });
+    }
+
+    function closeCompletionChallengePrompt() {
+        if (!elements.completionChallengeOverlay) return;
+        elements.completionChallengeOverlay.classList.add('hidden');
+        elements.completionChallengeOverlay.setAttribute('aria-hidden', 'true');
+        state.completionChallengePrompt.open = false;
+        setCompletionChallengeStatus('');
+        setCompletionChallengeButtonsDisabled(false);
+        syncBodyScrollLock();
+    }
+
+    function renderCompletionChallengeRows(quiz) {
+        const quizId = normalizeSheetText(quiz?.id);
+        return QUIZ_CHALLENGES.map(challenge => {
+            const unlocked = hasQuizChallengeAchievement(quizId, challenge.key);
+            const canStartChallenge = canQuizUseChallengeSettings(quiz, challenge);
+            const disabledReason = canStartChallenge ? '' : getQuizChallengeDisabledReason(quiz, challenge);
+            const titlePrefix = unlocked ? '🏆' : '○';
+            const statusText = unlocked ? 'Trophy unlocked — replay anytime.' : 'Not completed yet.';
+            return `
+                <div class="completion-challenge-row${unlocked ? ' completed' : ''}${challenge.requiresBuildUp ? ' build-up' : ''}">
+                  <div class="completion-challenge-row-main">
+                    <div class="completion-challenge-row-title"><span>${titlePrefix}</span> ${escapeHtml(challenge.title)}</div>
+                    <div class="completion-challenge-row-note">${escapeHtml(disabledReason || statusText)}</div>
+                  </div>
+                  <button type="button" class="auth-action-btn completion-challenge-start-btn" data-completion-challenge-key="${escapeHtml(challenge.key)}" data-challenge-blocked="${canStartChallenge ? 'false' : 'true'}"${!canStartChallenge ? ' disabled' : ''}>Start</button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function openCompletionChallengePrompt(quiz) {
+        if (!elements.completionChallengeOverlay || !elements.completionChallengeList || !quiz) return;
+
+        const quizName = normalizeSheetText(quiz.name) || 'this quiz';
+        elements.completionChallengeOverlay.dataset.quizId = normalizeSheetText(quiz.id);
+        elements.completionChallengeList.innerHTML = renderCompletionChallengeRows(quiz);
+        if (elements.completionChallengeSubtitle) {
+            elements.completionChallengeSubtitle.textContent = `You finished ${quizName}. Start a challenge now without going back to Manage Quizzes.`;
+        }
+        setCompletionChallengeStatus('');
+        elements.completionChallengeOverlay.classList.remove('hidden');
+        elements.completionChallengeOverlay.setAttribute('aria-hidden', 'false');
+        state.completionChallengePrompt.open = true;
+        syncBodyScrollLock();
+    }
+
+    function shouldShowCompletionChallengePrompt() {
+        if (state.activeQuizChallenge?.challengeKey) return false;
+        if (state.completionChallengePrompt.open) return false;
+        if (!isQuizFinished()) return false;
+        if (isProgressMode() && getProgressMissedQuestions().length > 0) return false;
+
+        const quiz = getActiveCompletionChallengeQuiz();
+        if (!quiz) return false;
+
+        const promptKey = getCompletionChallengePromptKey(quiz);
+        if (!promptKey || state.completionChallengePrompt.shownForSessionKey === promptKey) return false;
+
+        return QUIZ_CHALLENGES.some(challenge => canQuizUseChallengeSettings(quiz, challenge));
+    }
+
+    function maybeOpenCompletionChallengePrompt() {
+        if (!shouldShowCompletionChallengePrompt()) return;
+        const quiz = getActiveCompletionChallengeQuiz();
+        if (!quiz) return;
+        state.completionChallengePrompt.shownForSessionKey = getCompletionChallengePromptKey(quiz);
+        openCompletionChallengePrompt(quiz);
+    }
+
+    async function startCompletionChallengeFromPrompt(challengeKey = '') {
+        const quizId = normalizeSheetText(elements.completionChallengeOverlay?.dataset.quizId || '');
+        const challenge = getQuizChallengeDefinition(challengeKey);
+        if (!quizId || !challenge) {
+            setCompletionChallengeStatus('Could not start that challenge.', 'error');
+            return;
+        }
+
+        setCompletionChallengeButtonsDisabled(true);
+        setCompletionChallengeStatus('Starting challenge…', 'neutral');
+
+        try {
+            await recordStudioQuizActivity(quizId, 'challenge_started');
+            await beginQuizChallenge(quizId, challenge.key);
+            closeCompletionChallengePrompt();
+        } catch (error) {
+            console.error('Could not start completion challenge:', error);
+            setCompletionChallengeStatus(error?.studyLoadDiagnostic ? getStudyLoadErrorMessage(error) : 'Could not start that challenge.', 'error');
+            setCompletionChallengeButtonsDisabled(false);
+        }
     }
 
     async function loadQuizChallengeAchievementsFromSupabase() {
@@ -3579,8 +4761,129 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function renderStudioQuizManagementItem(quiz) {
+        const folderLabel = quiz.folderName || 'No folder';
+        const className = getQuizClassName(quiz);
+        const classLabel = className || 'No class / General';
+        const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
+        const typeLabel = quiz.typeLabel || 'Mixed types';
+        const folderOptions = buildStudioFolderSelectOptions(quiz.folderId);
+        const challengeBadges = renderQuizChallengeBadges(quiz);
+        const challengesExpanded = state.auth.expandedQuizChallengeIds.has(quiz.id);
+        const unlockedChallengeCount = QUIZ_CHALLENGES.filter(challenge => hasQuizChallengeAchievement(quiz.id, challenge.key)).length;
+        const challengePanel = challengesExpanded ? renderQuizChallengePanel(quiz) : '';
+        const challengeButtonLabel = challengesExpanded ? 'Hide Challenges' : `Challenges ${unlockedChallengeCount}/${QUIZ_CHALLENGES.length}`;
+        const actionMenuOpen = state.auth.openQuizActionMenuId === quiz.id;
+        return `
+            <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
+              <div class="studio-list-meta">
+                <div class="studio-list-title-row">
+                  <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
+                  ${challengeBadges}
+                </div>
+                <div class="studio-list-subtitle">${escapeHtml(classLabel)} · ${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)}</div>
+              </div>
+              <div class="studio-list-controls">
+                <input class="studio-inline-input" type="text" value="${escapeHtml(quiz.name)}" data-quiz-rename-input>
+                <select class="studio-inline-select" data-quiz-folder-select>${folderOptions}</select>
+                <button type="button" class="auth-action-btn" data-action="save-quiz">Save</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn quiz-challenge-toggle-btn" data-action="toggle-challenges" aria-expanded="${challengesExpanded ? 'true' : 'false'}">${escapeHtml(challengeButtonLabel)}</button>
+                <button type="button" class="auth-action-btn" data-action="load-quiz">Study</button>
+                <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
+                <div class="studio-quiz-actions-menu-wrap">
+                  <button type="button" class="auth-action-btn auth-secondary-btn studio-quiz-actions-toggle" data-action="toggle-quiz-actions" aria-haspopup="menu" aria-expanded="${actionMenuOpen ? 'true' : 'false'}" aria-label="More actions for ${escapeHtml(quiz.name)}">...</button>
+                  <div class="studio-quiz-actions-menu${actionMenuOpen ? ' open' : ''}" role="menu">
+                    <button type="button" role="menuitem" data-action="reset-starred">Reset Stars</button>
+                    <button type="button" role="menuitem" data-action="delete-starred">Delete Stars</button>
+                    <button type="button" role="menuitem" data-action="duplicate-quiz">Duplicate</button>
+                    <button type="button" role="menuitem" data-action="delete-quiz">Delete</button>
+                  </div>
+                </div>
+              </div>
+              ${challengePanel}
+            </div>
+        `;
+    }
+
+    function renderClassGroupedQuizManagementList(quizzesToRender = []) {
+        const classFilterId = getStudioQuizClassFilterId();
+        const classBuckets = new Map();
+        const getBucketId = quiz => getQuizClassId(quiz) || '__none__';
+        quizzesToRender.forEach(quiz => {
+            const bucketId = getBucketId(quiz);
+            if (!classBuckets.has(bucketId)) classBuckets.set(bucketId, []);
+            classBuckets.get(bucketId).push(quiz);
+        });
+
+        const classRows = [];
+        if (!classFilterId || classFilterId === '__none__') {
+            if (classBuckets.has('__none__')) classRows.push({ id: '__none__', name: 'No class / General', quizzes: classBuckets.get('__none__') || [] });
+        }
+        state.auth.supabaseClasses.forEach(classRow => {
+            if (classFilterId && classFilterId !== classRow.id) return;
+            const rows = classBuckets.get(classRow.id) || [];
+            if (rows.length || classFilterId === classRow.id) {
+                classRows.push({ id: classRow.id, name: classRow.name, quizzes: rows });
+            }
+        });
+        if (!classFilterId) {
+            classBuckets.forEach((rows, bucketId) => {
+                if (bucketId === '__none__' || state.auth.supabaseClasses.some(classRow => classRow.id === bucketId)) return;
+                classRows.push({ id: bucketId, name: 'Unknown class', quizzes: rows });
+            });
+        }
+
+        return classRows.map(classRow => {
+            const folderBuckets = new Map();
+            classRow.quizzes.forEach(quiz => {
+                const folderId = normalizeSheetText(quiz.folderId) || '__none__';
+                if (!folderBuckets.has(folderId)) folderBuckets.set(folderId, []);
+                folderBuckets.get(folderId).push(quiz);
+            });
+            const folderSections = Array.from(folderBuckets.entries())
+                .sort(([folderIdA], [folderIdB]) => {
+                    const nameA = folderIdA === '__none__' ? 'No folder' : (getFolderById(folderIdA)?.name || 'Unknown folder');
+                    const nameB = folderIdB === '__none__' ? 'No folder' : (getFolderById(folderIdB)?.name || 'Unknown folder');
+                    return nameA.localeCompare(nameB);
+                })
+                .map(([folderId, rows]) => {
+                    const folderName = folderId === '__none__' ? 'No folder' : (getFolderById(folderId)?.name || 'Unknown folder');
+                    const quizLabel = rows.length === 1 ? '1 quiz' : `${rows.length} quizzes`;
+                    return `
+                        <div class="studio-class-folder-group">
+                          <div class="studio-class-folder-heading">
+                            <span>${escapeHtml(folderName)}</span>
+                            <small>${escapeHtml(quizLabel)}</small>
+                          </div>
+                          <div class="studio-list studio-class-folder-list">${rows.sort(sortStudioRecentItems).map(renderStudioQuizManagementItem).join('')}</div>
+                        </div>
+                    `;
+                }).join('');
+            const quizLabel = classRow.quizzes.length === 1 ? '1 quiz' : `${classRow.quizzes.length} quizzes`;
+            const isRealClass = classRow.id !== '__none__' && !!getSupabaseClassById(classRow.id);
+            const quickAddOpen = state.auth.studioClassQuickAddOpenId === classRow.id;
+            const quickAddButton = isRealClass
+                ? `<button type="button" class="auth-action-btn auth-secondary-btn studio-class-add-folder-btn" data-action="toggle-class-folder-add" aria-expanded="${quickAddOpen ? 'true' : 'false'}">+ Add Folder</button>`
+                : '';
+            return `
+                <section class="studio-class-group" data-class-group-id="${escapeHtml(classRow.id)}">
+                  <div class="studio-class-group-heading">
+                    <div>
+                      <div class="studio-class-group-title">${escapeHtml(classRow.name)}</div>
+                      <div class="studio-list-subtitle">${escapeHtml(quizLabel)} across this class</div>
+                    </div>
+                    <div class="studio-class-group-actions">${quickAddButton}</div>
+                  </div>
+                  ${renderClassQuickAddFolderPanel(classRow)}
+                  ${folderSections || createStudioEmptyState('No quizzes in this class yet', 'Use + Add Folder to place existing folders in this class, then add quizzes inside those folders.', [{ label: 'Manage Folders', action: 'open-folders' }])}
+                </section>
+            `;
+        }).join('');
+    }
+
     function renderQuizManagementList() {
         if (!elements.studioQuizList) return;
+        syncStudioManageTabs();
 
         if (!state.auth.client || !state.auth.user?.id) {
             elements.studioQuizList.innerHTML = createStudioEmptyState('Sign in required', 'Sign in before managing your private Supabase quizzes.', [{ label: 'Open Account', action: 'open-auth' }]);
@@ -3592,57 +4895,29 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
+        populateStudioQuizClassFilter();
         populateStudioQuizFolderFilter();
+        syncStudioManageTabs();
 
-        const quizzesToRender = getFilteredManagedQuizzes().sort(sortStudioRecentItems);
+        const manageView = getStudioQuizManageView();
+        const sortFn = manageView === 'recent' ? sortStudioActiveItems('quiz') : sortStudioRecentItems;
+        const quizzesToRender = getFilteredManagedQuizzes().sort(sortFn);
         updateStudioQuizFilterStatus(quizzesToRender.length);
 
+        if (manageView === 'classes') {
+            const classGroupedHtml = renderClassGroupedQuizManagementList(quizzesToRender);
+            if (classGroupedHtml.trim()) {
+                elements.studioQuizList.innerHTML = classGroupedHtml;
+                return;
+            }
+        }
+
         if (!quizzesToRender.length) {
-            elements.studioQuizList.innerHTML = createStudioEmptyState('No matching quizzes', 'Clear or change your quiz search/folder filter to see more quizzes.', [{ label: 'Clear Filters', action: 'clear-quiz-filters' }]);
+            elements.studioQuizList.innerHTML = createStudioEmptyState('No matching quizzes', 'Clear or change your quiz search/class/folder filter to see more quizzes.', [{ label: 'Clear Filters', action: 'clear-quiz-filters' }]);
             return;
         }
 
-        elements.studioQuizList.innerHTML = quizzesToRender.map(quiz => {
-            const folderLabel = quiz.folderName || 'No folder';
-            const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
-            const typeLabel = quiz.typeLabel || 'Mixed types';
-            const folderOptions = buildStudioFolderSelectOptions(quiz.folderId);
-            const challengeBadges = renderQuizChallengeBadges(quiz);
-            const challengesExpanded = state.auth.expandedQuizChallengeIds.has(quiz.id);
-            const unlockedChallengeCount = QUIZ_CHALLENGES.filter(challenge => hasQuizChallengeAchievement(quiz.id, challenge.key)).length;
-            const challengePanel = challengesExpanded ? renderQuizChallengePanel(quiz) : '';
-            const challengeButtonLabel = challengesExpanded ? 'Hide Challenges' : `Challenges ${unlockedChallengeCount}/${QUIZ_CHALLENGES.length}`;
-            const actionMenuOpen = state.auth.openQuizActionMenuId === quiz.id;
-            return `
-                <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
-                  <div class="studio-list-meta">
-                    <div class="studio-list-title-row">
-                      <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
-                      ${challengeBadges}
-                    </div>
-                    <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)}</div>
-                  </div>
-                  <div class="studio-list-controls">
-                    <input class="studio-inline-input" type="text" value="${escapeHtml(quiz.name)}" data-quiz-rename-input>
-                    <select class="studio-inline-select" data-quiz-folder-select>${folderOptions}</select>
-                    <button type="button" class="auth-action-btn" data-action="save-quiz">Save</button>
-                    <button type="button" class="auth-action-btn auth-secondary-btn quiz-challenge-toggle-btn" data-action="toggle-challenges" aria-expanded="${challengesExpanded ? 'true' : 'false'}">${escapeHtml(challengeButtonLabel)}</button>
-                    <button type="button" class="auth-action-btn" data-action="load-quiz">Study</button>
-                    <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
-                    <div class="studio-quiz-actions-menu-wrap">
-                      <button type="button" class="auth-action-btn auth-secondary-btn studio-quiz-actions-toggle" data-action="toggle-quiz-actions" aria-haspopup="menu" aria-expanded="${actionMenuOpen ? 'true' : 'false'}" aria-label="More actions for ${escapeHtml(quiz.name)}">...</button>
-                      <div class="studio-quiz-actions-menu${actionMenuOpen ? ' open' : ''}" role="menu">
-                        <button type="button" role="menuitem" data-action="reset-starred">Reset Stars</button>
-                        <button type="button" role="menuitem" data-action="delete-starred">Delete Stars</button>
-                        <button type="button" role="menuitem" data-action="duplicate-quiz">Duplicate</button>
-                        <button type="button" role="menuitem" data-action="delete-quiz">Delete</button>
-                      </div>
-                    </div>
-                  </div>
-                  ${challengePanel}
-                </div>
-            `;
-        }).join('');
+        elements.studioQuizList.innerHTML = quizzesToRender.map(renderStudioQuizManagementItem).join('');
     }
 
     function getStudioUpdatedTime(value) {
@@ -3759,17 +5034,20 @@ MODIFICATION RULES FOR THIS APP
                     .slice(0, 5)
                     .map(quiz => {
                         const folderLabel = quiz.folderName || 'No folder';
+                        const classLabel = getQuizClassName(quiz) || 'No class / General';
                         const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
                         const typeLabel = quiz.typeLabel || 'Mixed types';
+                        const goToClassDisabled = getQuizClassId(quiz) ? '' : ' disabled title="Assign this quiz folder to a class first."';
                         return `
                             <div class="studio-list-item studio-dashboard-item" data-home-quiz-id="${escapeHtml(quiz.id)}">
                               <div class="studio-list-meta">
                                 <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
-                                <div class="studio-list-subtitle">${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)} · Active ${escapeHtml(getStudioActiveLabel('quiz', quiz))}</div>
+                                <div class="studio-list-subtitle">${escapeHtml(classLabel)} · ${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)} · Active ${escapeHtml(getStudioActiveLabel('quiz', quiz))}</div>
                               </div>
                               <div class="studio-list-controls">
                                 <button type="button" class="auth-action-btn" data-home-action="edit-quiz">Edit</button>
                                 <button type="button" class="auth-action-btn auth-secondary-btn" data-home-action="study-quiz">Study</button>
+                                <button type="button" class="auth-action-btn auth-secondary-btn" data-home-action="go-to-class"${goToClassDisabled}>Go to Class</button>
                               </div>
                             </div>
                         `;
@@ -3824,11 +5102,13 @@ MODIFICATION RULES FOR THIS APP
                 return;
             }
 
+            const classCount = state.auth.supabaseClasses.length;
             const folderCount = state.auth.supabaseFolders.length;
             const quizCount = state.auth.managedQuizzes.length;
             const questionCount = state.auth.managedQuizzes.reduce((total, quiz) => total + Number(quiz.questionCount || 0), 0);
             const typeCounts = getStudioQuizTypeCounts();
             const cards = [
+                ['Classes', classCount],
                 ['Folders', folderCount],
                 ['Quizzes', quizCount],
                 ['Questions', questionCount],
@@ -3849,11 +5129,66 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function isSupabaseClassSchemaError(error) {
+        const message = String(error?.message || error?.details || '').toLowerCase();
+        return /classes|class_id|does not exist|could not find|schema cache|permission denied/.test(message);
+    }
+
+    async function loadSupabaseClasses() {
+        if (!state.auth.client || !state.auth.user?.id) {
+            state.auth.supabaseClasses = [];
+            state.auth.supabaseClassesUnavailable = false;
+            populateFolderClassSelects();
+            populateStudioQuizClassFilter();
+            renderClassManagementList();
+            return [];
+        }
+
+        try {
+            let classResult = await state.auth.client
+                .from('classes')
+                .select('id, name, sort_order, updated_at')
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true });
+
+            if (classResult.error && /updated_at/i.test(classResult.error.message || '')) {
+                classResult = await state.auth.client
+                    .from('classes')
+                    .select('id, name, sort_order')
+                    .order('sort_order', { ascending: true })
+                    .order('name', { ascending: true });
+            }
+
+            const { data, error } = classResult;
+            if (error) throw error;
+
+            state.auth.supabaseClassesUnavailable = false;
+            state.auth.supabaseClasses = (data || []).map(classRow => ({
+                id: classRow.id,
+                name: normalizeClassName(classRow.name),
+                sort_order: Number(classRow.sort_order ?? 0),
+                updatedAt: normalizeSheetText(classRow.updated_at)
+            }));
+        } catch (error) {
+            console.warn('Classes are unavailable. Run the Phase 22ES migration to enable class organization.', error);
+            state.auth.supabaseClassesUnavailable = true;
+            state.auth.supabaseClasses = [];
+        }
+
+        populateFolderClassSelects();
+        populateStudioQuizClassFilter();
+        renderClassManagementList();
+        return state.auth.supabaseClasses;
+    }
+
     async function loadCreatorFolders() {
         if (!state.auth.client || !state.auth.user?.id) {
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
+            populateFolderClassSelects();
+            populateStudioQuizClassFilter();
             populateStudioQuizFolderFilter();
+            renderClassManagementList();
             renderFolderManagementList();
             renderStudioHomeDashboard();
             return [];
@@ -3861,9 +5196,18 @@ MODIFICATION RULES FOR THIS APP
 
         let folderResult = await state.auth.client
             .from('folders')
-            .select('id, name, sort_order, updated_at')
+            .select('id, class_id, name, sort_order, updated_at')
             .order('sort_order', { ascending: true })
             .order('name', { ascending: true });
+
+        if (folderResult.error && /class_id|schema cache|could not find/i.test(folderResult.error.message || '')) {
+            state.auth.supabaseClassesUnavailable = true;
+            folderResult = await state.auth.client
+                .from('folders')
+                .select('id, name, sort_order, updated_at')
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true });
+        }
 
         if (folderResult.error && /updated_at/i.test(folderResult.error.message || '')) {
             folderResult = await state.auth.client
@@ -3878,7 +5222,10 @@ MODIFICATION RULES FOR THIS APP
             console.error('Failed to load creator folders:', error);
             state.auth.supabaseFolders = [];
             populateCreatorFolderSelect();
+            populateFolderClassSelects();
+            populateStudioQuizClassFilter();
             populateStudioQuizFolderFilter();
+            renderClassManagementList();
             renderFolderManagementList();
             renderStudioHomeDashboard();
             return [];
@@ -3886,12 +5233,16 @@ MODIFICATION RULES FOR THIS APP
 
         state.auth.supabaseFolders = (data || []).map(folder => ({
             id: folder.id,
+            classId: normalizeSheetText(folder.class_id),
             name: normalizeFolderName(folder.name),
             sort_order: Number(folder.sort_order ?? 0),
             updatedAt: normalizeSheetText(folder.updated_at)
         }));
         populateCreatorFolderSelect();
+        populateFolderClassSelects();
+        populateStudioQuizClassFilter();
         populateStudioQuizFolderFilter();
+        renderClassManagementList();
         renderFolderManagementList();
         renderStudioHomeDashboard();
         populateExportBackupControls();
@@ -3974,11 +5325,14 @@ MODIFICATION RULES FOR THIS APP
                     const detail = multipleChoiceMetadataByQuestionId.get(row.id);
                     return !!getBuildUpValueFromOptionsJson(detail?.options_json);
                 });
+                const classRow = folder?.classId ? getSupabaseClassById(folder.classId) : null;
                 return {
                     id: quiz.id,
                     name: normalizeSheetText(quiz.name),
                     folderId: quiz.folder_id || '',
                     folderName: folder ? normalizeFolderName(folder.name) : '',
+                    classId: folder?.classId || '',
+                    className: classRow ? normalizeClassName(classRow.name) : '',
                     questionCount: rows.length,
                     questionIds: rows.map(row => row.id).filter(Boolean),
                     quizType,
@@ -4007,6 +5361,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function refreshStudioManagementData() {
+        await loadSupabaseClasses();
         await loadCreatorFolders();
         await loadManagedSupabaseQuizzes();
         await loadGoogleSheetsImportCatalog();
@@ -4331,6 +5686,7 @@ MODIFICATION RULES FOR THIS APP
               </label>
               <div class="studio-file-row studio-option-image-row">
                 <div class="studio-file-name" data-option-image-name>${escapeHtml(optionImageLabel)}</div>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn${optionImageUrl ? '' : ' hidden'}" data-option-image-edit>Edit Image</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-option-image-clear>Clear</button>
               </div>
               <img class="studio-option-image-preview hidden" alt="Option ${optionNumber} image preview" data-option-image-preview>
@@ -4688,6 +6044,9 @@ MODIFICATION RULES FOR THIS APP
         const previewEl = wrapper.querySelector(config.previewSelector);
         setPreviewImageSource(previewEl, normalizedDataUrl);
 
+        const editButton = wrapper.querySelector(kind === 'category' ? '[data-classify-category-image-edit]' : '[data-classify-item-image-edit]');
+        updateStudioImageEditButton(editButton, normalizedDataUrl);
+
         const inputEl = wrapper.querySelector(config.fileSelector);
         if (!normalizedDataUrl && inputEl) {
             inputEl.value = '';
@@ -4718,6 +6077,7 @@ MODIFICATION RULES FOR THIS APP
               </label>
               <div class="studio-file-row studio-option-image-row">
                 <div class="studio-file-name" data-classify-category-image-name>No category image selected.</div>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn" data-classify-category-image-edit>Edit Image</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-category-image-clear>Clear</button>
               </div>
               <img class="studio-inline-image-preview hidden" alt="Category image preview" data-classify-category-image-preview>
@@ -4765,6 +6125,7 @@ MODIFICATION RULES FOR THIS APP
               </label>
               <div class="studio-file-row studio-option-image-row">
                 <div class="studio-file-name" data-classify-item-image-name>No item image selected.</div>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn" data-classify-item-image-edit>Edit Image</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn" data-classify-item-image-clear>Clear</button>
               </div>
               <img class="studio-inline-image-preview hidden" alt="Item image preview" data-classify-item-image-preview>
@@ -7210,6 +8571,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         state.auth.currentStudioSection = nextSection;
+        closeAppPageMenu();
 
         elements.quizStudioSections.forEach(section => {
             const isActive = section.dataset.studioSection === nextSection;
@@ -7231,7 +8593,10 @@ MODIFICATION RULES FOR THIS APP
         const creatorEnabled = configured && signedIn;
 
         [
+            elements.createClassName,
+            elements.createClassBtn,
             elements.createFolderName,
+            elements.createFolderClassSelect,
             elements.createFolderBtn,
             elements.importSourceFolderSelect,
             elements.importSourceQuizSelect,
@@ -7257,6 +8622,7 @@ MODIFICATION RULES FOR THIS APP
             elements.importBackupFile,
             elements.previewBackupImportBtn,
             elements.importBackupBtn,
+            elements.createQuizClassSelect,
             elements.createQuizFolderSelect,
             elements.createQuizFolderNewBtn,
             elements.createQuizNewFolderName,
@@ -7385,6 +8751,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         updateCreateQuizModeUI();
+        renderClassManagementList();
         renderFolderManagementList();
         renderQuizManagementList();
         renderGoogleSheetsImportControls();
@@ -7394,10 +8761,11 @@ MODIFICATION RULES FOR THIS APP
 
     function clearCreatorInputs(options = {}) {
         const keepFolderSelection = !!options.keepFolderSelection;
+        if (elements.createClassName) elements.createClassName.value = '';
         if (elements.createFolderName) elements.createFolderName.value = '';
         if (elements.createQuizName) elements.createQuizName.value = '';
-        if (!keepFolderSelection && elements.createQuizFolderSelect) {
-            elements.createQuizFolderSelect.value = '';
+        if (!keepFolderSelection) {
+            refreshEditorClassFolderSelectors({ classId: '__none__', selectedFolderId: '' });
         }
         state.auth.studioQuestionSearchQuery = '';
         state.auth.studioQuestionStarredOnly = false;
@@ -7695,6 +9063,44 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function openAppPageMenu() {
+        if (!elements.appPageMenu) return;
+        elements.appPageMenu.classList.remove('hidden');
+        elements.appPageMenu.setAttribute('aria-hidden', 'false');
+        if (elements.appMenuBackdrop) {
+            elements.appMenuBackdrop.classList.remove('hidden');
+            elements.appMenuBackdrop.setAttribute('aria-hidden', 'false');
+        }
+        if (elements.appMenuBtn) {
+            elements.appMenuBtn.classList.add('active');
+            elements.appMenuBtn.setAttribute('aria-expanded', 'true');
+        }
+    }
+
+    function closeAppPageMenu() {
+        if (elements.appPageMenu) {
+            elements.appPageMenu.classList.add('hidden');
+            elements.appPageMenu.setAttribute('aria-hidden', 'true');
+        }
+        if (elements.appMenuBackdrop) {
+            elements.appMenuBackdrop.classList.add('hidden');
+            elements.appMenuBackdrop.setAttribute('aria-hidden', 'true');
+        }
+        if (elements.appMenuBtn) {
+            elements.appMenuBtn.classList.remove('active');
+            elements.appMenuBtn.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    function toggleAppPageMenu() {
+        if (!elements.appPageMenu) return;
+        if (elements.appPageMenu.classList.contains('hidden')) {
+            openAppPageMenu();
+        } else {
+            closeAppPageMenu();
+        }
+    }
+
     function openQuizStudioPage(sectionName = state.auth.currentStudioSection || 'folders') {
         if (!elements.quizStudioPage) return;
         closeAuthPopup();
@@ -7716,6 +9122,7 @@ MODIFICATION RULES FOR THIS APP
             const saved = await autosaveStudioChanges({ reason: 'close Quiz Studio', allowCreate: true });
             if (!saved) return false;
         }
+        closeAppPageMenu();
         elements.quizStudioPage.classList.add('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'true');
         state.auth.quizStudioOpen = false;
@@ -8876,7 +10283,43 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function createSupabaseFolderByName(folderName) {
+    async function getNextSortOrderForClass() {
+        if (!state.auth.client) return 0;
+        const { data, error } = await state.auth.client
+            .from('classes')
+            .select('sort_order')
+            .order('sort_order', { ascending: false })
+            .limit(1);
+        if (error) throw error;
+        return Number(data?.[0]?.sort_order ?? -1) + 1;
+    }
+
+    async function createSupabaseClassByName(className) {
+        if (!state.auth.client || !state.auth.user?.id) {
+            throw new Error('Sign in before creating a class.');
+        }
+        if (state.auth.supabaseClassesUnavailable) {
+            throw new Error('Run the Phase 22ES Supabase migration before creating classes.');
+        }
+        const normalizedName = normalizeClassName(className);
+        if (!normalizedName) {
+            throw new Error('Enter a class name first.');
+        }
+        const sortOrder = await getNextSortOrderForClass();
+        const { data, error } = await state.auth.client
+            .from('classes')
+            .insert({
+                user_id: state.auth.user.id,
+                name: normalizedName,
+                sort_order: sortOrder
+            })
+            .select('id, name, sort_order')
+            .single();
+        if (error) throw error;
+        return data;
+    }
+
+    async function createSupabaseFolderByName(folderName, options = {}) {
         if (!state.auth.client || !state.auth.user?.id) {
             throw new Error('Sign in before creating a folder.');
         }
@@ -8887,18 +10330,34 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const sortOrder = await getNextSortOrderForFolder();
-        const { data, error } = await state.auth.client
+        const classId = normalizeSheetText(options.classId);
+        const payload = {
+            user_id: state.auth.user.id,
+            name: normalizedName,
+            sort_order: sortOrder
+        };
+        if (classId && classId !== '__none__' && !state.auth.supabaseClassesUnavailable) {
+            payload.class_id = classId;
+        }
+
+        let result = await state.auth.client
             .from('folders')
-            .insert({
-                user_id: state.auth.user.id,
-                name: normalizedName,
-                sort_order: sortOrder
-            })
-            .select('id, name, sort_order')
+            .insert(payload)
+            .select('id, class_id, name, sort_order')
             .single();
 
-        if (error) throw error;
-        return data;
+        if (result.error && /class_id|schema cache|could not find/i.test(result.error.message || '')) {
+            state.auth.supabaseClassesUnavailable = true;
+            delete payload.class_id;
+            result = await state.auth.client
+                .from('folders')
+                .insert(payload)
+                .select('id, name, sort_order')
+                .single();
+        }
+
+        if (result.error) throw result.error;
+        return result.data;
     }
 
     function setEditorInlineFolderCreatorOpen(isOpen = false, options = {}) {
@@ -8912,6 +10371,108 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    async function handleQuickAddFolderToClass(classId = '', folderId = '') {
+        const normalizedClassId = normalizeSheetText(classId);
+        const normalizedFolderId = normalizeSheetText(folderId);
+        const classRow = getSupabaseClassById(normalizedClassId);
+        const folderRow = getFolderById(normalizedFolderId);
+        if (!classRow || !folderRow) {
+            setCreatorStatus('Choose a valid class and folder first.', 'error');
+            return;
+        }
+
+        try {
+            setCreatorStatus(`Adding ${folderRow.name} to ${classRow.name}...`);
+            const { error } = await state.auth.client
+                .from('folders')
+                .update({ class_id: normalizedClassId })
+                .eq('id', normalizedFolderId);
+            if (error) throw error;
+            state.auth.studioQuizManageView = 'classes';
+            state.auth.studioQuizClassFilterId = normalizedClassId;
+            state.auth.studioQuizFolderFilterId = '';
+            state.auth.studioClassQuickAddOpenId = normalizedClassId;
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
+            renderQuizManagementList();
+            setCreatorStatus(`Folder added to ${classRow.name}.`, 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not add that folder to the class.', 'error');
+        }
+    }
+
+    async function handleCreateClass() {
+        const className = normalizeSheetText(elements.createClassName?.value);
+        if (!className) {
+            setCreatorStatus('Enter a class name first.', 'error');
+            return;
+        }
+        setCreatorStatus('Creating class...');
+        try {
+            const createdClass = await createSupabaseClassByName(className);
+            await refreshStudioManagementData();
+            if (elements.createFolderClassSelect && createdClass?.id) {
+                elements.createFolderClassSelect.value = createdClass.id;
+            }
+            if (elements.createClassName) elements.createClassName.value = '';
+            setCreatorStatus('Class created. You can now place folders inside it.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not create the class.', 'error');
+        }
+    }
+
+    async function handleRenameClass(classId, nextName) {
+        const className = normalizeClassName(nextName);
+        if (!className) {
+            setCreatorStatus('Class names cannot be blank.', 'error');
+            return;
+        }
+        try {
+            const { error } = await state.auth.client
+                .from('classes')
+                .update({ name: className })
+                .eq('id', classId);
+            if (error) throw error;
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
+            setCreatorStatus('Class updated.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not update the class.', 'error');
+        }
+    }
+
+    async function handleDeleteClass(classId) {
+        const normalizedClassId = normalizeSheetText(classId);
+        const classRow = getSupabaseClassById(normalizedClassId);
+        if (!classRow) {
+            setCreatorStatus('Could not find that class.', 'error');
+            return;
+        }
+        const folderCount = getClassFolderIds(normalizedClassId).length;
+        const quizCount = state.auth.managedQuizzes.filter(quiz => getQuizClassId(quiz) === normalizedClassId).length;
+        const warning = folderCount || quizCount
+            ? `Delete class "${classRow.name}"? Its ${folderCount} folder${folderCount === 1 ? '' : 's'} and ${quizCount} quiz${quizCount === 1 ? '' : 'zes'} will move to No class / General, but the folders and quizzes will not be deleted.`
+            : `Delete class "${classRow.name}"?`;
+        if (!window.confirm(warning)) return;
+        try {
+            const { error } = await state.auth.client
+                .from('classes')
+                .delete()
+                .eq('id', normalizedClassId);
+            if (error) throw error;
+            state.auth.studioQuizClassFilterId = '';
+            await refreshStudioManagementData();
+            await refreshQuizCatalog();
+            setCreatorStatus('Class deleted. Its folders are now under No class / General.', 'success');
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus(error.message || 'Could not delete the class.', 'error');
+        }
+    }
+
     async function handleCreateFolder() {
         const folderName = normalizeSheetText(elements.createFolderName?.value);
         if (!folderName) {
@@ -8922,11 +10483,12 @@ MODIFICATION RULES FOR THIS APP
         setCreatorStatus('Creating folder...');
 
         try {
-            const createdFolder = await createSupabaseFolderByName(folderName);
+            const selectedClassId = normalizeSheetText(elements.createFolderClassSelect?.value);
+            const createdFolder = await createSupabaseFolderByName(folderName, { classId: selectedClassId });
             await refreshStudioManagementData();
             await refreshQuizCatalog();
-            if (elements.createQuizFolderSelect && createdFolder?.id) {
-                elements.createQuizFolderSelect.value = createdFolder.id;
+            if (createdFolder?.id) {
+                refreshEditorClassFolderSelectors({ selectedFolderId: createdFolder.id });
             }
             if (elements.createFolderName) {
                 elements.createFolderName.value = '';
@@ -8949,11 +10511,12 @@ MODIFICATION RULES FOR THIS APP
         setCreatorStatus('Creating folder...');
 
         try {
-            const createdFolder = await createSupabaseFolderByName(folderName);
+            const selectedClassId = getEditorSelectedClassId();
+            const createdFolder = await createSupabaseFolderByName(folderName, { classId: selectedClassId });
             await refreshStudioManagementData();
             await refreshQuizCatalog();
-            if (elements.createQuizFolderSelect && createdFolder?.id) {
-                elements.createQuizFolderSelect.value = createdFolder.id;
+            if (createdFolder?.id) {
+                refreshEditorClassFolderSelectors({ classId: selectedClassId, selectedFolderId: createdFolder.id });
                 setStudioDirtyState(true);
             }
             setEditorInlineFolderCreatorOpen(false);
@@ -9526,7 +11089,7 @@ MODIFICATION RULES FOR THIS APP
         await handleSaveStudioQuiz();
     }
 
-    async function handleRenameFolder(folderId, nextName) {
+    async function handleRenameFolder(folderId, nextName, nextClassId = undefined) {
         const folderName = normalizeSheetText(nextName);
         if (!folderName) {
             setCreatorStatus('Folder names cannot be blank.', 'error');
@@ -9534,12 +11097,26 @@ MODIFICATION RULES FOR THIS APP
         }
 
         try {
-            const { error } = await state.auth.client
+            const payload = { name: folderName };
+            if (nextClassId !== undefined && !state.auth.supabaseClassesUnavailable) {
+                const normalizedClassId = normalizeSheetText(nextClassId);
+                payload.class_id = normalizedClassId && normalizedClassId !== '__none__' ? normalizedClassId : null;
+            }
+            let result = await state.auth.client
                 .from('folders')
-                .update({ name: folderName })
+                .update(payload)
                 .eq('id', folderId);
 
-            if (error) throw error;
+            if (result.error && /class_id|schema cache|could not find/i.test(result.error.message || '')) {
+                state.auth.supabaseClassesUnavailable = true;
+                delete payload.class_id;
+                result = await state.auth.client
+                    .from('folders')
+                    .update(payload)
+                    .eq('id', folderId);
+            }
+
+            if (result.error) throw result.error;
 
             await refreshStudioManagementData();
             await refreshQuizCatalog();
@@ -9789,7 +11366,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
             syncStudioQuestionStarredFilterButton();
             if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
-            if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = quizRow.folder_id || '';
+            refreshEditorClassFolderSelectors({ selectedFolderId: quizRow.folder_id || '' });
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
 
@@ -9859,7 +11436,7 @@ MODIFICATION RULES FOR THIS APP
 
             if (state.auth.editingQuizId === quizId) {
                 if (elements.createQuizName) elements.createQuizName.value = quizName;
-                if (elements.createQuizFolderSelect) elements.createQuizFolderSelect.value = folderId || '';
+                refreshEditorClassFolderSelectors({ selectedFolderId: folderId || '' });
             }
 
             await recordStudioQuizActivity(quizId, 'metadata_updated');
@@ -11192,6 +12769,7 @@ function revealOptionDelayOptions(token = state.optionDelay.releaseToken) {
     }
     resumeStudyTimerAfterOptionDelay();
     updateNavigationButtons();
+    queueOptionsScrollIndicatorUpdate();
 }
 
 function startOptionDelayForCurrentQuestion(question = state.questionQueue[state.currentIndex]) {
@@ -12327,7 +13905,7 @@ function updateSettingsAvailability() {
 }
 
 function syncBodyScrollLock() {
-    document.body.style.overflow = (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.auth?.quizStudioOpen) ? 'hidden' : '';
+    document.body.style.overflow = (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.completionChallengePrompt.open || state.auth?.quizStudioOpen) ? 'hidden' : '';
 }
 
 function isNarrowIPhoneViewport() {
@@ -12527,7 +14105,7 @@ function isStudyKeyboardShortcutBlocked(event) {
     if (state.auth.quizStudioOpen || !elements.quizStudioPage?.classList.contains('hidden')) return true;
     if (elements.authPopup && !elements.authPopup.classList.contains('hidden')) return true;
     if (elements.settingsPopup && !elements.settingsPopup.classList.contains('hidden')) return true;
-    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return true;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.completionChallengePrompt.open) return true;
     if (!state.questions.length || isQuizFinished()) return true;
     return false;
 }
@@ -12832,12 +14410,52 @@ function showPendingLearningResourceIfAny() {
     openLearningResourcesOverlay(state.pendingLearningResource);
 }
 
-// ================= FLASHCARD IMAGE ZOOM UI =================
-function openFlashcardImageOverlay(src, alt = 'Flashcard image') {
+// ================= FLASHCARD / STUDY IMAGE ZOOM UI =================
+function ensureFlashcardZoomLabelLayer() {
+    if (elements.flashcardZoomLabelLayer) return elements.flashcardZoomLabelLayer;
+    if (!elements.flashcardZoomImageWrap && elements.flashcardZoomImage?.parentElement) {
+        elements.flashcardZoomImageWrap = elements.flashcardZoomImage.parentElement;
+    }
+    if (!elements.flashcardZoomImageWrap) return null;
+    const layer = document.createElement('div');
+    layer.id = 'flashcardZoomLabelLayer';
+    layer.className = 'flashcard-zoom-label-layer hidden';
+    layer.setAttribute('aria-hidden', 'true');
+    elements.flashcardZoomImageWrap.appendChild(layer);
+    elements.flashcardZoomLabelLayer = layer;
+    return layer;
+}
+
+function renderFlashcardZoomLabels(labels = []) {
+    const layer = ensureFlashcardZoomLabelLayer();
+    const safeLabels = normalizeDiagramLabels(labels);
+    if (!layer) return;
+    if (!safeLabels.length) {
+        layer.innerHTML = '';
+        layer.classList.add('hidden');
+        layer.setAttribute('aria-hidden', 'true');
+        elements.flashcardZoomImageWrap?.classList.remove('has-diagram-labels');
+        return;
+    }
+
+    layer.innerHTML = safeLabels.map(item => `
+        <span class="diagram-study-label flashcard-zoom-label" style="left:${item.x}%; top:${item.y}%;">${renderMathChemTextToHtml(item.label)}</span>
+    `).join('');
+    layer.classList.remove('hidden');
+    layer.setAttribute('aria-hidden', 'false');
+    elements.flashcardZoomImageWrap?.classList.add('has-diagram-labels');
+}
+
+function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
     if (!src || !elements.flashcardImageOverlay || !elements.flashcardZoomImage || state.learningResourcesOverlayOpen) return;
+
+    if (!elements.flashcardZoomImageWrap && elements.flashcardZoomImage.parentElement) {
+        elements.flashcardZoomImageWrap = elements.flashcardZoomImage.parentElement;
+    }
 
     elements.flashcardZoomImage.src = src;
     elements.flashcardZoomImage.alt = alt;
+    renderFlashcardZoomLabels(options.diagramLabels || []);
 
     if (elements.flashcardImageViewport) {
         elements.flashcardImageViewport.scrollTop = 0;
@@ -12858,6 +14476,7 @@ function closeFlashcardImageOverlay() {
     elements.flashcardImageOverlay.setAttribute('aria-hidden', 'true');
     elements.flashcardZoomImage.src = '';
     elements.flashcardZoomImage.alt = 'Flashcard image';
+    renderFlashcardZoomLabels([]);
     state.flashcardImageZoomOpen = false;
     syncBodyScrollLock();
     updateNavigationButtons();
@@ -14174,6 +15793,10 @@ function clearProgressModeFinishUI() {
 
 function clearQuestionUI() {
     clearOptionDelay({ hideNotice: true });
+    if (elements.optionsContainer) {
+        elements.optionsContainer.classList.remove('options-overflow-y', 'options-can-scroll-up', 'options-can-scroll-down');
+        elements.optionsContainer.style.removeProperty('--study-options-scroll-max-height');
+    }
     clearProgressModeFinishUI();
     clearFeedback();
     clearExplanations();
@@ -14564,6 +16187,7 @@ function showQuestion() {
         updateNavigationButtons();
         syncQuestionStarButton();
         maybeCompleteActiveQuizChallenge();
+        maybeOpenCompletionChallengePrompt();
         return;
     }
 
@@ -14802,12 +16426,117 @@ function updateResetHiddenOptionsButton() {
     resetBtn.classList.toggle('hidden', !hasHiddenOptions);
 }
 
+function isOptionsScrollQuestionType() {
+    return state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams';
+}
+
+function getElementRenderedScaleY(element) {
+    if (!element) return 1;
+
+    const rect = element.getBoundingClientRect();
+    const layoutHeight = element.offsetHeight || element.clientHeight || 0;
+    const renderedHeight = rect.height || 0;
+
+    if (!layoutHeight || !renderedHeight || !Number.isFinite(renderedHeight)) {
+        return 1;
+    }
+
+    const scaleY = renderedHeight / layoutHeight;
+    return Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1;
+}
+
+function updateOptionsScrollCapacity() {
+    const container = elements.optionsContainer;
+    if (!container) return;
+
+    if (!isOptionsScrollQuestionType() || container.style.display === 'none') {
+        container.style.removeProperty('--study-options-scroll-max-height');
+        return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!viewportHeight || !Number.isFinite(rect.top)) return;
+
+    const isFullscreen = document.body.classList.contains('fullscreen-mode');
+    const bottomReserve = isFullscreen ? 30 : 54;
+    const renderedAvailableHeight = Math.floor(viewportHeight - rect.top - bottomReserve);
+    const scaleY = getElementRenderedScaleY(container);
+    const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
+    const minimumHeight = isFullscreen ? 140 : 96;
+    const safeHeight = Math.max(minimumHeight, Math.min(760, cssAvailableHeight));
+    container.style.setProperty('--study-options-scroll-max-height', `${safeHeight}px`);
+}
+
+function updateOptionsScrollIndicators() {
+    const container = elements.optionsContainer;
+    if (!container) return;
+
+    updateOptionsScrollCapacity();
+
+    const isScrollableQuestion = isOptionsScrollQuestionType();
+    const isVisible = container.style.display !== 'none' && !container.classList.contains('option-delay-active');
+    const hasOverflow = isScrollableQuestion && isVisible && (container.scrollHeight - container.clientHeight > 2);
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const scrollTop = container.scrollTop || 0;
+
+    container.classList.toggle('options-overflow-y', hasOverflow);
+    container.classList.toggle('options-can-scroll-up', hasOverflow && scrollTop > 2);
+    container.classList.toggle('options-can-scroll-down', hasOverflow && scrollTop < maxScrollTop - 2);
+}
+
+function queueOptionsScrollIndicatorUpdate() {
+    if (state.optionsScroll.rafId) {
+        cancelAnimationFrame(state.optionsScroll.rafId);
+        state.optionsScroll.rafId = 0;
+    }
+
+    state.optionsScroll.timeoutIds.forEach(timeoutId => clearTimeout(timeoutId));
+    state.optionsScroll.timeoutIds = [];
+
+    updateOptionsScrollIndicators();
+    state.optionsScroll.rafId = requestAnimationFrame(() => {
+        state.optionsScroll.rafId = 0;
+        updateOptionsScrollIndicators();
+        requestAnimationFrame(updateOptionsScrollIndicators);
+    });
+
+    [80, 220, 500].forEach(delay => {
+        const timeoutId = setTimeout(updateOptionsScrollIndicators, delay);
+        state.optionsScroll.timeoutIds.push(timeoutId);
+    });
+}
+
+function setupOptionsScrollObservers() {
+    const observedTargets = [
+        elements.optionsContainer,
+        elements.questionTextEl,
+        elements.imageContainer,
+        document.querySelector('.question-container')
+    ].filter(Boolean);
+
+    if ('ResizeObserver' in window && !state.optionsScroll.resizeObserver) {
+        state.optionsScroll.resizeObserver = new ResizeObserver(queueOptionsScrollIndicatorUpdate);
+        observedTargets.forEach(target => state.optionsScroll.resizeObserver.observe(target));
+    }
+
+    if ('MutationObserver' in window && elements.optionsContainer && !state.optionsScroll.mutationObserver) {
+        state.optionsScroll.mutationObserver = new MutationObserver(queueOptionsScrollIndicatorUpdate);
+        state.optionsScroll.mutationObserver.observe(elements.optionsContainer, {
+            childList: true,
+            characterData: true,
+            subtree: true
+        });
+    }
+}
+
 function resetHiddenOptions() {
     elements.optionsContainer.querySelectorAll('.option-block.option-eliminated').forEach(block => {
         block.classList.remove('option-eliminated');
         block.style.display = '';
     });
     updateResetHiddenOptionsButton();
+    queueOptionsScrollIndicatorUpdate();
 }
 
 function revealHiddenOptionsForFeedback() {
@@ -14828,6 +16557,7 @@ function handleHideOptionClick(event) {
     block.classList.add('option-eliminated');
     block.style.display = 'none';
     updateResetHiddenOptionsButton();
+    queueOptionsScrollIndicatorUpdate();
 }
 
 
@@ -14869,6 +16599,8 @@ function showMC(q) {
                 const image = document.createElement('img');
                 image.className = 'option-image';
                 image.alt = entry.text ? `Image for ${entry.text}` : `Option ${index + 1} image`;
+                image.addEventListener('load', queueOptionsScrollIndicatorUpdate, { once: true });
+                image.addEventListener('error', queueOptionsScrollIndicatorUpdate, { once: true });
                 image.src = entry.image;
 
                 imageWrap.appendChild(image);
@@ -14920,6 +16652,7 @@ function showMC(q) {
 
     updateResetHiddenOptionsButton();
     startOptionDelayForCurrentQuestion(q);
+    queueOptionsScrollIndicatorUpdate();
 }
 
 // ================= WRONG ANSWER LOGIC =================
@@ -15083,6 +16816,7 @@ function checkAnswer(selected, explanations) {
         }
     });
 
+    queueOptionsScrollIndicatorUpdate();
     applyQuestionOutcome(q, isCorrect);
 
     if (isSpeedMode()) {
@@ -15185,8 +16919,12 @@ function buildFlashcardFace(sideData, faceClass) {
             openFlashcardImageOverlay(sideData.imageUrl, `${sideData.sideName} image`);
         });
 
-        imageWrap.appendChild(img);
-        imageWrap.appendChild(zoomBtn);
+        const imageFrame = document.createElement('div');
+        imageFrame.className = 'flashcard-side-image-frame';
+        imageFrame.appendChild(img);
+        imageFrame.appendChild(zoomBtn);
+
+        imageWrap.appendChild(imageFrame);
         content.appendChild(imageWrap);
     }
 
@@ -16485,12 +18223,14 @@ function resetModeState() {
     state.questionAnswered = false;
     state.flashcardFlipped = false;
     state.currentQuestionType = '';
+    state.completionChallengePrompt.shownForSessionKey = '';
     state.emptyQuizMessage = '';
     updateViewportClasses();
 
     clearPendingLearningResource();
     closeLearningResourcesOverlay();
     closeFlashcardImageOverlay();
+    closeCompletionChallengePrompt();
 }
 
 // ================= RESTART =================
@@ -16715,14 +18455,11 @@ if (elements.studioHomeBtn) {
         if (elements.settingsPopup && !elements.settingsPopup.classList.contains('hidden')) {
             closeSettingsPopup();
         }
-
-        if (!state.auth.user?.id) {
-            openAuthPopup();
-            setAuthStatus('Sign in to open Quiz Studio Home.');
-            return;
-        }
-
+        closeAuthPopup();
         openQuizStudioPage('home');
+        if (!state.auth.user?.id) {
+            setCreatorStatus('Open Account from the Home page to sign in.');
+        }
     });
 }
 
@@ -16838,6 +18575,15 @@ if (elements.authSignOutBtn) {
     });
 }
 
+if (elements.createClassBtn) {
+    elements.createClassBtn.addEventListener('click', () => {
+        handleCreateClass().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not create the class.', 'error');
+        });
+    });
+}
+
 if (elements.createFolderBtn) {
     elements.createFolderBtn.addEventListener('click', () => {
         handleCreateFolder().catch(err => {
@@ -16852,6 +18598,16 @@ if (elements.createQuizFolderNewBtn) {
         setEditorInlineFolderCreatorOpen(true);
     });
 }
+
+if (elements.createQuizClassSelect) {
+    elements.createQuizClassSelect.addEventListener('change', () => {
+        populateCreatorFolderSelect({ classId: getEditorSelectedClassId(), selectedFolderId: '' });
+        setEditorInlineFolderCreatorOpen(false);
+        setStudioDirtyState(true);
+        updateCreateQuizModeUI();
+    });
+}
+
 
 if (elements.createQuizNewFolderCancelBtn) {
     elements.createQuizNewFolderCancelBtn.addEventListener('click', () => {
@@ -16902,8 +18658,73 @@ if (elements.closeQuizStudioBtn) {
     elements.closeQuizStudioBtn.addEventListener('click', () => {
         closeQuizStudioPage().catch(err => {
             console.error(err);
-            setCreatorStatus('Could not close Quiz Studio.', 'error');
+            setCreatorStatus('Could not open Study Mode.', 'error');
         });
+    });
+}
+
+if (elements.appMenuBtn) {
+    elements.appMenuBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        toggleAppPageMenu();
+    });
+}
+
+if (elements.closeAppMenuBtn) {
+    elements.closeAppMenuBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        closeAppPageMenu();
+    });
+}
+
+if (elements.appMenuBackdrop) {
+    elements.appMenuBackdrop.addEventListener('click', () => {
+        closeAppPageMenu();
+    });
+}
+
+if (elements.appAccountBtn) {
+    elements.appAccountBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        closeAppPageMenu();
+        closeSettingsPopup();
+        toggleAuthPopup();
+    });
+}
+
+if (elements.appSettingsBtn) {
+    elements.appSettingsBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        closeAppPageMenu();
+        closeAuthPopup();
+        toggleSettingsPopup();
+    });
+}
+
+if (elements.appMenuStudyModeBtn) {
+    elements.appMenuStudyModeBtn.addEventListener('click', () => {
+        closeQuizStudioPage().catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open Study Mode.', 'error');
+        });
+    });
+}
+
+if (elements.appMenuAccountBtn) {
+    elements.appMenuAccountBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        closeAppPageMenu();
+        closeSettingsPopup();
+        openAuthPopup();
+    });
+}
+
+if (elements.appMenuSettingsBtn) {
+    elements.appMenuSettingsBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        closeAppPageMenu();
+        closeAuthPopup();
+        openSettingsPopup();
     });
 }
 
@@ -16934,7 +18755,29 @@ if (elements.createOptionFieldsContainer) {
         const toggle = event.target.closest('[data-option-image-toggle]');
         if (toggle) {
             event.preventDefault();
-            setStudioOptionImagePanelOpen(toggle.closest('[data-option-index]'));
+            const row = toggle.closest('[data-option-index]');
+            const panel = row?.querySelector('[data-option-image-panel]');
+            const hasImage = !!normalizeSheetText(row?.querySelector('[data-option-image-url]')?.value || '');
+            const isOpen = !!panel && !panel.classList.contains('hidden');
+            if (hasImage && !isOpen) {
+                openStudioImageEditor({ kind: 'option', row }).catch(err => {
+                    console.error(err);
+                    setCreatorStatus('Could not open the option image editor.', 'error');
+                });
+            } else {
+                setStudioOptionImagePanelOpen(row);
+            }
+            return;
+        }
+
+        const editBtn = event.target.closest('[data-option-image-edit]');
+        if (editBtn) {
+            event.preventDefault();
+            const row = editBtn.closest('[data-option-index]');
+            openStudioImageEditor({ kind: 'option', row }).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open the option image editor.', 'error');
+            });
             return;
         }
 
@@ -17091,7 +18934,29 @@ if (elements.createClassifyCategoriesContainer) {
         const toggle = event.target.closest('[data-classify-category-image-toggle]');
         if (toggle) {
             event.preventDefault();
-            setStudioClassifyRowImagePanelOpen(toggle.closest('[data-classify-category-index]'), 'category');
+            const row = toggle.closest('[data-classify-category-index]');
+            const panel = row?.querySelector('[data-classify-category-image-panel]');
+            const hasImage = !!normalizeSheetText(row?.dataset.classifyCategoryImageUrl || '');
+            const isOpen = !!panel && !panel.classList.contains('hidden');
+            if (hasImage && !isOpen) {
+                openStudioImageEditor({ kind: 'classify-category', wrapper: row }).catch(err => {
+                    console.error(err);
+                    setCreatorStatus('Could not open the category image editor.', 'error');
+                });
+            } else {
+                setStudioClassifyRowImagePanelOpen(row, 'category');
+            }
+            return;
+        }
+
+        const editBtn = event.target.closest('[data-classify-category-image-edit]');
+        if (editBtn) {
+            event.preventDefault();
+            const row = editBtn.closest('[data-classify-category-index]');
+            openStudioImageEditor({ kind: 'classify-category', wrapper: row }).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open the category image editor.', 'error');
+            });
             return;
         }
 
@@ -17128,7 +18993,29 @@ if (elements.createClassifyItemsContainer) {
         const toggle = event.target.closest('[data-classify-item-image-toggle]');
         if (toggle) {
             event.preventDefault();
-            setStudioClassifyRowImagePanelOpen(toggle.closest('[data-classify-item-index]'), 'item');
+            const row = toggle.closest('[data-classify-item-index]');
+            const panel = row?.querySelector('[data-classify-item-image-panel]');
+            const hasImage = !!normalizeSheetText(row?.dataset.classifyItemImageUrl || '');
+            const isOpen = !!panel && !panel.classList.contains('hidden');
+            if (hasImage && !isOpen) {
+                openStudioImageEditor({ kind: 'classify-item', wrapper: row }).catch(err => {
+                    console.error(err);
+                    setCreatorStatus('Could not open the item image editor.', 'error');
+                });
+            } else {
+                setStudioClassifyRowImagePanelOpen(row, 'item');
+            }
+            return;
+        }
+
+        const editBtn = event.target.closest('[data-classify-item-image-edit]');
+        if (editBtn) {
+            event.preventDefault();
+            const row = editBtn.closest('[data-classify-item-index]');
+            openStudioImageEditor({ kind: 'classify-item', wrapper: row }).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open the item image editor.', 'error');
+            });
             return;
         }
 
@@ -17921,6 +19808,14 @@ if (elements.goToSharedDiagramSourceBtn) {
 
 if (elements.createQuestionImageToggleBtn) {
     elements.createQuestionImageToggleBtn.addEventListener('click', () => {
+        const panelOpen = !!elements.createQuestionImagePanel && !elements.createQuestionImagePanel.classList.contains('hidden');
+        if (hasStudioQuestionImageValue() && !panelOpen) {
+            openStudioImageEditor({ kind: 'question' }).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open the question image editor.', 'error');
+            });
+            return;
+        }
         setStudioQuestionImagePanelOpen();
     });
 }
@@ -17930,6 +19825,15 @@ if (elements.createQuestionImageFile) {
         handleStudioFileInput(elements.createQuestionImageFile, 'question').catch(err => {
             console.error(err);
             setCreatorStatus('Could not load the question image.', 'error');
+        });
+    });
+}
+
+if (elements.createQuestionImageEditBtn) {
+    elements.createQuestionImageEditBtn.addEventListener('click', () => {
+        openStudioImageEditor({ kind: 'question' }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open the question image editor.', 'error');
         });
     });
 }
@@ -17945,6 +19849,15 @@ if (elements.createLearningResourcesImageFile) {
         handleStudioFileInput(elements.createLearningResourcesImageFile, 'learning').catch(err => {
             console.error(err);
             setCreatorStatus('Could not load the learning resources image.', 'error');
+        });
+    });
+}
+
+if (elements.createLearningResourcesImageEditBtn) {
+    elements.createLearningResourcesImageEditBtn.addEventListener('click', () => {
+        openStudioImageEditor({ kind: 'learning' }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open the learning resources image editor.', 'error');
         });
     });
 }
@@ -18196,6 +20109,70 @@ elements.flashcardRichCommandChoices.forEach(button => {
     });
 });
 
+
+if (elements.studioImageEditorCloseBtn) {
+    elements.studioImageEditorCloseBtn.addEventListener('click', closeStudioImageEditor);
+}
+
+if (elements.studioImageEditorCancelBtn) {
+    elements.studioImageEditorCancelBtn.addEventListener('click', closeStudioImageEditor);
+}
+
+if (elements.studioImageEditorOverlay) {
+    elements.studioImageEditorOverlay.addEventListener('click', event => {
+        if (event.target === elements.studioImageEditorOverlay) closeStudioImageEditor();
+    });
+}
+
+elements.studioImageEditorToolButtons?.forEach(button => {
+    button.addEventListener('click', () => setImageEditorMode(button.dataset.imageEditorTool || 'crop'));
+});
+
+if (elements.studioImageEditorArrowColorInput) {
+    elements.studioImageEditorArrowColorInput.addEventListener('input', () => {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput.value, '#ef4444');
+        if (editor.mode === 'arrow-custom') renderImageEditorCanvas();
+    });
+}
+
+if (elements.studioImageEditorCanvas) {
+    elements.studioImageEditorCanvas.addEventListener('pointerdown', handleImageEditorPointerDown);
+    elements.studioImageEditorCanvas.addEventListener('pointermove', handleImageEditorPointerMove);
+    elements.studioImageEditorCanvas.addEventListener('pointerup', handleImageEditorPointerUp);
+    elements.studioImageEditorCanvas.addEventListener('pointercancel', handleImageEditorPointerUp);
+}
+
+if (elements.studioImageEditorApplyCropBtn) {
+    elements.studioImageEditorApplyCropBtn.addEventListener('click', applyImageEditorCrop);
+}
+
+if (elements.studioImageEditorUndoBtn) {
+    elements.studioImageEditorUndoBtn.addEventListener('click', () => {
+        undoImageEditorAction().catch(err => {
+            console.error(err);
+            setImageEditorStatus('Could not undo the last edit.');
+        });
+    });
+}
+
+if (elements.studioImageEditorResetBtn) {
+    elements.studioImageEditorResetBtn.addEventListener('click', () => {
+        resetImageEditorImage().catch(err => {
+            console.error(err);
+            setImageEditorStatus('Could not reset this image.');
+        });
+    });
+}
+
+if (elements.studioImageEditorSaveBtn) {
+    elements.studioImageEditorSaveBtn.addEventListener('click', saveStudioImageEditorImage);
+}
+if (elements.studioImageEditorOverlay) {
+    elements.studioImageEditorOverlay.dataset.imageEditorEventsBound = 'true';
+}
+
 prepareRichColorPicker(elements.createLearningResourcesColor, saveLearningResourcesSelection, closeLearningResourcesRichMenus);
 handleRichColorInput(elements.createLearningResourcesColor, color => applyLearningResourcesInlineStyle({ color }), '#e0e0ff');
 prepareRichColorPicker(elements.createFlashcardColor, saveFlashcardRichSelection, closeFlashcardRichMenus);
@@ -18210,12 +20187,49 @@ document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
         closeLearningResourcesRichMenus();
         closeFlashcardRichMenus();
+        if (state.auth.imageEditor?.open) closeStudioImageEditor();
     }
 });
+
+if (elements.createFlashcardTermImageFile) {
+    elements.createFlashcardTermImageFile.addEventListener('change', () => {
+        handleStudioFileInput(elements.createFlashcardTermImageFile, 'term').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the term image.', 'error');
+        });
+    });
+}
+
+if (elements.createFlashcardDefinitionImageFile) {
+    elements.createFlashcardDefinitionImageFile.addEventListener('change', () => {
+        handleStudioFileInput(elements.createFlashcardDefinitionImageFile, 'definition').catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not load the definition image.', 'error');
+        });
+    });
+}
+
+if (elements.createFlashcardTermImageEditBtn) {
+    elements.createFlashcardTermImageEditBtn.addEventListener('click', () => {
+        openStudioImageEditor({ kind: 'flashcard-term' }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open the term image editor.', 'error');
+        });
+    });
+}
 
 if (elements.createFlashcardTermImageClearBtn) {
     elements.createFlashcardTermImageClearBtn.addEventListener('click', () => {
         setStudioFlashcardTermImageState();
+    });
+}
+
+if (elements.createFlashcardDefinitionImageEditBtn) {
+    elements.createFlashcardDefinitionImageEditBtn.addEventListener('click', () => {
+        openStudioImageEditor({ kind: 'flashcard-definition' }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open the definition image editor.', 'error');
+        });
     });
 }
 
@@ -18254,6 +20268,16 @@ function handleStudioEmptyStateAction(e) {
         return;
     }
 
+    if (action === 'focus-create-class') {
+        setQuizStudioSection('folders').then(() => {
+            elements.createClassName?.focus();
+        }).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open classes.', 'error');
+        });
+        return;
+    }
+
     if (action === 'open-editor') {
         setQuizStudioSection('editor').then(() => {
             elements.createQuizName?.focus();
@@ -18282,7 +20306,11 @@ function handleStudioEmptyStateAction(e) {
     if (action === 'clear-quiz-filters') {
         state.auth.studioQuizSearchQuery = '';
         state.auth.studioQuizFolderFilterId = '';
+        state.auth.studioQuizClassFilterId = '';
+        state.auth.studioQuizManageView = 'all';
+        state.auth.studioClassQuickAddOpenId = '';
         if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
+        if (elements.studioQuizClassFilterSelect) elements.studioQuizClassFilterSelect.value = '';
         if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = '';
         renderQuizManagementList();
         return;
@@ -18320,6 +20348,19 @@ function handleStudioHomeQuizAction(e) {
             setCreatorStatus(getStudyLoadErrorMessage(err), 'error');
         });
     }
+
+    if (e.target.matches('[data-home-action="go-to-class"]')) {
+        const quiz = state.auth.managedQuizzes.find(item => item.id === quizId) || null;
+        const classId = getQuizClassId(quiz || {});
+        if (!classId) {
+            setCreatorStatus('Assign this quiz folder to a class first.', 'error');
+            return;
+        }
+        openManageQuizzesForClass(classId).catch(err => {
+            console.error(err);
+            setCreatorStatus('Could not open that class.', 'error');
+        });
+    }
 }
 
 function handleStudioHomeFolderAction(e) {
@@ -18341,6 +20382,45 @@ if (elements.studioRecentQuizList) {
 
 if (elements.studioRecentFolderList) {
     elements.studioRecentFolderList.addEventListener('click', handleStudioHomeFolderAction);
+}
+
+if (elements.studioClassList) {
+    elements.studioClassList.addEventListener('click', e => {
+        const item = e.target.closest('[data-class-id]');
+        if (!item) return;
+
+        const classId = item.dataset.classId;
+        if (e.target.matches('[data-action="view-class-quizzes"]')) {
+            openManageQuizzesForClass(classId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open that class.', 'error');
+            });
+            return;
+        }
+
+        if (!e.target.closest('.studio-list-controls')) {
+            openManageQuizzesForClass(classId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not open that class.', 'error');
+            });
+            return;
+        }
+
+        if (e.target.matches('[data-action="save-class"]')) {
+            const input = item.querySelector('[data-class-rename-input]');
+            handleRenameClass(classId, input?.value || '').catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not update the class.', 'error');
+            });
+        }
+
+        if (e.target.matches('[data-action="delete-class"]')) {
+            handleDeleteClass(classId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not delete the class.', 'error');
+            });
+        }
+    });
 }
 
 if (elements.studioFolderList) {
@@ -18367,7 +20447,8 @@ if (elements.studioFolderList) {
 
         if (e.target.matches('[data-action="save-folder"]')) {
             const input = item.querySelector('[data-folder-rename-input]');
-            handleRenameFolder(folderId, input?.value || '').catch(err => {
+            const classSelect = item.querySelector('[data-folder-class-select]');
+            handleRenameFolder(folderId, input?.value || '', classSelect?.value).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not update the folder.', 'error');
             });
@@ -18384,6 +20465,31 @@ if (elements.studioFolderList) {
 
 if (elements.studioQuizList) {
     elements.studioQuizList.addEventListener('click', e => {
+        const classGroup = e.target.closest('[data-class-group-id]');
+        const classActionButton = e.target.closest('[data-action]');
+        if (classGroup && classActionButton && classGroup.contains(classActionButton)) {
+            const classId = normalizeSheetText(classGroup.dataset.classGroupId);
+            const classAction = classActionButton.dataset.action || '';
+            if (classAction === 'toggle-class-folder-add') {
+                state.auth.studioClassQuickAddOpenId = state.auth.studioClassQuickAddOpenId === classId ? '' : classId;
+                renderQuizManagementList();
+                return;
+            }
+            if (classAction === 'close-class-folder-add') {
+                state.auth.studioClassQuickAddOpenId = '';
+                renderQuizManagementList();
+                return;
+            }
+            if (classAction === 'quick-add-folder-to-class') {
+                const folderRow = e.target.closest('[data-class-add-folder-id]');
+                handleQuickAddFolderToClass(classId, folderRow?.dataset.classAddFolderId || '').catch(err => {
+                    console.error(err);
+                    setCreatorStatus('Could not add that folder to the class.', 'error');
+                });
+                return;
+            }
+        }
+
         const item = e.target.closest('[data-quiz-id]');
         if (!item) return;
 
@@ -18495,9 +20601,39 @@ if (elements.studioFolderSearchInput) {
     });
 }
 
+elements.studioQuizManageTabs.forEach(button => {
+    button.addEventListener('click', () => {
+        const nextView = normalizeSheetText(button.dataset.studioManageView || 'all') || 'all';
+        state.auth.studioQuizManageView = ['all', 'classes', 'folders', 'recent'].includes(nextView) ? nextView : 'all';
+        if (state.auth.studioQuizManageView !== 'classes') {
+            state.auth.studioQuizClassFilterId = '';
+            state.auth.studioClassQuickAddOpenId = '';
+        }
+        if (state.auth.studioQuizManageView === 'classes' && !state.auth.studioQuizClassFilterId && state.auth.supabaseClasses.length === 1) {
+            state.auth.studioQuizClassFilterId = state.auth.supabaseClasses[0].id;
+        }
+        state.auth.studioQuizFolderFilterId = '';
+        populateStudioQuizClassFilter();
+        populateStudioQuizFolderFilter();
+        renderQuizManagementList();
+    });
+});
+
 if (elements.studioQuizSearchInput) {
     elements.studioQuizSearchInput.addEventListener('input', () => {
         state.auth.studioQuizSearchQuery = normalizeSheetText(elements.studioQuizSearchInput.value);
+        renderQuizManagementList();
+    });
+}
+
+if (elements.studioQuizClassFilterSelect) {
+    elements.studioQuizClassFilterSelect.addEventListener('change', () => {
+        state.auth.studioQuizClassFilterId = normalizeSheetText(elements.studioQuizClassFilterSelect.value);
+        state.auth.studioQuizFolderFilterId = '';
+        if (state.auth.studioClassQuickAddOpenId && state.auth.studioClassQuickAddOpenId !== state.auth.studioQuizClassFilterId) {
+            state.auth.studioClassQuickAddOpenId = '';
+        }
+        populateStudioQuizFolderFilter();
         renderQuizManagementList();
     });
 }
@@ -18513,7 +20649,10 @@ if (elements.studioQuizClearFiltersBtn) {
     elements.studioQuizClearFiltersBtn.addEventListener('click', () => {
         state.auth.studioQuizSearchQuery = '';
         state.auth.studioQuizFolderFilterId = '';
+        state.auth.studioQuizClassFilterId = '';
+        state.auth.studioQuizManageView = 'all';
         if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
+        if (elements.studioQuizClassFilterSelect) elements.studioQuizClassFilterSelect.value = '';
         if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = '';
         renderQuizManagementList();
     });
@@ -18651,6 +20790,7 @@ if (elements.studioTemplateDownloadButtons.length) {
 
 const studioDirtyInputSelector = [
     '#createQuizName',
+    '#createQuizClassSelect',
     '#createQuizFolderSelect',
     '#createQuestionPrompt',
     '#createCorrectOptionSelect',
@@ -18687,7 +20827,7 @@ document.addEventListener('input', event => {
 });
 
 document.addEventListener('change', event => {
-    if (event.target.matches('#createQuizFolderSelect, #createQuizTypeSelect, #createQuestionImageFile, #createLearningResourcesImageFile, #createFlashcardTermImageFile, #createFlashcardDefinitionImageFile') || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row') || event.target.closest('.studio-diagram-label-row') || event.target.closest('.studio-diagram-label-row')) {
+    if (event.target.matches('#createQuizClassSelect, #createQuizFolderSelect, #createQuizTypeSelect, #createQuestionImageFile, #createLearningResourcesImageFile, #createFlashcardTermImageFile, #createFlashcardDefinitionImageFile') || event.target.closest('.studio-option-pair') || event.target.closest('.studio-classify-row') || event.target.closest('.studio-diagram-label-row') || event.target.closest('.studio-diagram-label-row')) {
         handleStudioDirtyInput(event);
     }
 });
@@ -18897,6 +21037,11 @@ document.addEventListener('keydown', e => {
             return;
         }
 
+        if (state.completionChallengePrompt.open) {
+            closeCompletionChallengePrompt();
+            return;
+        }
+
         if (state.learningResourcesOverlayOpen) {
             closeLearningResourcesOverlay();
             return;
@@ -18905,6 +21050,11 @@ document.addEventListener('keydown', e => {
         const hasOpenHelpTooltip = elements.settingHelpButtons.some(btn => btn.getAttribute('aria-expanded') === 'true');
         if (hasOpenHelpTooltip) {
             closeAllSettingHelpTooltips();
+            return;
+        }
+
+        if (elements.appPageMenu && !elements.appPageMenu.classList.contains('hidden')) {
+            closeAppPageMenu();
             return;
         }
 
@@ -18923,13 +21073,47 @@ document.addEventListener('keydown', e => {
     handleStudyKeyboardShortcut(e);
 });
 
+
+if (elements.completionChallengeOverlay) {
+    elements.completionChallengeOverlay.addEventListener('click', event => {
+        const startButton = event.target.closest('[data-completion-challenge-key]');
+        if (startButton && elements.completionChallengeOverlay.contains(startButton)) {
+            startCompletionChallengeFromPrompt(startButton.dataset.completionChallengeKey || '');
+            return;
+        }
+
+        if (event.target === elements.completionChallengeOverlay) {
+            closeCompletionChallengePrompt();
+        }
+    });
+}
+
+if (elements.closeCompletionChallengeBtn) {
+    elements.closeCompletionChallengeBtn.addEventListener('click', closeCompletionChallengePrompt);
+}
+
+if (elements.completionChallengeLaterBtn) {
+    elements.completionChallengeLaterBtn.addEventListener('click', closeCompletionChallengePrompt);
+}
+
 window.addEventListener('resize', handleViewportChange);
+window.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
 window.addEventListener('orientationchange', handleViewportChange);
+window.addEventListener('orientationchange', queueOptionsScrollIndicatorUpdate);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
+    window.visualViewport.addEventListener('scroll', queueOptionsScrollIndicatorUpdate);
+}
+if (elements.optionsContainer) {
+    elements.optionsContainer.addEventListener('scroll', updateOptionsScrollIndicators, { passive: true });
+}
 
 // ================= INIT =================
 (async function () {
     try {
+        document.body.classList.add('app-home-first');
         mountFloatingPagesToBody();
+        setupOptionsScrollObservers();
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         applyResponsiveControlText();
         updateViewportClasses();
@@ -18946,15 +21130,18 @@ window.addEventListener('orientationchange', handleViewportChange);
 
         if (!state.auth.user?.id) {
             clearActiveQuizSelection('Sign in to load your quizzes.');
+            openQuizStudioPage('home');
             return;
         }
 
         if (!list.length) {
             elements.questionTextEl.innerText = 'No Supabase quizzes found for this account yet.';
+            openQuizStudioPage('home');
             return;
         }
 
         clearActiveQuizSelection();
+        openQuizStudioPage('home');
         handleViewportChange();
     } catch (err) {
         console.error(err);
@@ -18965,6 +21152,11 @@ window.addEventListener('orientationchange', handleViewportChange);
 // ================= IMAGE ZOOM =================
 elements.questionImage.onclick = function () {
     if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
-    this.classList.toggle('zoomed');
+    const src = this.currentSrc || this.src || '';
+    if (!src) return;
+    const currentQuestion = state.questionQueue?.[state.currentIndex] || null;
+    const diagramLabels = currentQuestion?.type === 'diagrams' ? normalizeDiagramLabels(currentQuestion.diagramLabels || []) : [];
+    this.classList.remove('zoomed');
+    openFlashcardImageOverlay(src, this.alt || 'Question image', { diagramLabels });
 };
 })();
