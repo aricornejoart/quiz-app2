@@ -7874,3 +7874,32 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
 .flashcard-side-image-frame > .flashcard-image-zoom-btn:active {
   opacity: 1;
 }
+
+/* Phase 22FE: increase flashcard image inner gutter by 5 more pixels while preserving contain/no-crop behavior. */
+.flashcard-side-image-wrap {
+  padding: 13px;
+}
+
+.flashcard-side-content.image-only .flashcard-side-image-wrap {
+  padding: 11px;
+}
+
+.flashcard-side-image-frame {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.flashcard-side-content.image-only .flashcard-side-image {
+  max-height: min(420px, 100%);
+}
+
+.flashcard-side-content.split .flashcard-side-image {
+  max-height: min(320px, 100%);
+}
+
+@media (max-width: 700px), (max-height: 700px), (orientation: landscape) {
+  .flashcard-side-image-wrap,
+  .flashcard-side-content.image-only .flashcard-side-image-wrap {
+    padding: 11px;
+  }
+}
