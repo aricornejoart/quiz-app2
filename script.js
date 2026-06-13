@@ -279,6 +279,7 @@ MODIFICATION RULES FOR THIS APP
             mediaSignedUrlCache: new Map(),
             mathChemToolsExpanded: false,
             expandedOptionImageRows: new Set(),
+            expandedFlashcardImageRows: new Set(),
             expandedClassifyCategoryImageRows: new Set(),
             expandedClassifyItemImageRows: new Set(),
             studioDiagramDraggingIndex: null,
@@ -449,10 +450,12 @@ MODIFICATION RULES FOR THIS APP
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
         createFlashcardTermImageFile: document.getElementById('createFlashcardTermImageFile'),
+        createFlashcardTermImagePickBtn: document.getElementById('createFlashcardTermImagePickBtn'),
         createFlashcardTermImageName: document.getElementById('createFlashcardTermImageName'),
         createFlashcardTermImageEditBtn: document.getElementById('createFlashcardTermImageEditBtn'),
         createFlashcardTermImageClearBtn: document.getElementById('createFlashcardTermImageClearBtn'),
         createFlashcardDefinitionImageFile: document.getElementById('createFlashcardDefinitionImageFile'),
+        createFlashcardDefinitionImagePickBtn: document.getElementById('createFlashcardDefinitionImagePickBtn'),
         createFlashcardDefinitionImageName: document.getElementById('createFlashcardDefinitionImageName'),
         createFlashcardDefinitionImageEditBtn: document.getElementById('createFlashcardDefinitionImageEditBtn'),
         createFlashcardDefinitionImageClearBtn: document.getElementById('createFlashcardDefinitionImageClearBtn'),
@@ -2762,16 +2765,26 @@ MODIFICATION RULES FOR THIS APP
     function setStudioFlashcardTermImageState(dataUrl = '', label = 'No term image selected.') {
         state.auth.studioFlashcardTermImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardTermImageLabel = label;
+        const hasImage = !!state.auth.studioFlashcardTermImageDataUrl;
         if (elements.createFlashcardTermImageName) elements.createFlashcardTermImageName.textContent = label;
         if (!dataUrl && elements.createFlashcardTermImageFile) elements.createFlashcardTermImageFile.value = '';
+        if (elements.createFlashcardTermImagePickBtn) {
+            elements.createFlashcardTermImagePickBtn.textContent = hasImage ? 'Replace Image' : 'Choose Image';
+            elements.createFlashcardTermImagePickBtn.classList.toggle('has-image', hasImage);
+        }
         updateStudioImageEditButton(elements.createFlashcardTermImageEditBtn, state.auth.studioFlashcardTermImageDataUrl);
     }
 
     function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.') {
         state.auth.studioFlashcardDefinitionImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardDefinitionImageLabel = label;
+        const hasImage = !!state.auth.studioFlashcardDefinitionImageDataUrl;
         if (elements.createFlashcardDefinitionImageName) elements.createFlashcardDefinitionImageName.textContent = label;
         if (!dataUrl && elements.createFlashcardDefinitionImageFile) elements.createFlashcardDefinitionImageFile.value = '';
+        if (elements.createFlashcardDefinitionImagePickBtn) {
+            elements.createFlashcardDefinitionImagePickBtn.textContent = hasImage ? 'Replace Image' : 'Choose Image';
+            elements.createFlashcardDefinitionImagePickBtn.classList.toggle('has-image', hasImage);
+        }
         updateStudioImageEditButton(elements.createFlashcardDefinitionImageEditBtn, state.auth.studioFlashcardDefinitionImageDataUrl);
     }
 
@@ -2938,6 +2951,17 @@ MODIFICATION RULES FOR THIS APP
                 sourceValue: state.auth.studioFlashcardDefinitionImageDataUrl || '',
                 sourceLabel: state.auth.studioFlashcardDefinitionImageLabel || 'Definition image',
                 fallbackLabel: 'Edited definition image.'
+            };
+        }
+        if (target.kind === 'flashcard-list') {
+            const row = getStudioFlashcardRowById(target.questionId);
+            const side = target.side === 'definition' ? 'definition' : 'term';
+            const snapshot = getStudioFlashcardImageSnapshot(row, side);
+            return {
+                title: 'Edit Image',
+                sourceValue: snapshot.value || '',
+                sourceLabel: snapshot.label || (side === 'definition' ? 'Definition image' : 'Term image'),
+                fallbackLabel: side === 'definition' ? 'Edited definition image.' : 'Edited term image.'
             };
         }
         const isDiagram = isStudioDiagramsMode();
@@ -3338,6 +3362,8 @@ MODIFICATION RULES FOR THIS APP
             setStudioFlashcardTermImageState(dataUrl, label);
         } else if (target.kind === 'flashcard-definition') {
             setStudioFlashcardDefinitionImageState(dataUrl, label);
+        } else if (target.kind === 'flashcard-list') {
+            applyStudioFlashcardListImageChange(target.questionId, target.side, dataUrl, label);
         } else if (target.kind === 'classify-category') {
             setStudioClassifyRowImageState(target.wrapper, 'category', dataUrl, label);
             refreshStudioClassifyItemCategoryOptions();
@@ -6326,6 +6352,200 @@ MODIFICATION RULES FOR THIS APP
         ].filter(item => item.text || item.imageUrl);
     }
 
+    function getStudioFlashcardImageKey(questionId, side = 'term') {
+        const id = normalizeSheetText(questionId || STUDIO_PENDING_NEW_FLASHCARD_ID) || STUDIO_PENDING_NEW_FLASHCARD_ID;
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        return `${id}:${safeSide}`;
+    }
+
+    function getStudioFlashcardRowById(questionId) {
+        const id = normalizeSheetText(questionId);
+        if (!id) return null;
+        if (id === STUDIO_PENDING_NEW_FLASHCARD_ID) return getStudioPendingFlashcardRow();
+        return state.auth.studioQuizQuestions.find(row => normalizeSheetText(row?.id) === id) || null;
+    }
+
+    function getStudioFlashcardFieldSnapshot(row = {}, side = 'term') {
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        const rowId = normalizeSheetText(row?.id);
+        const draft = rowId && !isStudioLocalFlashcardId(rowId) ? state.auth.studioQuestionDrafts.get(rowId) : null;
+        if (rowId && rowId === state.auth.editingQuestionId) {
+            return safeSide === 'definition'
+                ? {
+                    text: normalizeSheetText(elements.createFlashcardDefinition?.value),
+                    html: getFlashcardDefinitionEditorHtml()
+                }
+                : {
+                    text: normalizeSheetText(elements.createFlashcardTerm?.value),
+                    html: getFlashcardTermEditorHtml()
+                };
+        }
+        if (safeSide === 'definition') {
+            const text = normalizeSheetText(draft?.definition ?? row?.definition_plain ?? '');
+            return {
+                text,
+                html: normalizeSheetText(draft?.definitionHtml ?? row?.definition_html ?? '') || buildStoredHtmlFromPlain(text)
+            };
+        }
+        const text = normalizeSheetText(draft?.term ?? row?.term_plain ?? row?.prompt_plain ?? '');
+        return {
+            text,
+            html: normalizeSheetText(draft?.termHtml ?? row?.term_html ?? row?.prompt_html ?? '') || buildStoredHtmlFromPlain(text)
+        };
+    }
+
+    function getStudioFlashcardImageSnapshot(row = {}, side = 'term') {
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        const rowId = normalizeSheetText(row?.id);
+        const draft = rowId && !isStudioLocalFlashcardId(rowId) ? state.auth.studioQuestionDrafts.get(rowId) : null;
+        const isActive = rowId && rowId === state.auth.editingQuestionId;
+        if (safeSide === 'definition') {
+            const value = isActive
+                ? state.auth.studioFlashcardDefinitionImageDataUrl
+                : normalizeSheetText(draft?.definitionImage ?? row?.definition_image_url ?? '');
+            const label = isActive
+                ? state.auth.studioFlashcardDefinitionImageLabel
+                : normalizeSheetText(draft?.definitionImageLabel ?? row?.definition_image_label ?? '') || (value ? 'Existing definition image saved.' : 'No definition image selected.');
+            return { value, label };
+        }
+        const value = isActive
+            ? state.auth.studioFlashcardTermImageDataUrl
+            : normalizeSheetText(draft?.termImage ?? row?.term_image_url ?? '');
+        const label = isActive
+            ? state.auth.studioFlashcardTermImageLabel
+            : normalizeSheetText(draft?.termImageLabel ?? row?.term_image_label ?? '') || (value ? 'Existing term image saved.' : 'No term image selected.');
+        return { value, label };
+    }
+
+    function getStudioFlashcardImageDisplayLabel(snapshot = {}, side = 'term') {
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        const hasImage = !!normalizeSheetText(snapshot.value);
+        if (!hasImage) return `No ${safeSide === 'definition' ? 'definition' : 'term'} image selected.`;
+        const rawLabel = normalizeSheetText(snapshot.label || '');
+        const fileName = getSelectedFileNameFromLabel(rawLabel);
+        if (fileName) return fileName;
+        if (rawLabel && !/^No\s+/i.test(rawLabel) && !/saved\.?$/i.test(rawLabel)) return rawLabel;
+        return safeSide === 'definition' ? 'Definition image attached.' : 'Term image attached.';
+    }
+
+    function hasFlashcardSideContent(text = '', html = '', imageValue = '') {
+        return !!(normalizeSheetText(text) || htmlToDisplayText(sanitizeLearningResourcesHtml(html || '')) || normalizeSheetText(imageValue));
+    }
+
+    function getStudioFlashcardListDraft(row = {}) {
+        const rowId = normalizeSheetText(row?.id);
+        if (!rowId || rowId === STUDIO_PENDING_NEW_FLASHCARD_ID || isStudioLocalFlashcardId(rowId)) return null;
+        const existingDraft = state.auth.studioQuestionDrafts.get(rowId) || {};
+        const termSnapshot = getStudioFlashcardFieldSnapshot(row, 'term');
+        const definitionSnapshot = getStudioFlashcardFieldSnapshot(row, 'definition');
+        const termImage = getStudioFlashcardImageSnapshot(row, 'term');
+        const definitionImage = getStudioFlashcardImageSnapshot(row, 'definition');
+        return {
+            questionId: rowId,
+            questionType: 'flashcard',
+            prompt: termSnapshot.text,
+            term: termSnapshot.text,
+            termHtml: termSnapshot.html,
+            definition: definitionSnapshot.text,
+            definitionHtml: definitionSnapshot.html,
+            learningResourcesHtml: normalizeSheetText(existingDraft.learningResourcesHtml ?? row.learning_resources_html ?? ''),
+            learningResourcesImage: normalizeSheetText(existingDraft.learningResourcesImage ?? row.learning_resources_image_url ?? ''),
+            learningResourcesImageLabel: normalizeSheetText(existingDraft.learningResourcesImageLabel ?? row.learning_resources_image_label ?? ''),
+            termImage: termImage.value || '',
+            termImageLabel: termImage.label || '',
+            definitionImage: definitionImage.value || '',
+            definitionImageLabel: definitionImage.label || ''
+        };
+    }
+
+    function applyStudioFlashcardListImageChange(questionId, side = 'term', value = '', label = '') {
+        syncStudioFlashcardInlineRowsToState();
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        const row = getStudioFlashcardRowById(questionId);
+        if (!row) {
+            setCreatorStatus('Could not find that flashcard image slot.', 'error');
+            return;
+        }
+        const normalizedValue = normalizeSheetText(value);
+        const fallbackLabel = safeSide === 'definition'
+            ? (normalizedValue ? 'Definition image selected.' : 'No definition image selected.')
+            : (normalizedValue ? 'Term image selected.' : 'No term image selected.');
+        const nextLabel = label || fallbackLabel;
+        const rowId = normalizeSheetText(row.id);
+
+        if (safeSide === 'definition') {
+            row.definition_image_url = normalizedValue;
+            row.definition_image_label = nextLabel;
+            if (rowId === state.auth.editingQuestionId || rowId === STUDIO_PENDING_NEW_FLASHCARD_ID) {
+                setStudioFlashcardDefinitionImageState(normalizedValue, nextLabel);
+            }
+        } else {
+            row.term_image_url = normalizedValue;
+            row.term_image_label = nextLabel;
+            if (rowId === state.auth.editingQuestionId || rowId === STUDIO_PENDING_NEW_FLASHCARD_ID) {
+                setStudioFlashcardTermImageState(normalizedValue, nextLabel);
+            }
+        }
+
+        if (isStudioLocalFlashcardId(rowId)) {
+            if (safeSide === 'definition') {
+                row.definition_image_url = normalizedValue;
+                row.definition_image_label = nextLabel;
+            } else {
+                row.term_image_url = normalizedValue;
+                row.term_image_label = nextLabel;
+            }
+        } else if (rowId !== STUDIO_PENDING_NEW_FLASHCARD_ID) {
+            const draft = getStudioFlashcardListDraft(row);
+            if (draft) {
+                if (safeSide === 'definition') {
+                    draft.definitionImage = normalizedValue;
+                    draft.definitionImageLabel = nextLabel;
+                } else {
+                    draft.termImage = normalizedValue;
+                    draft.termImageLabel = nextLabel;
+                }
+                state.auth.studioQuestionDrafts.set(rowId, draft);
+            }
+        }
+
+        if (!normalizedValue) {
+            state.auth.expandedFlashcardImageRows.delete(getStudioFlashcardImageKey(rowId, safeSide));
+        }
+        setStudioDirtyState(true);
+        renderStudioQuestionList();
+        updateStudioUnsavedChangesIndicator();
+    }
+
+    function buildStudioFlashcardImageQuickControls(row = {}, side = 'term') {
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        const rowId = normalizeSheetText(row?.id || STUDIO_PENDING_NEW_FLASHCARD_ID) || STUDIO_PENDING_NEW_FLASHCARD_ID;
+        const sideLabel = safeSide === 'definition' ? 'Definition' : 'Term';
+        const imageSnapshot = getStudioFlashcardImageSnapshot(row, safeSide);
+        const hasImage = !!normalizeSheetText(imageSnapshot.value);
+        const imageKey = getStudioFlashcardImageKey(rowId, safeSide);
+        const isOpen = state.auth.expandedFlashcardImageRows.has(imageKey);
+        const displayLabel = getStudioFlashcardImageDisplayLabel(imageSnapshot, safeSide);
+        const visibilityLabel = hasImage ? (isOpen ? 'Hide Image' : 'Show Image') : 'Show Image';
+        const visibilityTitle = hasImage
+            ? (isOpen ? `Hide ${sideLabel.toLowerCase()} image information` : `Show ${sideLabel.toLowerCase()} image information`)
+            : `No ${sideLabel.toLowerCase()} image attached`;
+        return `
+            <div class="studio-flashcard-image-quick${hasImage ? ' has-image' : ''}${isOpen ? ' is-open' : ''}" data-studio-flashcard-image-quick="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}">
+              <div class="studio-flashcard-image-actions" aria-label="${escapeHtml(sideLabel)} image controls">
+                <span class="studio-flashcard-image-side-label">${escapeHtml(sideLabel)}</span>
+                <button type="button" class="studio-option-image-toggle studio-flashcard-image-main${hasImage ? ' has-image' : ''}" data-studio-flashcard-image-main="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}">${hasImage ? 'Edit Image' : 'Add Image'}</button>
+                <button type="button" class="studio-option-image-toggle studio-flashcard-image-visibility" data-studio-flashcard-image-hide="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" title="${escapeHtml(visibilityTitle)}" ${hasImage ? '' : 'disabled'}>${escapeHtml(visibilityLabel)}</button>
+                <button type="button" class="studio-option-image-toggle studio-flashcard-image-remove" data-studio-flashcard-image-remove="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" ${hasImage ? '' : 'disabled'}>Remove Image</button>
+                <input class="studio-flashcard-image-file-input" type="file" accept="image/*" data-studio-flashcard-image-file="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" tabindex="-1" aria-hidden="true">
+              </div>
+              <div class="studio-flashcard-image-status${hasImage && isOpen ? '' : ' hidden'}" data-studio-flashcard-image-status title="${escapeHtml(displayLabel)}">
+                ${escapeHtml(displayLabel)}
+              </div>
+            </div>
+        `;
+    }
+
     function getStudioQuestionPreviewLabel(questionRow, index) {
         const questionType = normalizeSheetText(questionRow?.question_type || 'multiple_choice');
         const truncatePreview = value => {
@@ -6613,7 +6833,11 @@ MODIFICATION RULES FOR THIS APP
     function hasPendingFlashcardDraftContent() {
         const pendingRow = getStudioPendingFlashcardRow();
         if (!pendingRow) return false;
-        return !!normalizeSheetText(pendingRow.term_plain || pendingRow.prompt_plain || pendingRow.definition_plain);
+        return !!(
+            normalizeSheetText(pendingRow.term_plain || pendingRow.prompt_plain || pendingRow.definition_plain)
+            || normalizeSheetText(pendingRow.term_html || pendingRow.definition_html)
+            || normalizeSheetText(pendingRow.term_image_url || pendingRow.definition_image_url)
+        );
     }
 
     function syncStudioFlashcardInlineRowsToState() {
@@ -6869,6 +7093,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.pendingInsertAfterQuestionId = null;
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.expandedOptionImageRows.clear();
+        state.auth.expandedFlashcardImageRows.clear();
         state.auth.expandedClassifyCategoryImageRows.clear();
         state.auth.expandedClassifyItemImageRows.clear();
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = normalizeSheetText(row.term_plain || row.prompt_plain);
@@ -6908,21 +7133,25 @@ MODIFICATION RULES FOR THIS APP
         const preparedRows = localRows.map(row => {
             const term = normalizeSheetText(row.term_plain || row.prompt_plain);
             const definition = normalizeSheetText(row.definition_plain);
-            if (!term || !definition) {
-                throw new Error('Each unsaved flashcard needs both a term and a definition before saving.');
+            const termHtml = sanitizeLearningResourcesHtml(row.term_html || '') || buildStoredHtmlFromPlain(term);
+            const definitionHtml = sanitizeLearningResourcesHtml(row.definition_html || '') || buildStoredHtmlFromPlain(definition);
+            const termImage = normalizeSheetText(row.term_image_url);
+            const definitionImage = normalizeSheetText(row.definition_image_url);
+            if (!hasFlashcardSideContent(term, termHtml, termImage) || !hasFlashcardSideContent(definition, definitionHtml, definitionImage)) {
+                throw new Error('Each flashcard side needs text or an image before saving.');
             }
             return {
                 localId: row.id,
                 term,
                 definition,
-                termHtml: sanitizeLearningResourcesHtml(row.term_html || '') || buildStoredHtmlFromPlain(term),
-                definitionHtml: sanitizeLearningResourcesHtml(row.definition_html || '') || buildStoredHtmlFromPlain(definition),
+                termHtml,
+                definitionHtml,
                 learningResourcesHtml: sanitizeLearningResourcesHtml(row.learning_resources_html || ''),
                 learningResourcesImage: normalizeSheetText(row.learning_resources_image_url),
                 learningResourcesImageLabel: row.learning_resources_image_label || 'learning resources image',
-                termImage: normalizeSheetText(row.term_image_url),
+                termImage,
                 termImageLabel: row.term_image_label || 'term image',
-                definitionImage: normalizeSheetText(row.definition_image_url),
+                definitionImage,
                 definitionImageLabel: row.definition_image_label || 'definition image',
                 sortOrder: nextSortOrder++
             };
@@ -7154,8 +7383,8 @@ MODIFICATION RULES FOR THIS APP
         const learningResourcesHtml = sanitizeLearningResourcesHtml(draft.learningResourcesHtml || '');
 
         if (!quizId) throw new Error('Save or open a flashcard quiz before updating cards.');
-        if (!term) throw new Error('Enter a flashcard term first.');
-        if (!definition) throw new Error('Enter a flashcard definition first.');
+        if (!hasFlashcardSideContent(term, termHtml, draft.termImage)) throw new Error('Add term text or a term image first.');
+        if (!hasFlashcardSideContent(definition, definitionHtml, draft.definitionImage)) throw new Error('Add definition text or a definition image first.');
 
         const row = state.auth.studioQuizQuestions.find(question => question.id === normalizedQuestionId) || null;
         const previousLearningResourcesImage = normalizeSheetText(row?.learning_resources_image_url);
@@ -7827,9 +8056,15 @@ MODIFICATION RULES FOR THIS APP
                 const definitionValue = escapeHtml(normalizeSheetText(questionRow.definition_plain || ''));
                 const termAttr = isPendingRow ? 'data-studio-pending-flashcard-term="true"' : `data-studio-flashcard-term-id="${escapeHtml(questionRow.id)}"`;
                 const definitionAttr = isPendingRow ? 'data-studio-pending-flashcard-definition="true"' : `data-studio-flashcard-definition-id="${escapeHtml(questionRow.id)}"`;
+                const flashcardQuickImageControlsHtml = `
+                    <div class="studio-flashcard-list-image-toolbar" aria-label="Flashcard image quick controls">
+                      ${buildStudioFlashcardImageQuickControls(questionRow, 'term')}
+                      ${buildStudioFlashcardImageQuickControls(questionRow, 'definition')}
+                    </div>
+                `;
                 itemContent = `
                     <div class="studio-question-content-stack">
-                      <div class="studio-question-focus-row">${focusControlHtml}${buildUpControlHtml}</div>
+                      <div class="studio-question-focus-row studio-flashcard-focus-row">${focusControlHtml}${buildUpControlHtml}${flashcardQuickImageControlsHtml}</div>
                       <div class="studio-flashcard-inline-fields">
                         <label class="studio-flashcard-inline-field">
                           <span>Term</span>
@@ -7946,6 +8181,7 @@ MODIFICATION RULES FOR THIS APP
 
     function clearStudioQuestionInputs(options = {}) {
         state.auth.expandedOptionImageRows.clear();
+        state.auth.expandedFlashcardImageRows.clear();
         state.auth.expandedClassifyCategoryImageRows.clear();
         state.auth.expandedClassifyItemImageRows.clear();
         state.auth.studioQuestionImagePanelOpen = false;
@@ -8109,6 +8345,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioPendingNewQuestionRow = null;
         state.auth.editingQuizType = normalizeSheetText(questionRow.question_type || state.auth.editingQuizType || 'multiple_choice') || 'multiple_choice';
         state.auth.expandedOptionImageRows.clear();
+        state.auth.expandedFlashcardImageRows.clear();
         state.auth.expandedClassifyCategoryImageRows.clear();
         state.auth.expandedClassifyItemImageRows.clear();
         state.auth.studioQuestionImagePanelOpen = false;
@@ -10800,9 +11037,11 @@ MODIFICATION RULES FOR THIS APP
         const definitionHtml = getFlashcardDefinitionEditorHtml() || buildStoredHtmlFromPlain(definition);
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
+        const termImageValue = state.auth.studioFlashcardTermImageDataUrl || '';
+        const definitionImageValue = state.auth.studioFlashcardDefinitionImageDataUrl || '';
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
-        if (!term) return void setCreatorStatus('Enter a flashcard term first.', 'error');
-        if (!definition) return void setCreatorStatus('Enter a flashcard definition first.', 'error');
+        if (!hasFlashcardSideContent(term, termHtml, termImageValue)) return void setCreatorStatus('Add term text or a term image first.', 'error');
+        if (!hasFlashcardSideContent(definition, definitionHtml, definitionImageValue)) return void setCreatorStatus('Add definition text or a definition image first.', 'error');
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId && !isStudioLocalFlashcardId(state.auth.editingQuestionId);
         setCreatorStatus(!isEditingQuiz ? 'Creating flashcard quiz...' : (isEditingQuestion ? 'Saving flashcard changes...' : 'Adding flashcard to quiz...'));
@@ -11851,8 +12090,10 @@ MODIFICATION RULES FOR THIS APP
         sourceQuestions.forEach((question, index) => {
             const rowLabel = `Row ${index + 2}`;
             if (quizType === 'flashcard') {
-                if (!normalizeSheetText(question.termText) || !normalizeSheetText(question.definitionText)) {
-                    throw new Error(`${rowLabel}: flashcards need both a term and a definition.`);
+                const hasTermSide = hasFlashcardSideContent(question.termText, '', question.termImage);
+                const hasDefinitionSide = hasFlashcardSideContent(question.definitionText, '', question.definitionImage);
+                if (!hasTermSide || !hasDefinitionSide) {
+                    throw new Error(`${rowLabel}: each flashcard side needs text or an image.`);
                 }
                 return;
             }
@@ -19294,6 +19535,66 @@ if (elements.studioQuestionList) {
             return;
         }
 
+        const flashcardImageMainBtn = e.target.closest('[data-studio-flashcard-image-main]');
+        if (flashcardImageMainBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const questionId = normalizeSheetText(flashcardImageMainBtn.dataset.studioFlashcardImageQuestionId);
+            const side = flashcardImageMainBtn.dataset.studioFlashcardImageMain === 'definition' ? 'definition' : 'term';
+            const row = getStudioFlashcardRowById(questionId);
+            const snapshot = getStudioFlashcardImageSnapshot(row, side);
+            if (normalizeSheetText(snapshot.value)) {
+                openStudioImageEditor({ kind: 'flashcard-list', questionId, side }).catch(err => {
+                    console.error(err);
+                    setCreatorStatus(`Could not open the ${side} image editor.`, 'error');
+                });
+            } else {
+                const fileInput = flashcardImageMainBtn.closest('[data-studio-flashcard-image-quick]')?.querySelector(`[data-studio-flashcard-image-file="${side}"]`);
+                if (fileInput) {
+                    fileInput.value = '';
+                    fileInput.click();
+                }
+            }
+            return;
+        }
+
+        const flashcardImageHideBtn = e.target.closest('[data-studio-flashcard-image-hide]');
+        if (flashcardImageHideBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const questionId = normalizeSheetText(flashcardImageHideBtn.dataset.studioFlashcardImageQuestionId);
+            const side = flashcardImageHideBtn.dataset.studioFlashcardImageHide === 'definition' ? 'definition' : 'term';
+            const row = getStudioFlashcardRowById(questionId);
+            const snapshot = getStudioFlashcardImageSnapshot(row, side);
+            const imageKey = getStudioFlashcardImageKey(questionId, side);
+            if (!normalizeSheetText(snapshot.value)) {
+                setCreatorStatus(`No ${side === 'definition' ? 'definition' : 'term'} image is attached yet.`, 'error');
+                return;
+            }
+            if (state.auth.expandedFlashcardImageRows.has(imageKey)) {
+                state.auth.expandedFlashcardImageRows.delete(imageKey);
+                setCreatorStatus(`${side === 'definition' ? 'Definition' : 'Term'} image information hidden. The image is still attached.`, 'success');
+            } else {
+                state.auth.expandedFlashcardImageRows.add(imageKey);
+                setCreatorStatus(`${side === 'definition' ? 'Definition' : 'Term'} image information shown.`, 'success');
+            }
+            renderStudioQuestionList();
+            return;
+        }
+
+        const flashcardImageRemoveBtn = e.target.closest('[data-studio-flashcard-image-remove]');
+        if (flashcardImageRemoveBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const questionId = normalizeSheetText(flashcardImageRemoveBtn.dataset.studioFlashcardImageQuestionId);
+            const side = flashcardImageRemoveBtn.dataset.studioFlashcardImageRemove === 'definition' ? 'definition' : 'term';
+            const label = side === 'definition' ? 'No definition image selected.' : 'No term image selected.';
+            state.auth.expandedFlashcardImageRows.add(getStudioFlashcardImageKey(questionId, side));
+            applyStudioFlashcardListImageChange(questionId, side, '', label);
+            setCreatorStatus(`${side === 'definition' ? 'Definition' : 'Term'} image removed. Save Changes to keep it.`, 'success');
+            return;
+        }
+
         const button = e.target.closest('[data-studio-question-id]');
         if (!button) return;
 
@@ -19375,6 +19676,24 @@ if (elements.studioQuestionList) {
                 setStudioDirtyState(true);
             }
         }
+    });
+
+    elements.studioQuestionList.addEventListener('change', e => {
+        const fileInput = e.target.closest('[data-studio-flashcard-image-file]');
+        if (!fileInput) return;
+        const questionId = normalizeSheetText(fileInput.dataset.studioFlashcardImageQuestionId);
+        const side = fileInput.dataset.studioFlashcardImageFile === 'definition' ? 'definition' : 'term';
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        readFileAsDataUrl(file).then(dataUrl => {
+            const label = `Selected: ${file.name}`;
+            applyStudioFlashcardListImageChange(questionId, side, dataUrl, label);
+            state.auth.expandedFlashcardImageRows.add(getStudioFlashcardImageKey(questionId, side));
+            setCreatorStatus(`${side === 'definition' ? 'Definition' : 'Term'} image attached. Save Changes to keep it.`, 'success');
+        }).catch(err => {
+            console.error(err);
+            setCreatorStatus(`Could not load the ${side} image.`, 'error');
+        });
     });
 
     let studioQuestionPointerDrag = null;
@@ -20190,6 +20509,20 @@ document.addEventListener('keydown', event => {
         if (state.auth.imageEditor?.open) closeStudioImageEditor();
     }
 });
+
+if (elements.createFlashcardTermImagePickBtn && elements.createFlashcardTermImageFile) {
+    elements.createFlashcardTermImagePickBtn.addEventListener('click', () => {
+        elements.createFlashcardTermImageFile.value = '';
+        elements.createFlashcardTermImageFile.click();
+    });
+}
+
+if (elements.createFlashcardDefinitionImagePickBtn && elements.createFlashcardDefinitionImageFile) {
+    elements.createFlashcardDefinitionImagePickBtn.addEventListener('click', () => {
+        elements.createFlashcardDefinitionImageFile.value = '';
+        elements.createFlashcardDefinitionImageFile.click();
+    });
+}
 
 if (elements.createFlashcardTermImageFile) {
     elements.createFlashcardTermImageFile.addEventListener('change', () => {

@@ -7903,3 +7903,151 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
     padding: 11px;
   }
 }
+
+/* Phase 22FG: keep flashcard list image controls in the same header row as Focus. */
+.studio-flashcard-focus-row {
+  align-items: flex-start;
+}
+
+.studio-flashcard-list-image-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 520px;
+  min-width: 260px;
+  flex-wrap: wrap;
+}
+
+.studio-flashcard-image-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 250px;
+}
+
+.studio-flashcard-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.studio-flashcard-image-side-label {
+  flex: 0 0 auto;
+  min-width: 56px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.studio-flashcard-image-main,
+.studio-flashcard-image-visibility,
+.studio-flashcard-image-remove {
+  min-height: 26px;
+  padding: 4px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.studio-flashcard-image-main.has-image,
+.studio-file-picker-btn.has-image {
+  border-color: #ffb347;
+  background: rgba(255, 179, 71, 0.14);
+  color: #ffe6b8;
+  box-shadow: 0 0 0 2px rgba(255, 179, 71, 0.12);
+}
+
+.studio-flashcard-image-visibility:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+.studio-flashcard-image-remove {
+  border-color: rgba(255, 107, 107, 0.35);
+  color: #ffc6c6;
+}
+
+.studio-flashcard-image-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.studio-flashcard-image-file-input,
+.studio-hidden-file-input {
+  display: none;
+}
+
+.studio-file-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-file-picker-btn {
+  align-self: flex-start;
+}
+
+.studio-flashcard-image-status {
+  max-width: 100%;
+  padding: 4px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+  color: #fff;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .studio-flashcard-list-image-toolbar {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .studio-flashcard-image-actions {
+    flex-wrap: wrap;
+  }
+
+  .studio-flashcard-image-side-label {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+}
+
+/* Phase 22FK: image-only flashcards use a true contain box so the full image is never cropped. */
+.flashcard-side-content.image-only {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.flashcard-side-content.image-only .flashcard-side-image-wrap {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flashcard-side-content.image-only .flashcard-side-image-frame {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.flashcard-side-content.image-only .flashcard-side-image {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}

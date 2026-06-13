@@ -1316,20 +1316,26 @@ MODIFICATION RULES FOR THIS APP
                       <div id="createFlashcardDefinition" class="studio-rich-editor studio-flashcard-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Type the flashcard definition here"></div>
                     </div>
 
-                    <label class="auth-field">
+                    <div class="auth-field studio-file-picker-field">
                       <span>Term image (optional)</span>
-                      <input id="createFlashcardTermImageFile" type="file" accept="image/*">
-                    </label>
+                      <div class="studio-file-picker-row">
+                        <button id="createFlashcardTermImagePickBtn" type="button" class="auth-action-btn auth-secondary-btn studio-file-picker-btn">Choose Image</button>
+                        <input id="createFlashcardTermImageFile" class="studio-hidden-file-input" type="file" accept="image/*">
+                      </div>
+                    </div>
                     <div class="studio-file-row">
                       <div id="createFlashcardTermImageName" class="studio-file-name">No term image selected.</div>
                       <button id="createFlashcardTermImageEditBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn hidden">Edit Image</button>
                       <button id="createFlashcardTermImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
                     </div>
 
-                    <label class="auth-field">
+                    <div class="auth-field studio-file-picker-field">
                       <span>Definition image (optional)</span>
-                      <input id="createFlashcardDefinitionImageFile" type="file" accept="image/*">
-                    </label>
+                      <div class="studio-file-picker-row">
+                        <button id="createFlashcardDefinitionImagePickBtn" type="button" class="auth-action-btn auth-secondary-btn studio-file-picker-btn">Choose Image</button>
+                        <input id="createFlashcardDefinitionImageFile" class="studio-hidden-file-input" type="file" accept="image/*">
+                      </div>
+                    </div>
                     <div class="studio-file-row">
                       <div id="createFlashcardDefinitionImageName" class="studio-file-name">No definition image selected.</div>
                       <button id="createFlashcardDefinitionImageEditBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn hidden">Edit Image</button>
