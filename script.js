@@ -14529,6 +14529,16 @@ function isNarrowIPhoneViewport() {
     return window.matchMedia('(max-width: 440px), (max-height: 440px) and (orientation: landscape)').matches;
 }
 
+function isIPadLikeDevice() {
+    const ua = navigator.userAgent || '';
+    const platform = navigator.platform || '';
+    return /iPad/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isIPadPortraitFlashcardViewport() {
+    return isIPadLikeDevice() && window.matchMedia('(orientation: portrait) and (min-width: 700px)').matches;
+}
+
 function isMultipleChoiceSplitLayoutViewport() {
     return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 700px), (orientation: landscape)').matches;
 }
@@ -14579,27 +14589,13 @@ function syncMultipleChoiceSplitLayoutMount() {
     }
 }
 
-function isIPadLikeFlashcardViewport() {
-    const viewportWidth = Math.round(window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0);
-    const viewportHeight = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0);
-    const shortSide = Math.min(viewportWidth, viewportHeight);
-    const longSide = Math.max(viewportWidth, viewportHeight);
-    const hasTouch = (navigator.maxTouchPoints || 0) >= 2 || window.matchMedia('(pointer: coarse)').matches;
-    return hasTouch && shortSide >= 700 && shortSide <= 1180 && longSide >= 900 && longSide <= 1400;
-}
-
 function updateViewportClasses() {
-    const isFlashcard = state.currentQuestionType === 'flashcard';
-    const isIPadFlashcard = isFlashcard && isIPadLikeFlashcardViewport();
-    const isPortrait = window.matchMedia('(orientation: portrait)').matches;
-
+    const isFlashcardQuestion = state.currentQuestionType === 'flashcard';
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
+    document.body.classList.toggle('ipad-portrait-flashcard-layout', isFlashcardQuestion && isIPadPortraitFlashcardViewport());
     document.body.classList.toggle('active-question-multiple-choice', state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams');
-    document.body.classList.toggle('active-question-flashcard', isFlashcard);
+    document.body.classList.toggle('active-question-flashcard', isFlashcardQuestion);
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
-    document.body.classList.toggle('ipad-flashcard-layout', isIPadFlashcard);
-    document.body.classList.toggle('ipad-flashcard-portrait', isIPadFlashcard && isPortrait);
-    document.body.classList.toggle('ipad-flashcard-landscape', isIPadFlashcard && !isPortrait);
     syncMultipleChoiceSplitLayoutMount();
 }
 
@@ -17615,39 +17611,48 @@ function buildFlashcardFace(sideData, faceClass) {
     return face;
 }
 
-function getContainedFlashcardImageRect(frame, img) {
+function getFlashcardImageVisualBounds(frame, img) {
     const frameRect = frame.getBoundingClientRect();
     const imageRect = img.getBoundingClientRect();
-    if (!frameRect.width || !frameRect.height) return null;
+    if (!frameRect.width || !frameRect.height || !imageRect.width || !imageRect.height) return null;
 
-    const naturalWidth = img.naturalWidth || 0;
-    const naturalHeight = img.naturalHeight || 0;
-    if (!naturalWidth || !naturalHeight) {
-        if (!imageRect.width || !imageRect.height) return null;
+    const fitStyle = window.getComputedStyle(img).objectFit;
+    const hasNaturalSize = img.naturalWidth > 0 && img.naturalHeight > 0;
+    if (fitStyle === 'contain' && hasNaturalSize) {
+        const boxWidth = imageRect.width;
+        const boxHeight = imageRect.height;
+        const imageRatio = img.naturalWidth / img.naturalHeight;
+        const boxRatio = boxWidth / boxHeight;
+        let visualWidth = boxWidth;
+        let visualHeight = boxHeight;
+
+        if (boxRatio > imageRatio) {
+            visualHeight = boxHeight;
+            visualWidth = visualHeight * imageRatio;
+        } else {
+            visualWidth = boxWidth;
+            visualHeight = visualWidth / imageRatio;
+        }
+
+        const visualLeft = imageRect.left + ((boxWidth - visualWidth) / 2);
+        const visualTop = imageRect.top + ((boxHeight - visualHeight) / 2);
         return {
-            left: Math.max(0, imageRect.left - frameRect.left),
-            top: Math.max(0, imageRect.top - frameRect.top),
-            width: Math.min(frameRect.width, imageRect.width),
-            height: Math.min(frameRect.height, imageRect.height)
+            left: Math.max(0, visualLeft - frameRect.left),
+            top: Math.max(0, visualTop - frameRect.top),
+            width: Math.min(frameRect.width, visualWidth),
+            height: Math.min(frameRect.height, visualHeight),
+            frameWidth: frameRect.width,
+            frameHeight: frameRect.height
         };
     }
 
-    const imageRatio = naturalWidth / naturalHeight;
-    const frameRatio = frameRect.width / frameRect.height;
-    let width = frameRect.width;
-    let height = frameRect.height;
-
-    if (imageRatio > frameRatio) {
-        height = width / imageRatio;
-    } else {
-        width = height * imageRatio;
-    }
-
     return {
-        left: Math.max(0, (frameRect.width - width) / 2),
-        top: Math.max(0, (frameRect.height - height) / 2),
-        width,
-        height
+        left: Math.max(0, imageRect.left - frameRect.left),
+        top: Math.max(0, imageRect.top - frameRect.top),
+        width: Math.min(frameRect.width, imageRect.width),
+        height: Math.min(frameRect.height, imageRect.height),
+        frameWidth: frameRect.width,
+        frameHeight: frameRect.height
     };
 }
 
@@ -17658,13 +17663,10 @@ function syncFlashcardImageFrameOverlayBounds(frame) {
     const zoomBtn = frame.querySelector('.flashcard-image-zoom-btn');
     if (!img) return;
 
-    const visualRect = getContainedFlashcardImageRect(frame, img);
-    if (!visualRect || !visualRect.width || !visualRect.height) return;
+    const bounds = getFlashcardImageVisualBounds(frame, img);
+    if (!bounds || !bounds.width || !bounds.height) return;
 
-    const left = visualRect.left;
-    const top = visualRect.top;
-    const width = visualRect.width;
-    const height = visualRect.height;
+    const { left, top, width, height, frameWidth, frameHeight } = bounds;
 
     frame.style.setProperty('--flashcard-image-visual-left', `${left}px`);
     frame.style.setProperty('--flashcard-image-visual-top', `${top}px`);
@@ -17681,8 +17683,14 @@ function syncFlashcardImageFrameOverlayBounds(frame) {
     if (zoomBtn) {
         const buttonWidth = zoomBtn.offsetWidth || 34;
         const buttonHeight = zoomBtn.offsetHeight || 34;
-        zoomBtn.style.left = `${Math.max(left + 4, left + width - buttonWidth - 8)}px`;
-        zoomBtn.style.top = `${Math.max(top + 4, top + 8)}px`;
+        const preferredLeft = left + width - buttonWidth - 8;
+        const preferredTop = top + 8;
+        const minLeft = left + 4;
+        const minTop = top + 4;
+        const maxLeft = Math.max(0, frameWidth - buttonWidth - 4);
+        const maxTop = Math.max(0, frameHeight - buttonHeight - 4);
+        zoomBtn.style.left = `${Math.min(maxLeft, Math.max(minLeft, preferredLeft))}px`;
+        zoomBtn.style.top = `${Math.min(maxTop, Math.max(minTop, preferredTop))}px`;
         zoomBtn.style.right = 'auto';
     }
 }
@@ -17710,8 +17718,11 @@ function fitFlashcardTextToFixedCard(root = document) {
         if (!content) return;
         textEl.style.removeProperty('--flashcard-fitted-font-size');
         const baseFontSize = parseFloat(window.getComputedStyle(textEl).fontSize) || 24;
-        const maxWidth = Math.max(1, content.clientWidth - 4);
-        const maxHeight = Math.max(1, content.clientHeight - 4);
+        const isSplitLayout = content.classList.contains('split');
+        const textRect = textEl.getBoundingClientRect();
+        const contentRect = content.getBoundingClientRect();
+        const maxWidth = Math.max(1, (isSplitLayout ? textRect.width : contentRect.width) - 4);
+        const maxHeight = Math.max(1, (isSplitLayout ? textRect.height : contentRect.height) - 4);
         if (!maxWidth || !maxHeight) return;
 
         let low = 0.52;
@@ -17901,6 +17912,11 @@ function showFlashcard(q) {
 
     cardInner.appendChild(buildFlashcardFace(frontSide, 'front'));
     cardInner.appendChild(buildFlashcardFace(backSide, 'back'));
+    cardInner.addEventListener('transitionend', event => {
+        if (event.propertyName === 'transform') {
+            queueFlashcardImageOverlaySync(card);
+        }
+    });
     card.appendChild(cardInner);
     container.appendChild(card);
 

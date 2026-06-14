@@ -1175,10 +1175,10 @@ body.classify-dragging {
 }
 
 .flashcard-side-image {
-  width: 100%;
-  height: 100%;
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
   object-fit: contain;
   border-radius: 10px;
   display: block;
@@ -1239,6 +1239,50 @@ body.classify-dragging {
   }
 }
 
+
+/* Phase 22FU: iPad portrait flashcards stack text above image without changing iPhone or desktop. */
+body.ipad-portrait-flashcard-layout .flashcard-container {
+  --flashcard-fixed-height: clamp(560px, calc(100dvh - 154px), 860px);
+  --flashcard-face-padding: 16px;
+  --flashcard-image-padding: 8px;
+  max-width: min(94vw, 920px);
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
+  --flashcard-fixed-height: clamp(650px, calc(100dvh - 86px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 980px);
+  --flashcard-face-padding: 14px;
+  --flashcard-image-padding: 7px;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-content.split {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 0.42fr) minmax(0, 0.58fr);
+  align-items: stretch;
+  gap: 14px;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-content.split .flashcard-side-text {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  text-align: center;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-image-wrap,
+body.ipad-portrait-flashcard-layout .flashcard-side-image-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 @media screen and (max-height: 480px) and (orientation: landscape) {
   .flashcard-container {
     --flashcard-fixed-height: clamp(220px, calc(100dvh - 88px), 360px);
@@ -1264,56 +1308,6 @@ body.classify-dragging {
   .flashcard-side-text {
     --sb-rich-base-size: 17px;
   }
-}
-
-/* Phase 22QC: restore 22EJ-style iPad flashcard sizing through verified JS classes, not brittle media matching. */
-body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-container {
-  max-width: 100%;
-}
-
-body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-card {
-  --flashcard-fixed-height: min(500px, 60vh);
-  min-height: 370px;
-}
-
-body.fullscreen-mode.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-card {
-  --flashcard-fixed-height: min(550px, 62vh);
-  min-height: 360px;
-}
-
-body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-content.split {
-  grid-template-columns: 1fr;
-  grid-template-rows: minmax(0, 0.34fr) minmax(0, 0.66fr);
-  gap: 12px;
-}
-
-body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-text {
-  --sb-rich-base-size: 21px;
-  text-align: center;
-}
-
-body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-content.split .flashcard-side-text {
-  text-align: center;
-}
-
-body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-card {
-  --flashcard-fixed-height: min(360px, 42vh);
-  min-height: 190px;
-}
-
-body.fullscreen-mode.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-card {
-  --flashcard-fixed-height: min(490px, 57vh);
-  min-height: 250px;
-}
-
-body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-container {
-  margin-top: 4px;
-}
-
-body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-side-content.split {
-  grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
-  grid-template-rows: minmax(0, 1fr);
-  gap: 14px;
 }
 
 .flashcard-help-text {
@@ -8284,19 +8278,22 @@ body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
 body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-image-zoom-btn,
 body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-side-image-label-layer {
-  opacity: 0 !important;
-  visibility: hidden !important;
+  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
 
 /* Phase 22FT: explicitly restore overlays on the active flashcard face after flip. */
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn,
 body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn {
-  display: inline-flex !important;
-  visibility: visible !important;
+  visibility: visible;
   pointer-events: auto;
-  opacity: 0.78;
-  z-index: 20;
+  opacity: 0.5;
+}
+
+body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn,
+body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn {
+  opacity: 0.72;
 }
 
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:hover,
