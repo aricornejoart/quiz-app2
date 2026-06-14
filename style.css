@@ -1239,6 +1239,7 @@ body.classify-dragging {
   }
 }
 
+/* iPad/tablet rule: size from available viewport height first; never use a minimum that can force overflow. */
 @media screen and (hover: none) and (pointer: coarse) and (min-width: 700px) and (max-width: 1180px) and (min-height: 900px) and (orientation: portrait) {
   body.active-question-flashcard .container {
     max-width: min(980px, 96vw);
@@ -1256,20 +1257,20 @@ body.classify-dragging {
   }
 
   .flashcard-container {
-    --flashcard-fixed-height: clamp(660px, calc(100dvh - 210px), 980px);
+    --flashcard-fixed-height: clamp(520px, calc(100dvh - 250px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 780px);
     --flashcard-face-padding: 22px;
     --flashcard-image-padding: 12px;
-    max-width: min(920px, 96vw);
+    max-width: min(900px, 96vw);
     padding-left: 20px;
     padding-right: 20px;
     margin-top: 6px;
   }
 
   body.fullscreen-mode .flashcard-container {
-    --flashcard-fixed-height: clamp(760px, calc(100dvh - 118px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 1160px);
+    --flashcard-fixed-height: clamp(600px, calc(100dvh - 156px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 920px);
     --flashcard-face-padding: 20px;
     --flashcard-image-padding: 10px;
-    max-width: min(980px, 98vw);
+    max-width: min(940px, 98vw);
     margin-top: 4px;
   }
 
@@ -1299,18 +1300,18 @@ body.classify-dragging {
   }
 
   .flashcard-container {
-    --flashcard-fixed-height: clamp(440px, calc(100dvh - 190px), 700px);
+    --flashcard-fixed-height: clamp(340px, calc(100dvh - 210px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 560px);
     --flashcard-face-padding: 20px;
     --flashcard-image-padding: 10px;
-    max-width: min(1120px, 96vw);
+    max-width: min(1060px, 96vw);
     padding-left: 24px;
     padding-right: 24px;
     margin-top: 6px;
   }
 
   body.fullscreen-mode .flashcard-container {
-    --flashcard-fixed-height: clamp(520px, calc(100dvh - 104px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 780px);
-    max-width: min(1220px, 98vw);
+    --flashcard-fixed-height: clamp(360px, calc(100dvh - 140px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 620px);
+    max-width: min(1120px, 98vw);
     margin-top: 4px;
   }
 
