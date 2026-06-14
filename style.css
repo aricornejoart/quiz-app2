@@ -8227,3 +8227,38 @@ body:not(.active-question-flashcard) .question-star-btn.flashcard-corner-star-bt
   min-height: 36px;
   font-size: 22px;
 }
+
+/* Phase 22FR: keep flashcard overlays on the visible side only during flips. */
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front {
+  z-index: 2;
+}
+
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back {
+  z-index: 1;
+  pointer-events: none;
+}
+
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back {
+  z-index: 2;
+}
+
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front {
+  z-index: 1;
+  pointer-events: none;
+}
+
+body.active-question-flashcard .flashcard-card.is-flipped > .question-star-btn.flashcard-corner-star-btn {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-image-zoom-btn,
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-image-zoom-btn,
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-side-image-label-layer {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
