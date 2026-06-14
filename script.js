@@ -14655,6 +14655,7 @@ function handleViewportChange() {
     updateViewportClasses();
     applyResponsiveControlText();
     updateProgress();
+    fitFlashcardTextToFixedCard(document);
 }
 
 // ================= SETTINGS / FULLSCREEN UI =================
@@ -17591,6 +17592,42 @@ function buildFlashcardFace(sideData, faceClass) {
     return face;
 }
 
+
+function fitFlashcardTextToFixedCard(root = document) {
+    const textNodes = Array.from(root.querySelectorAll?.('.flashcard-side-text') || []);
+    if (!textNodes.length) return;
+
+    const fitOne = textEl => {
+        const content = textEl.closest('.flashcard-side-content');
+        if (!content) return;
+        textEl.style.removeProperty('--flashcard-fitted-font-size');
+        const baseFontSize = parseFloat(window.getComputedStyle(textEl).fontSize) || 24;
+        const maxWidth = Math.max(1, content.clientWidth - 4);
+        const maxHeight = Math.max(1, content.clientHeight - 4);
+        if (!maxWidth || !maxHeight) return;
+
+        let low = 0.52;
+        let high = 1;
+        let best = 1;
+        for (let i = 0; i < 8; i += 1) {
+            const mid = (low + high) / 2;
+            textEl.style.setProperty('--flashcard-fitted-font-size', `${Math.max(11, baseFontSize * mid).toFixed(2)}px`);
+            const fits = textEl.scrollWidth <= maxWidth + 2 && textEl.scrollHeight <= maxHeight + 2;
+            if (fits) {
+                best = mid;
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        textEl.style.setProperty('--flashcard-fitted-font-size', `${Math.max(11, baseFontSize * best).toFixed(2)}px`);
+    };
+
+    requestAnimationFrame(() => {
+        textNodes.forEach(fitOne);
+    });
+}
+
 function enableFlashcardGesture(card, onKnow, onDontKnow) {
     let tracking = false;
     let startX = 0;
@@ -17789,6 +17826,7 @@ function showFlashcard(q) {
 
     enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
     setFlashcardInteractionEnabled(true);
+    fitFlashcardTextToFixedCard(container);
 }
 
 // ================= HIERARCHY DRAG =================

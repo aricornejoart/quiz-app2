@@ -995,6 +995,9 @@ body.classify-dragging {
 
 /* ===== Flashcards ===== */
 .flashcard-container {
+  --flashcard-fixed-height: min(380px, 52vh);
+  --flashcard-face-padding: 20px;
+  --flashcard-image-padding: 12px;
   position: relative;
   width: 100%;
   max-width: 760px;
@@ -1009,8 +1012,8 @@ body.classify-dragging {
 .flashcard-card {
   position: relative;
   width: 100%;
-  height: min(380px, 52vh);
-  min-height: 300px;
+  height: var(--flashcard-fixed-height);
+  min-height: 0;
   cursor: pointer;
   touch-action: pan-y;
   transform: translateX(0);
@@ -1047,7 +1050,7 @@ body.classify-dragging {
   inset: 0;
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: var(--flashcard-face-padding);
   box-sizing: border-box;
   border-radius: 16px;
   border: 1px solid var(--color-bg-control-hover);
@@ -1068,11 +1071,14 @@ body.classify-dragging {
 
 .flashcard-side-content {
   flex: 1;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 18px;
+  overflow: hidden;
 }
 
 .flashcard-side-content.text-only,
@@ -1082,17 +1088,23 @@ body.classify-dragging {
 
 .flashcard-side-content.split {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   align-items: center;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .flashcard-side-text {
   --sb-rich-base-size: 24px;
+  --flashcard-fitted-font-size: var(--sb-rich-base-size);
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
-  font-size: var(--sb-rich-base-size);
+  font-size: var(--flashcard-fitted-font-size);
   color: var(--color-text-main);
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .flashcard-side-content.text-only .flashcard-side-text {
@@ -1102,22 +1114,24 @@ body.classify-dragging {
 
 .flashcard-side-content.split .flashcard-side-text {
   text-align: left;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .flashcard-side-image-wrap {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 180px;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #2d2750;
   border: 1px solid var(--color-border-soft);
   border-radius: 12px;
-  padding: 12px;
+  padding: var(--flashcard-image-padding);
   box-sizing: border-box;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .flashcard-side-image-frame {
@@ -1125,13 +1139,15 @@ body.classify-dragging {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
 }
 
 .flashcard-side-image {
   max-width: 100%;
-  max-height: 320px;
+  max-height: 100%;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -1143,6 +1159,69 @@ body.classify-dragging {
   font-size: 18px;
   color: var(--color-text-muted);
   text-align: center;
+}
+
+
+/* Flashcard sizing guardrails — fixed card height, content fits inside the card. */
+@media screen and (max-width: 480px) and (orientation: portrait) {
+  .flashcard-container {
+    --flashcard-fixed-height: clamp(390px, calc(100dvh - 176px), 620px);
+    --flashcard-face-padding: 14px;
+    --flashcard-image-padding: 8px;
+    max-width: 100%;
+    padding-left: 12px;
+    padding-right: 12px;
+    margin-top: 4px;
+  }
+
+  body.fullscreen-mode .flashcard-container {
+    --flashcard-fixed-height: clamp(520px, calc(100dvh - 96px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 820px);
+    --flashcard-face-padding: 12px;
+    --flashcard-image-padding: 7px;
+    margin-top: 2px;
+  }
+
+  .flashcard-side-content.split {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 0.42fr) minmax(0, 0.58fr);
+    gap: 10px;
+  }
+
+  .flashcard-side-text {
+    --sb-rich-base-size: 20px;
+    text-align: center;
+  }
+
+  .flashcard-side-content.split .flashcard-side-text {
+    text-align: center;
+  }
+}
+
+@media screen and (max-height: 480px) and (orientation: landscape) {
+  .flashcard-container {
+    --flashcard-fixed-height: clamp(220px, calc(100dvh - 88px), 360px);
+    --flashcard-face-padding: 10px;
+    --flashcard-image-padding: 6px;
+    max-width: 100%;
+    padding-left: 8px;
+    padding-right: 8px;
+    margin-top: 2px;
+  }
+
+  body.fullscreen-mode .flashcard-container {
+    --flashcard-fixed-height: clamp(240px, calc(100dvh - 58px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 420px);
+    --flashcard-face-padding: 9px;
+    --flashcard-image-padding: 6px;
+  }
+
+  .flashcard-side-content.split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .flashcard-side-text {
+    --sb-rich-base-size: 17px;
+  }
 }
 
 .flashcard-help-text {
@@ -1565,11 +1644,6 @@ body.classify-dragging {
     right: -58px;
   }
 
-  .flashcard-card {
-    height: min(500px, 60vh);
-    min-height: 370px;
-  }
-
   .flashcard-side-content.split {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto;
@@ -1586,7 +1660,6 @@ body.classify-dragging {
 
   .flashcard-image-modal {
     width: min(96vw, 1200px);
-    height: min(88vh, calc(100vh - 24px));
     padding: 52px 12px 12px 12px;
   }
 
@@ -1673,10 +1746,6 @@ body.fullscreen-mode #questionImage {
 body.fullscreen-mode .flashcard-container,
 body.fullscreen-mode .flashcard-grade-row {
   max-width: 920px;
-}
-
-body.fullscreen-mode .flashcard-card {
-  height: min(470px, 63vh);
 }
 
 body.fullscreen-mode .flashcard-side-text {
@@ -1801,20 +1870,11 @@ body.fullscreen-mode .hint-overlay {
       width: 96vw !important;
       height: min(890px, calc(100svh - 44px)) !important;
     }
-
-    body.fullscreen-mode:has(#flashcardContainer) .flashcard-card {
-      height: min(550px, 62vh);
-      min-height: 360px;
-    }
   }
 }
 
 @media (orientation: landscape) {
   @supports (-webkit-touch-callout: none) {
-    .flashcard-card {
-      height: min(360px, 42vh);
-      min-height: 190px;
-    }
 
     .flashcard-container {
       margin-top: 4px;
@@ -1828,19 +1888,11 @@ body.fullscreen-mode .hint-overlay {
       grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
       gap: 14px;
     }
-
-    .flashcard-side-image {
-      max-height: 220px;
-    }
   }
 }
 
 @media (orientation: landscape) {
   @supports (-webkit-touch-callout: none) {
-    body.fullscreen-mode .flashcard-card {
-      height: min(490px, 57vh);
-      min-height: 250px;
-    }
 
     body.fullscreen-mode .flashcard-container {
       margin-top: 4px;
@@ -1848,10 +1900,6 @@ body.fullscreen-mode .hint-overlay {
 
     body.fullscreen-mode .flashcard-grade-row {
       margin-top: 6px;
-    }
-
-    body.fullscreen-mode .flashcard-side-image {
-      max-height: 220px;
     }
 
     body.fullscreen-mode .flashcard-side-content.split {
@@ -2068,16 +2116,6 @@ body.fullscreen-mode .hint-overlay {
     flex: 1;
   }
 
-  .flashcard-card {
-    height: min(62svh, 560px);
-    min-height: 360px;
-  }
-
-  body.fullscreen-mode .flashcard-card {
-    height: min(74svh, 700px);
-    min-height: 460px;
-  }
-
   .flashcard-side-text {
     font-size: 20px;
   }
@@ -2092,15 +2130,9 @@ body.fullscreen-mode .hint-overlay {
     text-align: center;
   }
 
-  .flashcard-side-image {
-    max-height: 240px;
-  }
-
   .flashcard-grade-btn {
     width: 34px;
-    height: 34px;
     min-width: 34px;
-    min-height: 34px;
     font-size: 16px;
   }
 
@@ -2395,16 +2427,6 @@ body.fullscreen-mode .hint-overlay {
     margin-top: 6px;
   }
 
-  .flashcard-card {
-    height: min(56svh, 320px);
-    min-height: 220px;
-  }
-
-  body.fullscreen-mode .flashcard-card {
-    height: min(64svh, 360px);
-    min-height: 260px;
-  }
-
   .flashcard-side-text {
     font-size: 17px;
   }
@@ -2414,15 +2436,9 @@ body.fullscreen-mode .hint-overlay {
     gap: 10px;
   }
 
-  .flashcard-side-image {
-    max-height: 150px;
-  }
-
   .flashcard-grade-btn {
     width: 30px;
-    height: 30px;
     min-width: 30px;
-    min-height: 30px;
     font-size: 14px;
   }
 
@@ -2637,16 +2653,6 @@ input {
     min-height: 0;
   }
 
-  .flashcard-card {
-    height: min(72svh, 680px);
-    min-height: 420px;
-  }
-
-  body.fullscreen-mode .flashcard-card {
-    height: min(80svh, 760px);
-    min-height: 500px;
-  }
-
   .flashcard-swipe-feedback {
     top: 12px;
     max-width: calc(100% - 24px);
@@ -2656,7 +2662,6 @@ input {
 
   .flashcard-image-modal {
     width: calc(100vw - 12px);
-    height: calc(100svh - 12px);
     padding: 50px 8px 8px 8px;
   }
 
@@ -2739,16 +2744,6 @@ input {
     min-height: 0;
   }
 
-  .flashcard-card {
-    height: min(64svh, 340px);
-    min-height: 250px;
-  }
-
-  body.fullscreen-mode .flashcard-card {
-    height: min(72svh, 390px);
-    min-height: 280px;
-  }
-
   .flashcard-swipe-feedback {
     top: 10px;
     max-width: calc(100% - 20px);
@@ -2758,7 +2753,6 @@ input {
 
   .flashcard-image-modal {
     width: calc(100vw - 10px);
-    height: calc(100svh - 10px);
     padding: 48px 8px 8px 8px;
   }
 
@@ -2871,16 +2865,6 @@ input {
     padding-left: 6px;
     padding-right: 6px;
     margin-top: 4px;
-  }
-
-  .flashcard-card {
-    height: min(68svh, 360px);
-    min-height: 250px;
-  }
-
-  body.fullscreen-mode .flashcard-card {
-    height: min(74svh, 400px);
-    min-height: 280px;
   }
 }
 
@@ -3002,16 +2986,6 @@ input {
     font-size: 12px;
   }
 
-  .flashcard-card {
-    height: min(62svh, 350px);
-    min-height: 240px;
-  }
-
-  body.fullscreen-mode .flashcard-card {
-    height: min(70svh, 390px);
-    min-height: 270px;
-  }
-
   #questionText {
     width: 100%;
     max-width: 100%;
@@ -3031,11 +3005,6 @@ input {
 
   body.fullscreen-mode .progress-bar-row {
     width: 350px;
-  }
-
-  body.fullscreen-mode .flashcard-card {
-    height: min(80svh, 420px);
-    min-height: 300px;
   }
 }  
 /* ===== Touch-device color-state sync only ===== */
@@ -7920,34 +7889,6 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   opacity: 1;
 }
 
-/* Phase 22FE: increase flashcard image inner gutter by 5 more pixels while preserving contain/no-crop behavior. */
-.flashcard-side-image-wrap {
-  padding: 13px;
-}
-
-.flashcard-side-content.image-only .flashcard-side-image-wrap {
-  padding: 11px;
-}
-
-.flashcard-side-image-frame {
-  max-width: 100%;
-  max-height: 100%;
-}
-
-.flashcard-side-content.image-only .flashcard-side-image {
-  max-height: min(420px, 100%);
-}
-
-.flashcard-side-content.split .flashcard-side-image {
-  max-height: min(320px, 100%);
-}
-
-@media (max-width: 700px), (max-height: 700px), (orientation: landscape) {
-  .flashcard-side-image-wrap,
-  .flashcard-side-content.image-only .flashcard-side-image-wrap {
-    padding: 11px;
-  }
-}
 
 /* Phase 22FG: keep flashcard list image controls in the same header row as Focus. */
 .studio-flashcard-focus-row {
@@ -8068,34 +8009,6 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   }
 }
 
-/* Phase 22FK: image-only flashcards use a true contain box so the full image is never cropped. */
-.flashcard-side-content.image-only {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-.flashcard-side-content.image-only .flashcard-side-image-wrap {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.flashcard-side-content.image-only .flashcard-side-image-frame {
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-}
-
-.flashcard-side-content.image-only .flashcard-side-image {
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
 
 
 .flashcard-side-image-frame {
