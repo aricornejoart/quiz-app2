@@ -1535,37 +1535,42 @@ MODIFICATION RULES FOR THIS APP
   <div id="studioImageEditorOverlay" class="studio-image-editor-overlay hidden" aria-hidden="true">
     <div class="studio-image-editor-modal" role="dialog" aria-modal="true" aria-labelledby="studioImageEditorTitle">
       <div class="studio-image-editor-header">
-        <div>
+        <div class="studio-image-editor-title-wrap">
           <div id="studioImageEditorTitle" class="studio-image-editor-title">Edit Image</div>
           <div id="studioImageEditorSubtitle" class="studio-image-editor-subtitle" hidden></div>
+        </div>
+        <div class="studio-image-editor-toolbar" aria-label="Image editing tools">
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool active" data-image-editor-tool="crop">Crop</button>
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-rect">Blur Box</button>
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-oval">Blur Oval</button>
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="arrow">Arrow</button>
+          <label class="studio-image-editor-rgb-control" title="Arrow RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow RGB color"></label>
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" hidden>Labels</button>
+          <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
+          <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
+          <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>
         </div>
         <button id="studioImageEditorCloseBtn" class="studio-image-editor-close" type="button" aria-label="Close image editor">✕</button>
       </div>
 
-      <div class="studio-image-editor-toolbar" aria-label="Image editing tools">
-        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool active" data-image-editor-tool="crop">Crop</button>
-        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-rect">Blur Box</button>
-        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-oval">Blur Oval</button>
-        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool studio-image-arrow-tool red" data-image-editor-tool="arrow-red">Red Arrow</button>
-        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool studio-image-arrow-tool green" data-image-editor-tool="arrow-green">Green Arrow</button>
-        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool studio-image-arrow-tool blue" data-image-editor-tool="arrow-blue">Blue Arrow</button>
-        <label class="studio-image-editor-rgb-control" title="Custom RGB arrow color">
-          <span>RGB</span>
-          <input id="studioImageEditorArrowColorInput" type="color" value="#ef4444" aria-label="Custom arrow color">
-        </label>
-        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool studio-image-arrow-tool rgb" data-image-editor-tool="arrow-custom">RGB Arrow</button>
-      </div>
-
       <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
-      <div class="studio-image-editor-canvas-wrap">
-        <canvas id="studioImageEditorCanvas" class="studio-image-editor-canvas"></canvas>
+      <div class="studio-image-editor-workspace">
+        <div class="studio-image-editor-canvas-wrap">
+          <canvas id="studioImageEditorCanvas" class="studio-image-editor-canvas"></canvas>
+        </div>
+        <div id="studioImageEditorLabelPanel" class="studio-image-editor-label-panel hidden" aria-label="Image labels">
+          <div class="studio-image-editor-label-panel-header">
+            <div class="studio-image-editor-label-panel-title">Labels</div>
+            <div class="studio-image-editor-label-panel-actions">
+              <button id="studioImageEditorAddLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Label</button>
+              <button id="studioImageEditorRemoveLastLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last</button>
+            </div>
+          </div>
+          <div id="studioImageEditorLabelList" class="studio-image-editor-label-list"></div>
+        </div>
       </div>
 
       <div class="studio-image-editor-actions">
-        <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
-        <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
-        <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>
-        <span class="studio-image-editor-action-spacer"></span>
         <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
         <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
       </div>
