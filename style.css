@@ -1242,7 +1242,7 @@ body.classify-dragging {
 
 /* Phase 22FU: iPad portrait flashcards stack text above image without changing iPhone or desktop. */
 body.ipad-portrait-flashcard-layout .flashcard-container {
-  --flashcard-fixed-height: clamp(560px, calc(100dvh - 154px), 860px);
+  --flashcard-fixed-height: clamp(520px, calc(100dvh - 194px), 820px);
   --flashcard-face-padding: 16px;
   --flashcard-image-padding: 8px;
   max-width: min(94vw, 920px);
@@ -1251,7 +1251,7 @@ body.ipad-portrait-flashcard-layout .flashcard-container {
 }
 
 body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
-  --flashcard-fixed-height: clamp(650px, calc(100dvh - 86px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 980px);
+  --flashcard-fixed-height: clamp(610px, calc(100dvh - 126px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 940px);
   --flashcard-face-padding: 14px;
   --flashcard-image-padding: 7px;
 }
@@ -1281,6 +1281,16 @@ body.ipad-portrait-flashcard-layout .flashcard-side-image {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+/* Phase 22FV: iPad landscape flashcards get 40px more card height than the shared baseline. */
+body.ipad-landscape-flashcard-layout .flashcard-container {
+  --flashcard-fixed-height: min(420px, calc(100dvh - 130px));
+  max-width: min(94vw, 980px);
+}
+
+body.fullscreen-mode.ipad-landscape-flashcard-layout .flashcard-container {
+  --flashcard-fixed-height: min(460px, calc(100dvh - 74px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
 }
 
 @media screen and (max-height: 480px) and (orientation: landscape) {
