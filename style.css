@@ -1266,64 +1266,54 @@ body.classify-dragging {
   }
 }
 
-/* Phase 22QA: restore 22EJ-style iPad flashcard sizing without custom measured iPad patches. */
-@media screen and (min-width: 700px) and (max-width: 900px) and (orientation: portrait) {
-  body.active-question-flashcard .flashcard-container {
-    max-width: 100%;
-  }
-
-  body.active-question-flashcard .flashcard-card {
-    --flashcard-fixed-height: min(500px, 60vh);
-    min-height: 370px;
-  }
-
-  body.fullscreen-mode.active-question-flashcard .flashcard-card {
-    --flashcard-fixed-height: min(550px, 62vh);
-    min-height: 360px;
-  }
-
-  body.active-question-flashcard .flashcard-side-content.split {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 0.34fr) minmax(0, 0.66fr);
-    gap: 12px;
-  }
-
-  body.active-question-flashcard .flashcard-side-text {
-    --sb-rich-base-size: 21px;
-    text-align: center;
-  }
-
-  body.active-question-flashcard .flashcard-side-content.split .flashcard-side-text {
-    text-align: center;
-  }
+/* Phase 22QC: restore 22EJ-style iPad flashcard sizing through verified JS classes, not brittle media matching. */
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-container {
+  max-width: 100%;
 }
 
-@media screen and (min-width: 900px) and (max-width: 1400px) and (min-height: 600px) and (orientation: landscape) {
-  @supports (-webkit-touch-callout: none) {
-    body.active-question-flashcard .flashcard-card {
-      --flashcard-fixed-height: min(360px, 42vh);
-      min-height: 190px;
-    }
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-card {
+  --flashcard-fixed-height: min(500px, 60vh);
+  min-height: 370px;
+}
 
-    body.fullscreen-mode.active-question-flashcard .flashcard-card {
-      --flashcard-fixed-height: min(490px, 57vh);
-      min-height: 250px;
-    }
+body.fullscreen-mode.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-card {
+  --flashcard-fixed-height: min(550px, 62vh);
+  min-height: 360px;
+}
 
-    body.active-question-flashcard .flashcard-container {
-      margin-top: 4px;
-    }
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-content.split {
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 0.34fr) minmax(0, 0.66fr);
+  gap: 12px;
+}
 
-    body.active-question-flashcard .flashcard-side-content.split {
-      grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
-      grid-template-rows: minmax(0, 1fr);
-      gap: 14px;
-    }
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-text {
+  --sb-rich-base-size: 21px;
+  text-align: center;
+}
 
-    body.active-question-flashcard .flashcard-side-image {
-      max-height: 100%;
-    }
-  }
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-content.split .flashcard-side-text {
+  text-align: center;
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-card {
+  --flashcard-fixed-height: min(360px, 42vh);
+  min-height: 190px;
+}
+
+body.fullscreen-mode.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-card {
+  --flashcard-fixed-height: min(490px, 57vh);
+  min-height: 250px;
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-container {
+  margin-top: 4px;
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-side-content.split {
+  grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 14px;
 }
 
 .flashcard-help-text {
@@ -8294,19 +8284,19 @@ body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
 body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-image-zoom-btn,
 body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-side-image-label-layer {
-  opacity: 0;
-  visibility: hidden;
+  opacity: 0 !important;
+  visibility: hidden !important;
   pointer-events: none;
 }
 
 /* Phase 22FT: explicitly restore overlays on the active flashcard face after flip. */
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn,
 body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn {
-  display: inline-flex;
-  visibility: visible;
+  display: inline-flex !important;
+  visibility: visible !important;
   pointer-events: auto;
-  opacity: 0.72;
-  z-index: 7;
+  opacity: 0.78;
+  z-index: 20;
 }
 
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:hover,

@@ -14579,11 +14579,27 @@ function syncMultipleChoiceSplitLayoutMount() {
     }
 }
 
+function isIPadLikeFlashcardViewport() {
+    const viewportWidth = Math.round(window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0);
+    const viewportHeight = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0);
+    const shortSide = Math.min(viewportWidth, viewportHeight);
+    const longSide = Math.max(viewportWidth, viewportHeight);
+    const hasTouch = (navigator.maxTouchPoints || 0) >= 2 || window.matchMedia('(pointer: coarse)').matches;
+    return hasTouch && shortSide >= 700 && shortSide <= 1180 && longSide >= 900 && longSide <= 1400;
+}
+
 function updateViewportClasses() {
+    const isFlashcard = state.currentQuestionType === 'flashcard';
+    const isIPadFlashcard = isFlashcard && isIPadLikeFlashcardViewport();
+    const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
     document.body.classList.toggle('active-question-multiple-choice', state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams');
-    document.body.classList.toggle('active-question-flashcard', state.currentQuestionType === 'flashcard');
+    document.body.classList.toggle('active-question-flashcard', isFlashcard);
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
+    document.body.classList.toggle('ipad-flashcard-layout', isIPadFlashcard);
+    document.body.classList.toggle('ipad-flashcard-portrait', isIPadFlashcard && isPortrait);
+    document.body.classList.toggle('ipad-flashcard-landscape', isIPadFlashcard && !isPortrait);
     syncMultipleChoiceSplitLayoutMount();
 }
 
