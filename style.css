@@ -1239,38 +1239,39 @@ body.classify-dragging {
   }
 }
 
-/* iPad/tablet rule: size from available viewport height first; never use a minimum that can force overflow. */
+/* iPad/tablet flashcard guardrails — fixed target sizes per mode, with emergency viewport caps only. */
 @media screen and (hover: none) and (pointer: coarse) and (min-width: 700px) and (max-width: 1180px) and (min-height: 900px) and (orientation: portrait) {
   body.active-question-flashcard .container {
-    max-width: min(980px, 96vw);
-    padding-top: 12px;
+    max-width: min(940px, 96vw);
+    padding-top: 10px;
   }
 
   body.active-question-flashcard .top-bar {
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
   body.fullscreen-mode.active-question-flashcard .container {
-    max-width: min(1060px, 98vw);
+    max-width: min(980px, 98vw);
     padding-top: max(8px, env(safe-area-inset-top));
   }
 
   .flashcard-container {
-    --flashcard-fixed-height: clamp(520px, calc(100dvh - 250px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 780px);
+    --flashcard-fixed-height: min(660px, calc(100dvh - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     --flashcard-face-padding: 22px;
     --flashcard-image-padding: 12px;
-    max-width: min(900px, 96vw);
-    padding-left: 20px;
-    padding-right: 20px;
+    width: min(760px, calc(100vw - 36px));
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
     margin-top: 6px;
   }
 
   body.fullscreen-mode .flashcard-container {
-    --flashcard-fixed-height: clamp(600px, calc(100dvh - 156px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 920px);
+    --flashcard-fixed-height: min(760px, calc(100dvh - 128px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     --flashcard-face-padding: 20px;
     --flashcard-image-padding: 10px;
-    max-width: min(940px, 98vw);
+    width: min(800px, calc(100vw - 32px));
     margin-top: 4px;
   }
 
@@ -1292,26 +1293,28 @@ body.classify-dragging {
 @media screen and (hover: none) and (pointer: coarse) and (min-width: 900px) and (max-width: 1400px) and (min-height: 600px) and (orientation: landscape) {
   body.active-question-flashcard .container {
     max-width: min(1180px, 96vw);
+    padding-top: 8px;
   }
 
   body.fullscreen-mode.active-question-flashcard .container {
-    max-width: min(1280px, 98vw);
+    max-width: min(1240px, 98vw);
     padding-top: max(8px, env(safe-area-inset-top));
   }
 
   .flashcard-container {
-    --flashcard-fixed-height: clamp(340px, calc(100dvh - 210px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 560px);
+    --flashcard-fixed-height: min(440px, calc(100dvh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     --flashcard-face-padding: 20px;
     --flashcard-image-padding: 10px;
-    max-width: min(1060px, 96vw);
-    padding-left: 24px;
-    padding-right: 24px;
+    width: min(980px, calc(100vw - 52px));
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
     margin-top: 6px;
   }
 
   body.fullscreen-mode .flashcard-container {
-    --flashcard-fixed-height: clamp(360px, calc(100dvh - 140px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 620px);
-    max-width: min(1120px, 98vw);
+    --flashcard-fixed-height: min(500px, calc(100dvh - 108px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    width: min(1080px, calc(100vw - 44px));
     margin-top: 4px;
   }
 
