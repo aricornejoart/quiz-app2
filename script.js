@@ -14531,17 +14531,25 @@ function isNarrowIPhoneViewport() {
 
 
 function isIPadFlashcardSizingViewport() {
-    const portraitTablet = window.matchMedia('(hover: none) and (pointer: coarse) and (min-width: 700px) and (max-width: 1180px) and (min-height: 900px) and (orientation: portrait)').matches;
-    const landscapeTablet = window.matchMedia('(hover: none) and (pointer: coarse) and (min-width: 900px) and (max-width: 1400px) and (min-height: 600px) and (orientation: landscape)').matches;
-    return portraitTablet || landscapeTablet;
+    const viewportWidth = Math.round(window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0);
+    const viewportHeight = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0);
+    const shortSide = Math.min(viewportWidth, viewportHeight);
+    const longSide = Math.max(viewportWidth, viewportHeight);
+    const hasTabletTouch = (navigator.maxTouchPoints || 0) >= 2 || window.matchMedia('(pointer: coarse)').matches;
+
+    // iPad Safari can report pointer/hover differently in desktop mode or with accessories.
+    // Use the actual tablet-sized visible viewport plus touch capability instead of hover/pointer-only media.
+    return hasTabletTouch && shortSide >= 700 && shortSide <= 1180 && longSide >= 900 && longSide <= 1400;
 }
 
 function updateIPadFlashcardMeasuredSafeHeight(root = document) {
     const container = document.getElementById('flashcardContainer');
+    const card = document.getElementById('flashcardCard');
     if (!container) return;
 
     if (state.currentQuestionType !== 'flashcard' || !isIPadFlashcardSizingViewport()) {
         container.style.removeProperty('--flashcard-ipad-measured-safe-height');
+        card?.style.removeProperty('--flashcard-ipad-measured-safe-height');
         return;
     }
 
@@ -14550,13 +14558,15 @@ function updateIPadFlashcardMeasuredSafeHeight(root = document) {
     if (!viewportHeight || !Number.isFinite(rect.top)) return;
 
     const isFullscreen = document.body.classList.contains('fullscreen-mode');
-    const bottomReserve = isFullscreen ? 10 : 18;
+    const bottomReserve = isFullscreen ? 12 : 20;
     const renderedAvailableHeight = Math.floor(viewportHeight - Math.max(0, rect.top) - bottomReserve);
     const scaleY = getElementRenderedScaleY(container);
     const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
 
     if (!Number.isFinite(cssAvailableHeight) || cssAvailableHeight <= 0) return;
-    container.style.setProperty('--flashcard-ipad-measured-safe-height', `${cssAvailableHeight}px`);
+    const safeHeight = Math.max(180, cssAvailableHeight);
+    container.style.setProperty('--flashcard-ipad-measured-safe-height', `${safeHeight}px`);
+    card?.style.setProperty('--flashcard-ipad-measured-safe-height', `${safeHeight}px`);
 }
 
 function isMultipleChoiceSplitLayoutViewport() {
@@ -14610,10 +14620,17 @@ function syncMultipleChoiceSplitLayoutMount() {
 }
 
 function updateViewportClasses() {
+    const isFlashcard = state.currentQuestionType === 'flashcard';
+    const isIPadFlashcard = isFlashcard && isIPadFlashcardSizingViewport();
+    const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
     document.body.classList.toggle('active-question-multiple-choice', state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams');
-    document.body.classList.toggle('active-question-flashcard', state.currentQuestionType === 'flashcard');
+    document.body.classList.toggle('active-question-flashcard', isFlashcard);
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
+    document.body.classList.toggle('ipad-flashcard-layout', isIPadFlashcard);
+    document.body.classList.toggle('ipad-flashcard-portrait', isIPadFlashcard && isPortrait);
+    document.body.classList.toggle('ipad-flashcard-landscape', isIPadFlashcard && !isPortrait);
     syncMultipleChoiceSplitLayoutMount();
 }
 

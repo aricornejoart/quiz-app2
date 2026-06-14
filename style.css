@@ -1239,102 +1239,106 @@ body.classify-dragging {
   }
 }
 
-/* iPad/tablet flashcard guardrails — fixed target sizes per mode, capped by measured visible space. */
-@media screen and (hover: none) and (pointer: coarse) and (min-width: 700px) and (max-width: 1180px) and (min-height: 900px) and (orientation: portrait) {
-  body.active-question-flashcard .container {
-    max-width: min(940px, 96vw);
-    padding-top: 10px;
-  }
-
-  body.active-question-flashcard .top-bar {
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-
-  body.fullscreen-mode.active-question-flashcard .container {
-    max-width: min(980px, 98vw);
-    padding-top: max(8px, env(safe-area-inset-top));
-  }
-
-  .flashcard-container {
-    --flashcard-ipad-target-height: 660px;
-    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
-    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
-    --flashcard-face-padding: 22px;
-    --flashcard-image-padding: 12px;
-    width: min(760px, calc(100vw - 36px));
-    max-width: none;
-    padding-left: 0;
-    padding-right: 0;
-    margin-top: 6px;
-  }
-
-  body.fullscreen-mode .flashcard-container {
-    --flashcard-ipad-target-height: 760px;
-    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 128px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
-    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
-    --flashcard-face-padding: 20px;
-    --flashcard-image-padding: 10px;
-    width: min(800px, calc(100vw - 32px));
-    margin-top: 4px;
-  }
-
-  .flashcard-side-content.split {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 0.36fr) minmax(0, 0.64fr);
-    gap: 16px;
-  }
-
-  .flashcard-side-content.split .flashcard-side-text {
-    text-align: center;
-  }
-
-  .flashcard-side-text {
-    --sb-rich-base-size: 24px;
-  }
+/* iPad flashcard guardrails — fixed target sizes per mode, capped by measured visible space.
+   Critical: reset the app's default 1.5x desktop scale on iPad flashcards so the card cannot render larger than its CSS size. */
+body.ipad-flashcard-layout {
+  padding: 12px;
+  min-height: 100svh;
+  overflow-x: hidden;
 }
 
-@media screen and (hover: none) and (pointer: coarse) and (min-width: 900px) and (max-width: 1400px) and (min-height: 600px) and (orientation: landscape) {
-  body.active-question-flashcard .container {
-    max-width: min(1180px, 96vw);
-    padding-top: 8px;
-  }
+body.ipad-flashcard-layout .container {
+  transform: none;
+  width: 100%;
+  max-width: min(980px, calc(100vw - 24px));
+  padding: 14px;
+  box-sizing: border-box;
+}
 
-  body.fullscreen-mode.active-question-flashcard .container {
-    max-width: min(1240px, 98vw);
-    padding-top: max(8px, env(safe-area-inset-top));
-  }
+body.ipad-flashcard-layout .quiz-area {
+  flex-direction: column;
+  gap: 10px;
+}
 
-  .flashcard-container {
-    --flashcard-ipad-target-height: 440px;
-    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
-    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
-    --flashcard-face-padding: 20px;
-    --flashcard-image-padding: 10px;
-    width: min(980px, calc(100vw - 52px));
-    max-width: none;
-    padding-left: 0;
-    padding-right: 0;
-    margin-top: 6px;
-  }
+body.ipad-flashcard-layout .question-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+}
 
-  body.fullscreen-mode .flashcard-container {
-    --flashcard-ipad-target-height: 500px;
-    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 108px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
-    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
-    width: min(1080px, calc(100vw - 44px));
-    margin-top: 4px;
-  }
+body.ipad-flashcard-layout .top-bar {
+  gap: 8px;
+  margin-bottom: 8px;
+}
 
-  .flashcard-side-content.split {
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-    grid-template-rows: minmax(0, 1fr);
-    gap: 24px;
-  }
+body.ipad-flashcard-layout .flashcard-container {
+  --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, 620px);
+  --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
+  --flashcard-face-padding: 20px;
+  --flashcard-image-padding: 10px;
+  max-width: none;
+  padding-left: 0;
+  padding-right: 0;
+  margin-top: 4px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
 
-  .flashcard-side-text {
-    --sb-rich-base-size: 24px;
-  }
+body.ipad-flashcard-layout.fullscreen-mode .container {
+  max-width: min(1120px, calc(100vw - 20px));
+  padding-top: max(10px, env(safe-area-inset-top));
+  padding-right: max(10px, env(safe-area-inset-right));
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  padding-left: max(10px, env(safe-area-inset-left));
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-container {
+  --flashcard-ipad-target-height: 660px;
+  width: min(760px, calc(100vw - 40px));
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-portrait.fullscreen-mode .flashcard-container {
+  --flashcard-ipad-target-height: 760px;
+  width: min(800px, calc(100vw - 36px));
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-content.split {
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 0.36fr) minmax(0, 0.64fr);
+  gap: 16px;
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-portrait .flashcard-side-content.split .flashcard-side-text {
+  text-align: center;
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape .container {
+  max-width: min(1180px, calc(100vw - 24px));
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape.fullscreen-mode .container {
+  max-width: min(1240px, calc(100vw - 20px));
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-container {
+  --flashcard-ipad-target-height: 440px;
+  width: min(980px, calc(100vw - 52px));
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape.fullscreen-mode .flashcard-container {
+  --flashcard-ipad-target-height: 500px;
+  width: min(1080px, calc(100vw - 44px));
+}
+
+body.ipad-flashcard-layout.ipad-flashcard-landscape .flashcard-side-content.split {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 24px;
+}
+
+body.ipad-flashcard-layout .flashcard-side-text {
+  --sb-rich-base-size: 24px;
 }
 
 @media screen and (max-height: 480px) and (orientation: landscape) {
@@ -1886,6 +1890,10 @@ body.fullscreen-mode #questionImage {
 body.fullscreen-mode .flashcard-container,
 body.fullscreen-mode .flashcard-grade-row {
   max-width: 920px;
+}
+
+body.ipad-flashcard-layout.fullscreen-mode .flashcard-container {
+  max-width: none;
 }
 
 body.fullscreen-mode .flashcard-side-text {
