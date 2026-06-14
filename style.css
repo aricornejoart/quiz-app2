@@ -1239,6 +1239,92 @@ body.classify-dragging {
   }
 }
 
+@media screen and (hover: none) and (pointer: coarse) and (min-width: 700px) and (max-width: 1180px) and (min-height: 900px) and (orientation: portrait) {
+  body.active-question-flashcard .container {
+    max-width: min(980px, 96vw);
+    padding-top: 12px;
+  }
+
+  body.active-question-flashcard .top-bar {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  body.fullscreen-mode.active-question-flashcard .container {
+    max-width: min(1060px, 98vw);
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+
+  .flashcard-container {
+    --flashcard-fixed-height: clamp(660px, calc(100dvh - 210px), 980px);
+    --flashcard-face-padding: 22px;
+    --flashcard-image-padding: 12px;
+    max-width: min(920px, 96vw);
+    padding-left: 20px;
+    padding-right: 20px;
+    margin-top: 6px;
+  }
+
+  body.fullscreen-mode .flashcard-container {
+    --flashcard-fixed-height: clamp(760px, calc(100dvh - 118px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 1160px);
+    --flashcard-face-padding: 20px;
+    --flashcard-image-padding: 10px;
+    max-width: min(980px, 98vw);
+    margin-top: 4px;
+  }
+
+  .flashcard-side-content.split {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 0.36fr) minmax(0, 0.64fr);
+    gap: 16px;
+  }
+
+  .flashcard-side-content.split .flashcard-side-text {
+    text-align: center;
+  }
+
+  .flashcard-side-text {
+    --sb-rich-base-size: 24px;
+  }
+}
+
+@media screen and (hover: none) and (pointer: coarse) and (min-width: 900px) and (max-width: 1400px) and (min-height: 600px) and (orientation: landscape) {
+  body.active-question-flashcard .container {
+    max-width: min(1180px, 96vw);
+  }
+
+  body.fullscreen-mode.active-question-flashcard .container {
+    max-width: min(1280px, 98vw);
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+
+  .flashcard-container {
+    --flashcard-fixed-height: clamp(440px, calc(100dvh - 190px), 700px);
+    --flashcard-face-padding: 20px;
+    --flashcard-image-padding: 10px;
+    max-width: min(1120px, 96vw);
+    padding-left: 24px;
+    padding-right: 24px;
+    margin-top: 6px;
+  }
+
+  body.fullscreen-mode .flashcard-container {
+    --flashcard-fixed-height: clamp(520px, calc(100dvh - 104px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 780px);
+    max-width: min(1220px, 98vw);
+    margin-top: 4px;
+  }
+
+  .flashcard-side-content.split {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .flashcard-side-text {
+    --sb-rich-base-size: 24px;
+  }
+}
+
 @media screen and (max-height: 480px) and (orientation: landscape) {
   .flashcard-container {
     --flashcard-fixed-height: clamp(220px, calc(100dvh - 88px), 360px);
@@ -1673,30 +1759,30 @@ body.classify-dragging {
     grid-template-rows: minmax(220px, 1fr) minmax(220px, 1fr);
   }
 
-  .flashcard-container,
-  .flashcard-grade-row {
+  body:not(.active-question-flashcard) .flashcard-container,
+  body:not(.active-question-flashcard) .flashcard-grade-row {
     max-width: 100%;
   }
 
-  .flashcard-side-btn.left {
+  body:not(.active-question-flashcard) .flashcard-side-btn.left {
     left: -58px;
   }
 
-  .flashcard-side-btn.right {
+  body:not(.active-question-flashcard) .flashcard-side-btn.right {
     right: -58px;
   }
 
-  .flashcard-side-content.split {
+  body:not(.active-question-flashcard) .flashcard-side-content.split {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto;
   }
 
-  .flashcard-side-text {
-    font-size: 21px;
+  body:not(.active-question-flashcard) .flashcard-side-text {
+    --sb-rich-base-size: 21px;
     text-align: center;
   }
 
-  .flashcard-side-content.split .flashcard-side-text {
+  body:not(.active-question-flashcard) .flashcard-side-content.split .flashcard-side-text {
     text-align: center;
   }
 
@@ -1915,7 +2001,7 @@ body.fullscreen-mode .hint-overlay {
   }
 }
 
-@media (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   @supports (-webkit-touch-callout: none) {
 
     .flashcard-container {
@@ -1933,7 +2019,7 @@ body.fullscreen-mode .hint-overlay {
   }
 }
 
-@media (orientation: landscape) {
+@media screen and (max-height: 480px) and (orientation: landscape) {
   @supports (-webkit-touch-callout: none) {
 
     body.fullscreen-mode .flashcard-container {

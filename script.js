@@ -17847,6 +17847,11 @@ function showFlashcard(q) {
 
     const cardInner = document.createElement('div');
     cardInner.className = 'flashcard-card-inner';
+    cardInner.addEventListener('transitionend', event => {
+        if (event.propertyName === 'transform') {
+            queueFlashcardImageOverlaySync(card);
+        }
+    });
 
     cardInner.appendChild(buildFlashcardFace(frontSide, 'front'));
     cardInner.appendChild(buildFlashcardFace(backSide, 'back'));
