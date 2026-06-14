@@ -1239,7 +1239,7 @@ body.classify-dragging {
   }
 }
 
-/* iPad/tablet flashcard guardrails — fixed target sizes per mode, with emergency viewport caps only. */
+/* iPad/tablet flashcard guardrails — fixed target sizes per mode, capped by measured visible space. */
 @media screen and (hover: none) and (pointer: coarse) and (min-width: 700px) and (max-width: 1180px) and (min-height: 900px) and (orientation: portrait) {
   body.active-question-flashcard .container {
     max-width: min(940px, 96vw);
@@ -1257,7 +1257,9 @@ body.classify-dragging {
   }
 
   .flashcard-container {
-    --flashcard-fixed-height: min(660px, calc(100dvh - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-ipad-target-height: 660px;
+    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
     --flashcard-face-padding: 22px;
     --flashcard-image-padding: 12px;
     width: min(760px, calc(100vw - 36px));
@@ -1268,7 +1270,9 @@ body.classify-dragging {
   }
 
   body.fullscreen-mode .flashcard-container {
-    --flashcard-fixed-height: min(760px, calc(100dvh - 128px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-ipad-target-height: 760px;
+    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 128px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
     --flashcard-face-padding: 20px;
     --flashcard-image-padding: 10px;
     width: min(800px, calc(100vw - 32px));
@@ -1302,7 +1306,9 @@ body.classify-dragging {
   }
 
   .flashcard-container {
-    --flashcard-fixed-height: min(440px, calc(100dvh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-ipad-target-height: 440px;
+    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
     --flashcard-face-padding: 20px;
     --flashcard-image-padding: 10px;
     width: min(980px, calc(100vw - 52px));
@@ -1313,7 +1319,9 @@ body.classify-dragging {
   }
 
   body.fullscreen-mode .flashcard-container {
-    --flashcard-fixed-height: min(500px, calc(100dvh - 108px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-ipad-target-height: 500px;
+    --flashcard-ipad-safe-height: var(--flashcard-ipad-measured-safe-height, calc(100dvh - 108px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    --flashcard-fixed-height: min(var(--flashcard-ipad-target-height), var(--flashcard-ipad-safe-height));
     width: min(1080px, calc(100vw - 44px));
     margin-top: 4px;
   }

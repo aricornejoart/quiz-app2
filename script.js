@@ -14529,6 +14529,36 @@ function isNarrowIPhoneViewport() {
     return window.matchMedia('(max-width: 440px), (max-height: 440px) and (orientation: landscape)').matches;
 }
 
+
+function isIPadFlashcardSizingViewport() {
+    const portraitTablet = window.matchMedia('(hover: none) and (pointer: coarse) and (min-width: 700px) and (max-width: 1180px) and (min-height: 900px) and (orientation: portrait)').matches;
+    const landscapeTablet = window.matchMedia('(hover: none) and (pointer: coarse) and (min-width: 900px) and (max-width: 1400px) and (min-height: 600px) and (orientation: landscape)').matches;
+    return portraitTablet || landscapeTablet;
+}
+
+function updateIPadFlashcardMeasuredSafeHeight(root = document) {
+    const container = document.getElementById('flashcardContainer');
+    if (!container) return;
+
+    if (state.currentQuestionType !== 'flashcard' || !isIPadFlashcardSizingViewport()) {
+        container.style.removeProperty('--flashcard-ipad-measured-safe-height');
+        return;
+    }
+
+    const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+    const rect = container.getBoundingClientRect();
+    if (!viewportHeight || !Number.isFinite(rect.top)) return;
+
+    const isFullscreen = document.body.classList.contains('fullscreen-mode');
+    const bottomReserve = isFullscreen ? 10 : 18;
+    const renderedAvailableHeight = Math.floor(viewportHeight - Math.max(0, rect.top) - bottomReserve);
+    const scaleY = getElementRenderedScaleY(container);
+    const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
+
+    if (!Number.isFinite(cssAvailableHeight) || cssAvailableHeight <= 0) return;
+    container.style.setProperty('--flashcard-ipad-measured-safe-height', `${cssAvailableHeight}px`);
+}
+
 function isMultipleChoiceSplitLayoutViewport() {
     return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 700px), (orientation: landscape)').matches;
 }
@@ -14657,6 +14687,7 @@ function handleViewportChange() {
     updateViewportClasses();
     applyResponsiveControlText();
     updateProgress();
+    updateIPadFlashcardMeasuredSafeHeight(document);
     fitFlashcardTextToFixedCard(document);
     queueFlashcardImageOverlaySync(document);
 }
@@ -17644,8 +17675,12 @@ function syncFlashcardImageOverlayBounds(root = document) {
 
 function queueFlashcardImageOverlaySync(root = document) {
     requestAnimationFrame(() => {
+        updateIPadFlashcardMeasuredSafeHeight(root);
         syncFlashcardImageOverlayBounds(root);
-        setTimeout(() => syncFlashcardImageOverlayBounds(root), 80);
+        setTimeout(() => {
+            updateIPadFlashcardMeasuredSafeHeight(root);
+            syncFlashcardImageOverlayBounds(root);
+        }, 80);
     });
 }
 
@@ -17888,6 +17923,7 @@ function showFlashcard(q) {
 
     enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
     setFlashcardInteractionEnabled(true);
+    updateIPadFlashcardMeasuredSafeHeight(container);
     fitFlashcardTextToFixedCard(container);
     queueFlashcardImageOverlaySync(container);
 }
@@ -21979,9 +22015,17 @@ window.addEventListener('orientationchange', handleViewportChange);
 window.addEventListener('orientationchange', queueOptionsScrollIndicatorUpdate);
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
-    window.visualViewport.addEventListener('resize', () => queueFlashcardImageOverlaySync(document));
+    window.visualViewport.addEventListener('resize', () => {
+        updateIPadFlashcardMeasuredSafeHeight(document);
+        fitFlashcardTextToFixedCard(document);
+        queueFlashcardImageOverlaySync(document);
+    });
     window.visualViewport.addEventListener('scroll', queueOptionsScrollIndicatorUpdate);
-    window.visualViewport.addEventListener('scroll', () => queueFlashcardImageOverlaySync(document));
+    window.visualViewport.addEventListener('scroll', () => {
+        updateIPadFlashcardMeasuredSafeHeight(document);
+        fitFlashcardTextToFixedCard(document);
+        queueFlashcardImageOverlaySync(document);
+    });
 }
 if (elements.optionsContainer) {
     elements.optionsContainer.addEventListener('scroll', updateOptionsScrollIndicators, { passive: true });
