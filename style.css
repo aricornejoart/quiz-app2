@@ -8239,4 +8239,27 @@ body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front 
   pointer-events: none;
 }
 
+/* Phase 22FT: explicitly restore overlays on the active flashcard face after flip. */
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn,
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn {
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 0.5;
+}
+
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:hover,
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:focus-visible,
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:active,
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn:hover,
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn:focus-visible,
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn:active {
+  opacity: 1;
+}
+
+body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-side-image-label-layer,
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-side-image-label-layer {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: none;
+}
 

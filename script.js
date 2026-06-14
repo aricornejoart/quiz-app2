@@ -17502,6 +17502,7 @@ function toggleFlashcardFlip() {
     if (card) {
         card.classList.toggle('is-flipped', state.flashcardFlipped);
         queueFlashcardImageOverlaySync(card);
+        setTimeout(() => queueFlashcardImageOverlaySync(card), 520);
     }
 }
 
