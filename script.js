@@ -14656,6 +14656,7 @@ function handleViewportChange() {
     applyResponsiveControlText();
     updateProgress();
     fitFlashcardTextToFixedCard(document);
+    queueFlashcardImageOverlaySync(document);
 }
 
 // ================= SETTINGS / FULLSCREEN UI =================
@@ -17498,6 +17499,7 @@ function toggleFlashcardFlip() {
     const card = document.getElementById('flashcardCard');
     if (card) {
         card.classList.toggle('is-flipped', state.flashcardFlipped);
+        queueFlashcardImageOverlaySync(card);
     }
 }
 
@@ -17543,6 +17545,7 @@ function buildFlashcardFace(sideData, faceClass) {
         img.className = 'flashcard-side-image';
         img.src = sideData.imageUrl;
         img.alt = `${sideData.sideName} image`;
+        img.addEventListener('load', () => queueFlashcardImageOverlaySync(face));
 
         const zoomBtn = document.createElement('button');
         zoomBtn.type = 'button';
@@ -17579,6 +17582,7 @@ function buildFlashcardFace(sideData, faceClass) {
 
         imageWrap.appendChild(imageFrame);
         content.appendChild(imageWrap);
+        queueFlashcardImageOverlaySync(face);
     }
 
     if (!hasText && !hasImage) {
@@ -17590,6 +17594,56 @@ function buildFlashcardFace(sideData, faceClass) {
 
     face.appendChild(content);
     return face;
+}
+
+function syncFlashcardImageFrameOverlayBounds(frame) {
+    if (!frame) return;
+    const img = frame.querySelector('.flashcard-side-image');
+    const labelLayer = frame.querySelector('.flashcard-side-image-label-layer');
+    const zoomBtn = frame.querySelector('.flashcard-image-zoom-btn');
+    if (!img) return;
+
+    const frameRect = frame.getBoundingClientRect();
+    const imageRect = img.getBoundingClientRect();
+    if (!frameRect.width || !frameRect.height || !imageRect.width || !imageRect.height) return;
+
+    const left = Math.max(0, imageRect.left - frameRect.left);
+    const top = Math.max(0, imageRect.top - frameRect.top);
+    const width = Math.min(frameRect.width, imageRect.width);
+    const height = Math.min(frameRect.height, imageRect.height);
+
+    frame.style.setProperty('--flashcard-image-visual-left', `${left}px`);
+    frame.style.setProperty('--flashcard-image-visual-top', `${top}px`);
+    frame.style.setProperty('--flashcard-image-visual-width', `${width}px`);
+    frame.style.setProperty('--flashcard-image-visual-height', `${height}px`);
+
+    if (labelLayer) {
+        labelLayer.style.left = `${left}px`;
+        labelLayer.style.top = `${top}px`;
+        labelLayer.style.width = `${width}px`;
+        labelLayer.style.height = `${height}px`;
+    }
+
+    if (zoomBtn) {
+        const buttonWidth = zoomBtn.offsetWidth || 34;
+        const buttonHeight = zoomBtn.offsetHeight || 34;
+        zoomBtn.style.left = `${Math.max(left + 4, left + width - buttonWidth - 8)}px`;
+        zoomBtn.style.top = `${Math.max(top + 4, top + 8)}px`;
+        zoomBtn.style.right = 'auto';
+    }
+}
+
+function syncFlashcardImageOverlayBounds(root = document) {
+    const scope = root?.querySelectorAll ? root : document;
+    const frames = Array.from(scope.querySelectorAll('.flashcard-side-image-frame'));
+    frames.forEach(syncFlashcardImageFrameOverlayBounds);
+}
+
+function queueFlashcardImageOverlaySync(root = document) {
+    requestAnimationFrame(() => {
+        syncFlashcardImageOverlayBounds(root);
+        setTimeout(() => syncFlashcardImageOverlayBounds(root), 80);
+    });
 }
 
 
@@ -17827,6 +17881,7 @@ function showFlashcard(q) {
     enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
     setFlashcardInteractionEnabled(true);
     fitFlashcardTextToFixedCard(container);
+    queueFlashcardImageOverlaySync(container);
 }
 
 // ================= HIERARCHY DRAG =================
@@ -21916,7 +21971,9 @@ window.addEventListener('orientationchange', handleViewportChange);
 window.addEventListener('orientationchange', queueOptionsScrollIndicatorUpdate);
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
+    window.visualViewport.addEventListener('resize', () => queueFlashcardImageOverlaySync(document));
     window.visualViewport.addEventListener('scroll', queueOptionsScrollIndicatorUpdate);
+    window.visualViewport.addEventListener('scroll', () => queueFlashcardImageOverlaySync(document));
 }
 if (elements.optionsContainer) {
     elements.optionsContainer.addEventListener('scroll', updateOptionsScrollIndicators, { passive: true });
