@@ -14591,18 +14591,20 @@ function restoreQuestionStarButtonLocation() {
     const button = elements.questionStarBtn;
     const quizControls = document.getElementById('quizControls');
     if (!button || !quizControls) return;
-    button.classList.remove('flashcard-corner-star-btn');
+    button.classList.remove('flashcard-menu-star-btn');
     if (button.parentElement !== quizControls) {
         quizControls.appendChild(button);
     }
 }
 
-function mountQuestionStarButtonOnFlashcard(card) {
+function mountQuestionStarButtonBesideStudyMenu() {
     const button = elements.questionStarBtn;
-    if (!button || !card) return;
-    button.classList.add('flashcard-corner-star-btn');
-    if (button.parentElement !== card) {
-        card.insertBefore(button, card.firstChild);
+    const menuButton = elements.studioHomeBtn;
+    const utilityControls = menuButton?.parentElement;
+    if (!button || !menuButton || !utilityControls) return;
+    button.classList.add('flashcard-menu-star-btn');
+    if (button.parentElement !== utilityControls || button.nextElementSibling !== menuButton) {
+        utilityControls.insertBefore(button, menuButton);
     }
 }
 
@@ -17840,7 +17842,7 @@ function showFlashcard(q) {
     if (state.flashcardFlipped) {
         card.classList.add('is-flipped');
     }
-    mountQuestionStarButtonOnFlashcard(card);
+    mountQuestionStarButtonBesideStudyMenu();
 
     const cardInner = document.createElement('div');
     cardInner.className = 'flashcard-card-inner';

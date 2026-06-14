@@ -419,6 +419,35 @@ body.fullscreen-mode .bottom-controls {
   transform: none;
 }
 
+
+/* Phase 22FS: flashcard star anchors beside the Study Mode hamburger menu. */
+.utility-controls .question-star-btn.flashcard-menu-star-btn {
+  position: static;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+  display: inline-flex;
+  margin: 0;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  align-self: flex-start;
+  box-shadow: none;
+}
+
+body.active-question-flashcard .utility-controls .question-star-btn.flashcard-menu-star-btn:not(.hidden) {
+  display: inline-flex !important;
+}
+
+body:not(.active-question-flashcard) .question-star-btn.flashcard-menu-star-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  font-size: 22px;
+}
+
 #questionText {
   max-width: var(--content-width);
   font-size: 14px;
@@ -8181,53 +8210,6 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   min-width: 0;
 }
 
-
-/* Phase 22FQ: flashcard-only star stays anchored to the card corner at the original size. */
-body.active-question-flashcard .flashcard-card > .question-star-btn.flashcard-corner-star-btn {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 8;
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  margin: 0;
-  padding: 0;
-  border-width: 1px;
-  font-size: 22px;
-  line-height: 1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
-}
-
-body.active-question-flashcard .flashcard-card > .question-star-btn.flashcard-corner-star-btn:hover,
-body.active-question-flashcard .flashcard-card > .question-star-btn.flashcard-corner-star-btn:focus-visible {
-  transform: scale(1.06);
-}
-
-body.active-question-flashcard .flashcard-card > .question-star-btn.flashcard-corner-star-btn:active {
-  transform: scale(0.96);
-}
-
-body.active-question-flashcard .flashcard-side-content.text-only {
-  padding: 20px 8px 8px 28px;
-  box-sizing: border-box;
-}
-
-body.active-question-flashcard .flashcard-side-content.split {
-  padding-top: 10px;
-  padding-left: 24px;
-  box-sizing: border-box;
-}
-
-body:not(.active-question-flashcard) .question-star-btn.flashcard-corner-star-btn {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  font-size: 22px;
-}
-
 /* Phase 22FR: keep flashcard overlays on the visible side only during flips. */
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front {
   z-index: 2;
@@ -8247,11 +8229,6 @@ body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front 
   pointer-events: none;
 }
 
-body.active-question-flashcard .flashcard-card.is-flipped > .question-star-btn.flashcard-corner-star-btn {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
 
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-image-zoom-btn,
 body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
@@ -8261,4 +8238,5 @@ body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front 
   visibility: hidden;
   pointer-events: none;
 }
+
 
