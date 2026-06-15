@@ -8322,3 +8322,39 @@ body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .
   pointer-events: none;
 }
 
+
+/* Phase 22FZ: iPad-safe flashcard zoom icon mirror.
+   iPad Safari can drop real buttons inside the 3D-flipping face after the transform settles,
+   so iPad uses a floating copy above the 3D card while desktop keeps the in-face button. */
+.flashcard-image-zoom-floating {
+  position: absolute;
+  z-index: 28;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: left, top, opacity;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-image-frame > .flashcard-image-zoom-btn:not(.flashcard-image-zoom-floating),
+body.ipad-landscape-flashcard-layout .flashcard-side-image-frame > .flashcard-image-zoom-btn:not(.flashcard-image-zoom-floating) {
+  display: none !important;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:not(.hidden),
+body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:not(.hidden) {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 0.92 !important;
+  pointer-events: auto !important;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:hover,
+body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:focus-visible,
+body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:active,
+body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:hover,
+body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:focus-visible,
+body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:active {
+  opacity: 1 !important;
+}
