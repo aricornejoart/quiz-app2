@@ -1251,7 +1251,7 @@ body.ipad-portrait-flashcard-layout .flashcard-container {
 }
 
 body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
-  --flashcard-fixed-height: clamp(450px, calc(100dvh - 286px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 780px);
+  --flashcard-fixed-height: clamp(400px, calc(100dvh - 336px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 730px);
   --flashcard-face-padding: 14px;
   --flashcard-image-padding: 7px;
 }
