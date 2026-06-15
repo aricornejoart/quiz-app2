@@ -17839,6 +17839,9 @@ function fitFlashcardTextToFixedCard(root = document) {
 
     requestAnimationFrame(() => {
         textNodes.forEach(fitOne);
+        // Phase 22GF: adaptive text/image sizing can change the image wrapper after
+        // font fitting, so resync the image stage after the text takes its final space.
+        queueFlashcardImageOverlaySync(root);
     });
 }
 

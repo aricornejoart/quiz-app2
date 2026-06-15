@@ -8379,3 +8379,109 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   right: 8px !important;
   left: auto !important;
 }
+
+
+/* Phase 22GF: adaptive flashcard text/image ratio.
+   Text keeps priority but is capped to half of the available flashcard space when
+   an image is present. The image wrapper receives every remaining pixel, while
+   the 22GD/22GE image-stage frame continues to own labels and the zoom button. */
+.flashcard-side-content.split {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: center;
+  gap: 18px;
+}
+
+.flashcard-side-content.split .flashcard-side-text {
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: 50%;
+  max-height: 100%;
+  min-width: 0;
+  align-self: center;
+  overflow: hidden;
+}
+
+.flashcard-side-content.split .flashcard-side-image-wrap {
+  flex: 1 1 50%;
+  width: auto;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.flashcard-side-content.split .flashcard-side-image-frame {
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .flashcard-side-content.split {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+  }
+
+  .flashcard-side-content.split .flashcard-side-text {
+    width: 100%;
+    max-width: 100%;
+    max-height: 50%;
+    align-self: stretch;
+  }
+
+  .flashcard-side-content.split .flashcard-side-image-wrap {
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+  }
+}
+
+@media screen and (max-height: 480px) and (orientation: landscape) {
+  .flashcard-side-content.split {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .flashcard-side-content.split .flashcard-side-text {
+    width: fit-content;
+    max-width: 50%;
+    max-height: 100%;
+    align-self: center;
+  }
+
+  .flashcard-side-content.split .flashcard-side-image-wrap {
+    flex: 1 1 50%;
+    width: auto;
+    height: 100%;
+  }
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-content.split {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-content.split .flashcard-side-text {
+  flex: 0 1 auto;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 50%;
+  align-self: stretch;
+  text-align: center;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-content.split .flashcard-side-image-wrap {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+body.ipad-portrait-flashcard-layout .flashcard-side-content.split .flashcard-side-image-frame {
+  max-width: 100%;
+  max-height: 100%;
+}
