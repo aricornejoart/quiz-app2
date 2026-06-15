@@ -1240,9 +1240,9 @@ body.classify-dragging {
 }
 
 
-/* Phase 22FU-22FW: iPad portrait flashcards stack text above image and use tuned fixed heights. */
+/* Phase 22FU-22FX: iPad portrait flashcards stack text above image and use tuned fixed heights. */
 body.ipad-portrait-flashcard-layout .flashcard-container {
-  --flashcard-fixed-height: clamp(440px, calc(100dvh - 274px), 740px);
+  --flashcard-fixed-height: clamp(360px, calc(100dvh - 354px), 660px);
   --flashcard-face-padding: 16px;
   --flashcard-image-padding: 8px;
   max-width: min(94vw, 920px);
@@ -1251,7 +1251,7 @@ body.ipad-portrait-flashcard-layout .flashcard-container {
 }
 
 body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
-  --flashcard-fixed-height: clamp(530px, calc(100dvh - 206px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 860px);
+  --flashcard-fixed-height: clamp(450px, calc(100dvh - 286px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 780px);
   --flashcard-face-padding: 14px;
   --flashcard-image-padding: 7px;
 }
