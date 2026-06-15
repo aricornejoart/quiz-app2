@@ -8285,3 +8285,97 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
 .flashcard-side-image-frame > .flashcard-image-zoom-btn:active {
   opacity: 1;
 }
+
+/* Phase 22GC: keep flashcard labels locked to the true visible image bounds everywhere.
+   Zoom overlay uses the full available modal viewport and the label layer is explicitly
+   synced by script.js to the rendered image rectangle after resize/orientation changes. */
+.flashcard-image-overlay {
+  padding-top: max(8px, env(safe-area-inset-top));
+  padding-right: max(8px, env(safe-area-inset-right));
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  padding-left: max(8px, env(safe-area-inset-left));
+}
+
+.flashcard-image-modal {
+  width: min(100%, 1600px);
+  height: calc(100dvh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)) - 16px);
+  max-height: calc(100dvh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)) - 16px);
+  display: flex;
+  flex-direction: column;
+  padding: 52px 10px 10px 10px;
+}
+
+.flashcard-image-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.flashcard-zoom-image-wrap {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.flashcard-zoom-image-wrap #flashcardZoomImage {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.flashcard-zoom-image-wrap .flashcard-zoom-label-layer {
+  inset: auto;
+  pointer-events: none;
+}
+
+@supports (height: 100svh) {
+  .flashcard-image-modal {
+    height: calc(100svh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)) - 16px);
+    max-height: calc(100svh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)) - 16px);
+  }
+}
+
+/* Phase 22GD: unified flashcard image stage.
+   The frame/wrap that owns the labels is sized to the actual contained image, so
+   saved label percentages always resolve against the image itself in normal,
+   fullscreen, zoom, portrait, landscape, desktop, phone, and iPad layouts. */
+.flashcard-side-image-frame.is-image-stage-sized,
+.flashcard-zoom-image-wrap.is-image-stage-sized {
+  flex: 0 0 auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.flashcard-side-image-frame.is-image-stage-sized .flashcard-side-image,
+.flashcard-zoom-image-wrap.is-image-stage-sized #flashcardZoomImage {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.flashcard-side-image-frame.is-image-stage-sized .flashcard-side-image-label-layer,
+.flashcard-zoom-image-wrap.is-image-stage-sized .flashcard-zoom-label-layer {
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  pointer-events: none;
+}
+
+.flashcard-side-image-frame.is-image-stage-sized > .flashcard-image-zoom-btn {
+  top: 8px !important;
+  right: 8px !important;
+  left: auto !important;
+}

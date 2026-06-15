@@ -209,6 +209,7 @@ MODIFICATION RULES FOR THIS APP
         flashcardFrontMode: 'term',
 
         flashcardImageZoomOpen: false,
+        flashcardImageFrameResizeObserver: null,
         currentQuestionType: '',
         optionsScroll: {
             resizeObserver: null,
@@ -14676,6 +14677,7 @@ function handleViewportChange() {
     updateProgress();
     fitFlashcardTextToFixedCard(document);
     queueFlashcardImageOverlaySync(document);
+    queueFlashcardZoomOverlayLabelSync();
 }
 
 // ================= SETTINGS / FULLSCREEN UI =================
@@ -15091,16 +15093,117 @@ function renderFlashcardZoomLabels(labels = []) {
         layer.innerHTML = '';
         layer.classList.add('hidden');
         layer.setAttribute('aria-hidden', 'true');
+        layer.style.removeProperty('left');
+        layer.style.removeProperty('top');
+        layer.style.removeProperty('width');
+        layer.style.removeProperty('height');
         elements.flashcardZoomImageWrap?.classList.remove('has-diagram-labels');
         return;
     }
 
     layer.innerHTML = safeLabels.map(item => `
-        <span class="diagram-study-label flashcard-zoom-label" style="left:${item.x}%; top:${item.y}%;">${renderMathChemTextToHtml(item.label)}</span>
+        <span class="diagram-study-label flashcard-zoom-label" style="left:${item.x}%; top:${item.y}%">${renderMathChemTextToHtml(item.label)}</span>
     `).join('');
     layer.classList.remove('hidden');
     layer.setAttribute('aria-hidden', 'false');
     elements.flashcardZoomImageWrap?.classList.add('has-diagram-labels');
+    queueFlashcardZoomOverlayLabelSync();
+}
+
+function getElementContentBoxSize(element) {
+    if (!element) return null;
+
+    // Use layout CSS pixels, not getBoundingClientRect() rendered pixels.
+    // getBoundingClientRect() includes transforms/scaling on the app container,
+    // which made fullscreen flashcard label stages drift away from the image.
+    const layoutWidth = element.clientWidth || element.offsetWidth || 0;
+    const layoutHeight = element.clientHeight || element.offsetHeight || 0;
+
+    if (!layoutWidth || !layoutHeight) {
+        const rect = element.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return {
+            width: Math.max(0, rect.width),
+            height: Math.max(0, rect.height)
+        };
+    }
+
+    const style = window.getComputedStyle(element);
+    const paddingX = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    const paddingY = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    return {
+        width: Math.max(0, layoutWidth - paddingX),
+        height: Math.max(0, layoutHeight - paddingY)
+    };
+}
+
+function getContainedImageStageSize(container, img) {
+    if (!container || !img || !img.complete || !img.naturalWidth || !img.naturalHeight) return null;
+    const box = getElementContentBoxSize(container);
+    if (!box || !box.width || !box.height) return null;
+
+    const imageRatio = img.naturalWidth / img.naturalHeight;
+    const boxRatio = box.width / box.height;
+    let width = box.width;
+    let height = box.height;
+
+    if (boxRatio > imageRatio) {
+        height = box.height;
+        width = height * imageRatio;
+    } else {
+        width = box.width;
+        height = width / imageRatio;
+    }
+
+    return {
+        width: Math.max(1, Math.min(box.width, width)),
+        height: Math.max(1, Math.min(box.height, height))
+    };
+}
+
+function clearStageLabelLayerOffsets(layer) {
+    if (!layer) return;
+    layer.style.removeProperty('left');
+    layer.style.removeProperty('top');
+    layer.style.removeProperty('width');
+    layer.style.removeProperty('height');
+}
+
+function applyImageStageSize(stage, img, container) {
+    const size = getContainedImageStageSize(container, img);
+    if (!stage || !size) return false;
+    stage.style.width = `${size.width}px`;
+    stage.style.height = `${size.height}px`;
+    stage.classList.add('is-image-stage-sized');
+    return true;
+}
+
+function clearImageStageSize(stage) {
+    if (!stage) return;
+    stage.style.removeProperty('width');
+    stage.style.removeProperty('height');
+    stage.classList.remove('is-image-stage-sized');
+}
+
+function syncFlashcardZoomOverlayLabelBounds() {
+    if (!state.flashcardImageZoomOpen) return;
+    const wrap = elements.flashcardZoomImageWrap;
+    const img = elements.flashcardZoomImage;
+    const viewport = elements.flashcardImageViewport;
+    const layer = ensureFlashcardZoomLabelLayer();
+    if (!wrap || !img || !viewport || !layer) return;
+    if (!img.complete || !img.naturalWidth || !img.naturalHeight) return;
+
+    applyImageStageSize(wrap, img, viewport);
+    clearStageLabelLayerOffsets(layer);
+}
+
+function queueFlashcardZoomOverlayLabelSync() {
+    requestAnimationFrame(() => {
+        syncFlashcardZoomOverlayLabelBounds();
+        setTimeout(syncFlashcardZoomOverlayLabelBounds, 80);
+        setTimeout(syncFlashcardZoomOverlayLabelBounds, 240);
+    });
 }
 
 function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
@@ -15110,6 +15213,7 @@ function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
         elements.flashcardZoomImageWrap = elements.flashcardZoomImage.parentElement;
     }
 
+    clearImageStageSize(elements.flashcardZoomImageWrap);
     elements.flashcardZoomImage.src = src;
     elements.flashcardZoomImage.alt = alt;
     renderFlashcardZoomLabels(options.diagramLabels || []);
@@ -15122,6 +15226,13 @@ function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
     elements.flashcardImageOverlay.classList.remove('hidden');
     elements.flashcardImageOverlay.setAttribute('aria-hidden', 'false');
     state.flashcardImageZoomOpen = true;
+
+    if (elements.flashcardZoomImage.complete && elements.flashcardZoomImage.naturalWidth) {
+        queueFlashcardZoomOverlayLabelSync();
+    } else {
+        elements.flashcardZoomImage.addEventListener('load', queueFlashcardZoomOverlayLabelSync, { once: true });
+    }
+
     syncBodyScrollLock();
     updateNavigationButtons();
 }
@@ -15133,6 +15244,7 @@ function closeFlashcardImageOverlay() {
     elements.flashcardImageOverlay.setAttribute('aria-hidden', 'true');
     elements.flashcardZoomImage.src = '';
     elements.flashcardZoomImage.alt = 'Flashcard image';
+    clearImageStageSize(elements.flashcardZoomImageWrap);
     renderFlashcardZoomLabels([]);
     state.flashcardImageZoomOpen = false;
     syncBodyScrollLock();
@@ -17616,80 +17728,28 @@ function buildFlashcardFace(sideData, faceClass) {
     return face;
 }
 
-function getFlashcardImageVisualBounds(frame, img) {
-    const frameRect = frame.getBoundingClientRect();
-    const imageRect = img.getBoundingClientRect();
-    if (!frameRect.width || !frameRect.height || !imageRect.width || !imageRect.height) return null;
-
-    const fitStyle = window.getComputedStyle(img).objectFit;
-    const hasNaturalSize = img.naturalWidth > 0 && img.naturalHeight > 0;
-    if (fitStyle === 'contain' && hasNaturalSize) {
-        const boxWidth = imageRect.width;
-        const boxHeight = imageRect.height;
-        const imageRatio = img.naturalWidth / img.naturalHeight;
-        const boxRatio = boxWidth / boxHeight;
-        let visualWidth = boxWidth;
-        let visualHeight = boxHeight;
-
-        if (boxRatio > imageRatio) {
-            visualHeight = boxHeight;
-            visualWidth = visualHeight * imageRatio;
-        } else {
-            visualWidth = boxWidth;
-            visualHeight = visualWidth / imageRatio;
-        }
-
-        const visualLeft = imageRect.left + ((boxWidth - visualWidth) / 2);
-        const visualTop = imageRect.top + ((boxHeight - visualHeight) / 2);
-        return {
-            left: Math.max(0, visualLeft - frameRect.left),
-            top: Math.max(0, visualTop - frameRect.top),
-            width: Math.min(frameRect.width, visualWidth),
-            height: Math.min(frameRect.height, visualHeight),
-            frameWidth: frameRect.width,
-            frameHeight: frameRect.height
-        };
-    }
-
-    return {
-        left: Math.max(0, imageRect.left - frameRect.left),
-        top: Math.max(0, imageRect.top - frameRect.top),
-        width: Math.min(frameRect.width, imageRect.width),
-        height: Math.min(frameRect.height, imageRect.height),
-        frameWidth: frameRect.width,
-        frameHeight: frameRect.height
-    };
-}
-
 function syncFlashcardImageFrameOverlayBounds(frame) {
     if (!frame) return;
     const img = frame.querySelector('.flashcard-side-image');
     const labelLayer = frame.querySelector('.flashcard-side-image-label-layer');
     const zoomBtn = frame.querySelector('.flashcard-image-zoom-btn');
-    if (!img) return;
+    const imageWrap = frame.closest('.flashcard-side-image-wrap');
+    if (!img || !imageWrap) return;
+    if (!img.complete || !img.naturalWidth || !img.naturalHeight) return;
 
-    const bounds = getFlashcardImageVisualBounds(frame, img);
-    if (!bounds || !bounds.width || !bounds.height) return;
+    applyImageStageSize(frame, img, imageWrap);
 
-    const { left, top, width, height } = bounds;
-
-    frame.style.setProperty('--flashcard-image-visual-left', `${left}px`);
-    frame.style.setProperty('--flashcard-image-visual-top', `${top}px`);
-    frame.style.setProperty('--flashcard-image-visual-width', `${width}px`);
-    frame.style.setProperty('--flashcard-image-visual-height', `${height}px`);
-
-    if (labelLayer) {
-        labelLayer.style.left = `${left}px`;
-        labelLayer.style.top = `${top}px`;
-        labelLayer.style.width = `${width}px`;
-        labelLayer.style.height = `${height}px`;
-    }
+    // Phase 22GD: the image frame itself is now the coordinate stage. Labels use
+    // their saved percentage positions against this stage in normal, fullscreen,
+    // flipped, and rotated layouts, so no left/top/width/height offset is needed.
+    frame.style.removeProperty('--flashcard-image-visual-left');
+    frame.style.removeProperty('--flashcard-image-visual-top');
+    frame.style.removeProperty('--flashcard-image-visual-width');
+    frame.style.removeProperty('--flashcard-image-visual-height');
+    clearStageLabelLayerOffsets(labelLayer);
 
     if (zoomBtn) {
-        // Phase 22GB: keep the zoom button under CSS control.
-        // Earlier overlay-sync code wrote inline left/top/right values after image loads
-        // and after flips. Those inline positions can override later CSS fixes and can
-        // make the icon flash briefly, then move out of view when the sync pass runs.
+        // Keep the zoom button under CSS control; do not write inline positions here.
         zoomBtn.style.removeProperty('left');
         zoomBtn.style.removeProperty('top');
         zoomBtn.style.removeProperty('right');
@@ -17706,9 +17766,43 @@ function queueFlashcardImageOverlaySync(root = document) {
     requestAnimationFrame(() => {
         syncFlashcardImageOverlayBounds(root);
         setTimeout(() => syncFlashcardImageOverlayBounds(root), 80);
+        setTimeout(() => syncFlashcardImageOverlayBounds(root), 240);
     });
 }
 
+function resetFlashcardImageFrameResizeObserver() {
+    if (state.flashcardImageFrameResizeObserver) {
+        state.flashcardImageFrameResizeObserver.disconnect();
+    }
+}
+
+function observeFlashcardImageFrames(root = document) {
+    if (!('ResizeObserver' in window)) return;
+    const scope = root?.querySelectorAll ? root : document;
+    const frames = Array.from(scope.querySelectorAll('.flashcard-side-image-frame'));
+    if (!frames.length) return;
+
+    if (!state.flashcardImageFrameResizeObserver) {
+        state.flashcardImageFrameResizeObserver = new ResizeObserver(entries => {
+            entries.forEach(entry => {
+                const target = entry.target;
+                const frame = target?.classList?.contains('flashcard-side-image-frame')
+                    ? target
+                    : target?.querySelector?.('.flashcard-side-image-frame');
+                syncFlashcardImageFrameOverlayBounds(frame);
+            });
+            queueFlashcardZoomOverlayLabelSync();
+        });
+    }
+
+    const targets = new Set();
+    frames.forEach(frame => {
+        targets.add(frame);
+        const imageWrap = frame.closest('.flashcard-side-image-wrap');
+        if (imageWrap) targets.add(imageWrap);
+    });
+    targets.forEach(target => state.flashcardImageFrameResizeObserver.observe(target));
+}
 
 function fitFlashcardTextToFixedCard(root = document) {
     const textNodes = Array.from(root.querySelectorAll?.('.flashcard-side-text') || []);
@@ -17888,6 +17982,8 @@ function gradeFlashcard(knewIt) {
 }
 
 function showFlashcard(q) {
+    resetFlashcardImageFrameResizeObserver();
+
     const frontSide = state.flashcardFrontMode === 'term'
         ? getFlashcardSideData(q, 'term')
         : getFlashcardSideData(q, 'definition');
@@ -17950,6 +18046,7 @@ function showFlashcard(q) {
     enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
     setFlashcardInteractionEnabled(true);
     fitFlashcardTextToFixedCard(container);
+    observeFlashcardImageFrames(container);
     queueFlashcardImageOverlaySync(container);
 }
 
@@ -22038,11 +22135,18 @@ window.addEventListener('resize', handleViewportChange);
 window.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
 window.addEventListener('orientationchange', handleViewportChange);
 window.addEventListener('orientationchange', queueOptionsScrollIndicatorUpdate);
+window.addEventListener('orientationchange', () => setTimeout(queueFlashcardZoomOverlayLabelSync, 320));
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
-    window.visualViewport.addEventListener('resize', () => queueFlashcardImageOverlaySync(document));
+    window.visualViewport.addEventListener('resize', () => {
+        queueFlashcardImageOverlaySync(document);
+        queueFlashcardZoomOverlayLabelSync();
+    });
     window.visualViewport.addEventListener('scroll', queueOptionsScrollIndicatorUpdate);
-    window.visualViewport.addEventListener('scroll', () => queueFlashcardImageOverlaySync(document));
+    window.visualViewport.addEventListener('scroll', () => {
+        queueFlashcardImageOverlaySync(document);
+        queueFlashcardZoomOverlayLabelSync();
+    });
 }
 if (elements.optionsContainer) {
     elements.optionsContainer.addEventListener('scroll', updateOptionsScrollIndicators, { passive: true });
