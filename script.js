@@ -17590,8 +17590,6 @@ function buildFlashcardFace(sideData, faceClass) {
 
         const imageFrame = document.createElement('div');
         imageFrame.className = 'flashcard-side-image-frame';
-        imageFrame.dataset.flashcardImageAlt = `${sideData.sideName} image`;
-        imageFrame.dataset.flashcardImageLabels = JSON.stringify(imageLabels);
         imageFrame.appendChild(img);
         if (imageLabels.length) {
             const labelLayer = document.createElement('div');
@@ -17708,118 +17706,10 @@ function syncFlashcardImageOverlayBounds(root = document) {
     frames.forEach(syncFlashcardImageFrameOverlayBounds);
 }
 
-function isIPadFlashcardLayoutActive() {
-    return document.body.classList.contains('ipad-portrait-flashcard-layout')
-        || document.body.classList.contains('ipad-landscape-flashcard-layout');
-}
-
-function getActiveFlashcardFace(card = document.getElementById('flashcardCard')) {
-    if (!card) return null;
-    return card.querySelector(`.flashcard-face.${card.classList.contains('is-flipped') ? 'back' : 'front'}`);
-}
-
-function getActiveFlashcardImageFrame(card = document.getElementById('flashcardCard')) {
-    return getActiveFlashcardFace(card)?.querySelector('.flashcard-side-image-frame') || null;
-}
-
-function getFlashcardFrameLabels(frame) {
-    const rawLabels = frame?.dataset?.flashcardImageLabels || '[]';
-    try {
-        return normalizeDiagramLabels(JSON.parse(rawLabels));
-    } catch (error) {
-        return [];
-    }
-}
-
-function openActiveFlashcardImageFromFloatingButton() {
-    const frame = getActiveFlashcardImageFrame();
-    const img = frame?.querySelector('.flashcard-side-image');
-    const src = img?.currentSrc || img?.src || '';
-    if (!src) return;
-    const alt = frame?.dataset?.flashcardImageAlt || img?.alt || 'Flashcard image';
-    openFlashcardImageOverlay(src, alt, { diagramLabels: getFlashcardFrameLabels(frame) });
-}
-
-function createFlashcardFloatingZoomButton() {
-    const zoomBtn = document.createElement('button');
-    zoomBtn.type = 'button';
-    zoomBtn.className = 'flashcard-image-zoom-btn flashcard-image-zoom-floating hidden';
-    zoomBtn.setAttribute('aria-label', 'Zoom image');
-    zoomBtn.setAttribute('title', 'Zoom image');
-    zoomBtn.setAttribute('aria-hidden', 'true');
-    zoomBtn.innerText = '⤢';
-
-    const stopZoomTrigger = e => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
-
-    zoomBtn.addEventListener('pointerdown', stopZoomTrigger);
-    zoomBtn.addEventListener('pointerup', stopZoomTrigger);
-    zoomBtn.addEventListener('click', e => {
-        stopZoomTrigger(e);
-        openActiveFlashcardImageFromFloatingButton();
-    });
-
-    return zoomBtn;
-}
-
-function syncFloatingFlashcardZoomButton() {
-    const container = document.getElementById('flashcardContainer');
-    const zoomBtn = container?.querySelector('.flashcard-image-zoom-floating');
-    const card = document.getElementById('flashcardCard');
-    const frame = getActiveFlashcardImageFrame(card);
-    const img = frame?.querySelector('.flashcard-side-image');
-    const src = img?.currentSrc || img?.src || '';
-    const shouldShow = !!(container && zoomBtn && card && frame && img && src && isIPadFlashcardLayoutActive() && !state.questionAnswered);
-
-    if (!zoomBtn) return;
-
-    if (!shouldShow) {
-        zoomBtn.classList.add('hidden');
-        zoomBtn.setAttribute('aria-hidden', 'true');
-        return;
-    }
-
-    const containerRect = container.getBoundingClientRect();
-    const frameRect = frame.getBoundingClientRect();
-    const visualBounds = getFlashcardImageVisualBounds(frame, img) || {
-        left: 0,
-        top: 0,
-        width: frameRect.width,
-        height: frameRect.height
-    };
-
-    if (!containerRect.width || !containerRect.height || !frameRect.width || !frameRect.height || !visualBounds.width || !visualBounds.height) {
-        zoomBtn.classList.add('hidden');
-        zoomBtn.setAttribute('aria-hidden', 'true');
-        return;
-    }
-
-    const buttonWidth = zoomBtn.offsetWidth || 34;
-    const buttonHeight = zoomBtn.offsetHeight || 34;
-    const preferredLeft = (frameRect.left - containerRect.left) + visualBounds.left + visualBounds.width - buttonWidth - 8;
-    const preferredTop = (frameRect.top - containerRect.top) + visualBounds.top + 8;
-    const minLeft = (frameRect.left - containerRect.left) + visualBounds.left + 4;
-    const minTop = (frameRect.top - containerRect.top) + visualBounds.top + 4;
-    const maxLeft = containerRect.width - buttonWidth - 4;
-    const maxTop = containerRect.height - buttonHeight - 4;
-
-    zoomBtn.style.left = `${Math.min(maxLeft, Math.max(minLeft, preferredLeft))}px`;
-    zoomBtn.style.top = `${Math.min(maxTop, Math.max(minTop, preferredTop))}px`;
-    zoomBtn.style.right = 'auto';
-    zoomBtn.classList.remove('hidden');
-    zoomBtn.setAttribute('aria-hidden', 'false');
-}
-
 function queueFlashcardImageOverlaySync(root = document) {
     requestAnimationFrame(() => {
         syncFlashcardImageOverlayBounds(root);
-        syncFloatingFlashcardZoomButton();
-        setTimeout(() => {
-            syncFlashcardImageOverlayBounds(root);
-            syncFloatingFlashcardZoomButton();
-        }, 80);
+        setTimeout(() => syncFlashcardImageOverlayBounds(root), 80);
     });
 }
 
@@ -18034,9 +17924,6 @@ function showFlashcard(q) {
     });
     card.appendChild(cardInner);
     container.appendChild(card);
-    container.appendChild(createFlashcardFloatingZoomButton());
-
-
     const swipeFeedback = document.createElement('div');
     swipeFeedback.id = 'flashcardSwipeFeedback';
     swipeFeedback.className = 'flashcard-swipe-feedback';

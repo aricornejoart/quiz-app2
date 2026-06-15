@@ -8264,97 +8264,19 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   min-width: 0;
 }
 
-/* Phase 22FR: keep flashcard overlays on the visible side only during flips. */
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front {
-  z-index: 2;
-}
 
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back {
-  z-index: 1;
-  pointer-events: none;
-}
-
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back {
-  z-index: 2;
-}
-
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front {
-  z-index: 1;
-  pointer-events: none;
-}
-
-
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-image-zoom-btn,
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-image-zoom-btn,
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-side-image-label-layer {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-/* Phase 22FT: explicitly restore overlays on the active flashcard face after flip. */
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn,
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn {
+/* Phase 22GA: restore original stable flashcard zoom behavior globally.
+   The zoom button lives inside the image frame on every platform; flashcard faces handle visibility through the normal 3D flip/backface rules. */
+.flashcard-side-image-frame > .flashcard-image-zoom-btn {
+  display: inline-flex;
   visibility: visible;
   pointer-events: auto;
   opacity: 0.5;
+  z-index: 5;
 }
 
-body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn,
-body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn {
-  opacity: 0.72;
-}
-
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:hover,
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:focus-visible,
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-image-zoom-btn:active,
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn:hover,
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn:focus-visible,
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-image-zoom-btn:active {
+.flashcard-side-image-frame > .flashcard-image-zoom-btn:hover,
+.flashcard-side-image-frame > .flashcard-image-zoom-btn:focus-visible,
+.flashcard-side-image-frame > .flashcard-image-zoom-btn:active {
   opacity: 1;
-}
-
-body.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front .flashcard-side-image-label-layer,
-body.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back .flashcard-side-image-label-layer {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: none;
-}
-
-
-/* Phase 22FZ: iPad-safe flashcard zoom icon mirror.
-   iPad Safari can drop real buttons inside the 3D-flipping face after the transform settles,
-   so iPad uses a floating copy above the 3D card while desktop keeps the in-face button. */
-.flashcard-image-zoom-floating {
-  position: absolute;
-  z-index: 28;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
-  will-change: left, top, opacity;
-}
-
-body.ipad-portrait-flashcard-layout .flashcard-side-image-frame > .flashcard-image-zoom-btn:not(.flashcard-image-zoom-floating),
-body.ipad-landscape-flashcard-layout .flashcard-side-image-frame > .flashcard-image-zoom-btn:not(.flashcard-image-zoom-floating) {
-  display: none !important;
-}
-
-body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:not(.hidden),
-body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:not(.hidden) {
-  display: inline-flex !important;
-  visibility: visible !important;
-  opacity: 0.92 !important;
-  pointer-events: auto !important;
-}
-
-body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:hover,
-body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:focus-visible,
-body.ipad-portrait-flashcard-layout .flashcard-image-zoom-floating:active,
-body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:hover,
-body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:focus-visible,
-body.ipad-landscape-flashcard-layout .flashcard-image-zoom-floating:active {
-  opacity: 1 !important;
 }
