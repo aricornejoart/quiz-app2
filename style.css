@@ -8265,14 +8265,19 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
 }
 
 
-/* Phase 22GA: restore original stable flashcard zoom behavior globally.
-   The zoom button lives inside the image frame on every platform; flashcard faces handle visibility through the normal 3D flip/backface rules. */
+/* Phase 22GB: restore the original single in-image flashcard zoom button globally.
+   Important hidden factor: script.js used to write inline left/top/right values during
+   overlay sync after image loads and after flips. Keep the button pinned by CSS so a
+   stale inline position cannot flash briefly and then move the icon out of view. */
 .flashcard-side-image-frame > .flashcard-image-zoom-btn {
-  display: inline-flex;
-  visibility: visible;
-  pointer-events: auto;
-  opacity: 0.5;
-  z-index: 5;
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  top: 8px !important;
+  right: 8px !important;
+  left: auto !important;
+  opacity: 0.85;
+  z-index: 30;
 }
 
 .flashcard-side-image-frame > .flashcard-image-zoom-btn:hover,

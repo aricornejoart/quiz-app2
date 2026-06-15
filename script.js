@@ -17671,7 +17671,7 @@ function syncFlashcardImageFrameOverlayBounds(frame) {
     const bounds = getFlashcardImageVisualBounds(frame, img);
     if (!bounds || !bounds.width || !bounds.height) return;
 
-    const { left, top, width, height, frameWidth, frameHeight } = bounds;
+    const { left, top, width, height } = bounds;
 
     frame.style.setProperty('--flashcard-image-visual-left', `${left}px`);
     frame.style.setProperty('--flashcard-image-visual-top', `${top}px`);
@@ -17686,17 +17686,13 @@ function syncFlashcardImageFrameOverlayBounds(frame) {
     }
 
     if (zoomBtn) {
-        const buttonWidth = zoomBtn.offsetWidth || 34;
-        const buttonHeight = zoomBtn.offsetHeight || 34;
-        const preferredLeft = left + width - buttonWidth - 8;
-        const preferredTop = top + 8;
-        const minLeft = left + 4;
-        const minTop = top + 4;
-        const maxLeft = Math.max(0, frameWidth - buttonWidth - 4);
-        const maxTop = Math.max(0, frameHeight - buttonHeight - 4);
-        zoomBtn.style.left = `${Math.min(maxLeft, Math.max(minLeft, preferredLeft))}px`;
-        zoomBtn.style.top = `${Math.min(maxTop, Math.max(minTop, preferredTop))}px`;
-        zoomBtn.style.right = 'auto';
+        // Phase 22GB: keep the zoom button under CSS control.
+        // Earlier overlay-sync code wrote inline left/top/right values after image loads
+        // and after flips. Those inline positions can override later CSS fixes and can
+        // make the icon flash briefly, then move out of view when the sync pass runs.
+        zoomBtn.style.removeProperty('left');
+        zoomBtn.style.removeProperty('top');
+        zoomBtn.style.removeProperty('right');
     }
 }
 
