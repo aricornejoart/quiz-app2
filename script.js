@@ -17936,6 +17936,27 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     let startX = 0;
     let startY = 0;
     let activePointerId = null;
+    let angledTouchSwipe = false;
+
+    const clampSwipeValue = (value, min, max) => Math.max(min, Math.min(max, value));
+
+    function isAngledTouchFlashcardSwipeEvent(event) {
+        return event?.pointerType === 'touch' && isAppleTouchStudyDevice();
+    }
+
+    function isFlashcardGestureBlockedTarget(target) {
+        if (!target || !target.closest) return false;
+        return !!target.closest([
+            'button',
+            'input',
+            'select',
+            'textarea',
+            'a',
+            '[contenteditable="true"]',
+            '.flashcard-image-zoom-btn',
+            '#flashcardImageOverlay'
+        ].join(','));
+    }
 
     function clearSwipeBorderState() {
         card.classList.remove('swiping-know', 'swiping-dont-know');
@@ -17959,6 +17980,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     function endTracking() {
         tracking = false;
         activePointerId = null;
+        angledTouchSwipe = false;
     }
 
     function finishInteraction(e, cancelled = false) {
@@ -17967,8 +17989,12 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
 
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        const isTap = Math.abs(dx) < 10 && Math.abs(dy) < 10;
-        const isSwipe = Math.abs(dx) >= 70 && Math.abs(dx) > Math.abs(dy) * 1.2;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+        const isTap = absX < 10 && absY < 10;
+        const isSwipe = angledTouchSwipe
+            ? absX >= 64 && absX >= absY * 0.65
+            : absX >= 70 && absX > absY * 1.2;
 
         try {
             if (card.hasPointerCapture(e.pointerId)) {
@@ -18012,11 +18038,13 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         if (state.flashcardImageZoomOpen) return;
         if (state.questionAnswered) return;
         if (e.button !== undefined && e.button !== 0) return;
+        if (isFlashcardGestureBlockedTarget(e.target)) return;
 
         tracking = true;
         startX = e.clientX;
         startY = e.clientY;
         activePointerId = e.pointerId;
+        angledTouchSwipe = isAngledTouchFlashcardSwipeEvent(e);
         card.style.transition = 'none';
         clearFlashcardSwipeFeedback();
         clearSwipeBorderState();
@@ -18035,15 +18063,38 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
 
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
 
-        if (Math.abs(dx) > Math.abs(dy)) {
+        if (angledTouchSwipe) {
+            if (absX > 6 || absY > 6) {
+                e.preventDefault();
+            }
+
+            const limitedDx = clampSwipeValue(dx * 0.68, -132, 132);
+            const limitedDy = clampSwipeValue(dy * 0.34, -56, 56);
+            const rotation = clampSwipeValue(dx * 0.035, -8, 8);
+            card.style.transform = `translate(${limitedDx}px, ${limitedDy}px) rotate(${rotation}deg)`;
+
+            if (absX >= 20 && absX >= absY * 0.65) {
+                const swipeKind = dx > 0 ? 'know' : 'dont-know';
+                setSwipeBorderState(swipeKind);
+                setFlashcardSwipeFeedback(swipeKind);
+            } else {
+                clearSwipeBorderState();
+                clearFlashcardSwipeFeedback();
+            }
+            return;
+        }
+
+        if (absX > absY) {
             e.preventDefault();
         }
 
         const limitedDx = Math.max(-52, Math.min(52, dx * 0.24));
         card.style.transform = `translateX(${limitedDx}px)`;
 
-        if (Math.abs(dx) >= 18 && Math.abs(dx) > Math.abs(dy)) {
+        if (absX >= 18 && absX > absY) {
             const swipeKind = dx > 0 ? 'know' : 'dont-know';
             setSwipeBorderState(swipeKind);
             setFlashcardSwipeFeedback(swipeKind);

@@ -1048,6 +1048,12 @@ body.classify-dragging {
   transform: translateX(0);
 }
 
+body.ipad-portrait-flashcard-layout .flashcard-card,
+body.ipad-landscape-flashcard-layout .flashcard-card,
+body.narrow-iphone-layout.active-question-flashcard .flashcard-card {
+  touch-action: none;
+}
+
 .flashcard-card.disabled {
   cursor: default;
 }
