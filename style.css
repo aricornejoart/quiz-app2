@@ -420,12 +420,12 @@ body.fullscreen-mode .bottom-controls {
 }
 
 
-/* Phase 22FS: flashcard star anchors beside the Study Mode hamburger menu. */
+/* Phase 22GN: study-mode star anchors beside the Study Mode hamburger menu. */
 .utility-controls .question-star-btn.flashcard-menu-star-btn {
-  position: static;
-  right: auto;
-  bottom: auto;
-  z-index: auto;
+  position: static !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: auto !important;
   display: inline-flex;
   margin: 0;
   width: 34px;
@@ -436,16 +436,8 @@ body.fullscreen-mode .bottom-controls {
   box-shadow: none;
 }
 
-body.active-question-flashcard .utility-controls .question-star-btn.flashcard-menu-star-btn:not(.hidden) {
+.utility-controls .question-star-btn.flashcard-menu-star-btn:not(.hidden) {
   display: inline-flex !important;
-}
-
-body:not(.active-question-flashcard) .question-star-btn.flashcard-menu-star-btn {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  font-size: 22px;
 }
 
 #questionText {

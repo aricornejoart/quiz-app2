@@ -14620,6 +14620,11 @@ function restoreQuestionStarButtonLocation() {
     }
 }
 
+function shouldMountQuestionStarButtonBesideStudyMenu(question = null) {
+    const type = normalizeSheetText(question?.type || state.currentQuestionType).toLowerCase();
+    return type === 'flashcard' || type === 'multiple choice' || type === 'diagrams';
+}
+
 function mountQuestionStarButtonBesideStudyMenu() {
     const button = elements.questionStarBtn;
     const menuButton = elements.studioHomeBtn;
@@ -16985,6 +16990,9 @@ function showQuestion() {
         syncStudyTimerForCurrentQuestion();
     }
     updateViewportClasses();
+    if (shouldMountQuestionStarButtonBesideStudyMenu(q)) {
+        mountQuestionStarButtonBesideStudyMenu();
+    }
     elements.optionsContainer.style.display = 'none';
 
     if (q.type === 'flashcard') {
