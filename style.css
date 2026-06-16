@@ -1850,11 +1850,17 @@ body.fullscreen-mode .flashcard-side-text {
 
 /* Phase 22GH-22GI: desktop flashcard height is measured by script.js to avoid overflow. */
 
-/* Phase 22GJ: desktop/laptop normal flashcards may use the full 900px study shell width. */
+/* Phase 22GK: desktop/laptop flashcards use a 930px max width in normal and fullscreen study. */
 @media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  body.active-question-flashcard:not(.fullscreen-mode) .container {
+    max-width: 930px;
+  }
+
   body.active-question-flashcard:not(.fullscreen-mode) .flashcard-container,
-  body.active-question-flashcard:not(.fullscreen-mode) .flashcard-grade-row {
-    max-width: 900px;
+  body.active-question-flashcard:not(.fullscreen-mode) .flashcard-grade-row,
+  body.fullscreen-mode.active-question-flashcard:not(.ipad-portrait-flashcard-layout):not(.ipad-landscape-flashcard-layout) .flashcard-container,
+  body.fullscreen-mode.active-question-flashcard:not(.ipad-portrait-flashcard-layout):not(.ipad-landscape-flashcard-layout) .flashcard-grade-row {
+    max-width: 930px;
   }
 }
 
@@ -8494,4 +8500,23 @@ body.ipad-portrait-flashcard-layout .flashcard-side-content.split .flashcard-sid
 body.ipad-portrait-flashcard-layout .flashcard-side-content.split .flashcard-side-image-frame {
   max-width: 100%;
   max-height: 100%;
+}
+
+/* Phase 22GL: iPhone portrait flashcard study locks page-level vertical scroll only. */
+@media screen and (max-width: 480px) and (orientation: portrait) {
+  body.active-question-flashcard {
+    overflow-y: hidden;
+    overscroll-behavior-y: none;
+    max-height: 100dvh;
+    box-sizing: border-box;
+  }
+}
+
+@supports selector(html:has(body.active-question-flashcard)) {
+  @media screen and (max-width: 480px) and (orientation: portrait) {
+    html:has(body.active-question-flashcard) {
+      overflow-y: hidden;
+      overscroll-behavior-y: none;
+    }
+  }
 }
