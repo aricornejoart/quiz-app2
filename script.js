@@ -210,6 +210,10 @@ MODIFICATION RULES FOR THIS APP
 
         flashcardImageZoomOpen: false,
         flashcardImageFrameResizeObserver: null,
+        desktopFullscreenFlashcardHeight: {
+            rafId: 0,
+            timeoutIds: []
+        },
         currentQuestionType: '',
         optionsScroll: {
             resizeObserver: null,
@@ -14603,6 +14607,7 @@ function updateViewportClasses() {
     document.body.classList.toggle('active-question-flashcard', isFlashcardQuestion);
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
     syncMultipleChoiceSplitLayoutMount();
+    queueDesktopFullscreenFlashcardHeightSync();
 }
 
 function restoreQuestionStarButtonLocation() {
@@ -14675,6 +14680,7 @@ function handleViewportChange() {
     updateViewportClasses();
     applyResponsiveControlText();
     updateProgress();
+    queueDesktopFullscreenFlashcardHeightSync();
     fitFlashcardTextToFixedCard(document);
     queueFlashcardImageOverlaySync(document);
     queueFlashcardZoomOverlayLabelSync();
@@ -17220,6 +17226,86 @@ function getElementRenderedScaleY(element) {
     return Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1;
 }
 
+function isDesktopFlashcardHeightTarget() {
+    if (!document.body.classList.contains('active-question-flashcard')) return false;
+    if (document.body.classList.contains('ipad-portrait-flashcard-layout')) return false;
+    if (document.body.classList.contains('ipad-landscape-flashcard-layout')) return false;
+    if (document.body.classList.contains('narrow-iphone-layout')) return false;
+
+    return window.matchMedia?.('(min-width: 1025px) and (hover: hover) and (any-pointer: fine)').matches ?? false;
+}
+
+function getDesktopFlashcardHeightMode() {
+    if (!isDesktopFlashcardHeightTarget()) return '';
+    return document.body.classList.contains('fullscreen-mode') ? 'fullscreen' : 'normal';
+}
+
+function clearDesktopFullscreenFlashcardHeight() {
+    document.querySelectorAll('.flashcard-container').forEach(container => {
+        container.style.removeProperty('--flashcard-fixed-height');
+    });
+}
+
+function updateDesktopFullscreenFlashcardHeight() {
+    const flashcardContainer = document.getElementById('flashcardContainer') || document.querySelector('.flashcard-container');
+    const heightMode = getDesktopFlashcardHeightMode();
+    if (!flashcardContainer || !heightMode) {
+        clearDesktopFullscreenFlashcardHeight();
+        return;
+    }
+
+    const rect = flashcardContainer.getBoundingClientRect();
+    const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!viewportHeight || !Number.isFinite(rect.top)) return;
+
+    // Phase 22GH/22GI: measure the space that truly remains below the card.
+    // The app shell is transform-scaled on desktop, so convert rendered pixels back
+    // into CSS layout pixels before assigning the flashcard height variable.
+    // Normal mode keeps a larger reserve and lower cap than fullscreen so controls
+    // stay visible and the card uses extra space without taking over the page.
+    const bottomReserveRendered = heightMode === 'fullscreen' ? 28 : 72;
+    const renderedAvailableHeight = Math.floor(viewportHeight - rect.top - bottomReserveRendered);
+    const appShell = document.getElementById('app') || elements.questionContainer || flashcardContainer;
+    const scaleY = getElementRenderedScaleY(appShell) || getElementRenderedScaleY(flashcardContainer) || 1;
+    const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
+
+    if (!Number.isFinite(cssAvailableHeight) || cssAvailableHeight < 260) {
+        flashcardContainer.style.removeProperty('--flashcard-fixed-height');
+        return;
+    }
+
+    const maxHeight = heightMode === 'fullscreen' ? 640 : 540;
+    const safeHeight = Math.min(maxHeight, cssAvailableHeight);
+    flashcardContainer.style.setProperty('--flashcard-fixed-height', `${safeHeight}px`);
+    fitFlashcardTextToFixedCard(flashcardContainer);
+    queueFlashcardImageOverlaySync(flashcardContainer);
+}
+
+function queueDesktopFullscreenFlashcardHeightSync() {
+    const queueState = state.desktopFullscreenFlashcardHeight;
+    if (!queueState) return;
+
+    if (queueState.rafId) {
+        cancelAnimationFrame(queueState.rafId);
+        queueState.rafId = 0;
+    }
+
+    queueState.timeoutIds.forEach(timeoutId => clearTimeout(timeoutId));
+    queueState.timeoutIds = [];
+
+    updateDesktopFullscreenFlashcardHeight();
+    queueState.rafId = requestAnimationFrame(() => {
+        queueState.rafId = 0;
+        updateDesktopFullscreenFlashcardHeight();
+        requestAnimationFrame(updateDesktopFullscreenFlashcardHeight);
+    });
+
+    [80, 220, 500].forEach(delay => {
+        const timeoutId = setTimeout(updateDesktopFullscreenFlashcardHeight, delay);
+        queueState.timeoutIds.push(timeoutId);
+    });
+}
+
 function updateOptionsScrollCapacity() {
     const container = elements.optionsContainer;
     if (!container) return;
@@ -18048,6 +18134,7 @@ function showFlashcard(q) {
 
     enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
     setFlashcardInteractionEnabled(true);
+    queueDesktopFullscreenFlashcardHeightSync();
     fitFlashcardTextToFixedCard(container);
     observeFlashcardImageFrames(container);
     queueFlashcardImageOverlaySync(container);
@@ -22142,11 +22229,13 @@ window.addEventListener('orientationchange', () => setTimeout(queueFlashcardZoom
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
     window.visualViewport.addEventListener('resize', () => {
+        queueDesktopFullscreenFlashcardHeightSync();
         queueFlashcardImageOverlaySync(document);
         queueFlashcardZoomOverlayLabelSync();
     });
     window.visualViewport.addEventListener('scroll', queueOptionsScrollIndicatorUpdate);
     window.visualViewport.addEventListener('scroll', () => {
+        queueDesktopFullscreenFlashcardHeightSync();
         queueFlashcardImageOverlaySync(document);
         queueFlashcardZoomOverlayLabelSync();
     });

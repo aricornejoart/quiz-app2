@@ -1848,6 +1848,16 @@ body.fullscreen-mode .flashcard-side-text {
   font-size: 26px;
 }
 
+/* Phase 22GH-22GI: desktop flashcard height is measured by script.js to avoid overflow. */
+
+/* Phase 22GJ: desktop/laptop normal flashcards may use the full 900px study shell width. */
+@media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  body.active-question-flashcard:not(.fullscreen-mode) .flashcard-container,
+  body.active-question-flashcard:not(.fullscreen-mode) .flashcard-grade-row {
+    max-width: 900px;
+  }
+}
+
 /* ===== Hint Overlay In Fullscreen ===== */
 body.fullscreen-mode .hint-overlay {
   padding-top: 64px;
