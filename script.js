@@ -14646,12 +14646,14 @@ function updateViewportClasses() {
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
     syncMultipleChoiceSplitLayoutMount();
     queuePhoneLandscapeMultipleChoiceImageStageSync();
+    queueOptionsScrollIndicatorUpdate();
     queueDesktopFullscreenFlashcardHeightSync();
 }
 
 function clearPhoneLandscapeMultipleChoiceImageStage() {
     const wrap = elements.diagramStudyImageWrap;
     const image = elements.questionImage;
+    const quizArea = elements.quizArea;
     if (wrap) {
         wrap.style.removeProperty('width');
         wrap.style.removeProperty('height');
@@ -14660,12 +14662,42 @@ function clearPhoneLandscapeMultipleChoiceImageStage() {
         image.style.removeProperty('width');
         image.style.removeProperty('height');
     }
+    if (quizArea) {
+        quizArea.style.removeProperty('--phone-landscape-mc-layout-height');
+    }
+}
+
+function updatePhoneLandscapeMultipleChoiceLayoutBounds() {
+    const quizArea = elements.quizArea;
+    if (!quizArea) return;
+
+    if (!document.body.classList.contains('phone-landscape-mc-image-right-layout')) {
+        quizArea.style.removeProperty('--phone-landscape-mc-layout-height');
+        return;
+    }
+
+    const rect = quizArea.getBoundingClientRect();
+    const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!viewportHeight || !Number.isFinite(rect.top)) return;
+
+    const isFullscreen = document.body.classList.contains('fullscreen-mode');
+    const bottomReserve = isFullscreen ? 8 : 12;
+    const renderedAvailableHeight = Math.floor(viewportHeight - rect.top - bottomReserve);
+    const scaleY = getElementRenderedScaleY(quizArea);
+    const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
+    if (!Number.isFinite(cssAvailableHeight) || cssAvailableHeight <= 0) return;
+
+    const maxHeight = isFullscreen ? 420 : 360;
+    const safeHeight = Math.min(maxHeight, Math.max(1, cssAvailableHeight));
+    quizArea.style.setProperty('--phone-landscape-mc-layout-height', `${safeHeight}px`);
 }
 
 function updatePhoneLandscapeMultipleChoiceImageStage() {
     const wrap = elements.diagramStudyImageWrap;
     const image = elements.questionImage;
     const container = elements.imageContainer;
+
+    updatePhoneLandscapeMultipleChoiceLayoutBounds();
 
     if (!wrap || !image || !container || !document.body.classList.contains('phone-landscape-mc-image-right-layout')) {
         clearPhoneLandscapeMultipleChoiceImageStage();
@@ -17440,6 +17472,23 @@ function updateOptionsScrollCapacity() {
     if (!isOptionsScrollQuestionType() || container.style.display === 'none') {
         container.style.removeProperty('--study-options-scroll-max-height');
         return;
+    }
+
+    if (document.body.classList.contains('phone-landscape-mc-image-right-layout')) {
+        updatePhoneLandscapeMultipleChoiceLayoutBounds();
+        const parent = elements.questionContainer;
+        const rect = container.getBoundingClientRect();
+        const parentRect = parent?.getBoundingClientRect();
+        if (parentRect && Number.isFinite(parentRect.bottom) && Number.isFinite(rect.top)) {
+            const renderedAvailableHeight = Math.floor(parentRect.bottom - rect.top - 6);
+            const scaleY = getElementRenderedScaleY(container);
+            const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
+            if (Number.isFinite(cssAvailableHeight) && cssAvailableHeight > 0) {
+                const safeHeight = Math.min(420, Math.max(1, cssAvailableHeight));
+                container.style.setProperty('--study-options-scroll-max-height', `${safeHeight}px`);
+                return;
+            }
+        }
     }
 
     const rect = container.getBoundingClientRect();
