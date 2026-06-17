@@ -8647,3 +8647,38 @@ body.fullscreen-mode.phone-landscape-mc-image-right-layout .image-container {
   min-height: 0;
   overflow: hidden;
 }
+
+/* Phase 22GQ: phone landscape MC/Diagram locks page scroll while options keep their own scrollbox.
+   22GP already bounds the split layout; this prevents iOS/Safari page scrolling from
+   changing the visual viewport height and resizing the right-side image while answering. */
+@media screen and (max-height: 480px) and (orientation: landscape) {
+  body.phone-landscape-mc-image-right-layout {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow-y: hidden;
+    overscroll-behavior-y: none;
+  }
+
+  body.phone-landscape-mc-image-right-layout .container {
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  body.phone-landscape-mc-image-right-layout .options {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+@supports selector(html:has(body.phone-landscape-mc-image-right-layout)) {
+  @media screen and (max-height: 480px) and (orientation: landscape) {
+    html:has(body.phone-landscape-mc-image-right-layout) {
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow-y: hidden;
+      overscroll-behavior-y: none;
+    }
+  }
+}
+
