@@ -554,6 +554,8 @@ MODIFICATION RULES FOR THIS APP
         fullscreenBtn: document.getElementById('fullscreenBtn'),
         settingsPopup: document.getElementById('settingsPopup'),
         closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+        studySettingsEditQuizBtn: document.getElementById('studySettingsEditQuizBtn'),
+        studySettingsChallengesBtn: document.getElementById('studySettingsChallengesBtn'),
         prevBtn: document.getElementById('prevBtn'),
         restartBtn: document.getElementById('restartBtn'),
         nextBtn: document.getElementById('nextBtn'),
@@ -594,6 +596,8 @@ MODIFICATION RULES FOR THIS APP
         learningResourcesTextPanel: document.getElementById('learningResourcesTextPanel'),
         completionChallengeOverlay: document.getElementById('completionChallengeOverlay'),
         completionChallengeList: document.getElementById('completionChallengeList'),
+        completionChallengeEyebrow: document.getElementById('completionChallengeEyebrow'),
+        completionChallengeTitle: document.getElementById('completionChallengeTitle'),
         completionChallengeSubtitle: document.getElementById('completionChallengeSubtitle'),
         completionChallengeStatus: document.getElementById('completionChallengeStatus'),
         closeCompletionChallengeBtn: document.getElementById('closeCompletionChallengeBtn'),
@@ -4441,6 +4445,25 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
+    function getActiveStudySupabaseQuizIdForShortcut() {
+        const currentQuestion = state.questionQueue[state.currentIndex] || null;
+        const questionQuizId = normalizeSheetText(currentQuestion?.sourceQuizId || '').replace(/^sb:/, '');
+        if (questionQuizId) return questionQuizId;
+
+        const activeDescriptor = state.activeQuizDescriptor || null;
+        if (activeDescriptor?.source === DATA_SOURCES.SUPABASE) {
+            return normalizeSheetText(activeDescriptor.sourceQuizId || activeDescriptor.id || '').replace(/^sb:/, '');
+        }
+
+        return '';
+    }
+
+    function getActiveStudyManagedQuizForShortcut() {
+        const quizId = getActiveStudySupabaseQuizIdForShortcut();
+        if (!quizId) return null;
+        return state.auth.managedQuizzes.find(quiz => normalizeSheetText(quiz.id) === quizId) || null;
+    }
+
     function getActiveCompletionChallengeQuiz() {
         const activeDescriptor = state.activeQuizDescriptor || null;
         if (!activeDescriptor || activeDescriptor.source !== DATA_SOURCES.SUPABASE) return null;
@@ -4506,14 +4529,23 @@ MODIFICATION RULES FOR THIS APP
         }).join('');
     }
 
-    function openCompletionChallengePrompt(quiz) {
+    function openCompletionChallengePrompt(quiz, options = {}) {
         if (!elements.completionChallengeOverlay || !elements.completionChallengeList || !quiz) return;
 
         const quizName = normalizeSheetText(quiz.name) || 'this quiz';
+        const openedFromShortcut = options.source === 'study-settings-shortcut';
         elements.completionChallengeOverlay.dataset.quizId = normalizeSheetText(quiz.id);
         elements.completionChallengeList.innerHTML = renderCompletionChallengeRows(quiz);
+        if (elements.completionChallengeEyebrow) {
+            elements.completionChallengeEyebrow.textContent = openedFromShortcut ? 'Challenges' : 'Quiz complete';
+        }
+        if (elements.completionChallengeTitle) {
+            elements.completionChallengeTitle.textContent = openedFromShortcut ? 'Choose a challenge' : 'Choose your next challenge';
+        }
         if (elements.completionChallengeSubtitle) {
-            elements.completionChallengeSubtitle.textContent = `You finished ${quizName}. Start a challenge now without going back to Manage Quizzes.`;
+            elements.completionChallengeSubtitle.textContent = openedFromShortcut
+                ? `Start a challenge for ${quizName} without leaving Study Mode.`
+                : `You finished ${quizName}. Start a challenge now without going back to Manage Quizzes.`;
         }
         setCompletionChallengeStatus('');
         elements.completionChallengeOverlay.classList.remove('hidden');
@@ -14840,6 +14872,30 @@ function handleViewportChange() {
     queuePhoneLandscapeMultipleChoiceImageStageSync();
 }
 
+// ================= STUDY SETTINGS SHORTCUTS =================
+async function openCurrentStudyQuizEditorShortcut() {
+    const quizId = getActiveStudySupabaseQuizIdForShortcut();
+    if (!quizId) {
+        alert('Choose or load a Supabase quiz before using Edit Quiz.');
+        return;
+    }
+
+    closeSettingsPopup();
+    if (state.isAppFullscreen) exitFullscreenMode();
+    await loadQuizIntoEditor(quizId, null, { force: true });
+}
+
+function openCurrentStudyChallengesShortcut() {
+    const quiz = getActiveStudyManagedQuizForShortcut();
+    if (!quiz) {
+        alert('Choose or load a Supabase quiz before opening Challenges.');
+        return;
+    }
+
+    closeSettingsPopup();
+    openCompletionChallengePrompt(quiz, { source: 'study-settings-shortcut' });
+}
+
 // ================= SETTINGS / FULLSCREEN UI =================
 function openSettingsPopup() {
     elements.settingsPopup.classList.remove('hidden');
@@ -19748,6 +19804,23 @@ elements.closeSettingsBtn.addEventListener('click', e => {
     e.stopPropagation();
     closeSettingsPopup();
 });
+
+if (elements.studySettingsEditQuizBtn) {
+    elements.studySettingsEditQuizBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        openCurrentStudyQuizEditorShortcut().catch(error => {
+            console.error('Could not open current quiz in editor:', error);
+            alert(error?.message || 'Could not open the current quiz in the editor.');
+        });
+    });
+}
+
+if (elements.studySettingsChallengesBtn) {
+    elements.studySettingsChallengesBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        openCurrentStudyChallengesShortcut();
+    });
+}
 
 elements.settingsPopup.addEventListener('click', e => {
     e.stopPropagation();

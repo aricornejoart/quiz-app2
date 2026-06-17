@@ -85,6 +85,11 @@ MODIFICATION RULES FOR THIS APP
           <div class="settings-popup-content">
             <div class="settings-section-title">Settings</div>
 
+            <div class="study-settings-shortcuts" aria-label="Study shortcuts">
+              <button id="studySettingsEditQuizBtn" type="button" class="auth-action-btn study-settings-shortcut-btn">Edit Quiz</button>
+              <button id="studySettingsChallengesBtn" type="button" class="auth-action-btn study-settings-shortcut-btn">Challenges</button>
+            </div>
+
             <div class="settings-grid">
               <div class="setting-card" id="shuffleQuestionsSetting">
                 <div class="setting-title-row">
@@ -1480,7 +1485,7 @@ MODIFICATION RULES FOR THIS APP
   <div id="completionChallengeOverlay" class="completion-challenge-overlay hidden" aria-hidden="true">
     <div class="completion-challenge-modal" role="dialog" aria-modal="true" aria-labelledby="completionChallengeTitle">
       <button id="closeCompletionChallengeBtn" class="close-completion-challenge-btn" type="button" aria-label="Close challenge choices">✕</button>
-      <div class="completion-challenge-eyebrow">Quiz complete</div>
+      <div id="completionChallengeEyebrow" class="completion-challenge-eyebrow">Quiz complete</div>
       <div id="completionChallengeTitle" class="completion-challenge-title">Choose your next challenge</div>
       <div id="completionChallengeSubtitle" class="completion-challenge-subtitle">Keep studying without going back to Manage Quizzes.</div>
       <div id="completionChallengeList" class="completion-challenge-list"></div>
