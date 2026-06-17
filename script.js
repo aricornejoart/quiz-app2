@@ -215,6 +215,11 @@ MODIFICATION RULES FOR THIS APP
             timeoutIds: []
         },
         currentQuestionType: '',
+        currentQuestionHasImage: false,
+        phoneLandscapeMcImageStage: {
+            rafId: 0,
+            timeoutIds: []
+        },
         optionsScroll: {
             resizeObserver: null,
             mutationObserver: null,
@@ -14548,6 +14553,13 @@ function isIPadLandscapeFlashcardViewport() {
     return isIPadLikeDevice() && window.matchMedia('(orientation: landscape) and (min-width: 700px)').matches;
 }
 
+function isPhoneLandscapeMultipleChoiceImageRightViewport() {
+    const landscapePhone = window.matchMedia('(orientation: landscape) and (max-height: 520px)').matches;
+    const coarseTouch = window.matchMedia('(hover: none) and (pointer: coarse), (any-pointer: coarse)').matches;
+    const phoneSized = isNarrowIPhoneViewport() || Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 520;
+    return landscapePhone && coarseTouch && phoneSized && !isIPadLikeDevice();
+}
+
 function isMultipleChoiceSplitLayoutViewport() {
     return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 700px), (orientation: landscape)').matches;
 }
@@ -14563,7 +14575,9 @@ function getMultipleChoiceSplitQuestionColumn() {
 }
 
 function syncMultipleChoiceSplitLayoutMount() {
-    const shouldUseSplitMount = (state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams') && isMultipleChoiceSplitLayoutViewport();
+    const isMultipleChoiceStudyQuestion = state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams';
+    const shouldUsePhoneImageRightMount = isMultipleChoiceStudyQuestion && !!state.currentQuestionHasImage && isPhoneLandscapeMultipleChoiceImageRightViewport();
+    const shouldUseSplitMount = isMultipleChoiceStudyQuestion && !shouldUsePhoneImageRightMount && isMultipleChoiceSplitLayoutViewport();
     const quizArea = elements.quizArea;
     const questionContainer = elements.questionContainer;
     const questionText = elements.questionTextEl;
@@ -14571,6 +14585,23 @@ function syncMultipleChoiceSplitLayoutMount() {
     const optionsContainer = elements.optionsContainer;
 
     if (!quizArea || !questionContainer || !questionText || !imageContainer || !optionsContainer) return;
+
+    if (shouldUsePhoneImageRightMount) {
+        const wrapper = document.getElementById('mcSplitQuestionColumn');
+        if (questionText.parentElement !== questionContainer) {
+            questionContainer.insertBefore(questionText, optionsContainer);
+        }
+        if (optionsContainer.parentElement !== questionContainer) {
+            questionContainer.appendChild(optionsContainer);
+        }
+        if (imageContainer.parentElement !== quizArea) {
+            quizArea.insertBefore(imageContainer, questionContainer.nextSibling);
+        }
+        if (wrapper && wrapper.parentElement && !wrapper.contains(questionText) && !wrapper.contains(imageContainer) && !wrapper.contains(optionsContainer)) {
+            wrapper.remove();
+        }
+        return;
+    }
 
     if (shouldUseSplitMount) {
         const wrapper = getMultipleChoiceSplitQuestionColumn();
@@ -14590,24 +14621,109 @@ function syncMultipleChoiceSplitLayoutMount() {
     if (questionText.parentElement !== questionContainer) {
         questionContainer.insertBefore(questionText, optionsContainer);
     }
+    if (optionsContainer.parentElement !== questionContainer) {
+        questionContainer.appendChild(optionsContainer);
+    }
     if (imageContainer.parentElement !== quizArea) {
         quizArea.insertBefore(imageContainer, questionContainer.nextSibling);
     }
-    if (wrapper && wrapper.parentElement && !wrapper.contains(questionText) && !wrapper.contains(imageContainer)) {
+    if (wrapper && wrapper.parentElement && !wrapper.contains(questionText) && !wrapper.contains(imageContainer) && !wrapper.contains(optionsContainer)) {
         wrapper.remove();
     }
 }
 
 function updateViewportClasses() {
     const isFlashcardQuestion = state.currentQuestionType === 'flashcard';
+    const isMultipleChoiceStudyQuestion = state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams';
+    const hasStudyQuestionImage = isMultipleChoiceStudyQuestion && !!state.currentQuestionHasImage;
     document.body.classList.toggle('narrow-iphone-layout', isNarrowIPhoneViewport());
     document.body.classList.toggle('ipad-portrait-flashcard-layout', isFlashcardQuestion && isIPadPortraitFlashcardViewport());
     document.body.classList.toggle('ipad-landscape-flashcard-layout', isFlashcardQuestion && isIPadLandscapeFlashcardViewport());
-    document.body.classList.toggle('active-question-multiple-choice', state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams');
+    document.body.classList.toggle('active-question-multiple-choice', isMultipleChoiceStudyQuestion);
+    document.body.classList.toggle('active-question-has-image', hasStudyQuestionImage);
+    document.body.classList.toggle('phone-landscape-mc-image-right-layout', hasStudyQuestionImage && isPhoneLandscapeMultipleChoiceImageRightViewport());
     document.body.classList.toggle('active-question-flashcard', isFlashcardQuestion);
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
     syncMultipleChoiceSplitLayoutMount();
+    queuePhoneLandscapeMultipleChoiceImageStageSync();
     queueDesktopFullscreenFlashcardHeightSync();
+}
+
+function clearPhoneLandscapeMultipleChoiceImageStage() {
+    const wrap = elements.diagramStudyImageWrap;
+    const image = elements.questionImage;
+    if (wrap) {
+        wrap.style.removeProperty('width');
+        wrap.style.removeProperty('height');
+    }
+    if (image) {
+        image.style.removeProperty('width');
+        image.style.removeProperty('height');
+    }
+}
+
+function updatePhoneLandscapeMultipleChoiceImageStage() {
+    const wrap = elements.diagramStudyImageWrap;
+    const image = elements.questionImage;
+    const container = elements.imageContainer;
+
+    if (!wrap || !image || !container || !document.body.classList.contains('phone-landscape-mc-image-right-layout')) {
+        clearPhoneLandscapeMultipleChoiceImageStage();
+        return;
+    }
+
+    if (image.style.display === 'none' || !image.src) {
+        clearPhoneLandscapeMultipleChoiceImageStage();
+        return;
+    }
+
+    const naturalWidth = image.naturalWidth || 0;
+    const naturalHeight = image.naturalHeight || 0;
+    const availableWidth = container.clientWidth || 0;
+    const availableHeight = container.clientHeight || 0;
+
+    if (!naturalWidth || !naturalHeight || !availableWidth || !availableHeight) {
+        return;
+    }
+
+    const scale = Math.min(availableWidth / naturalWidth, availableHeight / naturalHeight);
+    if (!Number.isFinite(scale) || scale <= 0) return;
+
+    const stageWidth = Math.max(1, Math.floor(naturalWidth * scale));
+    const stageHeight = Math.max(1, Math.floor(naturalHeight * scale));
+
+    wrap.style.width = `${stageWidth}px`;
+    wrap.style.height = `${stageHeight}px`;
+    image.style.width = '100%';
+    image.style.height = '100%';
+}
+
+function queuePhoneLandscapeMultipleChoiceImageStageSync() {
+    const queueState = state.phoneLandscapeMcImageStage;
+    if (!queueState) {
+        updatePhoneLandscapeMultipleChoiceImageStage();
+        return;
+    }
+
+    if (queueState.rafId) {
+        cancelAnimationFrame(queueState.rafId);
+        queueState.rafId = 0;
+    }
+
+    queueState.timeoutIds.forEach(timeoutId => clearTimeout(timeoutId));
+    queueState.timeoutIds = [];
+
+    updatePhoneLandscapeMultipleChoiceImageStage();
+    queueState.rafId = requestAnimationFrame(() => {
+        queueState.rafId = 0;
+        updatePhoneLandscapeMultipleChoiceImageStage();
+        requestAnimationFrame(updatePhoneLandscapeMultipleChoiceImageStage);
+    });
+
+    [80, 220, 500].forEach(delay => {
+        const timeoutId = setTimeout(updatePhoneLandscapeMultipleChoiceImageStage, delay);
+        queueState.timeoutIds.push(timeoutId);
+    });
 }
 
 function restoreQuestionStarButtonLocation() {
@@ -14689,6 +14805,7 @@ function handleViewportChange() {
     fitFlashcardTextToFixedCard(document);
     queueFlashcardImageOverlaySync(document);
     queueFlashcardZoomOverlayLabelSync();
+    queuePhoneLandscapeMultipleChoiceImageStageSync();
 }
 
 // ================= SETTINGS / FULLSCREEN UI =================
@@ -16578,6 +16695,7 @@ function clearProgressModeFinishUI() {
 }
 
 function clearQuestionUI() {
+    state.currentQuestionHasImage = false;
     clearOptionDelay({ hideNotice: true });
     if (elements.optionsContainer) {
         elements.optionsContainer.classList.remove('options-overflow-y', 'options-can-scroll-up', 'options-can-scroll-down');
@@ -16982,6 +17100,7 @@ function showQuestion() {
 
     const q = state.questionQueue[state.currentIndex];
     state.currentQuestionType = q.type || '';
+    state.currentQuestionHasImage = !!q.image;
     const shouldDelayOptions = isOptionDelayEnabledForQuestion(q);
     startAutoStarQuestionWindow(q);
     if (shouldDelayOptions) {
@@ -22291,13 +22410,18 @@ if (window.visualViewport) {
         queueDesktopFullscreenFlashcardHeightSync();
         queueFlashcardImageOverlaySync(document);
         queueFlashcardZoomOverlayLabelSync();
+        queuePhoneLandscapeMultipleChoiceImageStageSync();
     });
     window.visualViewport.addEventListener('scroll', queueOptionsScrollIndicatorUpdate);
     window.visualViewport.addEventListener('scroll', () => {
         queueDesktopFullscreenFlashcardHeightSync();
         queueFlashcardImageOverlaySync(document);
         queueFlashcardZoomOverlayLabelSync();
+        queuePhoneLandscapeMultipleChoiceImageStageSync();
     });
+}
+if (elements.questionImage) {
+    elements.questionImage.addEventListener('load', queuePhoneLandscapeMultipleChoiceImageStageSync);
 }
 if (elements.optionsContainer) {
     elements.optionsContainer.addEventListener('scroll', updateOptionsScrollIndicators, { passive: true });

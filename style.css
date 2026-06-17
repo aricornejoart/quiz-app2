@@ -8518,3 +8518,126 @@ body.ipad-portrait-flashcard-layout .flashcard-side-content.split .flashcard-sid
     }
   }
 }
+
+/* Phase 22GO: phone landscape MC/Diagram image-right layout.
+   In phone landscape, keep the question and answer options in the left column
+   and give the study image/diagram the full right column. This avoids the
+   image pushing options into an early clipped scroll area while keeping the
+   image uncropped with object-fit: contain. */
+body.phone-landscape-mc-image-right-layout .quiz-area {
+  display: grid !important;
+  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+body.phone-landscape-mc-image-right-layout .question-container {
+  grid-column: 1;
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  overflow: hidden;
+}
+
+body.phone-landscape-mc-image-right-layout #questionText {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.28;
+}
+
+body.phone-landscape-mc-image-right-layout .options {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  max-height: none !important;
+  min-height: 0;
+  margin-top: 6px;
+  gap: 7px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 8px;
+  padding-bottom: 16px;
+  scroll-padding-bottom: 16px;
+}
+
+body.phone-landscape-mc-image-right-layout .option-block {
+  gap: 4px;
+}
+
+body.phone-landscape-mc-image-right-layout .option-row,
+body.phone-landscape-mc-image-right-layout .optionBtn,
+body.phone-landscape-mc-image-right-layout .explanation,
+body.phone-landscape-mc-image-right-layout .option-delay-notice {
+  width: 100%;
+  max-width: none;
+}
+
+body.phone-landscape-mc-image-right-layout .optionBtn {
+  padding: 9px 10px;
+  font-size: 13px;
+  line-height: 1.22;
+}
+
+body.phone-landscape-mc-image-right-layout .explanation {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+body.phone-landscape-mc-image-right-layout .image-container {
+  grid-column: 2;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body.phone-landscape-mc-image-right-layout .diagram-study-image-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+body.phone-landscape-mc-image-right-layout .diagram-study-label-layer {
+  inset: 0;
+}
+
+body.phone-landscape-mc-image-right-layout .image-container img,
+body.phone-landscape-mc-image-right-layout #questionImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+body.fullscreen-mode.phone-landscape-mc-image-right-layout .quiz-area,
+body.fullscreen-mode.phone-landscape-mc-image-right-layout .question-container,
+body.fullscreen-mode.phone-landscape-mc-image-right-layout .image-container {
+  min-height: 0;
+}
