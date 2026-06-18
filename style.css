@@ -85,13 +85,15 @@ body.hint-open {
 @media screen and (min-width: 700px) and (min-height: 520px) {
   body.active-question-multiple-choice,
   body.active-question-flashcard,
-  body.active-question-classify {
+  body.active-question-classify,
+  body.active-question-typed-answer {
     padding-top: 10px;
   }
 
   body.active-question-multiple-choice .container,
   body.active-question-flashcard .container,
-  body.active-question-classify .container {
+  body.active-question-classify .container,
+  body.active-question-typed-answer .container {
     padding-top: 10px;
   }
 }
@@ -3999,7 +4001,7 @@ body.fullscreen-mode.active-question-classify {
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
-  border-radius: 0 0 8px 8px;
+  border-radius: 8px;
   outline: none;
   font-family: inherit;
 }
@@ -5763,7 +5765,7 @@ body.studio-question-dragging {
   background: var(--color-bg-control);
   color: var(--color-text-main);
   border: 1px solid var(--color-bg-control-hover);
-  border-radius: 0 0 8px 8px;
+  border-radius: 8px;
   outline: none;
   font-family: inherit;
   -webkit-overflow-scrolling: touch;
@@ -6076,20 +6078,20 @@ body.fullscreen-mode .progress-mode-summary {
 }
 
 .studio-flashcard-rich-text-field .studio-rich-toolbar + .studio-rich-editor {
-  border-radius: 0 0 8px 8px;
+  border-radius: 8px;
 }
 
 /* ===== Phase 22AL Diagrams Quiz Type ===== */
 .studio-diagram-editor-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 0.75fr);
-  gap: 14px;
+  grid-template-columns: minmax(360px, 1.6fr) minmax(240px, 0.7fr);
+  gap: 16px;
   align-items: start;
 }
 
 .studio-diagram-preview {
   position: relative;
-  min-height: 220px;
+  min-height: 440px;
   border: 1px dashed var(--color-border-soft);
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.16);
@@ -6102,7 +6104,8 @@ body.fullscreen-mode .progress-mode-summary {
 .studio-diagram-preview-image {
   display: block;
   max-width: 100%;
-  max-height: 360px;
+  max-height: min(720px, 72vh);
+  height: auto;
   border-radius: 10px;
 }
 
@@ -6212,6 +6215,14 @@ body.fullscreen-mode .progress-mode-summary {
 @media (max-width: 760px) {
   .studio-diagram-editor-layout {
     grid-template-columns: 1fr;
+  }
+
+  .studio-diagram-preview {
+    min-height: 320px;
+  }
+
+  .studio-diagram-preview-image {
+    max-height: min(520px, 70vh);
   }
 
   .studio-diagram-label-row {
@@ -8710,3 +8721,165 @@ body.fullscreen-mode.phone-landscape-mc-image-right-layout .image-container {
   }
 }
 
+
+
+/* ===== Phase 22GT: Typed Answer Diagram Question Type =====
+   Typed Answer reuses Multiple Choice/Diagram study layout but replaces option
+   buttons with one answer input, submit button, and single explanation. */
+.typed-answer-container {
+  width: 100%;
+  max-width: 560px;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 14px auto 0;
+}
+
+.typed-answer-container.hidden {
+  display: none !important;
+}
+
+/* Phase 22GV/22GW: study Typed Answer input follows Quiz Studio field styling, stays bounded, and keeps all input corners rounded. */
+.typed-answer-input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 54px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--color-bg-control-hover);
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  font-family: inherit;
+  font-size: 1.06rem;
+  font-weight: 700;
+  padding: 0 14px;
+  outline: none;
+  box-shadow: none;
+}
+
+.typed-answer-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.typed-answer-input:focus {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+}
+
+.typed-answer-submit-btn {
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-height: 46px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-bg-control-hover);
+  border-radius: 8px;
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
+}
+
+.typed-answer-submit-btn:hover:not(:disabled) {
+  background: var(--color-bg-control-hover);
+  border-color: var(--color-border-strong);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10);
+  transform: translateY(-1px);
+}
+
+.typed-answer-submit-btn:active:not(:disabled) {
+  box-shadow: none;
+  transform: translateY(1px);
+}
+
+.typed-answer-submit-btn:focus-visible {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.22);
+}
+
+.typed-answer-submit-btn:disabled,
+.typed-answer-input:disabled {
+  opacity: 0.76;
+  cursor: default;
+}
+
+.typed-answer-result {
+  min-height: 24px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.typed-answer-correct-mark {
+  color: #8ff5b1;
+}
+
+.typed-answer-incorrect-mark {
+  color: #ff9da5;
+}
+
+.typed-answer-correct-answer {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.95rem;
+}
+
+.typed-answer-explanation {
+  width: 100%;
+  color: #e9e6ff;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
+body.active-question-typed-answer .question-container {
+  min-height: 0;
+}
+
+@media screen and (hover: hover) and (pointer: fine) and (min-width: 700px),
+       screen and (orientation: landscape) {
+  body.active-question-typed-answer .quiz-area {
+    display: block;
+    width: 100%;
+  }
+
+  body.active-question-typed-answer .question-container {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(280px, 1.05fr);
+    align-items: start;
+    column-gap: 28px;
+    width: 100%;
+  }
+
+  body.active-question-typed-answer .mc-split-question-column {
+    grid-column: 1;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  body.active-question-typed-answer .typed-answer-container {
+    grid-column: 2;
+    max-width: none;
+    margin-top: 0;
+  }
+}
+
+body.phone-landscape-mc-image-right-layout.active-question-typed-answer .typed-answer-container {
+  max-width: none;
+  margin-top: 8px;
+}
+
+.typed-answer-variant-grid .typed-answer-variant-row {
+  grid-column: span 1;
+}

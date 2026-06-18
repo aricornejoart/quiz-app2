@@ -980,6 +980,7 @@ MODIFICATION RULES FOR THIS APP
                       <option value="hierarchy">Hierarchy</option>
                       <option value="classify">Classify</option>
                       <option value="diagrams">Diagrams</option>
+                      <option value="typed_answer">Typed Answer</option>
                     </select>
                   </label>
 
@@ -1192,6 +1193,19 @@ MODIFICATION RULES FOR THIS APP
                       <button type="button" data-math-chem-insert="Σ" title="Uppercase sigma">Σ</button>
                     </div>
                   </section>
+
+                  <div id="typedAnswerEditorFields" class="studio-editor-type-fields hidden">
+                    <div class="creator-note studio-options-note">Add every correct answer variant. Study Mode ignores capitalization and extra spaces, but the spelling must match one saved variant.</div>
+                    <div id="typedAnswerVariantFieldsContainer" class="studio-options-grid typed-answer-variant-grid"></div>
+                    <div class="studio-option-inline-add-row">
+                      <button id="addTypedAnswerVariantInlineBtn" type="button" class="auth-action-btn auth-secondary-btn studio-option-inline-add-btn" aria-label="Add variant" title="Add variant">+</button>
+                    </div>
+
+                    <label class="auth-field">
+                      <span>Explanation</span>
+                      <textarea id="createTypedAnswerExplanation" rows="3" placeholder="Explain the answer after the user submits"></textarea>
+                    </label>
+                  </div>
 
                   <div id="multipleChoiceEditorFields" class="studio-editor-type-fields">
                     <div id="createOptionFieldsContainer" class="studio-options-grid"></div>
@@ -1468,6 +1482,13 @@ MODIFICATION RULES FOR THIS APP
           </div>
           <div class="explanation" id="explanation4"></div>
         </div>
+      </div>
+
+      <div id="typedAnswerContainer" class="typed-answer-container hidden">
+        <input id="typedAnswerInput" class="typed-answer-input" type="text" autocomplete="off" placeholder="Enter answer" aria-label="Enter answer">
+        <button id="typedAnswerSubmitBtn" class="typed-answer-submit-btn" type="button">Submit</button>
+        <div id="typedAnswerResult" class="typed-answer-result" aria-live="polite"></div>
+        <div id="typedAnswerExplanation" class="typed-answer-explanation"></div>
       </div>
     </div>
 
