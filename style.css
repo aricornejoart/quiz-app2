@@ -80,6 +80,22 @@ body.hint-open {
   margin-bottom: 20px;
 }
 
+/* Phase 22GS: raise desktop/iPad Study Mode chrome by trimming the shared top gap.
+   Phone portrait/landscape are excluded by the media bounds and retain their safe-area rules. */
+@media screen and (min-width: 700px) and (min-height: 520px) {
+  body.active-question-multiple-choice,
+  body.active-question-flashcard,
+  body.active-question-classify {
+    padding-top: 10px;
+  }
+
+  body.active-question-multiple-choice .container,
+  body.active-question-flashcard .container,
+  body.active-question-classify .container {
+    padding-top: 10px;
+  }
+}
+
 .top-row {
   display: flex;
   align-items: flex-start;
