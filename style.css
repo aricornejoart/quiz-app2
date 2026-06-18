@@ -6145,11 +6145,20 @@ body.fullscreen-mode .progress-mode-summary {
   pointer-events: auto;
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .studio-diagram-label-marker.is-dragging {
   cursor: grabbing;
   transform: translate(-50%, -50%) scale(1.08);
+}
+
+body.studio-diagram-label-dragging,
+body.studio-diagram-label-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 .studio-diagram-empty-state {

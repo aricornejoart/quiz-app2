@@ -464,7 +464,6 @@ MODIFICATION RULES FOR THIS APP
         removeDiagramLabelBtn: document.getElementById('removeDiagramLabelBtn'),
         useSharedDiagramImage: document.getElementById('useSharedDiagramImage'),
         reuseSharedDiagramLabels: document.getElementById('reuseSharedDiagramLabels'),
-        overrideSharedDiagramQuestion: document.getElementById('overrideSharedDiagramQuestion'),
         goToSharedDiagramSourceBtn: document.getElementById('goToSharedDiagramSourceBtn'),
         diagramSharingStatus: document.getElementById('diagramSharingStatus'),
         flashcardEditorFields: document.getElementById('flashcardEditorFields'),
@@ -2302,7 +2301,9 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getDiagramQuestionOverrideFromDetailRow(detailRow) {
-        return !!getDiagramOptionsJsonObject(detailRow).diagramQuestionOverride;
+        // Phase 22HH: per-question shared-diagram overrides were removed from the editor.
+        // Ignore older saved override flags so shared diagram image/label behavior stays consistent.
+        return false;
     }
 
     function getStudioDiagramSharingDraft() {
@@ -2312,7 +2313,7 @@ MODIFICATION RULES FOR THIS APP
             ...currentSharing,
             useSharedImage: canEditSharedSettings ? !!elements.useSharedDiagramImage?.checked : !!currentSharing.useSharedImage,
             useSharedLabels: canEditSharedSettings ? !!elements.reuseSharedDiagramLabels?.checked : !!currentSharing.useSharedLabels,
-            questionOverride: !!elements.overrideSharedDiagramQuestion?.checked
+            questionOverride: false
         };
     }
 
@@ -2329,10 +2330,6 @@ MODIFICATION RULES FOR THIS APP
         if (elements.reuseSharedDiagramLabels) {
             elements.reuseSharedDiagramLabels.checked = !!sharing.useSharedLabels;
             elements.reuseSharedDiagramLabels.disabled = !sharing.useSharedImage || !canEditSharedSettings;
-        }
-        if (elements.overrideSharedDiagramQuestion) {
-            elements.overrideSharedDiagramQuestion.checked = !!sharing.questionOverride && !isSource;
-            elements.overrideSharedDiagramQuestion.disabled = !sharing.useSharedImage || isSource;
         }
         if (elements.goToSharedDiagramSourceBtn) {
             const showSourceJump = hasSource && !isSource;
@@ -2368,9 +2365,7 @@ MODIFICATION RULES FOR THIS APP
             sourceQuestionId: getDiagramSharingSourceQuestionId({ ...(state.auth.studioDiagramSharing || {}), ...nextSharing }),
             sharedLabels: normalizeDiagramLabels(nextSharing.sharedLabels ?? state.auth.studioDiagramSharing?.sharedLabels ?? [])
         };
-        if (isCurrentStudioSharedDiagramSource(state.auth.studioDiagramSharing)) {
-            state.auth.studioDiagramSharing.questionOverride = false;
-        }
+        state.auth.studioDiagramSharing.questionOverride = false;
         updateDiagramSharingControls();
     }
 
@@ -2481,12 +2476,12 @@ MODIFICATION RULES FOR THIS APP
 
     function isUsingSharedDiagramImage() {
         const sharing = getStudioDiagramSharingDraft();
-        return !!(sharing.useSharedImage && !sharing.questionOverride);
+        return !!sharing.useSharedImage;
     }
 
     function isUsingSharedDiagramLabels() {
         const sharing = getStudioDiagramSharingDraft();
-        return !!(sharing.useSharedImage && sharing.useSharedLabels && !sharing.questionOverride);
+        return !!(sharing.useSharedImage && sharing.useSharedLabels);
     }
 
     function getStudioDiagramImageCandidates(questionImage = '', sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState()) {
@@ -2500,7 +2495,7 @@ MODIFICATION RULES FOR THIS APP
             const normalizedValue = normalizeSheetText(value);
             if (normalizedValue && !candidates.includes(normalizedValue)) candidates.push(normalizedValue);
         };
-        if (safeSharing.useSharedImage && !safeSharing.questionOverride) {
+        if (safeSharing.useSharedImage) {
             pushCandidate(getStudioSharedDiagramSourceTruthImageUrl(safeSharing));
             pushCandidate(safeSharing.sharedImageUrl);
             pushCandidate(questionImage);
@@ -2516,7 +2511,7 @@ MODIFICATION RULES FOR THIS APP
 
     function getEffectiveStudioDiagramLabels(questionLabels = []) {
         const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
-        return sharing.useSharedImage && sharing.useSharedLabels && !sharing.questionOverride
+        return sharing.useSharedImage && sharing.useSharedLabels
             ? normalizeDiagramLabels(sharing.sharedLabels || questionLabels)
             : normalizeDiagramLabels(questionLabels);
     }
@@ -2587,13 +2582,13 @@ MODIFICATION RULES FOR THIS APP
         return normalizeTypedAnswerVariants([detailRow?.correct_answer]);
     }
 
-    function buildTypedAnswerOptionsJsonPayload(variants = [], diagramLabels = [], diagramQuestionOverride = false) {
+    function buildTypedAnswerOptionsJsonPayload(variants = [], diagramLabels = []) {
         return {
             questionType: 'typed_answer',
             typedAnswer: true,
             acceptedAnswers: normalizeTypedAnswerVariants(variants),
             diagramLabels: normalizeDiagramLabels(diagramLabels || []),
-            diagramQuestionOverride: !!diagramQuestionOverride
+            diagramQuestionOverride: false
         };
     }
 
@@ -2611,7 +2606,6 @@ MODIFICATION RULES FOR THIS APP
         const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
         const sharedSourceImageUrl = getStudioSharedDiagramSourceImageUrl(sharing);
         const isSharedImage = sharing.useSharedImage
-            && !sharing.questionOverride
             && normalizeSheetText(sourceValue)
             && normalizeSheetText(sourceValue) === normalizeSheetText(sharedSourceImageUrl || sharing.sharedImageUrl);
         if (isSharedImage) {
@@ -2738,16 +2732,32 @@ MODIFICATION RULES FOR THIS APP
         setStudioDirtyState(true);
     }
 
-    function updateStudioDiagramLabelPosition(index, x, y) {
+    function updateStudioDiagramLabelPosition(index, x, y, options = {}) {
         const row = elements.diagramLabelList?.querySelector(`[data-diagram-label-row][data-diagram-label-index="${index}"]`);
-        if (!row) return;
+        if (!row) return null;
         const xInput = row.querySelector('[data-diagram-label-x]');
         const yInput = row.querySelector('[data-diagram-label-y]');
         const safePosition = clampDiagramLabelPosition(x, y, index);
         if (xInput) xInput.value = safePosition.x.toFixed(1);
         if (yInput) yInput.value = safePosition.y.toFixed(1);
-        syncStudioDiagramMarkersFromRows();
+        if (Array.isArray(state.auth.studioDiagramLabels) && state.auth.studioDiagramLabels[index]) {
+            state.auth.studioDiagramLabels[index] = {
+                ...state.auth.studioDiagramLabels[index],
+                x: safePosition.x,
+                y: safePosition.y
+            };
+        }
+        if (options.syncMarkers === false) {
+            const marker = elements.studioDiagramLabelLayer?.querySelector(`[data-diagram-label-index="${index}"]`);
+            if (marker) {
+                marker.style.left = `${safePosition.x.toFixed(1)}%`;
+                marker.style.top = `${safePosition.y.toFixed(1)}%`;
+            }
+        } else {
+            syncStudioDiagramMarkersFromRows();
+        }
         setStudioDirtyState(true);
+        return safePosition;
     }
 
     function renderDiagramStudyLabels(labels = []) {
@@ -8881,7 +8891,7 @@ MODIFICATION RULES FOR THIS APP
         renderTypedAnswerVariantFields(['']);
         renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
         renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
-        if (isStudioSharedDiagramCapableMode() && state.auth.studioDiagramSharing?.useSharedImage && !state.auth.studioDiagramSharing?.questionOverride) {
+        if (isStudioSharedDiagramCapableMode() && state.auth.studioDiagramSharing?.useSharedImage) {
             renderStudioDiagramLabels(state.auth.studioDiagramSharing.useSharedLabels ? state.auth.studioDiagramSharing.sharedLabels : []);
         } else {
             renderStudioDiagramLabels([]);
@@ -8896,7 +8906,7 @@ MODIFICATION RULES FOR THIS APP
         if (!options.keepPendingDraft) {
             state.auth.studioPendingNewQuestionRow = null;
         }
-        if (isStudioSharedDiagramCapableMode() && state.auth.studioDiagramSharing?.useSharedImage && !state.auth.studioDiagramSharing?.questionOverride) {
+        if (isStudioSharedDiagramCapableMode() && state.auth.studioDiagramSharing?.useSharedImage) {
             const sharedImageUrl = getEffectiveStudioDiagramImage('');
             setStudioQuestionImageState(sharedImageUrl, sharedImageUrl ? getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing) : 'No diagram image selected.');
         } else {
@@ -9132,8 +9142,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         } else if (state.auth.editingQuizType === 'diagrams') {
             const detailRow = preloadedMultipleChoiceDetailRow || await loadMultipleChoiceDetailByQuestionId(questionId) || createEmptyMultipleChoiceDetailRow();
-            const questionOverride = getDiagramQuestionOverrideFromDetailRow(detailRow);
-            setStudioDiagramSharingState({ questionOverride });
+            setStudioDiagramSharingState({ questionOverride: false });
 
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
@@ -9154,7 +9163,7 @@ MODIFICATION RULES FOR THIS APP
             setStudioQuestionImageState(
                 effectiveDiagramImage,
                 effectiveDiagramImage
-                    ? (getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) && !questionOverride ? getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing) : 'Existing diagram image saved.')
+                    ? (getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) ? getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing) : 'Existing diagram image saved.')
                     : 'No diagram image selected.'
             );
             setStudioFlashcardTermImageState('', 'No term image selected.');
@@ -9163,8 +9172,7 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
         } else if (state.auth.editingQuizType === 'typed_answer') {
             const detailRow = preloadedMultipleChoiceDetailRow || await loadMultipleChoiceDetailByQuestionId(questionId) || createEmptyMultipleChoiceDetailRow();
-            const questionOverride = getDiagramQuestionOverrideFromDetailRow(detailRow);
-            setStudioDiagramSharingState({ questionOverride });
+            setStudioDiagramSharingState({ questionOverride: false });
 
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = getStoredTextForDisplay(questionRow.prompt_plain, questionRow.prompt_html);
             if (elements.createTypedAnswerExplanation) elements.createTypedAnswerExplanation.value = getStoredTextForDisplay('', detailRow.correct_explanation_html);
@@ -9182,7 +9190,7 @@ MODIFICATION RULES FOR THIS APP
             setStudioQuestionImageState(
                 effectiveDiagramImage,
                 effectiveDiagramImage
-                    ? (getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) && !questionOverride ? getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing) : 'Existing typed-answer image saved.')
+                    ? (getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) ? getSharedDiagramImageStatusLabel(state.auth.studioDiagramSharing) : 'Existing typed-answer image saved.')
                     : 'No question image selected.'
             );
             setStudioFlashcardTermImageState('', 'No term image selected.');
@@ -11667,7 +11675,7 @@ MODIFICATION RULES FOR THIS APP
                 if (!canEditSharedSettings) {
                     nextDiagramSharing = {
                         ...state.auth.studioDiagramSharing,
-                        questionOverride: !!diagramSharingDraft.questionOverride
+                        questionOverride: false
                     };
                 } else if (nextDiagramSharing.useSharedImage) {
                     nextDiagramSharing.sourceQuestionId = existingSourceQuestionId || questionId;
@@ -11717,7 +11725,7 @@ MODIFICATION RULES FOR THIS APP
                         diagramLabelsForQuestion = [];
                     }
                     questionDiagramImageValue = nextDiagramSharing.sharedImageUrl;
-                } else if (nextDiagramSharing.useSharedImage && !nextDiagramSharing.questionOverride) {
+                } else if (nextDiagramSharing.useSharedImage ) {
                     questionDiagramImageValue = '';
                     diagramLabelsForQuestion = nextDiagramSharing.useSharedLabels ? [] : diagramLabelsForQuestion;
                 }
@@ -11779,9 +11787,9 @@ MODIFICATION RULES FOR THIS APP
                 imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
             }));
             const optionsJsonPayload = isTypedAnswerQuestion
-                ? buildTypedAnswerOptionsJsonPayload(typedAnswerVariants, diagramLabelsForQuestion, !!nextDiagramSharing.questionOverride)
+                ? buildTypedAnswerOptionsJsonPayload(typedAnswerVariants, diagramLabelsForQuestion)
                 : (isDiagramQuestion
-                    ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: !!nextDiagramSharing.questionOverride }
+                    ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: false }
                     : buildMultipleChoiceOptionsJsonPayload(optionPayload, existingBuildUpValue));
             const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionsJsonPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
@@ -12652,6 +12660,9 @@ MODIFICATION RULES FOR THIS APP
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
             clearStudioQuestionListFiltersForDirectSelection();
             await loadStudioQuestionIntoEditor(duplicatedQuestionId, { suppressStatus: true, revealInList: true, focusListButton: true, force: true });
+            state.auth.editingQuestionId = duplicatedQuestionId;
+            renderStudioQuestionList();
+            revealStudioQuestionInList(duplicatedQuestionId, { focusListButton: true });
             setCreatorStatus('Question duplicated and opened.', 'success');
         } catch (error) {
             console.error(error);
@@ -16652,8 +16663,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             if (!detail) return null;
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
             const questionDiagramLabels = (quizType === 'diagrams' || quizType === 'typed_answer') ? getDiagramLabelsFromDetailRow(detail) : [];
-            const diagramQuestionOverride = (quizType === 'diagrams' || quizType === 'typed_answer') ? getDiagramQuestionOverrideFromDetailRow(detail) : false;
-            const useSharedDiagramImage = (quizType === 'diagrams' || quizType === 'typed_answer') && diagramSharing.useSharedImage && !diagramQuestionOverride;
+            const useSharedDiagramImage = (quizType === 'diagrams' || quizType === 'typed_answer') && diagramSharing.useSharedImage ;
             const diagramLabels = useSharedDiagramImage && diagramSharing.useSharedLabels
                 ? normalizeDiagramLabels(diagramSharing.sharedLabels)
                 : questionDiagramLabels;
@@ -21666,32 +21676,58 @@ if (elements.diagramLabelList) {
 }
 
 if (elements.studioDiagramLabelLayer) {
-    elements.studioDiagramLabelLayer.addEventListener('pointerdown', e => {
-        const marker = e.target.closest('[data-diagram-label-index]');
-        if (!marker || !elements.studioDiagramPreview) return;
-        e.preventDefault();
-        state.auth.studioDiagramDraggingIndex = Number(marker.dataset.diagramLabelIndex || 0);
-        marker.setPointerCapture?.(e.pointerId);
-        marker.classList.add('is-dragging');
-    });
+    let studioDiagramLabelDragState = null;
 
-    elements.studioDiagramLabelLayer.addEventListener('pointermove', e => {
-        if (state.auth.studioDiagramDraggingIndex === null) return;
+    const updateDiagramDragFromPointer = e => {
+        if (!studioDiagramLabelDragState || e.pointerId !== studioDiagramLabelDragState.pointerId) return;
+        e.preventDefault();
         const rect = (elements.studioDiagramPreviewWrap || elements.studioDiagramPreview)?.getBoundingClientRect();
         if (!rect?.width || !rect?.height) return;
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
-        updateStudioDiagramLabelPosition(state.auth.studioDiagramDraggingIndex, x, y);
-    });
+        updateStudioDiagramLabelPosition(studioDiagramLabelDragState.index, x, y, { syncMarkers: false });
+    };
 
     const stopDiagramDrag = e => {
-        if (state.auth.studioDiagramDraggingIndex === null) return;
-        const marker = e.target.closest?.('[data-diagram-label-index]');
-        marker?.classList.remove('is-dragging');
+        if (!studioDiagramLabelDragState) return;
+        if (e?.pointerId !== undefined && e.pointerId !== studioDiagramLabelDragState.pointerId) return;
+        const activeMarker = studioDiagramLabelDragState.marker;
+        try {
+            elements.studioDiagramLabelLayer.releasePointerCapture?.(studioDiagramLabelDragState.pointerId);
+        } catch (_) {
+            // Ignore pointer-capture release failures on browsers that already released it.
+        }
+        activeMarker?.classList.remove('is-dragging');
+        window.removeEventListener('pointermove', updateDiagramDragFromPointer);
+        window.removeEventListener('pointerup', stopDiagramDrag);
+        window.removeEventListener('pointercancel', stopDiagramDrag);
+        document.body.classList.remove('studio-diagram-label-dragging');
+        studioDiagramLabelDragState = null;
         state.auth.studioDiagramDraggingIndex = null;
+        syncStudioDiagramMarkersFromRows();
     };
-    elements.studioDiagramLabelLayer.addEventListener('pointerup', stopDiagramDrag);
-    elements.studioDiagramLabelLayer.addEventListener('pointercancel', stopDiagramDrag);
+
+    elements.studioDiagramLabelLayer.addEventListener('pointerdown', e => {
+        const marker = e.target.closest('[data-diagram-label-index]');
+        if (!marker || !elements.studioDiagramPreview) return;
+        if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+        e.preventDefault();
+        stopDiagramDrag({ pointerId: studioDiagramLabelDragState?.pointerId });
+        const index = Number(marker.dataset.diagramLabelIndex || 0);
+        state.auth.studioDiagramDraggingIndex = index;
+        studioDiagramLabelDragState = { index, pointerId: e.pointerId, marker };
+        marker.classList.add('is-dragging');
+        document.body.classList.add('studio-diagram-label-dragging');
+        try {
+            elements.studioDiagramLabelLayer.setPointerCapture?.(e.pointerId);
+        } catch (_) {
+            // Pointer capture is a stability enhancement; window listeners below are the fallback.
+        }
+        window.addEventListener('pointermove', updateDiagramDragFromPointer, { passive: false });
+        window.addEventListener('pointerup', stopDiagramDrag);
+        window.addEventListener('pointercancel', stopDiagramDrag);
+        updateDiagramDragFromPointer(e);
+    });
 }
 
 function handleDiagramSharingControlChange(event) {
@@ -21706,7 +21742,7 @@ function handleDiagramSharingControlChange(event) {
         nextSharing.questionOverride = false;
     }
 
-    if (nextSharing.useSharedImage && !nextSharing.questionOverride && canEditSharedSettings) {
+    if (nextSharing.useSharedImage && canEditSharedSettings) {
         const currentImage = normalizeSheetText(state.auth.studioQuestionImageDataUrl);
         const storedCurrentImage = normalizeSheetText(getStudioQuestionRowById(currentQuestionId)?.image_url);
         const sourceImage = currentImage || storedCurrentImage || normalizeSheetText(nextSharing.sharedImageUrl);
@@ -21721,13 +21757,13 @@ function handleDiagramSharingControlChange(event) {
         }
     }
 
-    if (event?.target === elements.reuseSharedDiagramLabels && nextSharing.useSharedLabels && !nextSharing.questionOverride) {
+    if (event?.target === elements.reuseSharedDiagramLabels && nextSharing.useSharedLabels) {
         const existingLabels = normalizeDiagramLabels(nextSharing.sharedLabels || state.auth.studioDiagramSharing?.sharedLabels || []);
         if (existingLabels.length && !getStudioDiagramLabelsFromDOM().length) {
             renderStudioDiagramLabels(existingLabels);
         }
     }
-    if (nextSharing.useSharedImage && !nextSharing.questionOverride) {
+    if (nextSharing.useSharedImage) {
         const sharedImageUrl = getEffectiveStudioDiagramImage('', nextSharing);
         if (sharedImageUrl && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)) {
             setStudioQuestionImageState(sharedImageUrl, getSharedDiagramImageStatusLabel(nextSharing));
@@ -21741,7 +21777,7 @@ function handleDiagramSharingControlChange(event) {
     setStudioDirtyState(true);
 }
 
-[elements.useSharedDiagramImage, elements.reuseSharedDiagramLabels, elements.overrideSharedDiagramQuestion].forEach(control => {
+[elements.useSharedDiagramImage, elements.reuseSharedDiagramLabels].forEach(control => {
     if (!control) return;
     control.addEventListener('change', handleDiagramSharingControlChange);
 });
