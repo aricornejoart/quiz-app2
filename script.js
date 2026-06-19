@@ -3090,11 +3090,11 @@ MODIFICATION RULES FOR THIS APP
         if (!document.getElementById('studioImageEditorOverlay')) {
             document.body.insertAdjacentHTML('beforeend', `
                 <div id="studioImageEditorOverlay" class="studio-image-editor-overlay hidden" aria-hidden="true">
-                  <div class="studio-image-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="studioImageEditorTitle">
+                  <div class="studio-image-editor-dialog studio-image-editor-modal" role="dialog" aria-modal="true" aria-labelledby="studioImageEditorTitle">
                     <div class="studio-image-editor-header">
                       <div class="studio-image-editor-title-wrap">
                         <h3 id="studioImageEditorTitle">Edit Image</h3>
-                        <p id="studioImageEditorSubtitle" hidden></p>
+                        <p id="studioImageEditorSubtitle" class="studio-image-editor-subtitle" hidden></p>
                       </div>
                       <div class="studio-image-editor-toolbar" aria-label="Image editor tools">
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="crop">Crop</button>
@@ -3102,7 +3102,7 @@ MODIFICATION RULES FOR THIS APP
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-oval">Blur Oval</button>
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow">Arrow</button>
                         <label class="studio-image-editor-rgb-control" title="Arrow RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow RGB color"></label>
-                        <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" hidden>Labels</button>
+                        <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button>
                         <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
                         <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
                         <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>
@@ -3137,15 +3137,16 @@ MODIFICATION RULES FOR THIS APP
             const style = document.createElement('style');
             style.id = 'studioImageEditorFallbackStyles';
             style.textContent = `
-                .studio-image-editor-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(10,6,24,.72);backdrop-filter:blur(8px)}
+                .studio-image-editor-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:6px;background:rgba(10,6,24,.72);backdrop-filter:blur(8px)}
                 .studio-image-editor-overlay.hidden{display:none!important}
-                .studio-image-editor-dialog{width:min(980px,96vw);max-height:min(92vh,920px);overflow:auto;border-radius:24px;padding:18px;background:#24134b;color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45)}
-                .studio-image-editor-header,.studio-image-editor-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+                .studio-image-editor-dialog{width:min(1720px,calc(100vw - 12px));height:min(96vh,1120px);max-height:calc(100vh - 12px);overflow:hidden;border-radius:24px;padding:14px;background:#24134b;color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:8px}
+                .studio-image-editor-header,.studio-image-editor-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:0 0 auto}
                 .studio-image-editor-tools{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
                 .studio-image-editor-tools .active{outline:2px solid rgba(250,204,21,.95)}
-                .studio-image-editor-canvas-wrap{display:flex;justify-content:center;align-items:center;min-height:260px;max-height:58vh;overflow:auto;border-radius:16px;background:rgba(0,0,0,.22);padding:12px}
-                #studioImageEditorCanvas{max-width:100%;height:auto;touch-action:none;background:#fff;border-radius:10px}
-                .studio-image-editor-status{min-height:1.4em;margin:10px 0;color:#fef3c7;font-weight:700}
+                .studio-image-editor-workspace{flex:1 1 auto;min-height:0;overflow:hidden}
+                .studio-image-editor-canvas-wrap{display:flex;justify-content:center;align-items:center;min-height:0;height:100%;overflow:hidden;border-radius:16px;background:rgba(0,0,0,.22);padding:8px}
+                #studioImageEditorCanvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;background:#fff;border-radius:10px;object-fit:contain}
+                .studio-image-editor-status{min-height:0;margin:0;color:#fef3c7;font-weight:700}
             `;
             document.head.appendChild(style);
         }
@@ -3487,6 +3488,17 @@ MODIFICATION RULES FOR THIS APP
         if (elements.studioImageEditorLabelsBtn) {
             elements.studioImageEditorLabelsBtn.hidden = !showLabelsButton;
             elements.studioImageEditorLabelsBtn.disabled = !showLabelsButton;
+            elements.studioImageEditorLabelsBtn.title = showLabelsButton
+                ? 'Add or edit labels inside this flashcard image editor'
+                : 'Labels are available for flashcard images';
+            elements.studioImageEditorLabelsBtn.setAttribute('aria-label', elements.studioImageEditorLabelsBtn.title);
+        }
+        if (elements.studioImageEditorSaveBtn) {
+            const labelSaveText = editor?.labelsEnabled ? 'Save Image + Labels' : 'Save Edited Image';
+            elements.studioImageEditorSaveBtn.textContent = labelSaveText;
+            elements.studioImageEditorSaveBtn.title = editor?.labelsEnabled
+                ? 'Save image edits and flashcard image labels'
+                : 'Save edited image';
         }
         const shouldShowPanel = !!(editor?.labelsEnabled && editor?.showLabelPanel);
         if (elements.studioImageEditorLabelPanel) {
@@ -3715,7 +3727,9 @@ MODIFICATION RULES FOR THIS APP
             button.classList.toggle('active', normalizeSheetText(button.dataset.imageEditorTool) === editor.mode);
         });
         refreshImageEditorLabelUi();
-        setImageEditorStatus('');
+        setImageEditorStatus(editor.mode === 'labels'
+            ? 'Click Add Label, then drag labels on the image. Save Image + Labels to keep them.'
+            : '');
         renderImageEditorCanvas();
     }
 
@@ -3809,8 +3823,10 @@ MODIFICATION RULES FOR THIS APP
         editor.labels = normalizeDiagramLabels(info.labels || []);
         editor.showLabelPanel = false;
         if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = 'Edit Image';
-        if (elements.studioImageEditorSubtitle) elements.studioImageEditorSubtitle.textContent = '';
-        if (elements.studioImageEditorSubtitle) elements.studioImageEditorSubtitle.hidden = true;
+        if (elements.studioImageEditorSubtitle) {
+            elements.studioImageEditorSubtitle.textContent = '';
+            elements.studioImageEditorSubtitle.hidden = true;
+        }
         if (elements.studioImageEditorOverlay) {
             elements.studioImageEditorOverlay.classList.remove('hidden');
             elements.studioImageEditorOverlay.setAttribute('aria-hidden', 'false');
