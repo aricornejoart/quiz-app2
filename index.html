@@ -1017,43 +1017,8 @@ MODIFICATION RULES FOR THIS APP
 
                   <div id="studioQuestionPositionLabel" class="studio-question-position-label" aria-live="polite">New Question</div>
 
-                  <div id="sharedQuestionEditorFields" class="studio-editor-type-fields">
-                    <label class="auth-field">
-                      <span>Question prompt</span>
-                      <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
-                    </label>
-
-                    <div id="createQuestionImageToggleRow" class="studio-question-image-toggle-row hidden">
-                      <button id="createQuestionImageToggleBtn" type="button" class="studio-option-image-toggle" aria-expanded="false">Image</button>
-                    </div>
-                    <div id="createQuestionImagePanel" class="studio-question-image-panel">
-                      <label class="auth-field">
-                        <span>Question image (optional)</span>
-                        <input id="createQuestionImageFile" type="file" accept="image/*">
-                      </label>
-                      <div class="studio-file-row">
-                        <div id="createQuestionImageName" class="studio-file-name">No question image selected.</div>
-                        <button id="createQuestionImageEditBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn hidden">Edit Image</button>
-                        <button id="createQuestionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
-                      </div>
-                    </div>
-                  </div>
-
-
                   <div id="diagramEditorFields" class="studio-editor-type-fields hidden">
-                    <div class="creator-note studio-options-note">Optional: upload a diagram image above, then place draggable labels on it. If no image/labels are added, this Diagram question works like a regular multiple-choice question.</div>
-                    <div class="studio-diagram-sharing-panel" aria-label="Diagram sharing options">
-                      <label class="studio-diagram-sharing-option">
-                        <input id="useSharedDiagramImage" type="checkbox">
-                        <span>Use same image for all questions</span>
-                      </label>
-                      <label class="studio-diagram-sharing-option">
-                        <input id="reuseSharedDiagramLabels" type="checkbox">
-                        <span>Reuse same labels for all questions</span>
-                      </label>
-                      <div id="diagramSharingStatus" class="studio-diagram-sharing-status">Sharing is optional. Shared image uses one uploaded media file; labels can remain per-question.</div>
-                      <button id="goToSharedDiagramSourceBtn" type="button" class="auth-action-btn auth-secondary-btn studio-diagram-source-jump hidden">Go to source question</button>
-                    </div>
+                    <div class="creator-note studio-options-note">Place draggable labels on the diagram preview. Use Show Image near Question Prompt to manage the image and sharing controls.</div>
                     <div class="studio-diagram-editor-layout">
                       <div id="studioDiagramPreview" class="studio-diagram-preview" aria-label="Diagram label placement preview">
                         <div id="studioDiagramPreviewWrap" class="studio-diagram-preview-wrap">
@@ -1190,8 +1155,42 @@ MODIFICATION RULES FOR THIS APP
                     </div>
                   </section>
 
+                  <div id="sharedQuestionEditorFields" class="studio-editor-type-fields">
+                    <div class="auth-field studio-question-prompt-field">
+                      <div class="studio-question-prompt-title-row">
+                        <span>Question prompt</span>
+                        <button id="createQuestionImageToggleBtn" type="button" class="studio-option-image-toggle studio-question-prompt-image-toggle hidden" aria-expanded="false">Show Image</button>
+                      </div>
+                      <textarea id="createQuestionPrompt" rows="3" placeholder="Type the question here"></textarea>
+                    </div>
+
+                    <div id="createQuestionImageToggleRow" class="studio-question-image-toggle-row hidden"></div>
+                    <div id="createQuestionImagePanel" class="studio-question-image-panel hidden">
+                      <label class="auth-field">
+                        <span>Question image (optional)</span>
+                        <input id="createQuestionImageFile" type="file" accept="image/*">
+                      </label>
+                      <div class="studio-file-row">
+                        <div id="createQuestionImageName" class="studio-file-name">No question image selected.</div>
+                        <button id="createQuestionImageEditBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn hidden">Edit Image</button>
+                        <button id="createQuestionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                      </div>
+                    <div class="studio-diagram-sharing-panel" aria-label="Diagram sharing options">
+                      <label class="studio-diagram-sharing-option">
+                        <input id="useSharedDiagramImage" type="checkbox">
+                        <span>Use same image for all questions</span>
+                      </label>
+                      <label class="studio-diagram-sharing-option">
+                        <input id="reuseSharedDiagramLabels" type="checkbox">
+                        <span>Reuse same labels for all questions</span>
+                      </label>
+                      <div id="diagramSharingStatus" class="studio-diagram-sharing-status">Sharing is optional. Shared image uses one uploaded media file; labels can remain per-question.</div>
+                      <button id="goToSharedDiagramSourceBtn" type="button" class="auth-action-btn auth-secondary-btn studio-diagram-source-jump hidden">Go to source question</button>
+                    </div>
+                    </div>
+                  </div>
+
                   <div id="typedAnswerEditorFields" class="studio-editor-type-fields hidden">
-                    <div class="creator-note studio-options-note">Add every correct answer variant. Study Mode ignores capitalization and extra spaces, but the spelling must match one saved variant.</div>
                     <div id="typedAnswerVariantFieldsContainer" class="studio-options-grid typed-answer-variant-grid"></div>
                     <div class="studio-option-inline-add-row">
                       <button id="addTypedAnswerVariantInlineBtn" type="button" class="auth-action-btn auth-secondary-btn studio-option-inline-add-btn" aria-label="Add variant" title="Add variant">+</button>

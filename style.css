@@ -6084,14 +6084,14 @@ body.fullscreen-mode .progress-mode-summary {
 /* ===== Phase 22AL Diagrams Quiz Type ===== */
 .studio-diagram-editor-layout {
   display: grid;
-  grid-template-columns: minmax(360px, 1.6fr) minmax(240px, 0.7fr);
-  gap: 16px;
+  grid-template-columns: minmax(540px, 1.8fr) minmax(220px, 0.55fr);
+  gap: 18px;
   align-items: start;
 }
 
 .studio-diagram-preview {
   position: relative;
-  min-height: 440px;
+  min-height: 660px;
   border: 1px dashed var(--color-border-soft);
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.16);
@@ -6104,7 +6104,7 @@ body.fullscreen-mode .progress-mode-summary {
 .studio-diagram-preview-image {
   display: block;
   max-width: 100%;
-  max-height: min(720px, 72vh);
+  max-height: min(1080px, 108vh);
   height: auto;
   border-radius: 10px;
 }
@@ -6183,7 +6183,7 @@ body.studio-diagram-label-dragging * {
 
 .studio-diagram-label-row {
   display: grid;
-  grid-template-columns: minmax(54px, 0.7fr) minmax(64px, 0.7fr) minmax(64px, 0.7fr) auto;
+  grid-template-columns: minmax(72px, 1fr) auto;
   gap: 8px;
   align-items: end;
   padding: 8px;
@@ -6221,17 +6221,17 @@ body.studio-diagram-label-dragging * {
   z-index: 2;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1020px) {
   .studio-diagram-editor-layout {
     grid-template-columns: 1fr;
   }
 
   .studio-diagram-preview {
-    min-height: 320px;
+    min-height: 480px;
   }
 
   .studio-diagram-preview-image {
-    max-height: min(520px, 70vh);
+    max-height: min(780px, 105vh);
   }
 
   .studio-diagram-label-row {
@@ -8891,4 +8891,40 @@ body.phone-landscape-mc-image-right-layout.active-question-typed-answer .typed-a
 
 .typed-answer-variant-grid .typed-answer-variant-row {
   grid-column: span 1;
+}
+
+/* ===== Phase 22HK Diagram/Typed Answer editor layout cleanup ===== */
+.studio-question-prompt-field {
+  gap: 6px;
+}
+
+.studio-question-prompt-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.studio-question-prompt-title-row > span {
+  color: var(--color-text-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.studio-question-prompt-image-toggle {
+  min-height: 28px;
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.studio-question-image-panel {
+  padding: 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.studio-question-image-panel .studio-diagram-sharing-panel {
+  margin-top: 4px;
 }

@@ -2708,8 +2708,8 @@ MODIFICATION RULES FOR THIS APP
             elements.diagramLabelList.innerHTML = drafts.map((item, index) => `
                 <div class="studio-diagram-label-row" data-diagram-label-row data-diagram-label-index="${index}">
                   <input type="text" autocomplete="off" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" aria-label="Diagram label ${index + 1}" data-diagram-label-text>
-                  <label><span>X%</span><input type="number" min="0" max="100" step="0.1" value="${Number(item.x).toFixed(1)}" data-diagram-label-x></label>
-                  <label><span>Y%</span><input type="number" min="0" max="100" step="0.1" value="${Number(item.y).toFixed(1)}" data-diagram-label-y></label>
+                  <input type="hidden" value="${Number(item.x).toFixed(1)}" data-diagram-label-x>
+                  <input type="hidden" value="${Number(item.y).toFixed(1)}" data-diagram-label-y>
                   <button type="button" class="auth-action-btn auth-secondary-btn studio-diagram-label-delete" data-diagram-label-delete aria-label="Delete label ${escapeHtml(displayMathChemTextForEditor(item.label))}">Delete</button>
                 </div>
             `).join('');
@@ -4041,23 +4041,29 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function updateStudioQuestionImagePanelUI() {
-        const collapseForClassify = isStudioClassifyMode();
+        const quizType = getStudioCurrentQuizType();
+        const isFlashcard = quizType === 'flashcard';
+        const isClassify = quizType === 'classify';
+        const isDiagramLike = quizType === 'diagrams' || quizType === 'typed_answer';
+        const shouldCollapseImageControls = isClassify || isDiagramLike;
         const hasImage = hasStudioQuestionImageValue();
-        const isOpen = !collapseForClassify || !!state.auth.studioQuestionImagePanelOpen;
+        const isOpen = shouldCollapseImageControls ? !!state.auth.studioQuestionImagePanelOpen : true;
+        const shouldShowToggle = !isFlashcard && shouldCollapseImageControls;
 
         if (elements.createQuestionImageToggleRow) {
-            elements.createQuestionImageToggleRow.classList.toggle('hidden', !collapseForClassify);
+            elements.createQuestionImageToggleRow.classList.add('hidden');
         }
         if (elements.createQuestionImagePanel) {
-            elements.createQuestionImagePanel.classList.toggle('hidden', collapseForClassify && !isOpen);
+            elements.createQuestionImagePanel.classList.toggle('hidden', shouldCollapseImageControls && !isOpen);
         }
         if (elements.createQuestionImageToggleBtn) {
+            elements.createQuestionImageToggleBtn.classList.toggle('hidden', !shouldShowToggle);
             elements.createQuestionImageToggleBtn.classList.toggle('has-image', hasImage);
             elements.createQuestionImageToggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            elements.createQuestionImageToggleBtn.textContent = isOpen ? 'Hide Image' : (hasImage ? 'Edit Image' : 'Image');
+            elements.createQuestionImageToggleBtn.textContent = isOpen ? 'Hide Image' : 'Show Image';
             elements.createQuestionImageToggleBtn.title = isOpen
-                ? 'Hide Classification question image controls'
-                : (hasImage ? 'Edit Classification question image' : 'Show Classification question image controls');
+                ? 'Hide image and shared diagram controls'
+                : 'Show image and shared diagram controls';
             elements.createQuestionImageToggleBtn.setAttribute('aria-label', elements.createQuestionImageToggleBtn.title);
         }
     }
@@ -8612,6 +8618,40 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function captureStudioEditorScrollAnchor(anchor = elements.createQuestionPrompt) {
+        const fallback = document.getElementById('quizStudioEditorSection') || elements.quizStudioPage || document.body;
+        const target = anchor && document.body.contains(anchor) ? anchor : fallback;
+        const rect = target?.getBoundingClientRect?.();
+        return {
+            target,
+            top: rect ? rect.top : null,
+            scrollX: window.scrollX || window.pageXOffset || 0,
+            scrollY: window.scrollY || window.pageYOffset || 0
+        };
+    }
+
+    function restoreStudioEditorScrollAnchor(snapshot) {
+        if (!snapshot) return;
+        const restore = () => {
+            if (snapshot.target && document.body.contains(snapshot.target) && Number.isFinite(snapshot.top)) {
+                const nextRect = snapshot.target.getBoundingClientRect?.();
+                if (nextRect) {
+                    const delta = nextRect.top - snapshot.top;
+                    if (Math.abs(delta) > 1) {
+                        window.scrollBy(0, delta);
+                        return;
+                    }
+                }
+            }
+            window.scrollTo(snapshot.scrollX || 0, snapshot.scrollY || 0);
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => requestAnimationFrame(restore));
+        } else {
+            setTimeout(restore, 0);
+        }
+    }
+
     function renderStudioQuestionList() {
         syncStudioQuestionStarredFilterButton();
         if (!elements.studioQuestionList) return;
@@ -11896,7 +11936,9 @@ MODIFICATION RULES FOR THIS APP
                 upsertStudioSavedQuestionRow(savedQuestionRow);
                 renderStudioQuestionList();
                 updateCreateQuizModeUI();
-                revealStudioQuestionInList(questionId, { instant: true });
+                if (!saveOptions.skipFastSaveReveal) {
+                    revealStudioQuestionInList(questionId, { instant: true });
+                }
                 setCreatorStatus(isEditingQuestion ? (isTypedAnswerQuestion ? 'Typed-answer question updated.' : (isDiagramQuestion ? 'Diagram question updated.' : 'Question updated.')) : (isTypedAnswerQuestion ? 'Typed-answer question saved.' : (isDiagramQuestion ? 'Diagram question saved.' : 'Question saved.')), 'success');
                 return { quizId, questionId, questionRow: savedQuestionRow, fastSaved: true };
             }
@@ -21051,20 +21093,23 @@ async function handleStudioSaveAndAddQuestion() {
         setCreatorStatus('Click Save Changes first to create this quiz, then you can add more questions to it.', 'error');
         return;
     }
+    const scrollSnapshot = captureStudioEditorScrollAnchor();
     if (isCurrentStudioQuestionBlank() && !state.auth.studioHasUnsavedChanges && !hasStudioQuestionDrafts()) {
-        await beginStudioNewQuestion();
+        await beginStudioNewQuestion(null, { preserveScrollPosition: true });
+        restoreStudioEditorScrollAnchor(scrollSnapshot);
         return;
     }
 
     clearStudioAutosaveTimer();
-    const saved = await handleSaveStudioQuiz({ fastSaveAndContinue: true });
+    const saved = await handleSaveStudioQuiz({ fastSaveAndContinue: true, skipFastSaveReveal: true });
     if (!saved?.questionId) return;
 
-    await beginStudioNewQuestion(null, { suppressReadyStatus: true });
+    await beginStudioNewQuestion(null, { suppressReadyStatus: true, preserveScrollPosition: true });
     const nextItemLabel = getStudioCurrentQuizType() === 'typed_answer'
         ? 'typed-answer question'
         : (getStudioCurrentQuizType() === 'diagrams' ? 'diagram question' : 'question');
     setCreatorStatus(`Question saved. Ready to add the next ${nextItemLabel}.`, 'success');
+    restoreStudioEditorScrollAnchor(scrollSnapshot);
 }
 
 const handleStudioAddQuestionClick = () => {
@@ -21896,14 +21941,6 @@ if (elements.goToSharedDiagramSourceBtn) {
 
 if (elements.createQuestionImageToggleBtn) {
     elements.createQuestionImageToggleBtn.addEventListener('click', () => {
-        const panelOpen = !!elements.createQuestionImagePanel && !elements.createQuestionImagePanel.classList.contains('hidden');
-        if (hasStudioQuestionImageValue() && !panelOpen) {
-            openStudioImageEditor({ kind: 'question' }).catch(err => {
-                console.error(err);
-                setCreatorStatus('Could not open the question image editor.', 'error');
-            });
-            return;
-        }
         setStudioQuestionImagePanelOpen();
     });
 }
