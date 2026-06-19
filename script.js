@@ -9004,6 +9004,34 @@ MODIFICATION RULES FOR THIS APP
         return state.auth.studioQuizQuestions;
     }
 
+    function upsertStudioSavedQuestionRow(savedRow = {}) {
+        const normalizedQuestionId = normalizeSheetText(savedRow?.id);
+        if (!normalizedQuestionId) return null;
+        const rows = Array.isArray(state.auth.studioQuizQuestions) ? state.auth.studioQuizQuestions : [];
+        const existingIndex = rows.findIndex(row => normalizeSheetText(row?.id) === normalizedQuestionId);
+        const existingRow = existingIndex >= 0 ? rows[existingIndex] : {};
+        const nextRow = {
+            ...existingRow,
+            ...savedRow,
+            id: normalizedQuestionId,
+            prompt_plain: normalizeSheetText(savedRow.prompt_plain ?? existingRow.prompt_plain),
+            prompt_html: normalizeSheetText(savedRow.prompt_html ?? existingRow.prompt_html),
+            question_type: normalizeSheetText(savedRow.question_type || existingRow.question_type || getStudioCurrentQuizType()) || 'multiple_choice',
+            storage_question_type: normalizeSheetText(savedRow.storage_question_type || existingRow.storage_question_type || getStoredQuestionTypeForStudioType(savedRow.question_type || existingRow.question_type || getStudioCurrentQuizType())),
+            image_url: normalizeSheetText(savedRow.image_url ?? existingRow.image_url),
+            sort_order: Number(savedRow.sort_order ?? existingRow.sort_order ?? rows.length),
+            isStarred: !!(savedRow.isStarred ?? existingRow.isStarred)
+        };
+        if (existingIndex >= 0) {
+            rows[existingIndex] = nextRow;
+        } else {
+            rows.push(nextRow);
+        }
+        rows.sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+        state.auth.studioQuizQuestions = rows;
+        return nextRow;
+    }
+
     async function loadStudioQuestionIntoEditor(questionId, options = {}) {
         const suppressStatus = !!options.suppressStatus;
         if (!state.auth.client || !questionId) {
@@ -9268,10 +9296,12 @@ MODIFICATION RULES FOR THIS APP
         setStudioDirtyState(hasStudioQuestionDrafts());
         await setQuizStudioSection('editor');
         const nextItemLabel = getStudioCurrentQuizType() === 'flashcard' ? 'flashcard' : (getStudioCurrentQuizType() === 'hierarchy' ? 'hierarchy question' : (getStudioCurrentQuizType() === 'classify' ? 'classify question' : (getStudioCurrentQuizType() === 'typed_answer' ? 'typed-answer question' : (getStudioCurrentQuizType() === 'diagrams' ? 'diagram question' : 'question'))));
-        if (validInsertAfterQuestionId) {
-            setCreatorStatus(`Ready to insert a new ${nextItemLabel} between existing items. Fill in the fields below and save.`, 'success');
-        } else {
-            setCreatorStatus(`Ready to add a new ${nextItemLabel} to this quiz. Fill in the fields below and save.`, 'success');
+        if (!options.suppressReadyStatus) {
+            if (validInsertAfterQuestionId) {
+                setCreatorStatus(`Ready to insert a new ${nextItemLabel} between existing items. Fill in the fields below and save.`, 'success');
+            } else {
+                setCreatorStatus(`Ready to add a new ${nextItemLabel} to this quiz. Fill in the fields below and save.`, 'success');
+            }
         }
     }
 
@@ -9804,10 +9834,34 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    function getInheritedSharedDiagramImageValueForBlankCheck() {
+        if (!isStudioSharedDiagramCapableMode()) return '';
+        const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        if (!sharing.useSharedImage) return '';
+        return normalizeSheetText(getEffectiveStudioDiagramImage('') || getStudioSharedDiagramSourceTruthImageUrl(sharing));
+    }
+
+    function isCurrentEditorImageOnlyInheritedSharedDiagramImage() {
+        const currentImage = normalizeSheetText(state.auth.studioQuestionImageDataUrl);
+        const inheritedImage = getInheritedSharedDiagramImageValueForBlankCheck();
+        return !!currentImage && !!inheritedImage && currentImage === inheritedImage;
+    }
+
+    function hasCurrentEditorUserAuthoredDiagramLabels() {
+        if (!isStudioSharedDiagramCapableMode()) return getStudioDiagramLabelsFromDOM().some(label => normalizeSheetText(label.label));
+        const sharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
+        if (sharing.useSharedImage && sharing.useSharedLabels && !state.auth.editingQuestionId) {
+            return false;
+        }
+        return getStudioDiagramLabelsFromDOM().some(label => normalizeSheetText(label.label));
+    }
+
     function isCurrentStudioQuestionBlank() {
         const quizType = getStudioCurrentQuizType();
         const hasLearningResourceImage = !!normalizeSheetText(state.auth.studioLearningResourcesImageDataUrl);
         const hasLearningResources = !!getLearningResourcesEditorPlain() || hasLearningResourceImage;
+        const questionImageIsBlankForNewSharedQuestion = !state.auth.editingQuestionId && isCurrentEditorImageOnlyInheritedSharedDiagramImage();
+        const hasQuestionImage = !!normalizeSheetText(state.auth.studioQuestionImageDataUrl) && !questionImageIsBlankForNewSharedQuestion;
 
         if (quizType === 'flashcard') {
             return !normalizeSheetText(elements.createFlashcardTerm?.value)
@@ -9819,7 +9873,7 @@ MODIFICATION RULES FOR THIS APP
 
         if (quizType === 'hierarchy') {
             return !normalizeSheetText(elements.createQuestionPrompt?.value)
-                && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && !hasQuestionImage
                 && !hasLearningResources
                 && !getStudioHierarchyDraftsFromDOM().some(draft => normalizeSheetText(draft.text));
         }
@@ -9828,7 +9882,7 @@ MODIFICATION RULES FOR THIS APP
             const categories = getStudioClassifyCategoriesDraftsFromDOM();
             const items = getStudioClassifyItemsDraftsFromDOM(categories);
             return !normalizeSheetText(elements.createQuestionPrompt?.value)
-                && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && !hasQuestionImage
                 && !hasLearningResources
                 && !categories.some(category => normalizeSheetText(category.label) || normalizeSheetText(category.imageUrl))
                 && !items.some(item => normalizeSheetText(item.text) || normalizeSheetText(item.imageUrl));
@@ -9837,24 +9891,24 @@ MODIFICATION RULES FOR THIS APP
         if (quizType === 'diagrams') {
             return !normalizeSheetText(elements.createQuestionPrompt?.value)
                 && !normalizeSheetText(elements.createCorrectExplanation?.value)
-                && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && !hasQuestionImage
                 && !hasLearningResources
-                && !getStudioDiagramLabelsFromDOM().some(label => normalizeSheetText(label.label))
+                && !hasCurrentEditorUserAuthoredDiagramLabels()
                 && !getStudioOptionDraftsFromDOM().some(option => normalizeSheetText(option.text) || normalizeSheetText(option.explanation) || normalizeSheetText(option.imageUrl));
         }
 
         if (quizType === 'typed_answer') {
             return !normalizeSheetText(elements.createQuestionPrompt?.value)
                 && !normalizeSheetText(elements.createTypedAnswerExplanation?.value)
-                && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+                && !hasQuestionImage
                 && !hasLearningResources
-                && !getStudioDiagramLabelsFromDOM().some(label => normalizeSheetText(label.label))
+                && !hasCurrentEditorUserAuthoredDiagramLabels()
                 && !getTypedAnswerVariantDraftValuesFromDOM().some(value => normalizeSheetText(value));
         }
 
         return !normalizeSheetText(elements.createQuestionPrompt?.value)
             && !normalizeSheetText(elements.createCorrectExplanation?.value)
-            && !normalizeSheetText(state.auth.studioQuestionImageDataUrl)
+            && !hasQuestionImage
             && !hasLearningResources
             && !getStudioOptionDraftsFromDOM().some(option => normalizeSheetText(option.text) || normalizeSheetText(option.explanation) || normalizeSheetText(option.imageUrl));
     }
@@ -11584,7 +11638,7 @@ MODIFICATION RULES FOR THIS APP
         return { categories: savedCategories, items: savedItems };
     }
 
-    async function handleSaveMultipleChoiceQuiz() {
+    async function handleSaveMultipleChoiceQuiz(saveOptions = {}) {
         if (!state.auth.client || !state.auth.user?.id) {
             setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
             return;
@@ -11631,6 +11685,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
+            let savedQuestionSortOrder = getStudioQuestionRowById(questionId)?.sort_order ?? 0;
             let currentQuizDescription = '';
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             let previousQuizDescriptionMediaRefs = new Set();
@@ -11649,6 +11704,7 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
+                savedQuestionSortOrder = questionSortOrder;
                 const { data, error } = await state.auth.client.from('questions').insert({ quiz_id: quizId, question_type: getStoredQuestionTypeForStudioType(isTypedAnswerQuestion ? 'typed_answer' : (isDiagramQuestion ? 'diagrams' : 'multiple_choice')), prompt_html: buildStoredHtmlFromPlain(prompt), prompt_plain: prompt, image_url: '', learning_resources_html: learningResourcesHtml, learning_resources_image_url: '', sort_order: questionSortOrder }).select('id').single();
                 if (error) throw error;
                 questionId = data.id;
@@ -11819,16 +11875,40 @@ MODIFICATION RULES FOR THIS APP
                 await applyPendingStudioInsertOrder(quizId, questionId);
             }
             state.auth.editingQuizType = isTypedAnswerQuestion ? 'typed_answer' : (isDiagramQuestion ? 'diagrams' : 'multiple_choice');
+            const savedQuestionRow = {
+                id: questionId,
+                prompt_plain: prompt,
+                prompt_html: buildStoredHtmlFromPlain(prompt),
+                question_type: state.auth.editingQuizType,
+                storage_question_type: getStoredQuestionTypeForStudioType(state.auth.editingQuizType),
+                image_url: savedSharedMedia.image_url || '',
+                sort_order: Number(savedQuestionSortOrder ?? 0),
+                buildUp: existingBuildUpValue || '',
+                mc_search_text: buildStudioMultipleChoiceSearchText(detailPayload),
+                isStarred: !!getStudioQuestionRowById(questionId)?.isStarred
+            };
             clearStudioQuestionDraft(questionId);
             setStudioDirtyState(hasStudioQuestionDrafts());
             state.auth.studioPendingNewQuestionRow = null;
+            if (saveOptions.fastSaveAndContinue && isEditingQuiz) {
+                state.auth.editingQuizId = quizId;
+                state.auth.editingQuestionId = questionId;
+                upsertStudioSavedQuestionRow(savedQuestionRow);
+                renderStudioQuestionList();
+                updateCreateQuizModeUI();
+                revealStudioQuestionInList(questionId, { instant: true });
+                setCreatorStatus(isEditingQuestion ? (isTypedAnswerQuestion ? 'Typed-answer question updated.' : (isDiagramQuestion ? 'Diagram question updated.' : 'Question updated.')) : (isTypedAnswerQuestion ? 'Typed-answer question saved.' : (isDiagramQuestion ? 'Diagram question saved.' : 'Question saved.')), 'success');
+                return { quizId, questionId, questionRow: savedQuestionRow, fastSaved: true };
+            }
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? (isTypedAnswerQuestion ? 'Typed-answer quiz created and first question saved.' : (isDiagramQuestion ? 'Diagrams quiz created and first question saved.' : 'Quiz created and first question saved.')) : (isEditingQuestion ? (isTypedAnswerQuestion ? 'Typed-answer question updated.' : (isDiagramQuestion ? 'Diagram question updated.' : 'Question updated.')) : (isTypedAnswerQuestion ? 'New typed-answer question added to the quiz.' : (isDiagramQuestion ? 'New diagram question added to the quiz.' : 'New question added to the quiz.'))), 'success');
+            return { quizId, questionId, questionRow: savedQuestionRow, fastSaved: false };
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not save the quiz.', 'error');
+            return null;
         }
     }
 
@@ -12087,7 +12167,7 @@ MODIFICATION RULES FOR THIS APP
         }
         if (isStudioHierarchyMode()) return handleSaveHierarchyQuiz();
         if (isStudioClassifyMode()) return handleSaveClassifyQuiz();
-        return handleSaveMultipleChoiceQuiz();
+        return handleSaveMultipleChoiceQuiz(options);
     }
 
     async function handleSaveStudioEditorChanges() {
@@ -20966,10 +21046,31 @@ if (elements.studioNextQuestionBottomBtn) {
     elements.studioNextQuestionBottomBtn.addEventListener('click', () => handleStudioNavigateQuestionClick('next'));
 }
 
+async function handleStudioSaveAndAddQuestion() {
+    if (!state.auth.editingQuizId) {
+        setCreatorStatus('Click Save Changes first to create this quiz, then you can add more questions to it.', 'error');
+        return;
+    }
+    if (isCurrentStudioQuestionBlank() && !state.auth.studioHasUnsavedChanges && !hasStudioQuestionDrafts()) {
+        await beginStudioNewQuestion();
+        return;
+    }
+
+    clearStudioAutosaveTimer();
+    const saved = await handleSaveStudioQuiz({ fastSaveAndContinue: true });
+    if (!saved?.questionId) return;
+
+    await beginStudioNewQuestion(null, { suppressReadyStatus: true });
+    const nextItemLabel = getStudioCurrentQuizType() === 'typed_answer'
+        ? 'typed-answer question'
+        : (getStudioCurrentQuizType() === 'diagrams' ? 'diagram question' : 'question');
+    setCreatorStatus(`Question saved. Ready to add the next ${nextItemLabel}.`, 'success');
+}
+
 const handleStudioAddQuestionClick = () => {
     const addAction = isStudioFlashcardMode()
         ? handleStudioFlashcardAddCard()
-        : beginStudioNewQuestion();
+        : handleStudioSaveAndAddQuestion();
 
     addAction.catch(err => {
         console.error(err);
