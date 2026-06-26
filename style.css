@@ -9068,3 +9068,91 @@ body.phone-landscape-mc-image-right-layout.active-question-typed-answer .typed-a
     }
 }
 
+
+/* ===== Phase 22IC: iPad portrait MC/Diagram image-above-options layout =====
+   iPad portrait Study Mode now stacks the question image/diagram above the
+   answer options so the image can use the full editor width instead of being
+   squeezed into a side column. This applies in fullscreen and normal mode only
+   for Multiple Choice and Diagram questions with images. */
+body.ipad-portrait-mc-image-top-layout .quiz-area {
+  display: block !important;
+  width: 100%;
+  max-width: none;
+}
+
+body.ipad-portrait-mc-image-top-layout .question-container {
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+body.ipad-portrait-mc-image-top-layout .mc-split-question-column {
+  display: contents;
+}
+
+body.ipad-portrait-mc-image-top-layout #questionText {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+body.ipad-portrait-mc-image-top-layout .image-container {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 4px 0 6px;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+body.ipad-portrait-mc-image-top-layout .diagram-study-image-wrap {
+  position: relative;
+  display: inline-block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+body.ipad-portrait-mc-image-top-layout .diagram-study-label-layer {
+  inset: 0;
+}
+
+body.ipad-portrait-mc-image-top-layout .image-container img,
+body.ipad-portrait-mc-image-top-layout #questionImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(42svh, 520px);
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+body.fullscreen-mode.ipad-portrait-mc-image-top-layout .image-container img,
+body.fullscreen-mode.ipad-portrait-mc-image-top-layout #questionImage {
+  max-height: min(46svh, 620px);
+}
+
+body.ipad-portrait-mc-image-top-layout .options {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin-top: 6px;
+}
+
+body.ipad-portrait-mc-image-top-layout .option-block,
+body.ipad-portrait-mc-image-top-layout .option-row,
+body.ipad-portrait-mc-image-top-layout .optionBtn,
+body.ipad-portrait-mc-image-top-layout .explanation,
+body.ipad-portrait-mc-image-top-layout .option-delay-notice {
+  width: 100%;
+  max-width: none;
+}

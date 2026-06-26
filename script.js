@@ -15349,6 +15349,10 @@ function isIPadLandscapeFlashcardViewport() {
     return isIPadLikeDevice() && window.matchMedia('(orientation: landscape) and (min-width: 700px)').matches;
 }
 
+function isIPadPortraitMultipleChoiceImageTopViewport() {
+    return isIPadLikeDevice() && window.matchMedia('(orientation: portrait) and (min-width: 700px)').matches;
+}
+
 function isPhoneLandscapeMultipleChoiceImageRightViewport() {
     const landscapePhone = window.matchMedia('(orientation: landscape) and (max-height: 520px)').matches;
     const coarseTouch = window.matchMedia('(hover: none) and (pointer: coarse), (any-pointer: coarse)').matches;
@@ -15372,8 +15376,10 @@ function getMultipleChoiceSplitQuestionColumn() {
 
 function syncMultipleChoiceSplitLayoutMount() {
     const isMultipleChoiceStudyQuestion = state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams' || state.currentQuestionType === 'typed answer';
-    const shouldUsePhoneImageRightMount = isMultipleChoiceStudyQuestion && !!state.currentQuestionHasImage && isPhoneLandscapeMultipleChoiceImageRightViewport();
-    const shouldUseSplitMount = isMultipleChoiceStudyQuestion && !shouldUsePhoneImageRightMount && isMultipleChoiceSplitLayoutViewport();
+    const isMultipleChoiceOrDiagramStudyQuestion = state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams';
+    const shouldUseIpadPortraitImageTopMount = isMultipleChoiceOrDiagramStudyQuestion && !!state.currentQuestionHasImage && isIPadPortraitMultipleChoiceImageTopViewport();
+    const shouldUsePhoneImageRightMount = isMultipleChoiceStudyQuestion && !!state.currentQuestionHasImage && !shouldUseIpadPortraitImageTopMount && isPhoneLandscapeMultipleChoiceImageRightViewport();
+    const shouldUseSplitMount = isMultipleChoiceStudyQuestion && !shouldUseIpadPortraitImageTopMount && !shouldUsePhoneImageRightMount && isMultipleChoiceSplitLayoutViewport();
     const quizArea = elements.quizArea;
     const questionContainer = elements.questionContainer;
     const questionText = elements.questionTextEl;
@@ -15381,6 +15387,25 @@ function syncMultipleChoiceSplitLayoutMount() {
     const optionsContainer = elements.optionsContainer;
 
     if (!quizArea || !questionContainer || !questionText || !imageContainer || !optionsContainer) return;
+
+    if (shouldUseIpadPortraitImageTopMount) {
+        const wrapper = document.getElementById('mcSplitQuestionColumn');
+        if (questionText.parentElement !== questionContainer) {
+            questionContainer.insertBefore(questionText, optionsContainer);
+        }
+        if (imageContainer.parentElement !== questionContainer) {
+            questionContainer.insertBefore(imageContainer, optionsContainer);
+        } else if (imageContainer.nextElementSibling !== optionsContainer) {
+            questionContainer.insertBefore(imageContainer, optionsContainer);
+        }
+        if (optionsContainer.parentElement !== questionContainer) {
+            questionContainer.appendChild(optionsContainer);
+        }
+        if (wrapper && wrapper.parentElement && !wrapper.contains(questionText) && !wrapper.contains(imageContainer) && !wrapper.contains(optionsContainer)) {
+            wrapper.remove();
+        }
+        return;
+    }
 
     if (shouldUsePhoneImageRightMount) {
         const wrapper = document.getElementById('mcSplitQuestionColumn');
@@ -15437,6 +15462,7 @@ function updateViewportClasses() {
     document.body.classList.toggle('ipad-landscape-flashcard-layout', isFlashcardQuestion && isIPadLandscapeFlashcardViewport());
     document.body.classList.toggle('active-question-multiple-choice', isMultipleChoiceStudyQuestion);
     document.body.classList.toggle('active-question-has-image', hasStudyQuestionImage);
+    document.body.classList.toggle('ipad-portrait-mc-image-top-layout', hasStudyQuestionImage && (state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams') && isIPadPortraitMultipleChoiceImageTopViewport());
     document.body.classList.toggle('phone-landscape-mc-image-right-layout', hasStudyQuestionImage && isPhoneLandscapeMultipleChoiceImageRightViewport());
     document.body.classList.toggle('active-question-flashcard', isFlashcardQuestion);
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
