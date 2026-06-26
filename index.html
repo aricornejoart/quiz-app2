@@ -1203,12 +1203,20 @@ MODIFICATION RULES FOR THIS APP
                   </div>
 
                   <div id="multipleChoiceEditorFields" class="studio-editor-type-fields">
+                    <div class="studio-multiple-answer-editor-controls" aria-label="Multiple-answer controls">
+                      <label class="studio-allow-multiple-answer-toggle">
+                        <input id="createAllowMultipleAnswers" type="checkbox">
+                        <span>Allow multiple answers</span>
+                      </label>
+                      <button id="createDeselectCorrectAnswersBtn" type="button" class="auth-action-btn auth-secondary-btn studio-deselect-correct-answers-btn" disabled>Deselect Correct Answers</button>
+                    </div>
+
                     <div id="createOptionFieldsContainer" class="studio-options-grid"></div>
                     <div class="studio-option-inline-add-row">
                       <button id="addOptionInlineBtn" type="button" class="auth-action-btn auth-secondary-btn studio-option-inline-add-btn" aria-label="Add option" title="Add option">+</button>
                     </div>
 
-                    <label class="auth-field">
+                    <label class="auth-field" id="createCorrectOptionSelectField">
                       <span>Correct option</span>
                       <select id="createCorrectOptionSelect">
                         <option value="1">Option 1</option>
@@ -1217,6 +1225,8 @@ MODIFICATION RULES FOR THIS APP
                         <option value="4">Option 4</option>
                       </select>
                     </label>
+
+                    <div id="createCorrectOptionCheckboxes" class="studio-correct-option-checkboxes hidden" aria-label="Correct options"></div>
 
                     <label class="auth-field">
                       <span>Correct answer explanation fallback (optional)</span>
@@ -1566,7 +1576,7 @@ MODIFICATION RULES FOR THIS APP
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-oval">Blur Oval</button>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="arrow">Arrow</button>
           <label class="studio-image-editor-rgb-control" title="Arrow RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow RGB color"></label>
-          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" hidden>Labels</button>
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button>
           <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
           <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
           <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>

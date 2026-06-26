@@ -201,6 +201,7 @@ MODIFICATION RULES FOR THIS APP
         progressRetryActive: false,
         progressWrongQuestionMap: new Map(),
         questionAnswered: false,
+        multipleAnswerSelection: new Set(),
 
         pendingLearningResource: null,
         learningResourcesOverlayOpen: false,
@@ -550,6 +551,9 @@ MODIFICATION RULES FOR THIS APP
         addClassifyItemBtn: document.getElementById('addClassifyItemBtn'),
         removeClassifyItemBtn: document.getElementById('removeClassifyItemBtn'),
         createCorrectOptionSelect: document.getElementById('createCorrectOptionSelect'),
+        createAllowMultipleAnswers: document.getElementById('createAllowMultipleAnswers'),
+        createDeselectCorrectAnswersBtn: document.getElementById('createDeselectCorrectAnswersBtn'),
+        createCorrectOptionCheckboxes: document.getElementById('createCorrectOptionCheckboxes'),
         createCorrectExplanation: document.getElementById('createCorrectExplanation'),
         createQuizBtn: document.getElementById('createQuizBtn'),
         createQuizCancelEditBtn: document.getElementById('createQuizCancelEditBtn'),
@@ -1525,14 +1529,14 @@ MODIFICATION RULES FOR THIS APP
         const rows = [[
             'Question', 'multiple choice', 'section', 'build_up',
             'option_1', 'option_2', 'option_3', 'option_4', 'option_5', 'option_6',
-            'correct_option',
+            'correct_answer', 'allow_multiple_answers',
             'option_1_explanation', 'option_2_explanation', 'option_3_explanation', 'option_4_explanation', 'option_5_explanation', 'option_6_explanation',
             'Question image URL', 'Learning resources', 'Learning resources image URL'
         ]];
         if (isExample) rows.push([
             'Which organelle makes most cellular ATP?', '', '7.1', 'cell-organelle-case-1',
             'Nucleus', 'Mitochondria', 'Ribosome', 'Golgi apparatus', 'Chloroplast', 'Lysosome',
-            '2',
+            'Mitochondria', 'FALSE',
             'The nucleus stores DNA.', 'Mitochondria produce most ATP during cellular respiration.', 'Ribosomes build proteins.', 'The Golgi modifies and packages molecules.', 'Chloroplasts perform photosynthesis in plant cells.', 'Lysosomes digest cellular waste.',
             '', 'Review cellular respiration and organelle functions. Add more option_7, option_8, etc. columns if needed.', ''
         ]);
@@ -4113,6 +4117,7 @@ MODIFICATION RULES FOR THIS APP
         [elements.addOptionFieldBtn, elements.addOptionInlineBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !usesMultipleChoiceOptions);
         });
+        updateMultipleAnswerEditorControls();
         updateMathChemToolsVisibility(usesMultipleChoiceOptions || isTypedAnswer);
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
@@ -6314,6 +6319,10 @@ MODIFICATION RULES FOR THIS APP
               <span class="studio-option-label-row">
                 <span>Option ${optionNumber}</span>
                 <span class="studio-option-label-actions">
+                  <label class="studio-correct-option-inline hidden" data-correct-option-inline title="Mark Option ${optionNumber} as a correct answer">
+                    <input type="checkbox" data-correct-option-checkbox value="${optionNumber}" aria-label="Option ${optionNumber} is correct">
+                    <span>Correct</span>
+                  </label>
                   <button type="button" class="studio-option-image-toggle${optionImageUrl ? ' has-image' : ''}" data-option-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}" title="${isImagePanelOpen ? `Hide Option ${optionNumber} image controls` : (optionImageUrl ? `Edit Option ${optionNumber} image` : `Add Option ${optionNumber} image`)}">${isImagePanelOpen ? 'Hide Image' : (optionImageUrl ? 'Edit Image' : 'Add Image')}</button>
                   <button type="button" class="studio-option-delete-btn" data-option-delete aria-label="Delete Option ${optionNumber}" title="Delete Option ${optionNumber}">×</button>
                 </span>
@@ -6342,6 +6351,11 @@ MODIFICATION RULES FOR THIS APP
         const explanationInput = wrapper.querySelector('[data-option-explanation]');
         const imageInput = wrapper.querySelector('[data-option-image-url]');
         const imagePreview = wrapper.querySelector('[data-option-image-preview]');
+        const correctCheckbox = wrapper.querySelector('[data-correct-option-checkbox]');
+        if (correctCheckbox) correctCheckbox.addEventListener('change', () => {
+            setStudioDirtyState(true);
+            updateMultipleAnswerEditorControls();
+        });
         if (textInput) textInput.value = optionText;
         if (explanationInput) explanationInput.value = optionExplanation;
         if (imageInput) {
@@ -6354,18 +6368,91 @@ MODIFICATION RULES FOR THIS APP
         return wrapper;
     }
 
+    function getStudioAllowMultipleAnswersFromDOM() {
+        return !!elements.createAllowMultipleAnswers?.checked;
+    }
+
+    function hasSelectedCorrectAnswerCheckboxes() {
+        const root = elements.createOptionFieldsContainer || elements.createCorrectOptionCheckboxes || document;
+        return !!root.querySelector('[data-correct-option-checkbox]:checked');
+    }
+
+    function updateMultipleAnswerEditorControls() {
+        const quizType = getStudioCurrentQuizType();
+        const usesMultipleChoiceOptions = quizType === 'multiple_choice' || quizType === 'diagrams';
+        const allowMultiple = getStudioAllowMultipleAnswersFromDOM();
+        if (elements.createDeselectCorrectAnswersBtn) {
+            elements.createDeselectCorrectAnswersBtn.classList.toggle('hidden', !usesMultipleChoiceOptions);
+            elements.createDeselectCorrectAnswersBtn.disabled = !usesMultipleChoiceOptions || !allowMultiple || !hasSelectedCorrectAnswerCheckboxes();
+            elements.createDeselectCorrectAnswersBtn.title = allowMultiple
+                ? 'Clear all selected correct-answer checkmarks for this question.'
+                : 'Turn on Allow multiple answers to clear correct-answer checkmarks.';
+        }
+    }
+
+    function deselectCorrectAnswerCheckboxes() {
+        if (!getStudioAllowMultipleAnswersFromDOM()) return;
+        const root = elements.createOptionFieldsContainer || elements.createCorrectOptionCheckboxes || document;
+        root.querySelectorAll('[data-correct-option-checkbox]:checked').forEach(input => {
+            input.checked = false;
+        });
+        syncCorrectOptionSelect([]);
+        setStudioDirtyState(true);
+        updateMultipleAnswerEditorControls();
+    }
+
+    function getSelectedCorrectOptionNumbersFromDOM() {
+        if (getStudioAllowMultipleAnswersFromDOM()) {
+            const checkboxRoot = elements.createOptionFieldsContainer || elements.createCorrectOptionCheckboxes || document;
+            const checkedValues = Array.from(checkboxRoot.querySelectorAll('[data-correct-option-checkbox]:checked') || [])
+                .map(input => normalizeSheetText(input.value))
+                .filter(Boolean);
+            return checkedValues.length ? checkedValues : [];
+        }
+        return [normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1'];
+    }
+
+    function getSelectedCorrectOptionIndexesFromDOM(maxOptionIndex = 0) {
+        const selectedNumbers = getSelectedCorrectOptionNumbersFromDOM()
+            .map(value => Number(value))
+            .filter(value => Number.isInteger(value) && value >= 1)
+            .map(value => Math.max(0, Math.min(maxOptionIndex, value - 1)));
+        return Array.from(new Set(selectedNumbers));
+    }
+
+    function setStudioAllowMultipleAnswers(value) {
+        if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = !!value;
+        syncCorrectOptionSelect(getSelectedCorrectOptionNumbersFromDOM());
+    }
+
     function syncCorrectOptionSelect(preferredValue = null) {
         if (!elements.createCorrectOptionSelect || !elements.createOptionFieldsContainer) return;
 
         const optionRows = Array.from(elements.createOptionFieldsContainer.querySelectorAll('[data-option-index]'));
-        const previousValue = preferredValue || elements.createCorrectOptionSelect.value || '1';
+        const isMultiple = getStudioAllowMultipleAnswersFromDOM();
+        const previousSelectedValues = Array.isArray(preferredValue)
+            ? preferredValue.map(value => normalizeSheetText(value)).filter(Boolean)
+            : (preferredValue !== null
+                ? [normalizeSheetText(preferredValue)].filter(Boolean)
+                : getSelectedCorrectOptionNumbersFromDOM());
+        const selectedSet = new Set(previousSelectedValues.length ? previousSelectedValues : (isMultiple ? [] : ['1']));
         elements.createCorrectOptionSelect.innerHTML = '';
+        if (elements.createCorrectOptionCheckboxes) elements.createCorrectOptionCheckboxes.innerHTML = '';
 
-        optionRows.forEach((_, index) => {
+        optionRows.forEach((row, index) => {
+            const optionNumber = String(index + 1);
             const option = document.createElement('option');
-            option.value = String(index + 1);
-            option.textContent = `Option ${index + 1}`;
+            option.value = optionNumber;
+            option.textContent = `Option ${optionNumber}`;
             elements.createCorrectOptionSelect.appendChild(option);
+
+            const inlineCorrect = row.querySelector('[data-correct-option-inline]');
+            const inlineCheckbox = row.querySelector('[data-correct-option-checkbox]');
+            if (inlineCorrect) inlineCorrect.classList.toggle('hidden', !isMultiple);
+            if (inlineCheckbox) {
+                inlineCheckbox.value = optionNumber;
+                inlineCheckbox.checked = selectedSet.has(optionNumber);
+            }
         });
 
         if (!optionRows.length) {
@@ -6376,10 +6463,13 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const maxValue = String(optionRows.length || 1);
-        const nextValue = Number(previousValue) >= 1 && Number(previousValue) <= Number(maxValue)
-            ? previousValue
+        const selectValue = Number(previousSelectedValues[0] || 1) >= 1 && Number(previousSelectedValues[0] || 1) <= Number(maxValue)
+            ? previousSelectedValues[0]
             : '1';
-        elements.createCorrectOptionSelect.value = nextValue;
+        elements.createCorrectOptionSelect.value = selectValue;
+        elements.createCorrectOptionSelect.closest('.auth-field')?.classList.toggle('hidden', isMultiple);
+        elements.createCorrectOptionCheckboxes?.classList.add('hidden');
+        updateMultipleAnswerEditorControls();
     }
 
     function renderStudioOptionFields(optionDrafts = null) {
@@ -6421,9 +6511,11 @@ MODIFICATION RULES FOR THIS APP
 
     function addStudioOptionField() {
         const drafts = getStudioOptionDraftsFromDOM();
+        const previousCorrectValues = getSelectedCorrectOptionNumbersFromDOM();
+        const keepPreviousCorrectValues = getStudioAllowMultipleAnswersFromDOM();
         drafts.push({ text: '', explanation: '', imageUrl: '', imageLabel: '' });
         renderStudioOptionFields(drafts);
-        syncCorrectOptionSelect(String(drafts.length));
+        syncCorrectOptionSelect(keepPreviousCorrectValues ? previousCorrectValues : String(drafts.length));
         setStudioDirtyState(true);
     }
 
@@ -6500,14 +6592,16 @@ MODIFICATION RULES FOR THIS APP
             setCreatorStatus('Multiple-choice quizzes need at least 2 options.', 'error');
             return;
         }
-        const previousCorrect = Number(elements.createCorrectOptionSelect?.value || 1);
+        const previousCorrectValues = getSelectedCorrectOptionNumbersFromDOM();
+        const previousCorrect = Number(previousCorrectValues[0] || elements.createCorrectOptionSelect?.value || 1);
         drafts.pop();
         renderStudioOptionFields(drafts);
-        if (previousCorrect > drafts.length) {
+        const nextCorrectValues = previousCorrectValues.filter(value => Number(value) <= drafts.length);
+        if (!nextCorrectValues.length || previousCorrect > drafts.length) {
             syncCorrectOptionSelect('1');
             setCreatorStatus('Deleted the selected correct option. Choose the correct option again.', 'error');
         } else {
-            syncCorrectOptionSelect(String(previousCorrect));
+            syncCorrectOptionSelect(getStudioAllowMultipleAnswersFromDOM() ? nextCorrectValues : String(previousCorrect));
         }
         setStudioDirtyState(true);
     }
@@ -6521,10 +6615,17 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const previousCorrect = Number(elements.createCorrectOptionSelect?.value || 1);
+        const previousCorrectValues = getSelectedCorrectOptionNumbersFromDOM();
+        const previousCorrect = Number(previousCorrectValues[0] || elements.createCorrectOptionSelect?.value || 1);
         drafts.splice(index, 1);
         renderStudioOptionFields(drafts);
 
+        const remappedCorrectValues = previousCorrectValues
+            .map(value => Number(value))
+            .filter(value => Number.isInteger(value) && value !== optionNumber)
+            .map(value => value > optionNumber ? value - 1 : value)
+            .filter(value => value >= 1 && value <= drafts.length)
+            .map(String);
         let nextCorrect = previousCorrect;
         if (previousCorrect === optionNumber) {
             nextCorrect = 1;
@@ -6533,7 +6634,7 @@ MODIFICATION RULES FOR THIS APP
             nextCorrect = previousCorrect - 1;
         }
 
-        syncCorrectOptionSelect(String(Math.max(1, Math.min(nextCorrect, drafts.length))));
+        syncCorrectOptionSelect(getStudioAllowMultipleAnswersFromDOM() ? (remappedCorrectValues.length ? remappedCorrectValues : '1') : String(Math.max(1, Math.min(nextCorrect, drafts.length))));
         setStudioDirtyState(true);
     }
     function normalizeHierarchyDrafts(hierarchyDrafts = null) {
@@ -7728,7 +7829,9 @@ MODIFICATION RULES FOR THIS APP
         } else if (questionType === 'diagrams') {
             draft.diagramLabels = getStudioDiagramLabelsFromDOM();
             draft.options = getStudioOptionDraftsFromDOM();
-            draft.correctOption = normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1';
+            draft.allowMultipleAnswers = getStudioAllowMultipleAnswersFromDOM();
+            draft.correctOptions = getSelectedCorrectOptionNumbersFromDOM();
+            draft.correctOption = draft.correctOptions[0] || '1';
             draft.correctExplanation = normalizeAuthoredMathChemText(elements.createCorrectExplanation?.value);
             draft.expandedOptionImageRows = Array.from(state.auth.expandedOptionImageRows || []);
         } else if (questionType === 'typed_answer') {
@@ -7737,7 +7840,9 @@ MODIFICATION RULES FOR THIS APP
             draft.correctExplanation = normalizeAuthoredMathChemText(elements.createTypedAnswerExplanation?.value);
         } else {
             draft.options = getStudioOptionDraftsFromDOM();
-            draft.correctOption = normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1';
+            draft.allowMultipleAnswers = getStudioAllowMultipleAnswersFromDOM();
+            draft.correctOptions = getSelectedCorrectOptionNumbersFromDOM();
+            draft.correctOption = draft.correctOptions[0] || '1';
             draft.correctExplanation = normalizeAuthoredMathChemText(elements.createCorrectExplanation?.value);
             draft.expandedOptionImageRows = Array.from(state.auth.expandedOptionImageRows || []);
         }
@@ -7784,7 +7889,8 @@ MODIFICATION RULES FOR THIS APP
             renderStudioDiagramLabels(draft.diagramLabels || null);
             state.auth.expandedOptionImageRows = new Set(draft.expandedOptionImageRows || []);
             renderStudioOptionFields(draft.options || null);
-            syncCorrectOptionSelect(draft.correctOption || '1');
+            if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = !!draft.allowMultipleAnswers;
+            syncCorrectOptionSelect(draft.correctOptions || draft.correctOption || '1');
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = draft.correctExplanation || '';
         } else if (draft.questionType === 'typed_answer') {
             renderStudioDiagramLabels(draft.diagramLabels || null);
@@ -7793,7 +7899,8 @@ MODIFICATION RULES FOR THIS APP
         } else {
             state.auth.expandedOptionImageRows = new Set(draft.expandedOptionImageRows || []);
             renderStudioOptionFields(draft.options || null);
-            syncCorrectOptionSelect(draft.correctOption || '1');
+            if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = !!draft.allowMultipleAnswers;
+            syncCorrectOptionSelect(draft.correctOptions || draft.correctOption || '1');
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = draft.correctExplanation || '';
         }
     }
@@ -7821,7 +7928,9 @@ MODIFICATION RULES FOR THIS APP
         setStudioQuestionImageState('', 'No question image selected.');
         setStudioFlashcardTermImageState(row.term_image_url || '', row.term_image_label || (row.term_image_url ? 'Existing term image saved.' : 'No term image selected.'), row.term_image_labels || []);
         setStudioFlashcardDefinitionImageState(row.definition_image_url || '', row.definition_image_label || (row.definition_image_url ? 'Existing definition image saved.' : 'No definition image selected.'), row.definition_image_labels || []);
+        if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = false;
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
+        syncCorrectOptionSelect('1');
         renderTypedAnswerVariantFields(['']);
         renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
         renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
@@ -8010,8 +8119,15 @@ MODIFICATION RULES FOR THIS APP
             }))
             .filter(option => normalizeSheetText(option.text));
         const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
-        const correctIndex = Math.max(0, Math.min(Math.max(0, optionDrafts.length - 1), Number(draft.correctOption || '1') - 1));
-        const correctAnswer = optionAnswerValues[correctIndex] || '';
+        const maxDraftOptionIndex = Math.max(0, optionDrafts.length - 1);
+        const draftCorrectNumbers = Array.isArray(draft.correctOptions) && draft.correctOptions.length ? draft.correctOptions : [draft.correctOption || '1'];
+        const correctIndexes = draftCorrectNumbers
+            .map(value => Number(value))
+            .filter(value => Number.isInteger(value) && value >= 1)
+            .map(value => Math.max(0, Math.min(maxDraftOptionIndex, value - 1)));
+        const correctIndex = correctIndexes[0] ?? 0;
+        const correctAnswers = correctIndexes.map(index => optionAnswerValues[index]).filter(Boolean);
+        const correctAnswer = correctAnswers[0] || '';
         const correctExplanation = normalizeAuthoredMathChemText(draft.correctExplanation || '');
 
         if (!prompt) throw new Error('Enter a question prompt.');
@@ -8032,7 +8148,7 @@ MODIFICATION RULES FOR THIS APP
             question_id: normalizedQuestionId,
             correct_answer: correctAnswer,
             correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation),
-            options_json: buildMultipleChoiceOptionsJsonPayload(optionPayload, existingBuildUpValue),
+            options_json: buildMultipleChoiceOptionsJsonPayload(optionPayload, existingBuildUpValue, { allowMultipleAnswers: !!draft.allowMultipleAnswers, correctAnswers }),
             option_1_text: optionDrafts[0]?.text || '',
             option_1_explanation_html: buildStoredHtmlFromPlain(optionDrafts[0]?.explanation || ''),
             option_2_text: optionDrafts[1]?.text || '',
@@ -8495,7 +8611,10 @@ MODIFICATION RULES FOR THIS APP
         if (!detail) throw new Error("Could not load this question's multiple-choice details.");
         const optionPayload = normalizeOptionsJsonForBuildUpUpdate(detail);
         const nextBuildUp = normalizeBuildUpValue(nextBuildUpValue);
-        const nextOptionsJson = buildMultipleChoiceOptionsJsonPayload(optionPayload, nextBuildUp);
+        const nextOptionsJson = buildMultipleChoiceOptionsJsonPayload(optionPayload, nextBuildUp, {
+            allowMultipleAnswers: getAllowMultipleAnswersFromDetailRow(detail),
+            correctAnswers: getMultipleChoiceCorrectAnswersFromDetailRow(detail)
+        });
         const { error } = await state.auth.client
             .from('multiple_choice_questions')
             .update({ options_json: nextOptionsJson })
@@ -8943,7 +9062,9 @@ MODIFICATION RULES FOR THIS APP
         setLearningResourcesEditorHtml('', '');
         if (elements.createFlashcardTerm) elements.createFlashcardTerm.value = '';
         if (elements.createFlashcardDefinition) elements.createFlashcardDefinition.value = '';
+        if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = false;
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
+        syncCorrectOptionSelect('1');
         renderTypedAnswerVariantFields(['']);
         renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
         renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
@@ -9190,7 +9311,8 @@ MODIFICATION RULES FOR THIS APP
             renderStudioClassifyFields(Array.from({ length: 2 }, (_, index) => ({ label: '', id: `class_${index + 1}` })), Array.from({ length: 2 }, () => ({ text: '', categoryId: 'class_1' })));
             renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
             renderStudioDiagramLabels([]);
-            if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+            if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = false;
+            syncCorrectOptionSelect('1');
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
 
             setStudioQuestionImageState(
@@ -9213,7 +9335,8 @@ MODIFICATION RULES FOR THIS APP
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
             renderStudioDiagramLabels([]);
-            if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+            if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = false;
+            syncCorrectOptionSelect('1');
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
 
             setStudioQuestionImageState(
@@ -9237,11 +9360,8 @@ MODIFICATION RULES FOR THIS APP
             const questionDiagramLabels = getDiagramLabelsFromDetailRow(detailRow);
             const effectiveLabels = getEffectiveStudioDiagramLabels(questionDiagramLabels);
             renderStudioDiagramLabels(effectiveLabels);
-            const savedCorrectAnswer = normalizeSheetText(detailRow.correct_answer);
-            const correctIndex = Math.max(0, optionDrafts.findIndex(option => getOptionAnswerValue(option) === savedCorrectAnswer));
-            if (elements.createCorrectOptionSelect) {
-                elements.createCorrectOptionSelect.value = String(correctIndex + 1);
-            }
+            if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = getAllowMultipleAnswersFromDetailRow(detailRow);
+            syncCorrectOptionSelect(getCorrectOptionNumbersForEditor(detailRow, optionDrafts));
 
             const effectiveDiagramImage = getEffectiveStudioDiagramImage(questionRow.image_url);
             setStudioQuestionImageState(
@@ -9267,7 +9387,8 @@ MODIFICATION RULES FOR THIS APP
             const questionDiagramLabels = getDiagramLabelsFromDetailRow(detailRow);
             const effectiveLabels = getEffectiveStudioDiagramLabels(questionDiagramLabels);
             renderStudioDiagramLabels(effectiveLabels);
-            if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+            if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = false;
+            syncCorrectOptionSelect('1');
             if (elements.createCorrectExplanation) elements.createCorrectExplanation.value = '';
 
             const effectiveDiagramImage = getEffectiveStudioDiagramImage(questionRow.image_url);
@@ -9290,11 +9411,8 @@ MODIFICATION RULES FOR THIS APP
             renderStudioOptionFields(optionDrafts);
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             renderStudioDiagramLabels([]);
-            const savedCorrectAnswer = normalizeSheetText(detailRow.correct_answer);
-            const correctIndex = Math.max(0, optionDrafts.findIndex(option => getOptionAnswerValue(option) === savedCorrectAnswer));
-            if (elements.createCorrectOptionSelect) {
-                elements.createCorrectOptionSelect.value = String(correctIndex + 1);
-            }
+            if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = getAllowMultipleAnswersFromDetailRow(detailRow);
+            syncCorrectOptionSelect(getCorrectOptionNumbersForEditor(detailRow, optionDrafts));
 
             setStudioQuestionImageState(
                 normalizeSheetText(questionRow.image_url),
@@ -9735,6 +9853,8 @@ MODIFICATION RULES FOR THIS APP
             elements.addOptionInlineBtn,
             elements.removeOptionFieldBtn,
             elements.studioEditorActionSaveBtn,
+            elements.createAllowMultipleAnswers,
+            elements.createDeselectCorrectAnswersBtn,
             elements.createCorrectOptionSelect,
             elements.createCorrectExplanation,
             elements.toggleMathChemToolsBtn,
@@ -11720,11 +11840,14 @@ MODIFICATION RULES FOR THIS APP
         const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const maxOptionIndex = Math.max(0, options.length - 1);
-        const correctIndex = Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
+        const allowMultipleAnswers = !isTypedAnswerQuestion && getStudioAllowMultipleAnswersFromDOM();
+        const correctIndexes = isTypedAnswerQuestion ? [] : getSelectedCorrectOptionIndexesFromDOM(maxOptionIndex);
+        const correctIndex = correctIndexes.length ? correctIndexes[0] : Math.max(0, Math.min(maxOptionIndex, Number(elements.createCorrectOptionSelect?.value || '1') - 1));
         const correctExplanation = isTypedAnswerQuestion
             ? normalizeAuthoredMathChemText(elements.createTypedAnswerExplanation?.value)
             : normalizeAuthoredMathChemText(elements.createCorrectExplanation?.value);
-        const correctAnswer = isTypedAnswerQuestion ? (typedAnswerVariants[0] || '') : optionAnswerValues[correctIndex];
+        const correctAnswerValues = isTypedAnswerQuestion ? [] : correctIndexes.map(index => optionAnswerValues[index]).filter(Boolean);
+        const correctAnswer = isTypedAnswerQuestion ? (typedAnswerVariants[0] || '') : (correctAnswerValues[0] || optionAnswerValues[correctIndex]);
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         if (!prompt) return void setCreatorStatus('Enter a question prompt.', 'error');
         if (isTypedAnswerQuestion) {
@@ -11734,6 +11857,7 @@ MODIFICATION RULES FOR THIS APP
             if (optionAnswerValues.some(value => !value)) return void setCreatorStatus('Each answer option needs text or an image before saving.', 'error');
             if (new Set(optionAnswerValues).size !== optionAnswerValues.length) return void setCreatorStatus('All answer options must be unique.', 'error');
             if (!correctAnswer) return void setCreatorStatus('Choose which option is correct.', 'error');
+            if (allowMultipleAnswers && !correctAnswerValues.length) return void setCreatorStatus('Choose at least 1 correct option.', 'error');
         }
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId;
@@ -11890,7 +12014,8 @@ MODIFICATION RULES FOR THIS APP
             const savedOptions = isTypedAnswerQuestion ? typedAnswerVariants : savedOptionDrafts.map(draft => draft.text);
             const savedExplanations = savedOptionDrafts.map(draft => draft.explanation);
             const savedOptionAnswerValues = savedOptionDrafts.map(getOptionAnswerValue);
-            const savedCorrectAnswer = isTypedAnswerQuestion ? (typedAnswerVariants[0] || correctAnswer) : (savedOptionAnswerValues[correctIndex] || correctAnswer);
+            const savedCorrectAnswers = isTypedAnswerQuestion ? [] : correctIndexes.map(index => savedOptionAnswerValues[index]).filter(Boolean);
+            const savedCorrectAnswer = isTypedAnswerQuestion ? (typedAnswerVariants[0] || correctAnswer) : (savedCorrectAnswers[0] || savedOptionAnswerValues[correctIndex] || correctAnswer);
             const existingBuildUpValue = (!isDiagramQuestion && !isTypedAnswerQuestion && isEditingQuestion) ? await getMultipleChoiceBuildUpByQuestionId(questionId) : '';
             const optionPayload = savedOptionDrafts.map((draft, index) => ({
                 text: draft.text,
@@ -11898,11 +12023,12 @@ MODIFICATION RULES FOR THIS APP
                 imageUrl: draft.imageUrl || '',
                 imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
             }));
+            const multipleAnswerMetadata = { allowMultipleAnswers, correctAnswers: savedCorrectAnswers };
             const optionsJsonPayload = isTypedAnswerQuestion
                 ? buildTypedAnswerOptionsJsonPayload(typedAnswerVariants, diagramLabelsForQuestion)
                 : (isDiagramQuestion
-                    ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: false }
-                    : buildMultipleChoiceOptionsJsonPayload(optionPayload, existingBuildUpValue));
+                    ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: false, ...(allowMultipleAnswers ? { allowMultipleAnswers: true } : {}), ...(savedCorrectAnswers.length ? { correctAnswers: savedCorrectAnswers } : {}) }
+                    : buildMultipleChoiceOptionsJsonPayload(optionPayload, existingBuildUpValue, multipleAnswerMetadata));
             const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionsJsonPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) {
@@ -12785,13 +12911,23 @@ MODIFICATION RULES FOR THIS APP
             setCreatorStatus('Select a saved question first.', 'error');
             return;
         }
-        if (state.auth.studioHasUnsavedChanges) {
-            cacheCurrentStudioQuestionDraft();
-        }
 
         try {
+            if (state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts()) {
+                clearStudioAutosaveTimer();
+                setCreatorStatus('Saving current question before duplicating...');
+                const saveResult = await handleSaveStudioQuiz({ fastSaveAndContinue: true, skipFastSaveReveal: true });
+                if ((state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts()) && !saveResult?.questionId) {
+                    setCreatorStatus('Fix the current question before duplicating it.', 'error');
+                    return;
+                }
+                if (saveResult?.questionId) {
+                    state.auth.editingQuestionId = saveResult.questionId;
+                }
+            }
+            const sourceQuestionId = state.auth.editingQuestionId;
             const nextSortOrder = await getNextQuestionSortOrder(state.auth.editingQuizId);
-            const duplicatedQuestionId = await duplicateQuestionRecord(state.auth.editingQuestionId, state.auth.editingQuizId, nextSortOrder);
+            const duplicatedQuestionId = await duplicateQuestionRecord(sourceQuestionId, state.auth.editingQuizId, nextSortOrder);
             clearStudioQuestionListFiltersForDirectSelection();
             await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
             await refreshStudioManagementData();
@@ -13098,15 +13234,18 @@ MODIFICATION RULES FOR THIS APP
             }
 
             const options = Array.isArray(question.options) ? question.options.map(normalizeSheetText).filter(Boolean) : [];
-            const correctAnswer = normalizeSheetText(question.correct);
+            const correctAnswers = Array.isArray(question.correctAnswers) && question.correctAnswers.length
+                ? question.correctAnswers.map(normalizeSheetText).filter(Boolean)
+                : [normalizeSheetText(question.correct)].filter(Boolean);
             if (options.length < 2) {
                 throw new Error(`${rowLabel}: multiple-choice questions need at least 2 filled option columns.`);
             }
-            if (!correctAnswer) {
+            if (!correctAnswers.length) {
                 throw new Error(`${rowLabel}: enter a correct answer or a valid correct_option number.`);
             }
-            if (!options.includes(correctAnswer)) {
-                throw new Error(`${rowLabel}: correct answer must exactly match an option, or correct_option must point to a filled option column.`);
+            const invalidCorrectAnswer = correctAnswers.find(answer => !options.includes(answer));
+            if (invalidCorrectAnswer) {
+                throw new Error(`${rowLabel}: each correct answer must exactly match an option, or correct_option must point to a filled option column.`);
             }
         });
 
@@ -13141,10 +13280,14 @@ MODIFICATION RULES FOR THIS APP
         if (mediaUpdateError) throw mediaUpdateError;
         const options = Array.isArray(question.options) ? question.options.map(option => normalizeSheetText(option)).filter(Boolean) : [];
         const explanations = Array.isArray(question.explanations) ? question.explanations.map(value => normalizeSheetText(value)) : [];
-        const correctAnswer = normalizeSheetText(question.correct);
+        const correctAnswers = Array.isArray(question.correctAnswers) && question.correctAnswers.length
+            ? question.correctAnswers.map(normalizeSheetText).filter(Boolean)
+            : [normalizeSheetText(question.correct)].filter(Boolean);
+        const correctAnswer = correctAnswers[0] || '';
         const correctIndex = options.findIndex(option => option === correctAnswer);
         const optionPayload = options.map((optionText, index) => ({ text: optionText, explanation_html: buildStoredHtmlFromPlain(explanations[index] || '') }));
-        const optionsJsonPayload = buildMultipleChoiceOptionsJsonPayload(optionPayload, question.buildUp);
+        const allowMultipleAnswers = !!question.allowMultipleAnswers || correctAnswers.length > 1;
+        const optionsJsonPayload = buildMultipleChoiceOptionsJsonPayload(optionPayload, question.buildUp, { allowMultipleAnswers, correctAnswers });
         const detailPayload = {
             question_id: questionId,
             correct_answer: correctAnswer,
@@ -13424,11 +13567,73 @@ MODIFICATION RULES FOR THIS APP
         );
     }
 
-    function buildMultipleChoiceOptionsJsonPayload(optionPayload = [], buildUpValue = '') {
+    function parseAllowMultipleAnswersValue(value) {
+        const normalized = normalizeSheetText(value).toLowerCase();
+        return ['true', 'yes', 'y', '1', 'multi', 'multiple', 'allow'].includes(normalized);
+    }
+
+    function splitCorrectAnswerList(value = '') {
+        const normalized = normalizeSheetText(value);
+        if (!normalized) return [];
+        return normalized.split('|').map(item => normalizeSheetText(item)).filter(Boolean);
+    }
+
+    function isMultipleAnswerOptionsJson(optionsJson) {
+        if (!optionsJson || typeof optionsJson !== 'object' || Array.isArray(optionsJson)) return false;
+        return optionsJson.allowMultipleAnswers === true
+            || optionsJson.allow_multiple_answers === true
+            || parseAllowMultipleAnswersValue(optionsJson.allowMultipleAnswers)
+            || parseAllowMultipleAnswersValue(optionsJson.allow_multiple_answers)
+            || (Array.isArray(optionsJson.correctAnswers) && optionsJson.correctAnswers.length > 1)
+            || (Array.isArray(optionsJson.correct_answers) && optionsJson.correct_answers.length > 1);
+    }
+
+    function getCorrectAnswersFromOptionsJson(optionsJson) {
+        if (!optionsJson || typeof optionsJson !== 'object' || Array.isArray(optionsJson)) return [];
+        const raw = Array.isArray(optionsJson.correctAnswers)
+            ? optionsJson.correctAnswers
+            : (Array.isArray(optionsJson.correct_answers) ? optionsJson.correct_answers : []);
+        return raw.map(value => normalizeSheetText(value)).filter(Boolean);
+    }
+
+    function getMultipleChoiceCorrectAnswersFromDetailRow(detailRow = {}) {
+        const fromJson = getCorrectAnswersFromOptionsJson(detailRow?.options_json);
+        if (fromJson.length) return fromJson;
+        const fallback = normalizeSheetText(detailRow?.correct_answer);
+        return fallback ? [fallback] : [];
+    }
+
+    function getAllowMultipleAnswersFromDetailRow(detailRow = {}) {
+        const correctAnswers = getMultipleChoiceCorrectAnswersFromDetailRow(detailRow);
+        return isMultipleAnswerOptionsJson(detailRow?.options_json) || correctAnswers.length > 1;
+    }
+
+    function getCorrectOptionNumbersForEditor(detailRow = {}, optionDrafts = []) {
+        const answers = getMultipleChoiceCorrectAnswersFromDetailRow(detailRow);
+        if (!answers.length) return ['1'];
+        const values = optionDrafts.map(getOptionAnswerValue);
+        const numbers = answers
+            .map(answer => values.findIndex(value => value === answer))
+            .filter(index => index >= 0)
+            .map(index => String(index + 1));
+        return numbers.length ? numbers : ['1'];
+    }
+
+    function buildMultipleChoiceOptionsJsonPayload(optionPayload = [], buildUpValue = '', answerOptions = {}) {
         const normalizedBuildUp = normalizeBuildUpValue(buildUpValue);
-        return normalizedBuildUp
-            ? { options: optionPayload, buildUp: normalizedBuildUp }
-            : optionPayload;
+        const allowMultipleAnswers = !!answerOptions.allowMultipleAnswers;
+        const correctAnswers = Array.isArray(answerOptions.correctAnswers)
+            ? answerOptions.correctAnswers.map(value => normalizeSheetText(value)).filter(Boolean)
+            : [];
+        if (normalizedBuildUp || allowMultipleAnswers || correctAnswers.length > 1) {
+            return {
+                options: optionPayload,
+                ...(normalizedBuildUp ? { buildUp: normalizedBuildUp } : {}),
+                ...(allowMultipleAnswers ? { allowMultipleAnswers: true } : {}),
+                ...(correctAnswers.length ? { correctAnswers } : {})
+            };
+        }
+        return optionPayload;
     }
 
     async function getMultipleChoiceBuildUpByQuestionId(questionId = '') {
@@ -14709,6 +14914,7 @@ function startProgressModeRetry() {
     state.currentIndex = 0;
     state.normalFinished = false;
     state.questionAnswered = false;
+    state.multipleAnswerSelection = new Set();
     state.flashcardFlipped = false;
     clearProgressModeFinishUI();
     clearFeedback();
@@ -15061,10 +15267,26 @@ function setNavButtonEnabled(button, enabled) {
 
 function updateNavigationButtons() {
     const hasQuestions = state.questions.length > 0;
+    const setNextLabel = () => {
+        if (!elements.nextBtn) return;
+        const shouldSubmit = isCurrentMultipleAnswerSubmitPending();
+        const useCompactIcons = isNarrowIPhoneViewport();
+        elements.nextBtn.innerText = shouldSubmit ? 'Submit' : (useCompactIcons ? '→' : 'Next');
+        elements.nextBtn.setAttribute('aria-label', shouldSubmit ? 'Submit answer' : 'Next');
+        elements.nextBtn.setAttribute('title', shouldSubmit ? 'Submit answer' : 'Next');
+    };
+
+    setNextLabel();
 
     if (!hasQuestions || state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || isQuizFinished()) {
         setNavButtonEnabled(elements.prevBtn, false);
         setNavButtonEnabled(elements.nextBtn, false);
+        return;
+    }
+
+    if (isCurrentMultipleAnswerSubmitPending()) {
+        setNavButtonEnabled(elements.prevBtn, true);
+        setNavButtonEnabled(elements.nextBtn, (state.multipleAnswerSelection?.size || 0) > 0);
         return;
     }
 
@@ -15364,15 +15586,16 @@ function applyResponsiveControlText() {
 
     elements.prevBtn.innerText = useCompactIcons ? '←' : 'Previous';
     elements.restartBtn.innerText = useCompactIcons ? '↻' : 'Restart';
-    elements.nextBtn.innerText = useCompactIcons ? '→' : 'Next';
+    const multipleAnswerSubmit = isCurrentMultipleAnswerSubmitPending();
+    elements.nextBtn.innerText = multipleAnswerSubmit ? 'Submit' : (useCompactIcons ? '→' : 'Next');
 
     elements.prevBtn.setAttribute('aria-label', 'Previous');
     elements.restartBtn.setAttribute('aria-label', 'Restart');
-    elements.nextBtn.setAttribute('aria-label', 'Next');
+    elements.nextBtn.setAttribute('aria-label', multipleAnswerSubmit ? 'Submit answer' : 'Next');
 
     elements.prevBtn.setAttribute('title', 'Previous');
     elements.restartBtn.setAttribute('title', 'Restart');
-    elements.nextBtn.setAttribute('title', 'Next');
+    elements.nextBtn.setAttribute('title', multipleAnswerSubmit ? 'Submit answer' : 'Next');
 }
 
 function clearFlashcardSwipeFeedback() {
@@ -15608,6 +15831,11 @@ function handleStudyKeyboardShortcut(event) {
                 nextQuestion();
                 handled = true;
             }
+        } else if (isCurrentMultipleAnswerSubmitPending()) {
+            if (!elements.nextBtn?.disabled) {
+                elements.nextBtn.click();
+                handled = true;
+            }
         } else {
             handled = submitCurrentStructuredQuestionShortcut();
         }
@@ -15628,7 +15856,11 @@ function handleStudyKeyboardShortcut(event) {
         if (isStudyKeyboardShortcutBlocked(event)) return false;
         if (elements.nextBtn?.disabled) return false;
         event.preventDefault();
-        nextQuestion();
+        if (isCurrentMultipleAnswerSubmitPending()) {
+            elements.nextBtn.click();
+        } else {
+            nextQuestion();
+        }
         return true;
     }
 
@@ -16813,11 +17045,19 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             const optionAnswerValues = optionDrafts.map(getOptionAnswerValue);
             const explanations = optionDrafts.map(draft => draft.explanation);
             const correctAnswer = normalizeSheetText(detail.correct_answer);
+            const correctAnswers = getMultipleChoiceCorrectAnswersFromDetailRow(detail);
+            const allowMultipleAnswers = getAllowMultipleAnswersFromDetailRow(detail);
             const buildUp = quizType === 'multiple_choice' ? getBuildUpValueFromOptionsJson(detail.options_json) : '';
             const correctIndex = optionAnswerValues.findIndex(optionValue => optionValue === correctAnswer);
             if (correctIndex >= 0 && !explanations[correctIndex]) {
                 explanations[correctIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
             }
+            correctAnswers.forEach(answer => {
+                const answerIndex = optionAnswerValues.findIndex(optionValue => optionValue === answer);
+                if (answerIndex >= 0 && !explanations[answerIndex]) {
+                    explanations[answerIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
+                }
+            });
             if (quizType === 'typed_answer') {
                 return {
                     id: `q_${state.questionIdCounter++}`,
@@ -16844,6 +17084,8 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 options,
                 optionImages,
                 correct: correctAnswer,
+                correctAnswers: correctAnswers.length ? correctAnswers : (correctAnswer ? [correctAnswer] : []),
+                allowMultipleAnswers,
                 explanations,
                 buildUp,
                 image: quizType === 'diagrams' ? diagramImage : normalizeSheetText(row.image_url),
@@ -17030,6 +17272,7 @@ function getMultipleChoiceSheetLayout(rows) {
     const sectionColumn = findSheetColumnByHeader(headers, ['Section', 'Section number', 'Textbook section', 'Subsection']);
     const buildUpColumn = findSheetColumnByHeader(headers, ['build_up', 'Build Up', 'Build Up Group', 'String', 'Question String', 'Case String']);
     const imageColumn = findSheetColumnByHeader(headers, ['Question image URL', 'Question image', 'Image URL', 'Image']);
+    const allowMultipleAnswersColumn = findSheetColumnByHeader(headers, ['allow_multiple_answers', 'Allow multiple answers', 'Multiple answers', 'Multi answer']);
     const learningResourcesColumn = findSheetColumnByHeader(headers, ['Learning resources', 'Learning resource', 'Resources']);
     const learningResourcesImageColumn = findSheetColumnByHeader(headers, ['Learning resources image URL', 'Learning resource image URL', 'Resources image URL']);
 
@@ -17042,6 +17285,7 @@ function getMultipleChoiceSheetLayout(rows) {
             correctUsesOptionNumber,
             sectionColumn,
             buildUpColumn,
+            allowMultipleAnswersColumn,
             imageColumn,
             learningResourcesColumn,
             learningResourcesImageColumn
@@ -17056,26 +17300,35 @@ function getMultipleChoiceSheetLayout(rows) {
         correctUsesOptionNumber: false,
         sectionColumn: -1,
         buildUpColumn: -1,
+        allowMultipleAnswersColumn: -1,
         imageColumn: 11,
         learningResourcesColumn: 12,
         learningResourcesImageColumn: 13
     };
 }
 
-function resolveMultipleChoiceCorrectAnswer(rawCorrect, optionDrafts, correctUsesOptionNumber = false) {
+function resolveMultipleChoiceCorrectAnswers(rawCorrect, optionDrafts, correctUsesOptionNumber = false) {
     const normalizedCorrect = normalizeSheetText(rawCorrect);
-    if (!normalizedCorrect) return '';
+    if (!normalizedCorrect) return [];
+    const parts = splitCorrectAnswerList(normalizedCorrect);
+    const answerParts = parts.length ? parts : [normalizedCorrect];
 
     if (correctUsesOptionNumber) {
-        const optionNumberMatch = normalizedCorrect.match(/^(?:option\s*)?(\d+)$/i);
-        const optionNumber = optionNumberMatch ? Number(optionNumberMatch[1]) : NaN;
-        if (Number.isInteger(optionNumber)) {
-            return optionDrafts.find(option => option.optionNumber === optionNumber)?.text || '';
-        }
-        return '';
+        return answerParts.map(part => {
+            const optionNumberMatch = part.match(/^(?:option\s*)?(\d+)$/i);
+            const optionNumber = optionNumberMatch ? Number(optionNumberMatch[1]) : NaN;
+            if (Number.isInteger(optionNumber)) {
+                return optionDrafts.find(option => option.optionNumber === optionNumber)?.text || '';
+            }
+            return '';
+        }).filter(Boolean);
     }
 
-    return normalizedCorrect;
+    return answerParts;
+}
+
+function resolveMultipleChoiceCorrectAnswer(rawCorrect, optionDrafts, correctUsesOptionNumber = false) {
+    return resolveMultipleChoiceCorrectAnswers(rawCorrect, optionDrafts, correctUsesOptionNumber)[0] || '';
 }
 
 function parseMultipleChoiceQuestionsFromGoogleSheetRows(rows) {
@@ -17094,17 +17347,19 @@ function parseMultipleChoiceQuestionsFromGoogleSheetRows(rows) {
             };
         }).filter(option => normalizeSheetText(option.text));
 
+        const rawCorrect = layout.correctColumn >= 0 ? getCellValue(c[layout.correctColumn]) : '';
+        const correctAnswers = resolveMultipleChoiceCorrectAnswers(rawCorrect, optionDrafts, layout.correctUsesOptionNumber);
+        const allowMultipleAnswers = parseAllowMultipleAnswersValue(layout.allowMultipleAnswersColumn >= 0 ? getCellValue(c[layout.allowMultipleAnswersColumn]) : '') || correctAnswers.length > 1;
+
         return {
             id: `q_${state.questionIdCounter++}`,
             question: getCellValue(c[0]),
             type: 'multiple choice',
             options: optionDrafts.map(option => option.text),
             optionImages: optionDrafts.map(() => ''),
-            correct: resolveMultipleChoiceCorrectAnswer(
-                layout.correctColumn >= 0 ? getCellValue(c[layout.correctColumn]) : '',
-                optionDrafts,
-                layout.correctUsesOptionNumber
-            ),
+            correct: correctAnswers[0] || '',
+            correctAnswers,
+            allowMultipleAnswers,
             explanations: optionDrafts.map(option => option.explanation),
             section: layout.sectionColumn >= 0 ? getSectionCellValue(c[layout.sectionColumn]) : '',
             buildUp: layout.buildUpColumn >= 0 ? normalizeBuildUpValue(getCellValue(c[layout.buildUpColumn])) : '',
@@ -17324,7 +17579,7 @@ function clearOptionFeedback() {
 
 function clearOptionButtonStateClasses() {
     document.querySelectorAll('.optionBtn').forEach(btn => {
-        btn.classList.remove('option-correct', 'option-incorrect');
+        btn.classList.remove('option-correct', 'option-incorrect', 'option-selected');
     });
 }
 
@@ -17735,6 +17990,7 @@ function showQuestion() {
     clearQuestionUI();
     state.questionAnswered = false;
     state.flashcardFlipped = false;
+    state.multipleAnswerSelection = new Set();
 
     if (isRetentionMode()) {
         state.retentionAnswerLocked = false;
@@ -17822,6 +18078,7 @@ function showQuestion() {
 
 // ================= MULTIPLE CHOICE =================
 function isGlobalShuffleAnswersSupportedQuestion(question = {}) {
+    if (question?.allowMultipleAnswers) return false;
     return question?.type === 'multiple choice' || question?.type === 'diagrams';
 }
 
@@ -18322,12 +18579,125 @@ function handleHideOptionClick(event) {
 
     const block = event.currentTarget?.closest('.option-block');
     if (!block) return;
+    const btn = block.querySelector('.optionBtn');
+    const optionValue = normalizeSheetText(btn?.dataset.optionValue);
+    if (isCurrentMultipleAnswerSubmitPending() && optionValue && state.multipleAnswerSelection?.has(optionValue)) {
+        state.multipleAnswerSelection.delete(optionValue);
+        btn?.classList.remove('option-selected');
+        btn?.setAttribute('aria-pressed', 'false');
+        updateMultipleAnswerSubmitAvailability();
+    }
     block.classList.add('option-eliminated');
     block.style.display = 'none';
     updateResetHiddenOptionsButton();
     queueOptionsScrollIndicatorUpdate();
 }
 
+
+
+function isMultipleAnswerStudyQuestion(question = null) {
+    const q = question || state.questionQueue[state.currentIndex] || null;
+    return !!q && (q.type === 'multiple choice' || q.type === 'diagrams') && !!q.allowMultipleAnswers;
+}
+
+function getMultipleAnswerCorrectValues(question = {}) {
+    const values = Array.isArray(question.correctAnswers) && question.correctAnswers.length
+        ? question.correctAnswers
+        : [question.correct];
+    return values.map(value => normalizeSheetText(value)).filter(Boolean);
+}
+
+function isCurrentMultipleAnswerSubmitPending() {
+    return isMultipleAnswerStudyQuestion() && !state.questionAnswered;
+}
+
+function updateMultipleAnswerSubmitAvailability() {
+    if (!isCurrentMultipleAnswerSubmitPending()) return;
+    updateNavigationButtons();
+}
+
+function toggleMultipleAnswerOption(button) {
+    if (!button || state.questionAnswered || state.optionDelay.active) return;
+    const optionValue = normalizeSheetText(button.dataset.optionValue);
+    if (!optionValue) return;
+    if (!(state.multipleAnswerSelection instanceof Set)) state.multipleAnswerSelection = new Set();
+    if (state.multipleAnswerSelection.has(optionValue)) {
+        state.multipleAnswerSelection.delete(optionValue);
+        button.classList.remove('option-selected');
+        button.setAttribute('aria-pressed', 'false');
+    } else {
+        state.multipleAnswerSelection.add(optionValue);
+        button.classList.add('option-selected');
+        button.setAttribute('aria-pressed', 'true');
+    }
+    updateMultipleAnswerSubmitAvailability();
+}
+
+function submitMultipleAnswerSelection() {
+    if (isQuizFinished()) return;
+    if (state.optionDelay.active) return;
+    if (state.questionAnswered) return;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+    if (isRetentionMode() && state.retentionAnswerLocked) return;
+
+    const q = state.questionQueue[state.currentIndex];
+    if (!isMultipleAnswerStudyQuestion(q)) return;
+    const selectedValues = Array.from(state.multipleAnswerSelection || []).map(normalizeSheetText).filter(Boolean);
+    if (!selectedValues.length) return;
+
+    const correctValues = getMultipleAnswerCorrectValues(q);
+    const correctSet = new Set(correctValues);
+    const selectedSet = new Set(selectedValues);
+    const isCorrect = correctSet.size === selectedSet.size && [...correctSet].every(value => selectedSet.has(value));
+    const hideFeedback = isAnswerFeedbackHidden();
+
+    state.questionAnswered = true;
+    revealHiddenOptionsForFeedback();
+    setOptionButtonsEnabled(false);
+
+    elements.optionsContainer.querySelectorAll('.option-block').forEach((block, i) => {
+        if (block.style.display === 'none') return;
+        const btn = block.querySelector('.optionBtn');
+        const explanationEl = block.querySelector('.explanation');
+        const feedbackEl = block.querySelector('.option-feedback');
+        if (!btn || !explanationEl || !feedbackEl) return;
+
+        const optionValue = normalizeSheetText(btn.dataset.optionValue || btn.innerText);
+        const isCorrectOption = correctSet.has(optionValue);
+        const wasSelected = selectedSet.has(optionValue);
+        btn.classList.remove('option-correct', 'option-incorrect', 'option-selected');
+        btn.setAttribute('aria-pressed', wasSelected ? 'true' : 'false');
+        setMathChemFormattedText(explanationEl, hideFeedback ? '' : (btn.dataset.optionExplanation || ''));
+
+        feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
+        if (!hideFeedback && isCorrectOption) {
+            btn.classList.add('option-correct');
+            feedbackEl.innerText = '✔';
+            feedbackEl.classList.add('correct-mark');
+        } else if (!hideFeedback && wasSelected && !isCorrectOption) {
+            btn.classList.add('option-incorrect');
+            feedbackEl.innerText = '✖';
+            feedbackEl.classList.add('incorrect-mark');
+        } else {
+            feedbackEl.innerText = '';
+        }
+    });
+
+    queueOptionsScrollIndicatorUpdate();
+    applyQuestionOutcome(q, isCorrect);
+
+    if (isSpeedMode()) {
+        setTimeout(nextQuestion, CONFIG.speedDelay);
+    }
+}
+
+function handleNextButtonClick() {
+    if (isCurrentMultipleAnswerSubmitPending()) {
+        submitMultipleAnswerSelection();
+        return;
+    }
+    nextQuestion();
+}
 
 function showMC(q) {
     const container = elements.optionsContainer;
@@ -18382,12 +18752,20 @@ function showMC(q) {
                 btn.appendChild(textEl);
             }
             btn.dataset.optionValue = optionValue;
+            btn.dataset.optionExplanation = entry.explanation || '';
             btn.disabled = false;
             btn.style.pointerEvents = 'auto';
             btn.style.opacity = '1';
             btn.classList.toggle('option-has-image', !!entry.image);
-            btn.classList.remove('option-correct', 'option-incorrect');
-            btn.onclick = () => checkAnswer(optionValue, optionEntries.map(item => item.explanation));
+            btn.classList.remove('option-correct', 'option-incorrect', 'option-selected');
+            btn.setAttribute('aria-pressed', 'false');
+            btn.onclick = () => {
+                if (isMultipleAnswerStudyQuestion(q)) {
+                    toggleMultipleAnswerOption(btn);
+                    return;
+                }
+                checkAnswer(optionValue, optionEntries.map(item => item.explanation));
+            };
             exp.innerText = '';
             const activeHideBtn = resetOptionFeedbackLane(block);
             if (activeHideBtn) {
@@ -18401,7 +18779,9 @@ function showMC(q) {
                 btn.style.display = 'none';
                 btn.innerText = '';
                 btn.dataset.optionValue = '';
-                btn.classList.remove('option-correct', 'option-incorrect', 'option-has-image');
+                btn.dataset.optionExplanation = '';
+                btn.classList.remove('option-correct', 'option-incorrect', 'option-selected', 'option-has-image');
+                btn.removeAttribute('aria-pressed');
                 btn.onclick = null;
             }
             if (exp) exp.innerText = '';
@@ -20215,7 +20595,7 @@ function restartQuiz() {
 }
 
 // ================= EVENTS =================
-elements.nextBtn.onclick = nextQuestion;
+elements.nextBtn.onclick = handleNextButtonClick;
 elements.prevBtn.onclick = prevQuestion;
 elements.restartBtn.onclick = restartQuiz;
 bindStudySwipeNavigation();
@@ -20725,6 +21105,25 @@ if (elements.addOptionFieldBtn) {
 if (elements.addOptionInlineBtn) {
     elements.addOptionInlineBtn.addEventListener('click', () => {
         addStudioOptionField();
+    });
+}
+
+
+if (elements.createAllowMultipleAnswers) {
+    elements.createAllowMultipleAnswers.addEventListener('change', () => {
+        const preferredCorrectOptions = elements.createAllowMultipleAnswers.checked
+            ? [normalizeSheetText(elements.createCorrectOptionSelect?.value || '1') || '1']
+            : getSelectedCorrectOptionNumbersFromDOM();
+        syncCorrectOptionSelect(preferredCorrectOptions);
+        setStudioDirtyState(true);
+        updateCreateQuizModeUI();
+    });
+}
+
+if (elements.createDeselectCorrectAnswersBtn) {
+    elements.createDeselectCorrectAnswersBtn.addEventListener('click', event => {
+        event.preventDefault();
+        deselectCorrectAnswerCheckboxes();
     });
 }
 
@@ -22972,6 +23371,7 @@ const studioDirtyInputSelector = [
     '#createQuizClassSelect',
     '#createQuizFolderSelect',
     '#createQuestionPrompt',
+    '#createAllowMultipleAnswers',
     '#createCorrectOptionSelect',
     '#createCorrectExplanation',
     '#createTypedAnswerExplanation',
