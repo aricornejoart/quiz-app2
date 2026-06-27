@@ -2151,6 +2151,60 @@ MODIFICATION RULES FOR THIS APP
         return `${STUDY_BUNNY_QUIZ_META_PREFIX}${JSON.stringify(safeMetadata)}`;
     }
 
+    function getQuizClassIdFromDescription(description = '') {
+        const metadata = parseQuizMetadata(description);
+        return normalizeSheetText(metadata.quizClassId || metadata.classId);
+    }
+
+    function setQuizClassInDescription(description = '', classId = '') {
+        const metadata = parseQuizMetadata(description);
+        const normalizedClassId = normalizeSheetText(classId);
+        if (normalizedClassId && normalizedClassId !== '__none__') {
+            metadata.quizClassId = normalizedClassId;
+        } else {
+            delete metadata.quizClassId;
+            delete metadata.classId;
+        }
+        if (!Object.keys(metadata).length) return '';
+        return buildQuizDescriptionFromMetadata(metadata);
+    }
+
+    function getDirectEditorQuizClassIdForFolder(folderId = '') {
+        const normalizedFolderId = normalizeSheetText(folderId);
+        const selectedClassId = getEditorSelectedClassId();
+        if (normalizedFolderId) return '';
+        return selectedClassId && selectedClassId !== '__none__' ? selectedClassId : '';
+    }
+
+    function applyEditorQuizClassToDescription(description = '', folderId = '') {
+        return setQuizClassInDescription(description, getDirectEditorQuizClassIdForFolder(folderId));
+    }
+
+    async function updateQuizShellFromEditor(quizId = '', payload = {}) {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        if (!normalizedQuizId) throw new Error('Could not find the quiz to update.');
+        const folderId = normalizeSheetText(payload.folder_id ?? payload.folderId) || null;
+        const { data: existingQuizRow, error: existingQuizError } = await state.auth.client
+            .from('quizzes')
+            .select('description')
+            .eq('id', normalizedQuizId)
+            .maybeSingle();
+        if (existingQuizError) throw existingQuizError;
+        const nextDescription = applyEditorQuizClassToDescription(existingQuizRow?.description || '', folderId);
+        const updatePayload = { ...payload, folder_id: folderId, description: nextDescription };
+        delete updatePayload.folderId;
+        const { error } = await state.auth.client.from('quizzes').update(updatePayload).eq('id', normalizedQuizId);
+        if (error) throw error;
+        return nextDescription;
+    }
+
+    function buildQuizInsertPayloadFromEditor(payload = {}) {
+        const folderId = normalizeSheetText(payload.folder_id ?? payload.folderId) || null;
+        const insertPayload = { ...payload, folder_id: folderId, description: applyEditorQuizClassToDescription(payload.description || '', folderId) };
+        delete insertPayload.folderId;
+        return insertPayload;
+    }
+
     function getSelectedFileNameFromLabel(label = '') {
         const text = normalizeSheetText(label);
         const selectedMatch = text.match(/^Selected:\s*(.+)$/i);
@@ -4233,7 +4287,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getQuizClassId(quiz = {}) {
-        return normalizeSheetText(quiz.classId || getFolderClassId(quiz.folderId));
+        return normalizeSheetText(quiz.classId || getFolderClassId(quiz.folderId) || getQuizClassIdFromDescription(quiz.description || ''));
     }
 
     function getQuizClassName(quiz = {}) {
@@ -5972,13 +6026,15 @@ MODIFICATION RULES FOR THIS APP
                     const detail = multipleChoiceMetadataByQuestionId.get(row.id);
                     return !!getBuildUpValueFromOptionsJson(detail?.options_json);
                 });
-                const classRow = folder?.classId ? getSupabaseClassById(folder.classId) : null;
+                const directClassId = getQuizClassIdFromDescription(quiz.description || '');
+                const effectiveClassId = normalizeSheetText(folder?.classId || directClassId);
+                const classRow = effectiveClassId ? getSupabaseClassById(effectiveClassId) : null;
                 return {
                     id: quiz.id,
                     name: normalizeSheetText(quiz.name),
                     folderId: quiz.folder_id || '',
                     folderName: folder ? normalizeFolderName(folder.name) : '',
-                    classId: folder?.classId || '',
+                    classId: effectiveClassId,
                     className: classRow ? normalizeClassName(classRow.name) : '',
                     questionCount: rows.length,
                     questionIds: rows.map(row => row.id).filter(Boolean),
@@ -7953,8 +8009,7 @@ MODIFICATION RULES FOR THIS APP
         if (!quizId) throw new Error('Save or open a flashcard quiz before adding cards.');
         if (!quizName) throw new Error('Enter a quiz name first.');
 
-        const { error: quizError } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
-        if (quizError) throw quizError;
+        await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
 
         let nextSortOrder = await getNextQuestionSortOrder(quizId);
         const preparedRows = localRows.map(row => {
@@ -8194,14 +8249,17 @@ MODIFICATION RULES FOR THIS APP
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         if (!quizName) throw new Error('Enter a quiz name first.');
-        const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
-        if (error) throw error;
+        await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
         const managedQuiz = state.auth.managedQuizzes.find(quiz => normalizeSheetText(quiz.id) === quizId);
         if (managedQuiz) {
             managedQuiz.name = quizName;
             managedQuiz.folderId = folderId || '';
             const folder = state.auth.supabaseFolders.find(item => item.id === folderId) || null;
+            const effectiveClassId = normalizeSheetText(folder?.classId || getDirectEditorQuizClassIdForFolder(folderId));
+            const classRow = effectiveClassId ? getSupabaseClassById(effectiveClassId) : null;
             managedQuiz.folderName = folder ? normalizeFolderName(folder.name) : '';
+            managedQuiz.classId = effectiveClassId;
+            managedQuiz.className = classRow ? normalizeClassName(classRow.name) : '';
         }
     }
 
@@ -10003,9 +10061,11 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getStudioQuizMetaDraft() {
+        const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         return {
             name: normalizeSheetText(elements.createQuizName?.value),
-            folderId: normalizeSheetText(elements.createQuizFolderSelect?.value) || null,
+            folderId,
+            classId: getDirectEditorQuizClassIdForFolder(folderId),
             quizType: getStudioCurrentQuizType()
         };
     }
@@ -10164,11 +10224,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         if (state.auth.editingQuizId) {
-            const { error } = await state.auth.client
-                .from('quizzes')
-                .update({ folder_id: folderId, name })
-                .eq('id', state.auth.editingQuizId);
-            if (error) throw error;
+            await updateQuizShellFromEditor(state.auth.editingQuizId, { folder_id: folderId, name });
             await refreshStudioManagementData();
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${state.auth.editingQuizId}` });
             return state.auth.editingQuizId;
@@ -10181,14 +10237,14 @@ MODIFICATION RULES FOR THIS APP
         const quizSortOrder = await getNextQuizSortOrder(folderId);
         const { data, error } = await state.auth.client
             .from('quizzes')
-            .insert({
+            .insert(buildQuizInsertPayloadFromEditor({
                 user_id: state.auth.user.id,
                 folder_id: folderId,
                 name,
                 description: '',
                 sort_order: quizSortOrder,
                 is_archived: false
-            })
+            }))
             .select('id')
             .single();
         if (error) throw error;
@@ -11872,15 +11928,17 @@ MODIFICATION RULES FOR THIS APP
             if (quizId) {
                 const { data: existingQuizRow, error: existingQuizError } = await state.auth.client.from('quizzes').select('description').eq('id', quizId).maybeSingle();
                 if (existingQuizError) throw existingQuizError;
-                currentQuizDescription = normalizeSheetText(existingQuizRow?.description);
-                previousQuizDescriptionMediaRefs = collectQuizDescriptionMediaReferences(currentQuizDescription);
-                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
+                const existingDescription = normalizeSheetText(existingQuizRow?.description);
+                previousQuizDescriptionMediaRefs = collectQuizDescriptionMediaReferences(existingDescription);
+                currentQuizDescription = applyEditorQuizClassToDescription(existingDescription, folderId);
+                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName, description: currentQuizDescription }).eq('id', quizId);
                 if (error) throw error;
             } else {
                 const quizSortOrder = await getNextQuizSortOrder(folderId);
-                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                const { data, error } = await state.auth.client.from('quizzes').insert(buildQuizInsertPayloadFromEditor({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false })).select('id').single();
                 if (error) throw error;
                 quizId = data.id;
+                currentQuizDescription = applyEditorQuizClassToDescription('', folderId);
             }
             if (!questionId) {
                 const questionSortOrder = await getNextQuestionSortOrder(quizId);
@@ -12121,11 +12179,10 @@ MODIFICATION RULES FOR THIS APP
             let questionId = isEditingQuestion ? state.auth.editingQuestionId : '';
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
-                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
-                if (error) throw error;
+                await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
             } else {
                 const quizSortOrder = await getNextQuizSortOrder(folderId);
-                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                const { data, error } = await state.auth.client.from('quizzes').insert(buildQuizInsertPayloadFromEditor({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false })).select('id').single();
                 if (error) throw error;
                 quizId = data.id;
             }
@@ -12196,11 +12253,10 @@ MODIFICATION RULES FOR THIS APP
             let questionId = state.auth.editingQuestionId;
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
-                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
-                if (error) throw error;
+                await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
             } else {
                 const quizSortOrder = await getNextQuizSortOrder(folderId);
-                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                const { data, error } = await state.auth.client.from('quizzes').insert(buildQuizInsertPayloadFromEditor({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false })).select('id').single();
                 if (error) throw error;
                 quizId = data.id;
             }
@@ -12289,11 +12345,10 @@ MODIFICATION RULES FOR THIS APP
             let questionId = state.auth.editingQuestionId;
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
             if (quizId) {
-                const { error } = await state.auth.client.from('quizzes').update({ folder_id: folderId, name: quizName }).eq('id', quizId);
-                if (error) throw error;
+                await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
             } else {
                 const quizSortOrder = await getNextQuizSortOrder(folderId);
-                const { data, error } = await state.auth.client.from('quizzes').insert({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false }).select('id').single();
+                const { data, error } = await state.auth.client.from('quizzes').insert(buildQuizInsertPayloadFromEditor({ user_id: state.auth.user.id, folder_id: folderId, name: quizName, description: '', sort_order: quizSortOrder, is_archived: false })).select('id').single();
                 if (error) throw error;
                 quizId = data.id;
             }
@@ -12676,7 +12731,10 @@ MODIFICATION RULES FOR THIS APP
             if (elements.studioQuestionSearchInput) elements.studioQuestionSearchInput.value = '';
             syncStudioQuestionStarredFilterButton();
             if (elements.studioQuestionJumpInput) elements.studioQuestionJumpInput.value = '';
-            refreshEditorClassFolderSelectors({ selectedFolderId: quizRow.folder_id || '' });
+            refreshEditorClassFolderSelectors({
+                selectedFolderId: quizRow.folder_id || '',
+                classId: quizRow.folder_id ? undefined : (getQuizClassIdFromDescription(quizRow.description || '') || '__none__')
+            });
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
 
@@ -15285,7 +15343,8 @@ function updateNavigationButtons() {
     }
 
     if (isCurrentMultipleAnswerSubmitPending()) {
-        setNavButtonEnabled(elements.prevBtn, true);
+        const lockPreviousForStructuredMode = isStructuredMode() || isProgressMode();
+        setNavButtonEnabled(elements.prevBtn, !lockPreviousForStructuredMode);
         setNavButtonEnabled(elements.nextBtn, (state.multipleAnswerSelection?.size || 0) > 0);
         return;
     }
@@ -15910,7 +15969,8 @@ function isAppleTouchStudyDevice() {
 
 function isStudySwipeNavigationSupportedQuestion() {
     const currentQuestion = state.questionQueue[state.currentIndex] || null;
-    return currentQuestion?.type === 'multiple choice' && state.currentQuestionType === 'multiple choice';
+    return (currentQuestion?.type === 'multiple choice' && state.currentQuestionType === 'multiple choice')
+        || isMultipleAnswerStudyQuestion(currentQuestion);
 }
 
 function isStudySwipeNavigationBlockedTarget(target) {
@@ -15975,8 +16035,10 @@ function handleStudySwipeEnd(event) {
     const absY = Math.abs(dy);
     const elapsedMs = Date.now() - STUDY_SWIPE_NAVIGATION.startTime;
 
+    const submitPending = isCurrentMultipleAnswerSubmitPending();
+
     if (dx <= 0) return;
-    if (!state.questionAnswered) return;
+    if (!submitPending && !state.questionAnswered) return;
     if (elapsedMs > 1200) return;
     if (absX < 64) return;
     if (absX < absY * 1.35) return;
@@ -15984,7 +16046,11 @@ function handleStudySwipeEnd(event) {
     if (!elements.nextBtn || elements.nextBtn.disabled || elements.nextBtn.getAttribute('aria-disabled') === 'true') return;
 
     event.preventDefault();
-    nextQuestion();
+    if (submitPending) {
+        elements.nextBtn.click();
+    } else {
+        nextQuestion();
+    }
 }
 
 function bindStudySwipeNavigation() {
