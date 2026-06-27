@@ -14858,7 +14858,7 @@ function suppressVisibleAnswerFeedback() {
 
     document.querySelectorAll('.hierarchy-feedback').forEach(fb => {
         fb.innerText = '';
-        fb.classList.remove('correct-mark', 'incorrect-mark');
+        fb.classList.remove('correct-mark', 'incorrect-mark', 'missed-mark');
     });
 
     document.querySelectorAll('.hierarchy-item, .classify-item').forEach(item => {
@@ -17665,13 +17665,13 @@ function clearExplanations() {
 function clearOptionFeedback() {
     elements.optionsContainer.querySelectorAll('.option-feedback').forEach(fb => {
         fb.innerText = '';
-        fb.classList.remove('correct-mark', 'incorrect-mark');
+        fb.classList.remove('correct-mark', 'incorrect-mark', 'missed-mark');
     });
 }
 
 function clearOptionButtonStateClasses() {
     document.querySelectorAll('.optionBtn').forEach(btn => {
-        btn.classList.remove('option-correct', 'option-incorrect', 'option-selected');
+        btn.classList.remove('option-correct', 'option-incorrect', 'option-missed', 'option-selected');
     });
 }
 
@@ -18757,12 +18757,12 @@ function submitMultipleAnswerSelection() {
         const optionValue = normalizeSheetText(btn.dataset.optionValue || btn.innerText);
         const isCorrectOption = correctSet.has(optionValue);
         const wasSelected = selectedSet.has(optionValue);
-        btn.classList.remove('option-correct', 'option-incorrect', 'option-selected');
+        btn.classList.remove('option-correct', 'option-incorrect', 'option-missed', 'option-selected');
         btn.setAttribute('aria-pressed', wasSelected ? 'true' : 'false');
         setMathChemFormattedText(explanationEl, hideFeedback ? '' : (btn.dataset.optionExplanation || ''));
 
-        feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
-        if (!hideFeedback && isCorrectOption) {
+        feedbackEl.classList.remove('correct-mark', 'incorrect-mark', 'missed-mark');
+        if (!hideFeedback && isCorrectOption && wasSelected) {
             btn.classList.add('option-correct');
             feedbackEl.innerText = '✔';
             feedbackEl.classList.add('correct-mark');
@@ -18770,6 +18770,10 @@ function submitMultipleAnswerSelection() {
             btn.classList.add('option-incorrect');
             feedbackEl.innerText = '✖';
             feedbackEl.classList.add('incorrect-mark');
+        } else if (!hideFeedback && isCorrectOption && !wasSelected) {
+            btn.classList.add('option-missed');
+            feedbackEl.innerText = '!';
+            feedbackEl.classList.add('missed-mark');
         } else {
             feedbackEl.innerText = '';
         }
@@ -18849,7 +18853,7 @@ function showMC(q) {
             btn.style.pointerEvents = 'auto';
             btn.style.opacity = '1';
             btn.classList.toggle('option-has-image', !!entry.image);
-            btn.classList.remove('option-correct', 'option-incorrect', 'option-selected');
+            btn.classList.remove('option-correct', 'option-incorrect', 'option-missed', 'option-selected');
             btn.setAttribute('aria-pressed', 'false');
             btn.onclick = () => {
                 if (isMultipleAnswerStudyQuestion(q)) {
@@ -18872,14 +18876,14 @@ function showMC(q) {
                 btn.innerText = '';
                 btn.dataset.optionValue = '';
                 btn.dataset.optionExplanation = '';
-                btn.classList.remove('option-correct', 'option-incorrect', 'option-selected', 'option-has-image');
+                btn.classList.remove('option-correct', 'option-incorrect', 'option-missed', 'option-selected', 'option-has-image');
                 btn.removeAttribute('aria-pressed');
                 btn.onclick = null;
             }
             if (exp) exp.innerText = '';
             if (fb) {
                 fb.innerText = '';
-                fb.classList.remove('correct-mark', 'incorrect-mark');
+                fb.classList.remove('correct-mark', 'incorrect-mark', 'missed-mark');
             }
             const hideBtn = ensureOptionHideControl(block);
             if (hideBtn) {
@@ -19031,7 +19035,7 @@ function checkAnswer(selected, explanations) {
         const feedbackEl = block.querySelector('.option-feedback');
         if (!btn || !explanationEl || !feedbackEl) return;
 
-        btn.classList.remove('option-correct', 'option-incorrect');
+        btn.classList.remove('option-correct', 'option-incorrect', 'option-missed');
         setMathChemFormattedText(explanationEl, hideFeedback ? '' : (explanations[i] || ''));
         const optionValue = btn.dataset.optionValue || btn.innerText;
 
@@ -19043,7 +19047,7 @@ function checkAnswer(selected, explanations) {
             }
         }
 
-        feedbackEl.classList.remove('correct-mark', 'incorrect-mark');
+        feedbackEl.classList.remove('correct-mark', 'incorrect-mark', 'missed-mark');
 
         if (!hideFeedback && optionValue === q.correct) {
             feedbackEl.innerText = '✔';
@@ -19818,7 +19822,7 @@ function showHierarchy(q) {
             const fb = r.querySelector('.hierarchy-feedback');
 
             itemEl.classList.remove('option-correct', 'option-incorrect');
-            fb.classList.remove('correct-mark', 'incorrect-mark');
+            fb.classList.remove('correct-mark', 'incorrect-mark', 'missed-mark');
 
             if (q.options.indexOf(text) === q.correctOrder[i] - 1) {
                 if (!hideFeedback) {

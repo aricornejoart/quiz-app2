@@ -551,6 +551,11 @@ body.fullscreen-mode .bottom-controls {
   box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.18);
 }
 
+.optionBtn.option-missed {
+  border-color: #f5c542 !important;
+  box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.28);
+}
+
 .option-feedback {
   width: 30px;
   min-width: 30px;
@@ -578,6 +583,12 @@ body.fullscreen-mode .bottom-controls {
 .hierarchy-feedback.incorrect-mark {
   color: #ff4d4f;
   -webkit-text-fill-color: #ff4d4f;
+  opacity: 1;
+}
+
+.option-feedback.missed-mark {
+  color: #f5c542;
+  -webkit-text-fill-color: #f5c542;
   opacity: 1;
 }
 
