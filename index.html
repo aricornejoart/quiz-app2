@@ -569,6 +569,15 @@ MODIFICATION RULES FOR THIS APP
                 </div>
               </div>
 
+              <div id="classifyDraggableSetting" class="flashcard-setting-group settings-full-span hidden">
+                <div class="flashcard-setting-title">Classify Draggable</div>
+                <div class="flashcard-setting-subtitle">items | categories</div>
+                <div class="flashcard-setting-buttons" role="group" aria-label="Choose which classify parts are draggable">
+                  <button id="classifyItemsDraggableBtn" type="button" class="flashcard-setting-btn active" aria-pressed="true">Items</button>
+                  <button id="classifyCategoriesDraggableBtn" type="button" class="flashcard-setting-btn" aria-pressed="false">Categories</button>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -1254,19 +1263,11 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-classify-columns">
                       <div class="studio-classify-column">
                         <div class="creator-subsection-title studio-inline-title">Categories</div>
-                        <div class="studio-options-toolbar-actions">
-                          <button id="addClassifyCategoryBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Category</button>
-                          <button id="removeClassifyCategoryBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Category</button>
-                        </div>
                         <div id="createClassifyCategoriesContainer" class="studio-options-grid"></div>
                       </div>
 
                       <div class="studio-classify-column">
                         <div class="creator-subsection-title studio-inline-title">Items</div>
-                        <div class="studio-options-toolbar-actions">
-                          <button id="addClassifyItemBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Item</button>
-                          <button id="removeClassifyItemBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Item</button>
-                        </div>
                         <div id="createClassifyItemsContainer" class="studio-options-grid"></div>
                       </div>
                     </div>

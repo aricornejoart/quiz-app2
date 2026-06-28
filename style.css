@@ -352,6 +352,13 @@ body.fullscreen-mode .bottom-controls {
   font-size: 13px;
 }
 
+.flashcard-setting-subtitle {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.25;
+  margin-top: -4px;
+}
+
 .flashcard-setting-buttons {
   display: flex;
   gap: 8px;
@@ -9166,4 +9173,96 @@ body.ipad-portrait-mc-image-top-layout .explanation,
 body.ipad-portrait-mc-image-top-layout .option-delay-notice {
   width: 100%;
   max-width: none;
+}
+
+/* Phase 22IG: regular Multiple Choice question-image preview uses the diagram preview stage without external label controls. */
+#diagramEditorFields.studio-mc-image-preview-fields .creator-note,
+#diagramEditorFields.studio-mc-image-preview-fields .studio-diagram-label-panel {
+  display: none !important;
+}
+
+#diagramEditorFields.studio-mc-image-preview-fields .studio-diagram-editor-layout {
+  grid-template-columns: 1fr;
+}
+
+#diagramEditorFields.studio-mc-image-preview-fields .studio-mc-image-label-marker {
+  pointer-events: none;
+  cursor: default;
+}
+
+/* Phase 22IH: Classify quick add/remove and category-draggable mode */
+.studio-classify-inline-add-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: -2px;
+}
+
+.studio-classify-inline-add-btn {
+  min-width: 136px;
+}
+
+.studio-option-delete-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.classify-category-draggable-mode .classify-bank-column::before {
+  content: 'Draggable categories';
+  display: block;
+  margin-bottom: 10px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.classify-category-draggable-mode .classify-classes-column::before {
+  content: 'Drop onto items';
+  display: block;
+  margin-bottom: 10px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.classify-category-draggable-mode .classify-item-drop-target {
+  min-height: 140px;
+}
+
+.classify-assigned-category-slot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 46px;
+  align-items: center;
+}
+
+.classify-assigned-category-token {
+  cursor: default;
+  touch-action: manipulation;
+}
+
+.classify-assigned-category-empty {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.classify-category.option-correct {
+  border-color: #4ade80;
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.22);
+}
+
+.classify-category.option-incorrect {
+  border-color: #ff6b6b;
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.18);
 }

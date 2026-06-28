@@ -208,6 +208,7 @@ MODIFICATION RULES FOR THIS APP
 
         flashcardFlipped: false,
         flashcardFrontMode: 'term',
+        classifyDraggableMode: 'items',
 
         flashcardImageZoomOpen: false,
         flashcardImageFrameResizeObserver: null,
@@ -257,6 +258,7 @@ MODIFICATION RULES FOR THIS APP
             quizStudioOpen: false,
             studioQuestionImageDataUrl: '',
             studioQuestionImageLabel: 'No question image selected.',
+            studioQuestionImageLabels: [],
             studioQuestionImagePanelOpen: false,
             studioLearningResourcesImageDataUrl: '',
             studioLearningResourcesImageLabel: 'No learning resources image selected.',
@@ -627,6 +629,9 @@ MODIFICATION RULES FOR THIS APP
         flashcardFrontSetting: document.getElementById('flashcardFrontSetting'),
         termFrontBtn: document.getElementById('termFrontBtn'),
         definitionFrontBtn: document.getElementById('definitionFrontBtn'),
+        classifyDraggableSetting: document.getElementById('classifyDraggableSetting'),
+        classifyItemsDraggableBtn: document.getElementById('classifyItemsDraggableBtn'),
+        classifyCategoriesDraggableBtn: document.getElementById('classifyCategoriesDraggableBtn'),
 
         flashcardImageOverlay: document.getElementById('flashcardImageOverlay'),
         closeFlashcardImageBtn: document.getElementById('closeFlashcardImageBtn'),
@@ -2584,6 +2589,11 @@ MODIFICATION RULES FOR THIS APP
         const optionsJson = getDiagramOptionsJsonObject(detailRow);
         return normalizeDiagramLabels(optionsJson.diagramLabels || optionsJson.labels || []);
     }
+
+    function getQuestionImageLabelsFromDetailRow(detailRow) {
+        const optionsJson = getDiagramOptionsJsonObject(detailRow);
+        return normalizeDiagramLabels(optionsJson.questionImageLabels || optionsJson.question_image_labels || []);
+    }
     function getTypedAnswerOptionsJsonObject(detailRow) {
         const optionsJson = detailRow?.options_json;
         return optionsJson && typeof optionsJson === 'object' && !Array.isArray(optionsJson) ? optionsJson : {};
@@ -2686,9 +2696,12 @@ MODIFICATION RULES FOR THIS APP
         const imageSource = normalizeSheetText(state.auth.studioQuestionImageDataUrl);
         const hasImage = !!imageSource;
         if (elements.studioDiagramEmptyState) {
+            const isMultipleChoicePreview = getStudioCurrentQuizType() === 'multiple_choice';
             elements.studioDiagramEmptyState.textContent = hasImage
-                ? 'Loading diagram image…'
-                : 'No diagram image selected. You can still save this as a regular multiple-choice-style question.';
+                ? (isMultipleChoicePreview ? 'Loading question image…' : 'Loading diagram image…')
+                : (isMultipleChoicePreview
+                    ? 'No question image selected. Add a question image, then use Edit Image > Labels to add labels.'
+                    : 'No diagram image selected. You can still save this as a regular multiple-choice-style question.');
         }
         setStudioDiagramPreviewAvailability(false);
         if (elements.studioDiagramPreviewImage) {
@@ -2751,12 +2764,20 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function syncStudioDiagramMarkersFromRows() {
-        const labels = getStudioDiagramLabelsFromDOM();
-        state.auth.studioDiagramLabels = labels;
+        const isMultipleChoicePreview = getStudioCurrentQuizType() === 'multiple_choice';
+        const labels = isMultipleChoicePreview
+            ? normalizeDiagramLabels(state.auth.studioQuestionImageLabels || [])
+            : getStudioDiagramLabelsFromDOM();
+        if (isMultipleChoicePreview) {
+            state.auth.studioQuestionImageLabels = labels;
+        } else {
+            state.auth.studioDiagramLabels = labels;
+        }
         if (!elements.studioDiagramLabelLayer) return;
-        elements.studioDiagramLabelLayer.innerHTML = labels.map((item, index) => `
-            <button type="button" class="studio-diagram-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Drag label ${escapeHtml(displayMathChemTextForEditor(item.label))}">${renderMathChemTextToHtml(item.label)}</button>
-        `).join('');
+        elements.studioDiagramLabelLayer.innerHTML = labels.map((item, index) => isMultipleChoicePreview
+            ? `<span class="studio-diagram-label-marker studio-mc-image-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Label ${escapeHtml(displayMathChemTextForEditor(item.label))}">${renderMathChemTextToHtml(item.label)}</span>`
+            : `<button type="button" class="studio-diagram-label-marker" data-diagram-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" title="Drag label ${escapeHtml(displayMathChemTextForEditor(item.label))}">${renderMathChemTextToHtml(item.label)}</button>`
+        ).join('');
     }
 
     function renderStudioDiagramLabels(labels = null) {
@@ -3042,9 +3063,16 @@ MODIFICATION RULES FOR THIS APP
         await deleteSupabaseMediaReferences(refsToDelete, { protectedRefs });
     }
 
-    function setStudioQuestionImageState(dataUrl = '', label = 'No question image selected.') {
-        state.auth.studioQuestionImageDataUrl = normalizeSheetText(dataUrl);
+    function setStudioQuestionImageState(dataUrl = '', label = 'No question image selected.', labels = undefined) {
+        const previousValue = normalizeSheetText(state.auth.studioQuestionImageDataUrl);
+        const nextValue = normalizeSheetText(dataUrl);
+        state.auth.studioQuestionImageDataUrl = nextValue;
         state.auth.studioQuestionImageLabel = label;
+        if (labels !== undefined) {
+            state.auth.studioQuestionImageLabels = normalizeDiagramLabels(labels || []);
+        } else if (!nextValue || nextValue !== previousValue) {
+            state.auth.studioQuestionImageLabels = [];
+        }
 
         if (elements.createQuestionImageName) {
             elements.createQuestionImageName.textContent = label;
@@ -3057,6 +3085,7 @@ MODIFICATION RULES FOR THIS APP
         updateStudioImageEditButton(elements.createQuestionImageEditBtn, state.auth.studioQuestionImageDataUrl);
         updateStudioQuestionImagePanelUI();
         updateStudioDiagramPreviewImage();
+        syncStudioDiagramMarkersFromRows();
     }
 
     function setStudioLearningResourcesImageState(dataUrl = '', label = 'No learning resources image selected.') {
@@ -3312,11 +3341,14 @@ MODIFICATION RULES FOR THIS APP
             };
         }
         const isDiagram = isStudioDiagramsMode();
+        const isMultipleChoice = getStudioCurrentQuizType() === 'multiple_choice';
         return {
             title: 'Edit Image',
             sourceValue: state.auth.studioQuestionImageDataUrl || '',
             sourceLabel: state.auth.studioQuestionImageLabel || 'Question image',
-            fallbackLabel: isDiagram ? 'Edited diagram image.' : 'Edited question image.'
+            fallbackLabel: isDiagram ? 'Edited diagram image.' : 'Edited question image.',
+            labelsEnabled: isMultipleChoice,
+            labels: isMultipleChoice ? normalizeDiagramLabels(state.auth.studioQuestionImageLabels || []) : []
         };
     }
 
@@ -3547,15 +3579,15 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorLabelsBtn.hidden = !showLabelsButton;
             elements.studioImageEditorLabelsBtn.disabled = !showLabelsButton;
             elements.studioImageEditorLabelsBtn.title = showLabelsButton
-                ? 'Add or edit labels inside this flashcard image editor'
-                : 'Labels are available for flashcard images';
+                ? 'Add or edit labels inside this image editor'
+                : 'Labels are available for supported image types';
             elements.studioImageEditorLabelsBtn.setAttribute('aria-label', elements.studioImageEditorLabelsBtn.title);
         }
         if (elements.studioImageEditorSaveBtn) {
             const labelSaveText = editor?.labelsEnabled ? 'Save Image + Labels' : 'Save Edited Image';
             elements.studioImageEditorSaveBtn.textContent = labelSaveText;
             elements.studioImageEditorSaveBtn.title = editor?.labelsEnabled
-                ? 'Save image edits and flashcard image labels'
+                ? 'Save image edits and image labels'
                 : 'Save edited image';
         }
         const shouldShowPanel = !!(editor?.labelsEnabled && editor?.showLabelPanel);
@@ -3942,7 +3974,7 @@ MODIFICATION RULES FOR THIS APP
             setStudioClassifyRowImageState(target.wrapper, 'item', dataUrl, label);
         } else {
             setStudioQuestionImagePanelOpen(true);
-            setStudioQuestionImageState(dataUrl, label);
+            setStudioQuestionImageState(dataUrl, label, editor?.labelsEnabled ? imageLabels : undefined);
         }
         setStudioDirtyState(true);
         setCreatorStatus('Edited image applied. Save Changes to keep it.', 'success');
@@ -4163,7 +4195,13 @@ MODIFICATION RULES FOR THIS APP
         if (elements.typedAnswerEditorFields) elements.typedAnswerEditorFields.classList.toggle('hidden', !isTypedAnswer);
         if (elements.hierarchyEditorFields) elements.hierarchyEditorFields.classList.toggle('hidden', !isHierarchy);
         if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
-        if (elements.diagramEditorFields) elements.diagramEditorFields.classList.toggle('hidden', !(isDiagrams || isTypedAnswer));
+        if (elements.diagramEditorFields) {
+            // Phase 22II: regular Multiple Choice question images are edited/previewed in Edit Image only.
+            // Keep the large diagram/label preview area for Diagram and Typed Answer modes.
+            elements.diagramEditorFields.classList.toggle('hidden', !(isDiagrams || isTypedAnswer));
+            elements.diagramEditorFields.classList.toggle('studio-mc-image-preview-fields', false);
+            elements.diagramEditorFields.classList.toggle('studio-diagram-image-preview-fields', isDiagrams || isTypedAnswer);
+        }
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
         updateStudioQuestionImagePanelUI();
         updateDiagramSharingControls();
@@ -4687,7 +4725,7 @@ MODIFICATION RULES FOR THIS APP
         const quizType = normalizeSheetText(quiz.quizType || quiz.type || '');
         if (!Number(quiz.questionCount || 0)) return false;
         if (challenge?.requiresBuildUp) {
-            return quizType === 'multiple_choice' && !!quiz.hasBuildUpStrings;
+            return (quizType === 'multiple_choice' || quizType === 'diagrams') && !!quiz.hasBuildUpStrings;
         }
         return quizType !== 'flashcard';
     }
@@ -4695,7 +4733,7 @@ MODIFICATION RULES FOR THIS APP
     function getQuizChallengeDisabledReason(quiz = {}, challenge = null) {
         if (canQuizUseChallengeSettings(quiz, challenge)) return '';
         if (challenge?.requiresBuildUp) {
-            return 'Build Up challenges require a multiple-choice quiz with at least one Build Up string.';
+            return 'Build Up challenges require a multiple-choice or diagrams quiz with at least one Build Up string.';
         }
         return 'Challenges require a quiz type with answer choices so the challenge settings can be locked.';
     }
@@ -6022,7 +6060,8 @@ MODIFICATION RULES FOR THIS APP
                     mixed: 'Mixed types'
                 };
                 const hasBuildUpStrings = rows.some(row => {
-                    if (normalizeSheetText(row.question_type) !== 'multiple_choice') return false;
+                    const effectiveType = getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id));
+                    if (effectiveType !== 'multiple_choice' && effectiveType !== 'diagrams') return false;
                     const detail = multipleChoiceMetadataByQuestionId.get(row.id);
                     return !!getBuildUpValueFromOptionsJson(detail?.options_json);
                 });
@@ -6920,7 +6959,7 @@ MODIFICATION RULES FOR THIS APP
         updateStudioClassifyRowImageToggle(wrapper, kind);
     }
 
-    function createStudioClassifyCategoryRow(index, categoryData = {}) {
+    function createStudioClassifyCategoryRow(index, categoryData = {}, categoryCount = 0) {
         const wrapper = document.createElement('div');
         wrapper.className = 'studio-option-pair studio-classify-row';
         wrapper.dataset.classifyCategoryIndex = String(index + 1);
@@ -6931,6 +6970,7 @@ MODIFICATION RULES FOR THIS APP
               <span class="studio-option-label-row">
                 <span>Category ${index + 1} text (optional)</span>
                 <span class="studio-option-label-actions">
+                  <button type="button" class="studio-option-delete-btn" data-classify-category-remove aria-label="Remove Category ${index + 1}" title="Remove Category ${index + 1}" ${categoryCount <= 2 ? 'disabled' : ''}>×</button>
                   <button type="button" class="studio-option-image-toggle${categoryImageUrl ? ' has-image' : ''}" data-classify-category-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Category ${index + 1} image controls` : (categoryImageUrl ? `Edit Category ${index + 1} image` : `Show Category ${index + 1} image controls`)}" title="${isImagePanelOpen ? `Hide Category ${index + 1} image controls` : (categoryImageUrl ? `Edit Category ${index + 1} image` : `Show Category ${index + 1} image controls`)}">${isImagePanelOpen ? 'Hide Image' : (categoryImageUrl ? 'Edit Image' : 'Image')}</button>
                 </span>
               </span>
@@ -6950,7 +6990,15 @@ MODIFICATION RULES FOR THIS APP
             </div>
         `;
         const input = wrapper.querySelector('[data-classify-category-label]');
+        const removeBtn = wrapper.querySelector('[data-classify-category-remove]');
         if (input) input.value = normalizeSheetText(categoryData.label);
+        if (removeBtn) {
+            removeBtn.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                removeStudioClassifyCategoryFieldAt(index);
+            });
+        }
         setStudioClassifyRowImageState(wrapper, 'category', normalizeSheetText(categoryData.imageUrl), normalizeSheetText(categoryData.imageUrl) ? 'Selected image.' : '');
         return wrapper;
     }
@@ -6968,7 +7016,7 @@ MODIFICATION RULES FOR THIS APP
         select.value = categories.some(category => category.id === selectedId) ? selectedId : (categories[0]?.id || '');
     }
 
-    function createStudioClassifyItemRow(index, itemData = {}, categories = []) {
+    function createStudioClassifyItemRow(index, itemData = {}, categories = [], itemCount = 0) {
         const wrapper = document.createElement('div');
         wrapper.className = 'studio-option-pair studio-classify-row';
         wrapper.dataset.classifyItemIndex = String(index + 1);
@@ -6979,6 +7027,7 @@ MODIFICATION RULES FOR THIS APP
               <span class="studio-option-label-row">
                 <span>Item ${index + 1} text (optional)</span>
                 <span class="studio-option-label-actions">
+                  <button type="button" class="studio-option-delete-btn" data-classify-item-remove aria-label="Remove Item ${index + 1}" title="Remove Item ${index + 1}" ${itemCount <= 2 ? 'disabled' : ''}>×</button>
                   <button type="button" class="studio-option-image-toggle${itemImageUrl ? ' has-image' : ''}" data-classify-item-image-toggle aria-expanded="${isImagePanelOpen ? 'true' : 'false'}" aria-label="${isImagePanelOpen ? `Hide Item ${index + 1} image controls` : (itemImageUrl ? `Edit Item ${index + 1} image` : `Show Item ${index + 1} image controls`)}" title="${isImagePanelOpen ? `Hide Item ${index + 1} image controls` : (itemImageUrl ? `Edit Item ${index + 1} image` : `Show Item ${index + 1} image controls`)}">${isImagePanelOpen ? 'Hide Image' : (itemImageUrl ? 'Edit Image' : 'Image')}</button>
                 </span>
               </span>
@@ -7003,7 +7052,15 @@ MODIFICATION RULES FOR THIS APP
         `;
         const input = wrapper.querySelector('[data-classify-item-text]');
         const select = wrapper.querySelector('[data-classify-item-category]');
+        const removeBtn = wrapper.querySelector('[data-classify-item-remove]');
         if (input) input.value = normalizeSheetText(itemData.text);
+        if (removeBtn) {
+            removeBtn.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                removeStudioClassifyItemFieldAt(index);
+            });
+        }
         setStudioClassifyRowImageState(wrapper, 'item', normalizeSheetText(itemData.imageUrl), normalizeSheetText(itemData.imageUrl) ? 'Selected image.' : '');
         populateClassifyItemCategorySelect(select, categories, itemData.categoryId);
         return wrapper;
@@ -7031,18 +7088,41 @@ MODIFICATION RULES FOR THIS APP
         return normalizeClassifyItemsDrafts(actualDrafts, categories);
     }
 
+    function createStudioClassifyInlineAddRow(kind) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'studio-classify-inline-add-row';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'auth-action-btn auth-secondary-btn studio-classify-inline-add-btn';
+        button.innerText = kind === 'category' ? '+ Add Category' : '+ Add Item';
+        button.setAttribute('aria-label', kind === 'category' ? 'Add category' : 'Add item');
+        button.addEventListener('click', () => {
+            if (kind === 'category') {
+                addStudioClassifyCategoryField();
+            } else {
+                addStudioClassifyItemField();
+            }
+        });
+
+        wrapper.appendChild(button);
+        return wrapper;
+    }
+
     function renderStudioClassifyFields(categoryDrafts = null, itemDrafts = null) {
         if (!elements.createClassifyCategoriesContainer || !elements.createClassifyItemsContainer) return;
         const categories = normalizeClassifyCategoriesDrafts(categoryDrafts);
         const items = normalizeClassifyItemsDrafts(itemDrafts, categories);
         elements.createClassifyCategoriesContainer.innerHTML = '';
         categories.forEach((category, index) => {
-            elements.createClassifyCategoriesContainer.appendChild(createStudioClassifyCategoryRow(index, category));
+            elements.createClassifyCategoriesContainer.appendChild(createStudioClassifyCategoryRow(index, category, categories.length));
         });
+        elements.createClassifyCategoriesContainer.appendChild(createStudioClassifyInlineAddRow('category'));
         elements.createClassifyItemsContainer.innerHTML = '';
         items.forEach((item, index) => {
-            elements.createClassifyItemsContainer.appendChild(createStudioClassifyItemRow(index, item, categories));
+            elements.createClassifyItemsContainer.appendChild(createStudioClassifyItemRow(index, item, categories, items.length));
         });
+        elements.createClassifyItemsContainer.appendChild(createStudioClassifyInlineAddRow('item'));
         updateCreatorUI();
     }
 
@@ -7067,22 +7147,38 @@ MODIFICATION RULES FOR THIS APP
         renderStudioClassifyFields(categories, items);
     }
 
-    function removeStudioClassifyCategoryField() {
+    function removeStudioClassifyCategoryFieldAt(removeIndex = null) {
         const categories = getStudioClassifyCategoriesDraftsFromDOM();
         const items = getStudioClassifyItemsDraftsFromDOM(categories);
         if (categories.length <= 2) {
             setCreatorStatus('Classify quizzes need at least 2 categories.', 'error');
             return;
         }
-        const removed = categories.pop();
-        const nextCategories = normalizeClassifyCategoriesDrafts(categories);
+
+        const targetIndex = Number.isInteger(removeIndex) ? removeIndex : categories.length - 1;
+        if (targetIndex < 0 || targetIndex >= categories.length) return;
+
+        const removed = categories[targetIndex];
+        const remaining = categories.filter((_, index) => index !== targetIndex);
+        const nextCategories = normalizeClassifyCategoriesDrafts(remaining);
         const fallbackCategoryId = nextCategories[0]?.id || 'class_1';
+        const idRemap = new Map();
+
+        remaining.forEach((category, index) => {
+            idRemap.set(category.id, nextCategories[index]?.id || `class_${index + 1}`);
+        });
+
         const nextItems = items.map(item => ({
             text: item.text,
             imageUrl: item.imageUrl,
-            categoryId: item.categoryId === removed.id ? fallbackCategoryId : item.categoryId
+            categoryId: item.categoryId === removed.id ? fallbackCategoryId : (idRemap.get(item.categoryId) || fallbackCategoryId)
         }));
+
         renderStudioClassifyFields(nextCategories, nextItems);
+    }
+
+    function removeStudioClassifyCategoryField() {
+        removeStudioClassifyCategoryFieldAt(null);
     }
 
     function addStudioClassifyItemField() {
@@ -7096,15 +7192,23 @@ MODIFICATION RULES FOR THIS APP
         renderStudioClassifyFields(categories, items);
     }
 
-    function removeStudioClassifyItemField() {
+    function removeStudioClassifyItemFieldAt(removeIndex = null) {
         const categories = getStudioClassifyCategoriesDraftsFromDOM();
         const items = getStudioClassifyItemsDraftsFromDOM(categories);
         if (items.length <= 2) {
             setCreatorStatus('Classify quizzes need at least 2 items.', 'error');
             return;
         }
-        items.pop();
+
+        const targetIndex = Number.isInteger(removeIndex) ? removeIndex : items.length - 1;
+        if (targetIndex < 0 || targetIndex >= items.length) return;
+
+        items.splice(targetIndex, 1);
         renderStudioClassifyFields(categories, items);
+    }
+
+    function removeStudioClassifyItemField() {
+        removeStudioClassifyItemFieldAt(null);
     }
 
     function getClassifyDraftsFromDetailRow(detailRow) {
@@ -7397,7 +7501,6 @@ MODIFICATION RULES FOR THIS APP
               <div class="studio-flashcard-image-actions" aria-label="${escapeHtml(sideLabel)} image controls">
                 <span class="studio-flashcard-image-side-label">${escapeHtml(sideLabel)}</span>
                 <button type="button" class="studio-option-image-toggle studio-flashcard-image-main${hasImage ? ' has-image' : ''}" data-studio-flashcard-image-main="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}">${hasImage ? 'Edit Image' : 'Add Image'}</button>
-                <button type="button" class="studio-option-image-toggle studio-flashcard-image-visibility" data-studio-flashcard-image-hide="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" title="${escapeHtml(visibilityTitle)}" ${hasImage ? '' : 'disabled'}>${escapeHtml(visibilityLabel)}</button>
                 <button type="button" class="studio-option-image-toggle studio-flashcard-image-remove" data-studio-flashcard-image-remove="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" ${hasImage ? '' : 'disabled'}>Remove Image</button>
                 <input class="studio-flashcard-image-file-input" type="file" accept="image/*" data-studio-flashcard-image-file="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" tabindex="-1" aria-hidden="true">
               </div>
@@ -7860,6 +7963,7 @@ MODIFICATION RULES FOR THIS APP
             prompt: normalizeAuthoredMathChemText(elements.createQuestionPrompt?.value),
             questionImage: state.auth.studioQuestionImageDataUrl || '',
             questionImageLabel: state.auth.studioQuestionImageLabel || '',
+            questionImageLabels: normalizeDiagramLabels(state.auth.studioQuestionImageLabels || []),
             learningResourcesHtml: getLearningResourcesEditorHtml(),
             learningResourcesImage: state.auth.studioLearningResourcesImageDataUrl || '',
             learningResourcesImageLabel: state.auth.studioLearningResourcesImageLabel || ''
@@ -7929,7 +8033,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.expandedClassifyCategoryImageRows.clear();
         state.auth.expandedClassifyItemImageRows.clear();
         setLearningResourcesEditorHtml(draft.learningResourcesHtml || '', '');
-        setStudioQuestionImageState(draft.questionImage || '', draft.questionImageLabel || (draft.questionImage ? 'Existing question image saved.' : 'No question image selected.'));
+        setStudioQuestionImageState(draft.questionImage || '', draft.questionImageLabel || (draft.questionImage ? 'Existing question image saved.' : 'No question image selected.'), draft.questionImageLabels || []);
         setStudioLearningResourcesImageState(draft.learningResourcesImage || '', draft.learningResourcesImageLabel || (draft.learningResourcesImage ? 'Existing learning resources image saved.' : 'No learning resources image selected.'));
 
         if (draft.questionType === 'flashcard') {
@@ -8549,7 +8653,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function isStudioBuildUpEditMode() {
-        return getStudioCurrentQuizType() === 'multiple_choice' && !!normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
+        return ['multiple_choice', 'diagrams'].includes(getStudioCurrentQuizType()) && !!normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
     }
 
     function clearStudioBuildUpEditMode(options = {}) {
@@ -8563,7 +8667,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function isStudioBuildUpFocusMode() {
-        return getStudioCurrentQuizType() === 'multiple_choice' && !!normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
+        return ['multiple_choice', 'diagrams'].includes(getStudioCurrentQuizType()) && !!normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
     }
 
     function clearStudioBuildUpFocusMode(options = {}) {
@@ -8662,17 +8766,27 @@ MODIFICATION RULES FOR THIS APP
             throw new Error('Select a saved multiple-choice question first.');
         }
         const questionRow = state.auth.studioQuizQuestions.find(question => normalizeSheetText(question.id) === normalizedQuestionId);
-        if (!questionRow || normalizeSheetText(questionRow.question_type || 'multiple_choice') !== 'multiple_choice') {
-            throw new Error('Build Up strings are only available for multiple-choice questions.');
+        const questionType = normalizeSheetText(questionRow?.question_type || 'multiple_choice');
+        if (!questionRow || (questionType !== 'multiple_choice' && questionType !== 'diagrams')) {
+            throw new Error('Build Up strings are only available for multiple-choice or diagram questions.');
         }
         const detail = await loadMultipleChoiceDetailByQuestionId(normalizedQuestionId);
         if (!detail) throw new Error("Could not load this question's multiple-choice details.");
         const optionPayload = normalizeOptionsJsonForBuildUpUpdate(detail);
         const nextBuildUp = normalizeBuildUpValue(nextBuildUpValue);
-        const nextOptionsJson = buildMultipleChoiceOptionsJsonPayload(optionPayload, nextBuildUp, {
+        let nextOptionsJson = buildMultipleChoiceOptionsJsonPayload(optionPayload, nextBuildUp, {
             allowMultipleAnswers: getAllowMultipleAnswersFromDetailRow(detail),
-            correctAnswers: getMultipleChoiceCorrectAnswersFromDetailRow(detail)
+            correctAnswers: getMultipleChoiceCorrectAnswersFromDetailRow(detail),
+            questionImageLabels: getQuestionImageLabelsFromDetailRow(detail)
         });
+        if (questionType === 'diagrams') {
+            const existingDiagramLabels = getDiagramLabelsFromDetailRow(detail);
+            nextOptionsJson = {
+                ...(Array.isArray(nextOptionsJson) ? { options: nextOptionsJson } : nextOptionsJson),
+                diagramLabels: existingDiagramLabels,
+                diagramQuestionOverride: false
+            };
+        }
         const { error } = await state.auth.client
             .from('multiple_choice_questions')
             .update({ options_json: nextOptionsJson })
@@ -8871,12 +8985,13 @@ MODIFICATION RULES FOR THIS APP
         const editingType = getStudioCurrentQuizType();
         const activeBuildUpString = normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
         const focusedBuildUpString = normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
-        const buildUpEditActive = editingType === 'multiple_choice' && !!activeBuildUpString;
-        let buildUpFocusActive = !buildUpEditActive && editingType === 'multiple_choice' && !!focusedBuildUpString;
-        if (activeBuildUpString && editingType !== 'multiple_choice') {
+        const supportsBuildUpEditing = editingType === 'multiple_choice' || editingType === 'diagrams';
+        const buildUpEditActive = supportsBuildUpEditing && !!activeBuildUpString;
+        let buildUpFocusActive = !buildUpEditActive && supportsBuildUpEditing && !!focusedBuildUpString;
+        if (activeBuildUpString && !supportsBuildUpEditing) {
             state.auth.studioActiveBuildUpString = '';
         }
-        if (focusedBuildUpString && editingType !== 'multiple_choice') {
+        if (focusedBuildUpString && !supportsBuildUpEditing) {
             state.auth.studioFocusedBuildUpString = '';
             buildUpFocusActive = false;
         }
@@ -8888,7 +9003,10 @@ MODIFICATION RULES FOR THIS APP
         let filteredQuestions = displayRows;
 
         if (buildUpEditActive) {
-            filteredQuestions = displayRows.filter(questionRow => normalizeSheetText(questionRow.question_type || 'multiple_choice') === 'multiple_choice');
+            filteredQuestions = displayRows.filter(questionRow => {
+                const rowType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
+                return rowType === 'multiple_choice' || rowType === 'diagrams';
+            });
         } else if (buildUpFocusActive) {
             if (query) {
                 state.auth.studioQuestionSearchQuery = '';
@@ -8919,7 +9037,7 @@ MODIFICATION RULES FOR THIS APP
 
         if (!filteredQuestions.length && !focusNewDraftActive) {
             const emptyLabel = buildUpEditActive
-                ? '<div class="studio-list-empty">This quiz has no multiple-choice questions available for Build Up string editing.</div>'
+                ? '<div class="studio-list-empty">This quiz has no multiple-choice or diagram questions available for Build Up string editing.</div>'
                 : (buildUpFocusActive
                     ? '<div class="studio-list-empty">This Build Up string is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
                     : (focusModeActive
@@ -8934,7 +9052,7 @@ MODIFICATION RULES FOR THIS APP
         const sharedDiagramSourceQuestionId = isStudioSharedDiagramCapableMode(editingType) ? getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) : '';
         const buildUpEditorBannerHtml = buildUpEditActive
             ? `<div class="studio-build-up-editor-banner">
-                <div><strong>Editing String:</strong> ${escapeHtml(activeBuildUpString)} <span>Add or remove multiple-choice questions below. Normal question order controls the Build Up order.</span></div>
+                <div><strong>Editing String:</strong> ${escapeHtml(activeBuildUpString)} <span>Add or remove multiple-choice or diagram questions below. Normal question order controls the Build Up order.</span></div>
                 <button type="button" class="studio-build-up-done-btn" data-studio-build-up-clear="true">Done</button>
               </div>`
             : '';
@@ -8964,7 +9082,7 @@ MODIFICATION RULES FOR THIS APP
             const starBadgeHtml = isStarredRow
                 ? '<span class="studio-question-list-star" title="Starred question" aria-label="Starred question">★</span>'
                 : '';
-            const isBuildUpQuestionRow = editingType === 'multiple_choice' && questionType === 'multiple_choice' && !isPendingRow && !isLocalFlashcardRow;
+            const isBuildUpQuestionRow = supportsBuildUpEditing && (questionType === 'multiple_choice' || questionType === 'diagrams') && !isPendingRow && !isLocalFlashcardRow;
             const isActiveBuildUpMember = buildUpEditActive && isSameBuildUpString(questionBuildUpValue, activeBuildUpString);
             const isFocusedBuildUpMember = buildUpFocusActive && isSameBuildUpString(questionBuildUpValue, focusedBuildUpString);
             const isOtherBuildUpMember = buildUpEditActive && !!questionBuildUpValue && !isActiveBuildUpMember;
@@ -9474,7 +9592,8 @@ MODIFICATION RULES FOR THIS APP
 
             setStudioQuestionImageState(
                 normalizeSheetText(questionRow.image_url),
-                normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.'
+                normalizeSheetText(questionRow.image_url) ? 'Existing question image saved.' : 'No question image selected.',
+                getQuestionImageLabelsFromDetailRow(detailRow)
             );
             setStudioFlashcardTermImageState('', 'No term image selected.');
             setStudioFlashcardDefinitionImageState('', 'No definition image selected.');
@@ -11112,7 +11231,12 @@ MODIFICATION RULES FOR THIS APP
             imageLabel: normalizeSheetText(option?.imageLabel || option?.image_label) || getOptionImageLabel(option, index)
         }));
         const normalizedOptionsJson = restoredOptionJson && typeof restoredOptionJson === 'object' && !Array.isArray(restoredOptionJson)
-            ? { ...restoredOptionJson, options: optionJson, diagramLabels: normalizeDiagramLabels(restoredOptionJson.diagramLabels || restoredOptionJson.labels || []) }
+            ? {
+                ...restoredOptionJson,
+                options: optionJson,
+                diagramLabels: normalizeDiagramLabels(restoredOptionJson.diagramLabels || restoredOptionJson.labels || []),
+                questionImageLabels: normalizeDiagramLabels(restoredOptionJson.questionImageLabels || restoredOptionJson.question_image_labels || [])
+            }
             : optionJson;
         let correctAnswer = normalizeSheetText(detail.correct_answer);
         const sourceCorrectIndex = sourceOptions.findIndex(option => getOptionAnswerValue({
@@ -11884,6 +12008,7 @@ MODIFICATION RULES FOR THIS APP
         const isTypedAnswerQuestion = quizType === 'typed_answer';
         const usesDiagramLabels = isDiagramQuestion || isTypedAnswerQuestion;
         const diagramLabels = usesDiagramLabels ? getStudioDiagramLabelsFromDOM() : [];
+        const questionImageLabels = quizType === 'multiple_choice' ? normalizeDiagramLabels(state.auth.studioQuestionImageLabels || []) : [];
         const diagramSharingDraft = usesDiagramLabels ? getStudioDiagramSharingDraft() : createDefaultDiagramSharingState();
         if (!diagramSharingDraft.useSharedImage) {
             diagramSharingDraft.useSharedLabels = false;
@@ -12074,18 +12199,18 @@ MODIFICATION RULES FOR THIS APP
             const savedOptionAnswerValues = savedOptionDrafts.map(getOptionAnswerValue);
             const savedCorrectAnswers = isTypedAnswerQuestion ? [] : correctIndexes.map(index => savedOptionAnswerValues[index]).filter(Boolean);
             const savedCorrectAnswer = isTypedAnswerQuestion ? (typedAnswerVariants[0] || correctAnswer) : (savedCorrectAnswers[0] || savedOptionAnswerValues[correctIndex] || correctAnswer);
-            const existingBuildUpValue = (!isDiagramQuestion && !isTypedAnswerQuestion && isEditingQuestion) ? await getMultipleChoiceBuildUpByQuestionId(questionId) : '';
+            const existingBuildUpValue = (!isTypedAnswerQuestion && isEditingQuestion) ? await getMultipleChoiceBuildUpByQuestionId(questionId) : '';
             const optionPayload = savedOptionDrafts.map((draft, index) => ({
                 text: draft.text,
                 explanation_html: buildStoredHtmlFromPlain(draft.explanation),
                 imageUrl: draft.imageUrl || '',
                 imageLabel: draft.imageLabel || getOptionImageLabel(draft, index)
             }));
-            const multipleAnswerMetadata = { allowMultipleAnswers, correctAnswers: savedCorrectAnswers };
+            const multipleAnswerMetadata = { allowMultipleAnswers, correctAnswers: savedCorrectAnswers, questionImageLabels };
             const optionsJsonPayload = isTypedAnswerQuestion
                 ? buildTypedAnswerOptionsJsonPayload(typedAnswerVariants, diagramLabelsForQuestion)
                 : (isDiagramQuestion
-                    ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: false, ...(allowMultipleAnswers ? { allowMultipleAnswers: true } : {}), ...(savedCorrectAnswers.length ? { correctAnswers: savedCorrectAnswers } : {}) }
+                    ? { options: optionPayload, diagramLabels: diagramLabelsForQuestion, diagramQuestionOverride: false, ...(existingBuildUpValue ? { buildUp: existingBuildUpValue } : {}), ...(allowMultipleAnswers ? { allowMultipleAnswers: true } : {}), ...(savedCorrectAnswers.length ? { correctAnswers: savedCorrectAnswers } : {}) }
                     : buildMultipleChoiceOptionsJsonPayload(optionPayload, existingBuildUpValue, multipleAnswerMetadata));
             const detailPayload = { question_id: questionId, correct_answer: savedCorrectAnswer, correct_explanation_html: buildStoredHtmlFromPlain(correctExplanation), options_json: optionsJsonPayload, option_1_text: savedOptions[0] || '', option_1_explanation_html: buildStoredHtmlFromPlain(savedExplanations[0] || ''), option_2_text: savedOptions[1] || '', option_2_explanation_html: buildStoredHtmlFromPlain(savedExplanations[1] || ''), option_3_text: savedOptions[2] || '', option_3_explanation_html: buildStoredHtmlFromPlain(savedExplanations[2] || ''), option_4_text: savedOptions[3] || '', option_4_explanation_html: buildStoredHtmlFromPlain(savedExplanations[3] || '') };
             const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
@@ -13683,12 +13808,14 @@ MODIFICATION RULES FOR THIS APP
         const correctAnswers = Array.isArray(answerOptions.correctAnswers)
             ? answerOptions.correctAnswers.map(value => normalizeSheetText(value)).filter(Boolean)
             : [];
-        if (normalizedBuildUp || allowMultipleAnswers || correctAnswers.length > 1) {
+        const questionImageLabels = normalizeDiagramLabels(answerOptions.questionImageLabels || []);
+        if (normalizedBuildUp || allowMultipleAnswers || correctAnswers.length > 1 || questionImageLabels.length) {
             return {
                 options: optionPayload,
                 ...(normalizedBuildUp ? { buildUp: normalizedBuildUp } : {}),
                 ...(allowMultipleAnswers ? { allowMultipleAnswers: true } : {}),
-                ...(correctAnswers.length ? { correctAnswers } : {})
+                ...(correctAnswers.length ? { correctAnswers } : {}),
+                ...(questionImageLabels.length ? { questionImageLabels } : {})
             };
         }
         return optionPayload;
@@ -14988,8 +15115,29 @@ function canUseLearningResources() {
     return !isSpeedMode() && (isRetentionMode() || isRetryMode() || isProgressMode());
 }
 
+function deckContainsStudyQuestionType(targetType = '') {
+    const normalizedTarget = normalizeSheetText(targetType).toLowerCase();
+    if (!normalizedTarget) return false;
+
+    const questionLists = [
+        state.questions,
+        state.sourceQuestions,
+        state.questionQueue
+    ];
+
+    return questionLists.some(list => Array.isArray(list) && list.some(q => {
+        const normalizedType = normalizeSheetText(q?.type || q?.question_type).toLowerCase();
+        return normalizedType === normalizedTarget;
+    }));
+}
+
 function hasFlashcardsInDeck() {
-    return state.questions.some(q => q.type === 'flashcard');
+    return deckContainsStudyQuestionType('flashcard') || state.currentQuestionType === 'flashcard';
+}
+
+function hasClassifyInDeck() {
+    const activeQuizType = normalizeSheetText(state.activeQuizDescriptor?.quizType || '').toLowerCase();
+    return deckContainsStudyQuestionType('classify') || state.currentQuestionType === 'classify' || activeQuizType === 'classify';
 }
 
 function updateLearningResourcesAvailability() {
@@ -15219,8 +15367,8 @@ function updateAllowBuildUpAvailability() {
         allowBuildUpHelp.innerText = challengeLocked
             ? 'Locked on for this Build Up challenge.'
             : (hasBuildUpStrings
-                ? 'Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.'
-                : 'Available when multiple-choice questions include Build Up string values from import or editor tools.');
+                ? 'Keeps multiple-choice or diagram questions with the same Build Up string together in study order, even when Shuffle Questions is on.'
+                : 'Available when multiple-choice or diagram questions include Build Up string values from import or editor tools.');
     }
 }
 
@@ -15246,7 +15394,7 @@ function updateTetherBuildUpAvailability() {
 
     if (tetherHelp) {
         if (!hasBuildUpStrings) {
-            tetherHelp.innerText = 'Available when multiple-choice questions include Build Up string values from import or editor tools.';
+            tetherHelp.innerText = 'Available when multiple-choice or diagram questions include Build Up string values from import or editor tools.';
         } else if (!allowBuildUpActive) {
             tetherHelp.innerText = 'Turn on Allow Build Up first.';
         } else if (!supportedModeActive) {
@@ -15267,6 +15415,20 @@ function updateFlashcardFrontButtonsUI() {
 
     elements.termFrontBtn.classList.toggle('active', state.flashcardFrontMode === 'term');
     elements.definitionFrontBtn.classList.toggle('active', state.flashcardFrontMode === 'definition');
+}
+
+function updateClassifyDraggableSettingVisibility() {
+    if (!elements.classifyDraggableSetting) return;
+    elements.classifyDraggableSetting.classList.toggle('hidden', !hasClassifyInDeck());
+}
+
+function updateClassifyDraggableButtonsUI() {
+    if (!elements.classifyItemsDraggableBtn || !elements.classifyCategoriesDraggableBtn) return;
+    const mode = state.classifyDraggableMode === 'categories' ? 'categories' : 'items';
+    elements.classifyItemsDraggableBtn.classList.toggle('active', mode === 'items');
+    elements.classifyCategoriesDraggableBtn.classList.toggle('active', mode === 'categories');
+    elements.classifyItemsDraggableBtn.setAttribute('aria-pressed', mode === 'items' ? 'true' : 'false');
+    elements.classifyCategoriesDraggableBtn.setAttribute('aria-pressed', mode === 'categories' ? 'true' : 'false');
 }
 
 function setSettingDisabled(settingId, checkboxId, disabled) {
@@ -15382,6 +15544,8 @@ function updateSettingsAvailability() {
     updateStarredQuestionAvailability();
     updateFlashcardFrontSettingVisibility();
     updateFlashcardFrontButtonsUI();
+    updateClassifyDraggableSettingVisibility();
+    updateClassifyDraggableButtonsUI();
     updateNavigationButtons();
     syncQuestionStarButton();
 }
@@ -15749,6 +15913,7 @@ function openCurrentStudyChallengesShortcut() {
 
 // ================= SETTINGS / FULLSCREEN UI =================
 function openSettingsPopup() {
+    updateSettingsAvailability();
     elements.settingsPopup.classList.remove('hidden');
     elements.settingsBtn.classList.add('active');
 }
@@ -16513,7 +16678,7 @@ function resetPendingStudyAdvanceFlags() {
 }
 
 function isBuildUpSupportedQuestion(question = {}) {
-    return question?.type === 'multiple choice' && !!normalizeBuildUpValue(question?.buildUp);
+    return (question?.type === 'multiple choice' || question?.type === 'diagrams') && !!normalizeBuildUpValue(question?.buildUp);
 }
 
 function isAllowBuildUpEnabled() {
@@ -16526,7 +16691,7 @@ function isTetherBuildUpEnabled() {
 
 function getBuildUpGroupKey(question = {}) {
     const buildUp = normalizeBuildUpValue(question?.buildUp);
-    if (!buildUp || question?.type !== 'multiple choice') return '';
+    if (!buildUp || (question?.type !== 'multiple choice' && question?.type !== 'diagrams')) return '';
     const scope = normalizeSheetText(question?.sourceQuizId || state.activeQuizDescriptor?.sourceQuizId || state.activeQuizDescriptor?.id || 'active-quiz');
     return `${scope}::${buildUp.toLocaleLowerCase()}`;
 }
@@ -17124,7 +17289,8 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             const detail = detailMap.get(row.id);
             if (!detail) return null;
             const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
-            const questionDiagramLabels = (quizType === 'diagrams' || quizType === 'typed_answer') ? getDiagramLabelsFromDetailRow(detail) : [];
+            const questionImageLabels = quizType === 'multiple_choice' ? getQuestionImageLabelsFromDetailRow(detail) : [];
+            const questionDiagramLabels = (quizType === 'diagrams' || quizType === 'typed_answer') ? getDiagramLabelsFromDetailRow(detail) : questionImageLabels;
             const useSharedDiagramImage = (quizType === 'diagrams' || quizType === 'typed_answer') && diagramSharing.useSharedImage ;
             const diagramLabels = useSharedDiagramImage && diagramSharing.useSharedLabels
                 ? normalizeDiagramLabels(diagramSharing.sharedLabels)
@@ -17139,7 +17305,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             const correctAnswer = normalizeSheetText(detail.correct_answer);
             const correctAnswers = getMultipleChoiceCorrectAnswersFromDetailRow(detail);
             const allowMultipleAnswers = getAllowMultipleAnswersFromDetailRow(detail);
-            const buildUp = quizType === 'multiple_choice' ? getBuildUpValueFromOptionsJson(detail.options_json) : '';
+            const buildUp = (quizType === 'multiple_choice' || quizType === 'diagrams') ? getBuildUpValueFromOptionsJson(detail.options_json) : '';
             const correctIndex = optionAnswerValues.findIndex(optionValue => optionValue === correctAnswer);
             if (correctIndex >= 0 && !explanations[correctIndex]) {
                 explanations[correctIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
@@ -18147,7 +18313,7 @@ function showQuestion() {
     elements.imageContainer.style.display = '';
     elements.questionImage.style.display = q.image ? 'block' : 'none';
     elements.questionImage.src = q.image || '';
-    if ((q.type === 'diagrams' || q.type === 'typed answer') && q.image) {
+    if ((q.type === 'diagrams' || q.type === 'typed answer' || q.type === 'multiple choice') && q.image) {
         renderDiagramStudyLabels(q.diagramLabels || []);
     } else {
         clearDiagramStudyLabels();
@@ -19858,8 +20024,416 @@ function showHierarchy(q) {
 }
 
 
+
 // ================= CLASSIFY =================
+function shouldUseCategoryDraggableClassifyMode() {
+    return state.classifyDraggableMode === 'categories';
+}
+
+function buildClassifyImageContent(imageUrl = '', text = '', alt = 'Classify image') {
+    const content = document.createElement('div');
+    content.className = 'classify-item-content';
+
+    if (imageUrl) {
+        const img = document.createElement('img');
+        img.className = 'classify-item-image';
+        img.src = imageUrl;
+        img.alt = text || alt;
+        img.draggable = false;
+        content.appendChild(img);
+
+        if (text) {
+            const textSpan = document.createElement('div');
+            textSpan.className = 'classify-item-text classify-item-image-text';
+            textSpan.innerText = text;
+            content.appendChild(textSpan);
+        }
+    } else {
+        const textSpan = document.createElement('div');
+        textSpan.className = 'classify-item-text';
+        textSpan.innerText = text || alt;
+        content.appendChild(textSpan);
+    }
+
+    return content;
+}
+
+function showClassifyCategoriesDraggable(q) {
+    const container = document.createElement('div');
+    container.id = 'classifyContainer';
+    container.className = 'classify-container classify-category-draggable-mode';
+
+    const layout = document.createElement('div');
+    layout.className = 'classify-layout';
+    container.appendChild(layout);
+
+    const bank = document.createElement('div');
+    bank.className = 'classify-column classify-bank-column';
+    layout.appendChild(bank);
+
+    const bankItems = document.createElement('div');
+    bankItems.className = 'classify-bank-items';
+    bank.appendChild(bankItems);
+
+    const itemsColumn = document.createElement('div');
+    itemsColumn.className = 'classify-column classify-classes-column';
+    layout.appendChild(itemsColumn);
+
+    const itemGrid = document.createElement('div');
+    itemGrid.className = 'classify-category-grid classify-item-target-grid';
+    itemsColumn.appendChild(itemGrid);
+
+    const submit = document.createElement('button');
+    submit.id = 'classifySubmit';
+    submit.type = 'button';
+    submit.innerText = 'Submit';
+
+    const classifications = (q.classifications || []).map((classification, index) => ({
+        ...classification,
+        runtimeKey: `classify_category_${index}`,
+        normalizedId: normalizeClassificationId(classification.id),
+        dragLabel: normalizeSheetText(classification.label) || `Category ${index + 1}`
+    })).filter(classification => classification.normalizedId);
+
+    const items = (q.items || []).map((item, index) => ({
+        ...item,
+        runtimeKey: `classify_item_${index}`,
+        correctClassificationId: normalizeClassificationId(item.correctClassificationId),
+        dragLabel: item.dragLabel || item.text || `Item ${index + 1}`,
+        ariaLabel: item.ariaLabel || (item.text ? `Classify item ${item.text}` : 'Classify item')
+    }));
+
+    if (document.getElementById('shuffleAnswers').checked) {
+        shuffleArray(items);
+    }
+
+    const classificationMap = new Map(classifications.map(classification => [classification.normalizedId, classification]));
+    const placements = new Map();
+    let selectedClassificationId = null;
+    let suppressCategoryClickId = null;
+    let dragState = null;
+
+    function preserveWindowScroll(fn) {
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        fn();
+        window.scrollTo(scrollX, scrollY);
+    }
+
+    function getScrollState() {
+        return {
+            bankScrollTop: bank.scrollTop,
+            bankScrollLeft: bank.scrollLeft,
+            itemsScrollTop: itemsColumn.scrollTop,
+            itemsScrollLeft: itemsColumn.scrollLeft
+        };
+    }
+
+    function restoreScrollState(scrollState) {
+        if (!scrollState) return;
+        const apply = () => {
+            bank.scrollTop = scrollState.bankScrollTop;
+            bank.scrollLeft = scrollState.bankScrollLeft;
+            itemsColumn.scrollTop = scrollState.itemsScrollTop;
+            itemsColumn.scrollLeft = scrollState.itemsScrollLeft;
+        };
+        apply();
+        requestAnimationFrame(apply);
+    }
+
+    function renderStatePreservingScroll() {
+        const scrollState = getScrollState();
+        renderState();
+        restoreScrollState(scrollState);
+    }
+
+    function getItemTargetFromPoint(clientX, clientY) {
+        const el = document.elementFromPoint(clientX, clientY);
+        const target = el ? el.closest('[data-classify-item-target]') : null;
+        if (!target || target.classList.contains('disabled')) return null;
+        return target;
+    }
+
+    function clearDropHover() {
+        container.querySelectorAll('.classify-drop-target.drag-hover').forEach(target => target.classList.remove('drag-hover'));
+    }
+
+    function updateDropHover(target) {
+        clearDropHover();
+        if (target) target.classList.add('drag-hover');
+    }
+
+    function cleanupDragState() {
+        if (!dragState) return;
+        window.removeEventListener('pointermove', onDragPointerMove);
+        window.removeEventListener('pointerup', onDragPointerUp);
+        window.removeEventListener('pointercancel', onDragPointerUp);
+        if (dragState.ghost && dragState.ghost.parentNode) dragState.ghost.parentNode.removeChild(dragState.ghost);
+        if (dragState.sourceEl) dragState.sourceEl.classList.remove('drag-source');
+        document.body.classList.remove('classify-dragging');
+        clearDropHover();
+        dragState = null;
+    }
+
+    function startDragVisual() {
+        if (!dragState || dragState.dragging) return;
+        dragState.dragging = true;
+        document.body.classList.add('classify-dragging');
+
+        const ghost = document.createElement('div');
+        ghost.className = 'classify-drag-ghost';
+        ghost.innerText = dragState.itemText;
+        const rect = dragState.sourceRect;
+        ghost.style.width = `${Math.max(rect.width, 140)}px`;
+        ghost.style.left = `${dragState.lastClientX - dragState.offsetX}px`;
+        ghost.style.top = `${dragState.lastClientY - dragState.offsetY}px`;
+        document.body.appendChild(ghost);
+        dragState.ghost = ghost;
+
+        if (dragState.sourceEl) dragState.sourceEl.classList.add('drag-source');
+    }
+
+    function assignCategoryToItem(itemRuntimeKey, classificationId) {
+        if (state.questionAnswered) return;
+        const normalizedId = normalizeClassificationId(classificationId);
+        if (!itemRuntimeKey || !normalizedId) return;
+        placements.set(itemRuntimeKey, normalizedId);
+        selectedClassificationId = null;
+        preserveWindowScroll(() => renderStatePreservingScroll());
+    }
+
+    function createCategoryButton(classification) {
+        const btn = document.createElement('div');
+        btn.className = 'classify-item classify-category-drag-token';
+        btn.dataset.classificationId = classification.normalizedId;
+        btn.setAttribute('role', 'button');
+        btn.setAttribute('tabindex', state.questionAnswered ? '-1' : '0');
+        btn.setAttribute('aria-label', `Classify category ${classification.dragLabel}`);
+        if (classification.imageUrl) btn.classList.add('is-image-item');
+        if (selectedClassificationId === classification.normalizedId) btn.classList.add('selected');
+
+        btn.appendChild(buildClassifyImageContent(classification.imageUrl, classification.label, 'Category image'));
+
+        if (classification.imageUrl) {
+            const zoomBtn = document.createElement('button');
+            zoomBtn.type = 'button';
+            zoomBtn.className = 'classify-item-zoom-btn';
+            zoomBtn.setAttribute('aria-label', 'Zoom category image');
+            zoomBtn.setAttribute('title', 'Zoom image');
+            zoomBtn.innerText = '⤢';
+            const stopZoomTrigger = e => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+            zoomBtn.addEventListener('pointerdown', stopZoomTrigger);
+            zoomBtn.addEventListener('click', e => {
+                stopZoomTrigger(e);
+                openFlashcardImageOverlay(classification.imageUrl, classification.label || 'Category image');
+            });
+            btn.appendChild(zoomBtn);
+        }
+
+        btn.addEventListener('pointerdown', e => {
+            if (state.questionAnswered) return;
+            if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+            cleanupDragState();
+            const rect = btn.getBoundingClientRect();
+            dragState = {
+                pointerId: e.pointerId,
+                classificationId: classification.normalizedId,
+                itemText: classification.dragLabel || 'Category',
+                sourceEl: btn,
+                sourceRect: rect,
+                offsetX: e.clientX - rect.left,
+                offsetY: e.clientY - rect.top,
+                startX: e.clientX,
+                startY: e.clientY,
+                lastClientX: e.clientX,
+                lastClientY: e.clientY,
+                dragging: false,
+                ghost: null
+            };
+            window.addEventListener('pointermove', onDragPointerMove, { passive: false });
+            window.addEventListener('pointerup', onDragPointerUp);
+            window.addEventListener('pointercancel', onDragPointerUp);
+        });
+
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            btn.blur();
+            if (state.questionAnswered) return;
+            if (suppressCategoryClickId === classification.normalizedId) {
+                suppressCategoryClickId = null;
+                return;
+            }
+            selectedClassificationId = selectedClassificationId === classification.normalizedId ? null : classification.normalizedId;
+            preserveWindowScroll(() => renderStatePreservingScroll());
+        });
+
+        btn.addEventListener('keydown', e => {
+            if (state.questionAnswered) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                btn.click();
+            }
+        });
+
+        return btn;
+    }
+
+    function createItemDropTarget(item) {
+        const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
+        const placedClassification = placedId ? classificationMap.get(placedId) : null;
+        const correctId = normalizeClassificationId(item.correctClassificationId);
+        const box = document.createElement('div');
+        box.className = 'classify-category classify-drop-target classify-item-drop-target';
+        box.dataset.classifyItemTarget = item.runtimeKey;
+        box.setAttribute('role', 'button');
+        box.setAttribute('tabindex', state.questionAnswered ? '-1' : '0');
+
+        if (!state.questionAnswered && selectedClassificationId) {
+            box.classList.add('is-ready');
+            if (placedId === selectedClassificationId) box.classList.add('is-active');
+        }
+
+        const header = document.createElement('div');
+        header.className = 'classify-category-header';
+        header.appendChild(buildClassifyImageContent(item.imageUrl, item.text, 'Classify item'));
+        box.appendChild(header);
+
+        const assignment = document.createElement('div');
+        assignment.className = 'classify-assigned-category-slot';
+        if (placedClassification) {
+            const token = document.createElement('div');
+            token.className = 'classify-item classify-assigned-category-token';
+            token.appendChild(buildClassifyImageContent(placedClassification.imageUrl, placedClassification.label, 'Assigned category'));
+            assignment.appendChild(token);
+        } else {
+            const empty = document.createElement('div');
+            empty.className = 'classify-assigned-category-empty';
+            empty.innerText = 'Drop category here';
+            assignment.appendChild(empty);
+        }
+        box.appendChild(assignment);
+
+        if (!isAnswerFeedbackHidden() && state.questionAnswered) {
+            if (placedId && placedId === correctId) {
+                box.classList.add('option-correct');
+            } else {
+                box.classList.add('option-incorrect');
+            }
+        }
+
+        box.addEventListener('click', () => {
+            if (state.questionAnswered) return;
+            if (!selectedClassificationId) return;
+            assignCategoryToItem(item.runtimeKey, selectedClassificationId);
+        });
+        box.addEventListener('keydown', e => {
+            if (state.questionAnswered) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (selectedClassificationId) assignCategoryToItem(item.runtimeKey, selectedClassificationId);
+            }
+        });
+
+        return box;
+    }
+
+    function renderState() {
+        bankItems.innerHTML = '';
+        itemGrid.innerHTML = '';
+
+        classifications.forEach(classification => {
+            bankItems.appendChild(createCategoryButton(classification));
+        });
+
+        items.forEach(item => {
+            itemGrid.appendChild(createItemDropTarget(item));
+        });
+    }
+
+    function onDragPointerMove(e) {
+        if (!dragState || e.pointerId !== dragState.pointerId || state.questionAnswered) return;
+        dragState.lastClientX = e.clientX;
+        dragState.lastClientY = e.clientY;
+
+        const moveX = e.clientX - dragState.startX;
+        const moveY = e.clientY - dragState.startY;
+        const movedEnough = Math.abs(moveX) > 6 || Math.abs(moveY) > 6;
+        if (!dragState.dragging && !movedEnough) return;
+        if (!dragState.dragging) {
+            startDragVisual();
+            suppressCategoryClickId = dragState.classificationId;
+        }
+        e.preventDefault();
+        if (dragState.ghost) {
+            dragState.ghost.style.left = `${e.clientX - dragState.offsetX}px`;
+            dragState.ghost.style.top = `${e.clientY - dragState.offsetY}px`;
+        }
+        updateDropHover(getItemTargetFromPoint(e.clientX, e.clientY));
+    }
+
+    function onDragPointerUp(e) {
+        if (!dragState || e.pointerId !== dragState.pointerId) return;
+        const finishedDrag = dragState.dragging;
+        const classificationId = dragState.classificationId;
+        const target = finishedDrag ? getItemTargetFromPoint(e.clientX, e.clientY) : null;
+        cleanupDragState();
+        if (!finishedDrag || !target) return;
+        assignCategoryToItem(target.dataset.classifyItemTarget, classificationId);
+    }
+
+    function handleSubmit(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
+        if (state.questionAnswered) return;
+        if (isRetentionMode() && state.retentionAnswerLocked) return;
+
+        selectedClassificationId = null;
+        cleanupDragState();
+        state.questionAnswered = true;
+
+        const allCorrect = items.every(item => {
+            const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
+            const correctId = normalizeClassificationId(item.correctClassificationId);
+            return placedId && placedId === correctId;
+        });
+
+        preserveWindowScroll(() => renderStatePreservingScroll());
+        setClassifyInteractionEnabled(false);
+        applyQuestionOutcome(q, allCorrect);
+
+        if (isSpeedMode()) {
+            setTimeout(nextQuestion, CONFIG.speedDelay);
+        }
+    }
+
+    submit.addEventListener('click', handleSubmit);
+    submit.addEventListener('pointerup', e => {
+        if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+            handleSubmit(e);
+        }
+    });
+    submit.addEventListener('touchend', handleSubmit, { passive: false });
+
+    elements.questionContainer.appendChild(container);
+    elements.questionContainer.appendChild(submit);
+
+    renderState();
+    setClassifyInteractionEnabled(true);
+}
+
 function showClassify(q) {
+    if (shouldUseCategoryDraggableClassifyMode()) {
+        showClassifyCategoriesDraggable(q);
+        return;
+    }
+
     const container = document.createElement('div');
     container.id = 'classifyContainer';
     container.className = 'classify-container';
@@ -22365,6 +22939,7 @@ if (elements.studioDiagramLabelLayer) {
     };
 
     elements.studioDiagramLabelLayer.addEventListener('pointerdown', e => {
+        if (getStudioCurrentQuizType() === 'multiple_choice') return;
         const marker = e.target.closest('[data-diagram-label-index]');
         if (!marker || !elements.studioDiagramPreview) return;
         if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
@@ -23696,6 +24271,30 @@ if (elements.definitionFrontBtn) {
     });
 }
 
+if (elements.classifyItemsDraggableBtn) {
+    elements.classifyItemsDraggableBtn.addEventListener('click', () => {
+        if (state.classifyDraggableMode === 'items') return;
+        state.classifyDraggableMode = 'items';
+        updateClassifyDraggableButtonsUI();
+        if ((state.questionQueue[state.currentIndex] || {}).type === 'classify') {
+            state.questionAnswered = false;
+            showQuestion();
+        }
+    });
+}
+
+if (elements.classifyCategoriesDraggableBtn) {
+    elements.classifyCategoriesDraggableBtn.addEventListener('click', () => {
+        if (state.classifyDraggableMode === 'categories') return;
+        state.classifyDraggableMode = 'categories';
+        updateClassifyDraggableButtonsUI();
+        if ((state.questionQueue[state.currentIndex] || {}).type === 'classify') {
+            state.questionAnswered = false;
+            showQuestion();
+        }
+    });
+}
+
 document.addEventListener('click', e => {
     if (!elements.settingsPopup.classList.contains('hidden') && !elements.settingsPopup.contains(e.target) && e.target !== elements.settingsBtn) {
         closeSettingsPopup();
@@ -23847,7 +24446,7 @@ elements.questionImage.onclick = function () {
     const src = this.currentSrc || this.src || '';
     if (!src) return;
     const currentQuestion = state.questionQueue?.[state.currentIndex] || null;
-    const diagramLabels = currentQuestion?.type === 'diagrams' ? normalizeDiagramLabels(currentQuestion.diagramLabels || []) : [];
+    const diagramLabels = ['diagrams', 'typed answer', 'multiple choice'].includes(currentQuestion?.type) ? normalizeDiagramLabels(currentQuestion.diagramLabels || []) : [];
     this.classList.remove('zoomed');
     openFlashcardImageOverlay(src, this.alt || 'Question image', { diagramLabels });
 };
