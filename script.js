@@ -20068,7 +20068,10 @@ function showClassifyCategoriesDraggable(q) {
     container.appendChild(layout);
 
     const bank = document.createElement('div');
-    bank.className = 'classify-column classify-bank-column';
+    bank.className = 'classify-column classify-bank-column classify-drop-target';
+    bank.dataset.classifyItemTarget = '';
+    bank.setAttribute('role', 'button');
+    bank.setAttribute('tabindex', '0');
     layout.appendChild(bank);
 
     const bankItems = document.createElement('div');
@@ -20107,10 +20110,13 @@ function showClassifyCategoriesDraggable(q) {
         shuffleArray(items);
     }
 
-    const classificationMap = new Map(classifications.map(classification => [classification.normalizedId, classification]));
-    const placements = new Map();
+    const categoryPlacements = new Map();
+    const progressLockedCorrectCategoryIds = new Set();
+    const progressWrongCategoryIds = new Set();
+    const shouldUseProgressClassifyRetry = () => isProgressMode() && !isAnswerFeedbackHidden();
     let selectedClassificationId = null;
     let suppressCategoryClickId = null;
+    let progressClassifyNeedsRevision = false;
     let dragState = null;
 
     function preserveWindowScroll(fn) {
@@ -20193,26 +20199,81 @@ function showClassifyCategoriesDraggable(q) {
         if (dragState.sourceEl) dragState.sourceEl.classList.add('drag-source');
     }
 
-    function assignCategoryToItem(itemRuntimeKey, classificationId) {
+    function refreshClassifySubmitLabel() {
+        if (!shouldUseProgressClassifyRetry()) {
+            submit.innerText = 'Submit';
+            return;
+        }
+
+        submit.innerText = progressClassifyNeedsRevision ? 'Try Again' : 'Submit';
+    }
+
+    function markClassifyCategoryRevised(classificationId) {
+        if (!shouldUseProgressClassifyRetry()) return;
+        const normalizedId = normalizeClassificationId(classificationId);
+        if (progressLockedCorrectCategoryIds.has(normalizedId)) return;
+
+        progressWrongCategoryIds.delete(normalizedId);
+        progressClassifyNeedsRevision = false;
+        refreshClassifySubmitLabel();
+    }
+
+    function getPlacedCategoriesForItem(itemRuntimeKey) {
+        return classifications.filter(classification => categoryPlacements.get(classification.normalizedId) === itemRuntimeKey);
+    }
+
+    function isClassificationPlaced(classificationId) {
+        return !!categoryPlacements.get(normalizeClassificationId(classificationId));
+    }
+
+    function moveCategoryToTarget(classificationId, itemRuntimeKey) {
         if (state.questionAnswered) return;
         const normalizedId = normalizeClassificationId(classificationId);
-        if (!itemRuntimeKey || !normalizedId) return;
-        placements.set(itemRuntimeKey, normalizedId);
+        if (!normalizedId) return;
+        if (shouldUseProgressClassifyRetry() && progressLockedCorrectCategoryIds.has(normalizedId)) return;
+
+        if (itemRuntimeKey) {
+            categoryPlacements.set(normalizedId, itemRuntimeKey);
+        } else {
+            categoryPlacements.delete(normalizedId);
+        }
+
+        markClassifyCategoryRevised(normalizedId);
         selectedClassificationId = null;
         preserveWindowScroll(() => renderStatePreservingScroll());
     }
 
-    function createCategoryButton(classification) {
+    function createCategoryButton(classification, location = 'bank') {
         const btn = document.createElement('div');
         btn.className = 'classify-item classify-category-drag-token';
+        if (location === 'assigned') btn.classList.add('classify-assigned-category-token');
         btn.dataset.classificationId = classification.normalizedId;
         btn.setAttribute('role', 'button');
-        btn.setAttribute('tabindex', state.questionAnswered ? '-1' : '0');
+        const isProgressLockedCorrect = shouldUseProgressClassifyRetry() && progressLockedCorrectCategoryIds.has(classification.normalizedId);
+        const isProgressWrong = shouldUseProgressClassifyRetry() && progressWrongCategoryIds.has(classification.normalizedId);
+        btn.setAttribute('tabindex', state.questionAnswered || isProgressLockedCorrect ? '-1' : '0');
         btn.setAttribute('aria-label', `Classify category ${classification.dragLabel}`);
+        btn.classList.toggle('classify-item-locked', isProgressLockedCorrect);
         if (classification.imageUrl) btn.classList.add('is-image-item');
         if (selectedClassificationId === classification.normalizedId) btn.classList.add('selected');
 
         btn.appendChild(buildClassifyImageContent(classification.imageUrl, classification.label, 'Category image'));
+
+        if (!isAnswerFeedbackHidden()) {
+            if (isProgressLockedCorrect) {
+                btn.classList.add('option-correct');
+            } else if (isProgressWrong) {
+                btn.classList.add('option-incorrect');
+            } else if (state.questionAnswered) {
+                const placedItemKey = categoryPlacements.get(classification.normalizedId) || '';
+                const placedItem = items.find(item => item.runtimeKey === placedItemKey);
+                if (placedItem && normalizeClassificationId(placedItem.correctClassificationId) === classification.normalizedId) {
+                    btn.classList.add('option-correct');
+                } else {
+                    btn.classList.add('option-incorrect');
+                }
+            }
+        }
 
         if (classification.imageUrl) {
             const zoomBtn = document.createElement('button');
@@ -20234,7 +20295,7 @@ function showClassifyCategoriesDraggable(q) {
         }
 
         btn.addEventListener('pointerdown', e => {
-            if (state.questionAnswered) return;
+            if (state.questionAnswered || isProgressLockedCorrect) return;
             if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
             cleanupDragState();
             const rect = btn.getBoundingClientRect();
@@ -20262,7 +20323,7 @@ function showClassifyCategoriesDraggable(q) {
             e.preventDefault();
             e.stopPropagation();
             btn.blur();
-            if (state.questionAnswered) return;
+            if (state.questionAnswered || isProgressLockedCorrect) return;
             if (suppressCategoryClickId === classification.normalizedId) {
                 suppressCategoryClickId = null;
                 return;
@@ -20272,7 +20333,7 @@ function showClassifyCategoriesDraggable(q) {
         });
 
         btn.addEventListener('keydown', e => {
-            if (state.questionAnswered) return;
+            if (state.questionAnswered || isProgressLockedCorrect) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 btn.click();
@@ -20282,9 +20343,54 @@ function showClassifyCategoriesDraggable(q) {
         return btn;
     }
 
+    function appendItemDropHeaderContent(header, item) {
+        const label = normalizeSheetText(item.text);
+
+        if (item.imageUrl) {
+            const headerImageWrap = document.createElement('div');
+            headerImageWrap.className = 'classify-category-header-image-wrap';
+
+            const headerImg = document.createElement('img');
+            headerImg.className = 'classify-category-header-image';
+            headerImg.src = item.imageUrl;
+            headerImg.alt = label || 'Classify item image';
+            headerImageWrap.appendChild(headerImg);
+
+            const zoomBtn = document.createElement('button');
+            zoomBtn.type = 'button';
+            zoomBtn.className = 'classify-item-zoom-btn classify-category-zoom-btn';
+            zoomBtn.setAttribute('aria-label', 'Zoom item image');
+            zoomBtn.setAttribute('title', 'Zoom image');
+            zoomBtn.innerText = '⤢';
+
+            const stopZoomTrigger = e => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
+            zoomBtn.addEventListener('pointerdown', stopZoomTrigger);
+            zoomBtn.addEventListener('click', e => {
+                stopZoomTrigger(e);
+                openFlashcardImageOverlay(item.imageUrl, label || 'Classify item image');
+            });
+
+            headerImageWrap.appendChild(zoomBtn);
+            header.appendChild(headerImageWrap);
+        }
+
+        if (label) {
+            const headerText = document.createElement('div');
+            headerText.className = 'classify-category-header-text';
+            headerText.innerText = label;
+            header.appendChild(headerText);
+        } else if (!item.imageUrl) {
+            header.innerText = 'Item';
+        }
+    }
+
     function createItemDropTarget(item) {
-        const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
-        const placedClassification = placedId ? classificationMap.get(placedId) : null;
+        const placedClassifications = getPlacedCategoriesForItem(item.runtimeKey);
+        const placedIds = placedClassifications.map(classification => classification.normalizedId);
         const correctId = normalizeClassificationId(item.correctClassificationId);
         const box = document.createElement('div');
         box.className = 'classify-category classify-drop-target classify-item-drop-target';
@@ -20294,31 +20400,23 @@ function showClassifyCategoriesDraggable(q) {
 
         if (!state.questionAnswered && selectedClassificationId) {
             box.classList.add('is-ready');
-            if (placedId === selectedClassificationId) box.classList.add('is-active');
+            if (placedIds.includes(selectedClassificationId)) box.classList.add('is-active');
         }
 
         const header = document.createElement('div');
         header.className = 'classify-category-header';
-        header.appendChild(buildClassifyImageContent(item.imageUrl, item.text, 'Classify item'));
+        appendItemDropHeaderContent(header, item);
         box.appendChild(header);
 
         const assignment = document.createElement('div');
         assignment.className = 'classify-assigned-category-slot';
-        if (placedClassification) {
-            const token = document.createElement('div');
-            token.className = 'classify-item classify-assigned-category-token';
-            token.appendChild(buildClassifyImageContent(placedClassification.imageUrl, placedClassification.label, 'Assigned category'));
-            assignment.appendChild(token);
-        } else {
-            const empty = document.createElement('div');
-            empty.className = 'classify-assigned-category-empty';
-            empty.innerText = 'Drop category here';
-            assignment.appendChild(empty);
-        }
+        placedClassifications.forEach(classification => {
+            assignment.appendChild(createCategoryButton(classification, 'assigned'));
+        });
         box.appendChild(assignment);
 
         if (!isAnswerFeedbackHidden() && state.questionAnswered) {
-            if (placedId && placedId === correctId) {
+            if (placedIds.length === 1 && placedIds[0] === correctId) {
                 box.classList.add('option-correct');
             } else {
                 box.classList.add('option-incorrect');
@@ -20328,13 +20426,13 @@ function showClassifyCategoriesDraggable(q) {
         box.addEventListener('click', () => {
             if (state.questionAnswered) return;
             if (!selectedClassificationId) return;
-            assignCategoryToItem(item.runtimeKey, selectedClassificationId);
+            moveCategoryToTarget(selectedClassificationId, item.runtimeKey);
         });
         box.addEventListener('keydown', e => {
             if (state.questionAnswered) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                if (selectedClassificationId) assignCategoryToItem(item.runtimeKey, selectedClassificationId);
+                if (selectedClassificationId) moveCategoryToTarget(selectedClassificationId, item.runtimeKey);
             }
         });
 
@@ -20345,13 +20443,19 @@ function showClassifyCategoriesDraggable(q) {
         bankItems.innerHTML = '';
         itemGrid.innerHTML = '';
 
-        classifications.forEach(classification => {
-            bankItems.appendChild(createCategoryButton(classification));
-        });
+        classifications
+            .filter(classification => !isClassificationPlaced(classification.normalizedId))
+            .forEach(classification => {
+                bankItems.appendChild(createCategoryButton(classification, 'bank'));
+            });
 
         items.forEach(item => {
             itemGrid.appendChild(createItemDropTarget(item));
         });
+
+        const selectedIsPlaced = selectedClassificationId && isClassificationPlaced(selectedClassificationId);
+        bank.classList.toggle('is-ready', !state.questionAnswered && !!selectedIsPlaced);
+        bank.classList.toggle('is-active', !state.questionAnswered && !!selectedClassificationId && !selectedIsPlaced);
     }
 
     function onDragPointerMove(e) {
@@ -20382,8 +20486,21 @@ function showClassifyCategoriesDraggable(q) {
         const target = finishedDrag ? getItemTargetFromPoint(e.clientX, e.clientY) : null;
         cleanupDragState();
         if (!finishedDrag || !target) return;
-        assignCategoryToItem(target.dataset.classifyItemTarget, classificationId);
+        moveCategoryToTarget(classificationId, target.dataset.classifyItemTarget || '');
     }
+
+    bank.addEventListener('click', () => {
+        if (state.questionAnswered) return;
+        if (!selectedClassificationId) return;
+        moveCategoryToTarget(selectedClassificationId, '');
+    });
+    bank.addEventListener('keydown', e => {
+        if (state.questionAnswered) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (selectedClassificationId) moveCategoryToTarget(selectedClassificationId, '');
+        }
+    });
 
     function handleSubmit(event) {
         if (event) {
@@ -20394,14 +20511,72 @@ function showClassifyCategoriesDraggable(q) {
         if (state.questionAnswered) return;
         if (isRetentionMode() && state.retentionAnswerLocked) return;
 
+        if (shouldUseProgressClassifyRetry() && progressClassifyNeedsRevision) {
+            progressClassifyNeedsRevision = false;
+            refreshClassifySubmitLabel();
+            setFeedback('Move the red categories, then submit again.', false);
+            return;
+        }
+
         selectedClassificationId = null;
         cleanupDragState();
+
+        if (shouldUseProgressClassifyRetry()) {
+            let placedAnyThisAttempt = false;
+
+            classifications.forEach(classification => {
+                if (progressLockedCorrectCategoryIds.has(classification.normalizedId)) return;
+
+                const placedItemKey = categoryPlacements.get(classification.normalizedId) || '';
+                if (!placedItemKey) {
+                    return;
+                }
+
+                const placedItem = items.find(item => item.runtimeKey === placedItemKey);
+                placedAnyThisAttempt = true;
+
+                if (placedItem && normalizeClassificationId(placedItem.correctClassificationId) === classification.normalizedId) {
+                    progressLockedCorrectCategoryIds.add(classification.normalizedId);
+                    progressWrongCategoryIds.delete(classification.normalizedId);
+                } else {
+                    progressWrongCategoryIds.add(classification.normalizedId);
+                }
+            });
+
+            const allCorrect = items.every(item => {
+                const placedIds = getPlacedCategoriesForItem(item.runtimeKey).map(classification => classification.normalizedId);
+                const correctId = normalizeClassificationId(item.correctClassificationId);
+                return placedIds.length === 1 && placedIds[0] === correctId && progressLockedCorrectCategoryIds.has(correctId);
+            });
+
+            if (!allCorrect) {
+                const hasWrongCategories = progressWrongCategoryIds.size > 0;
+                const keepGoingMessage = placedAnyThisAttempt || progressLockedCorrectCategoryIds.size > 0
+                    ? 'Correct categories locked. Keep going.'
+                    : 'Move any category, then submit.';
+                progressClassifyNeedsRevision = hasWrongCategories;
+                refreshClassifySubmitLabel();
+                preserveWindowScroll(() => renderStatePreservingScroll());
+                setFeedback(hasWrongCategories ? 'Try again.' : keepGoingMessage, !hasWrongCategories);
+                updateNavigationButtons();
+                return;
+            }
+
+            state.questionAnswered = true;
+            progressClassifyNeedsRevision = false;
+            refreshClassifySubmitLabel();
+            preserveWindowScroll(() => renderStatePreservingScroll());
+            setClassifyInteractionEnabled(false);
+            applyQuestionOutcome(q, true);
+            return;
+        }
+
         state.questionAnswered = true;
 
         const allCorrect = items.every(item => {
-            const placedId = normalizeClassificationId(placements.get(item.runtimeKey));
+            const placedIds = getPlacedCategoriesForItem(item.runtimeKey).map(classification => classification.normalizedId);
             const correctId = normalizeClassificationId(item.correctClassificationId);
-            return placedId && placedId === correctId;
+            return placedIds.length === 1 && placedIds[0] === correctId;
         });
 
         preserveWindowScroll(() => renderStatePreservingScroll());
@@ -20424,6 +20599,7 @@ function showClassifyCategoriesDraggable(q) {
     elements.questionContainer.appendChild(container);
     elements.questionContainer.appendChild(submit);
 
+    refreshClassifySubmitLabel();
     renderState();
     setClassifyInteractionEnabled(true);
 }

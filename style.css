@@ -9207,24 +9207,10 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
   transform: none;
 }
 
-.classify-category-draggable-mode .classify-bank-column::before {
-  content: 'Draggable categories';
-  display: block;
-  margin-bottom: 10px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
+.classify-category-draggable-mode .classify-bank-column::before,
 .classify-category-draggable-mode .classify-classes-column::before {
-  content: 'Drop onto items';
-  display: block;
-  margin-bottom: 10px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  content: none;
+  display: none;
 }
 
 .classify-category-draggable-mode .classify-item-drop-target {
@@ -9240,8 +9226,12 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
 }
 
 .classify-assigned-category-token {
-  cursor: default;
-  touch-action: manipulation;
+  cursor: grab;
+  touch-action: none;
+}
+
+.classify-assigned-category-token:active {
+  cursor: grabbing;
 }
 
 .classify-assigned-category-empty {
