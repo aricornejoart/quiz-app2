@@ -7113,6 +7113,14 @@ body.app-home-first .studio-home-top-btn {
   font-weight: 700;
 }
 
+.app-header-icon-only-btn {
+  width: 42px;
+  padding-left: 0;
+  padding-right: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .app-menu-btn:hover,
 .close-app-menu-btn:hover,
 .app-header-action-btn:hover {
