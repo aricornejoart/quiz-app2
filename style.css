@@ -8115,11 +8115,18 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
 
 .studio-flashcard-image-main,
 .studio-flashcard-image-visibility,
-.studio-flashcard-image-remove {
+.studio-flashcard-image-remove,
+.studio-flashcard-image-reuse {
   min-height: 26px;
   padding: 4px 8px;
   font-size: 11px;
   white-space: nowrap;
+}
+
+
+.studio-flashcard-image-main.is-deferred {
+  border-color: rgba(102, 217, 239, 0.45);
+  color: #c8f7ff;
 }
 
 .studio-flashcard-image-main.has-image,
@@ -8142,7 +8149,20 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   color: #ffc6c6;
 }
 
-.studio-flashcard-image-remove:disabled {
+.studio-flashcard-image-reuse {
+  border-color: rgba(167, 139, 250, 0.45);
+  color: #e9ddff;
+}
+
+.studio-flashcard-image-reuse.is-active {
+  border-color: #ffb347;
+  background: rgba(255, 179, 71, 0.16);
+  color: #ffe6b8;
+  box-shadow: 0 0 0 2px rgba(255, 179, 71, 0.12);
+}
+
+.studio-flashcard-image-remove:disabled,
+.studio-flashcard-image-reuse:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
@@ -9263,4 +9283,113 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
 .classify-category.option-incorrect {
   border-color: #ff6b6b;
   box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.18);
+}
+
+/* Phase 22IR: Flashcard saved image picker */
+.studio-saved-image-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(10, 6, 24, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.studio-saved-image-picker-overlay.hidden {
+  display: none !important;
+}
+
+.studio-saved-image-picker-dialog {
+  width: min(760px, calc(100vw - 28px));
+  max-height: min(82vh, 760px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 22px;
+  background: #24134b;
+  color: #fff;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.44);
+  display: flex;
+  flex-direction: column;
+}
+
+.studio-saved-image-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 10px;
+}
+
+.studio-saved-image-picker-header h3 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.studio-saved-image-picker-body {
+  padding: 12px 18px 18px;
+  overflow: auto;
+}
+
+.studio-saved-image-picker-choice,
+.studio-saved-image-picker-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.studio-saved-image-picker-choice {
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+
+.studio-saved-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.studio-saved-image-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.studio-saved-image-thumb {
+  width: 100%;
+  height: 104px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.studio-saved-image-name {
+  min-height: 1.3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.studio-saved-image-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.studio-saved-image-picker-empty {
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+  font-weight: 800;
 }
