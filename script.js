@@ -208,6 +208,7 @@ MODIFICATION RULES FOR THIS APP
 
         flashcardFlipped: false,
         flashcardFrontMode: 'term',
+        flashcardGradeFeedbackPending: false,
         classifyDraggableMode: 'items',
 
         flashcardImageZoomOpen: false,
@@ -4727,7 +4728,10 @@ MODIFICATION RULES FOR THIS APP
         if (challenge?.requiresBuildUp) {
             return (quizType === 'multiple_choice' || quizType === 'diagrams') && !!quiz.hasBuildUpStrings;
         }
-        return quizType !== 'flashcard';
+        // Phase 22IN: Flashcards support the four main challenge modes.
+        // They do not have answer choices to shuffle, but they still use the
+        // locked challenge study modes and question shuffling like other decks.
+        return !!quizType;
     }
 
     function getQuizChallengeDisabledReason(quiz = {}, challenge = null) {
@@ -4735,7 +4739,7 @@ MODIFICATION RULES FOR THIS APP
         if (challenge?.requiresBuildUp) {
             return 'Build Up challenges require a multiple-choice or diagrams quiz with at least one Build Up string.';
         }
-        return 'Challenges require a quiz type with answer choices so the challenge settings can be locked.';
+        return 'Challenges require a quiz with at least one study question.';
     }
 
     function renderQuizChallengeBadges(quiz) {
@@ -15849,10 +15853,28 @@ function applyResponsiveControlText() {
 
 function clearFlashcardSwipeFeedback() {
     const feedback = document.getElementById('flashcardSwipeFeedback');
-    if (!feedback) return;
+    if (feedback) {
+        feedback.innerText = '';
+        feedback.classList.remove('show', 'know', 'dont-know');
+    }
+    clearFlashcardSwipeBorderState();
+}
 
-    feedback.innerText = '';
-    feedback.classList.remove('show', 'know', 'dont-know');
+function clearFlashcardSwipeBorderState() {
+    const card = document.getElementById('flashcardCard');
+    if (!card) return;
+    card.classList.remove('swiping-know', 'swiping-dont-know');
+}
+
+function setFlashcardSwipeBorderState(kind) {
+    const card = document.getElementById('flashcardCard');
+    if (!card) return;
+    clearFlashcardSwipeBorderState();
+    if (kind === 'know') {
+        card.classList.add('swiping-know');
+    } else if (kind === 'dont-know') {
+        card.classList.add('swiping-dont-know');
+    }
 }
 
 function setFlashcardSwipeFeedback(kind) {
@@ -15867,7 +15889,7 @@ function setFlashcardSwipeFeedback(kind) {
     }
 
     if (kind === 'dont-know') {
-        feedback.innerText = "Didn't know";
+        feedback.innerText = "Don't know";
         feedback.classList.add('show', 'dont-know');
         feedback.classList.remove('know');
         return;
@@ -16045,6 +16067,48 @@ function submitCurrentStructuredQuestionShortcut() {
     return false;
 }
 
+function isCurrentFlashcardStudyQuestion() {
+    const currentQuestion = state.questionQueue[state.currentIndex] || null;
+    return normalizeSheetText(currentQuestion?.type || '').toLowerCase() === 'flashcard';
+}
+
+function triggerFlashcardGradeWithSwipeFeedback(knewIt) {
+    if (state.flashcardGradeFeedbackPending || state.questionAnswered) return true;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return true;
+    if (isRetentionMode() && state.retentionAnswerLocked) return true;
+
+    const kind = knewIt ? 'know' : 'dont-know';
+    state.flashcardGradeFeedbackPending = true;
+    setFlashcardSwipeBorderState(kind);
+    setFlashcardSwipeFeedback(kind);
+
+    setTimeout(() => {
+        state.flashcardGradeFeedbackPending = false;
+        gradeFlashcard(knewIt);
+    }, 90);
+
+    return true;
+}
+
+function handleFlashcardStudyKeyboardShortcut(event) {
+    if (!isCurrentFlashcardStudyQuestion()) return false;
+
+    const key = event.key;
+    const isFlipKey = key === ' ' || key === 'Spacebar' || key === 'Space' || event.code === 'Space' || key === 'ArrowUp' || key === 'ArrowDown';
+    const isGradeKey = key === 'ArrowLeft' || key === 'ArrowRight';
+    if (!isFlipKey && !isGradeKey) return false;
+    if (event.repeat) return false;
+
+    event.preventDefault();
+
+    if (isFlipKey) {
+        toggleFlashcardFlip();
+        return true;
+    }
+
+    return triggerFlashcardGradeWithSwipeFeedback(key === 'ArrowRight');
+}
+
 function handleStudyKeyboardShortcut(event) {
     const key = event.key;
 
@@ -16070,6 +16134,9 @@ function handleStudyKeyboardShortcut(event) {
         if (handled) event.preventDefault();
         return handled;
     }
+
+    if (isStudyKeyboardShortcutBlocked(event)) return false;
+    if (handleFlashcardStudyKeyboardShortcut(event)) return true;
 
     if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
         if (isStudyKeyboardShortcutBlocked(event)) return false;
@@ -19671,6 +19738,7 @@ function gradeFlashcard(knewIt) {
 }
 
 function showFlashcard(q) {
+    state.flashcardGradeFeedbackPending = false;
     resetFlashcardImageFrameResizeObserver();
 
     const frontSide = state.flashcardFrontMode === 'term'
