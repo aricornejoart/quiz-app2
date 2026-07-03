@@ -8601,8 +8601,7 @@ MODIFICATION RULES FOR THIS APP
             cacheCurrentFlashcardDraftForNavigation();
         }
 
-        await beginStudioNewQuestion();
-        focusStudioPendingFlashcardTerm();
+        await beginStudioNewQuestion(null, { keepNewQuestionInList: true, suppressAutoFocus: true });
     }
 
     function getStudioListRowsWithPendingDraft() {
@@ -9633,7 +9632,16 @@ MODIFICATION RULES FOR THIS APP
             ? insertAfterQuestionId
             : null;
 
-        if (isStudioQuestionFocusMode() || options.focusNewQuestion) {
+        if (options.keepNewQuestionInList) {
+            state.auth.studioFocusedBuildUpString = '';
+            state.auth.studioFocusedQuestionId = '';
+            state.auth.studioQuestionSearchQuery = '';
+            state.auth.studioQuestionStarredOnly = false;
+            if (elements.studioQuestionSearchInput) {
+                elements.studioQuestionSearchInput.value = '';
+            }
+            syncStudioQuestionStarredFilterButton();
+        } else if (isStudioQuestionFocusMode() || options.focusNewQuestion) {
             state.auth.studioFocusedBuildUpString = '';
             state.auth.studioFocusedQuestionId = STUDIO_FOCUS_NEW_QUESTION_ID;
             state.auth.studioQuestionSearchQuery = '';
@@ -22606,9 +22614,12 @@ if (elements.studioQuestionList) {
 
         const insertButton = e.target.closest('[data-studio-insert-after-question-id]');
         if (insertButton) {
-            beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId, { focusNewQuestion: true }).catch(err => {
+            const insertOptions = isStudioFlashcardMode()
+                ? { keepNewQuestionInList: true, suppressAutoFocus: true }
+                : { focusNewQuestion: true };
+            beginStudioNewQuestion(insertButton.dataset.studioInsertAfterQuestionId, insertOptions).catch(err => {
                 console.error(err);
-                setCreatorStatus('Could not insert a new question.', 'error');
+                setCreatorStatus(isStudioFlashcardMode() ? 'Could not insert a new card.' : 'Could not insert a new question.', 'error');
             });
             return;
         }
