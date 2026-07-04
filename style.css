@@ -9436,3 +9436,38 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
   text-align: center;
   font-weight: 800;
 }
+
+/* Phase 22JM: iPhone landscape flashcard zoom outside-gap tighten.
+   Hide the zoom-overlay X only on iPhone/iOS-sized landscape screens and
+   use a 4px top/bottom outside gap so the outer zoom container has more room.
+   Height controls for this overlay are:
+   - .flashcard-image-overlay padding-top/bottom = outside safe-area gap.
+   - .flashcard-image-modal height/max-height = total outer modal height.
+   - .flashcard-image-modal padding-top/bottom = inner top/bottom gap.
+   - .flashcard-image-viewport padding = gap between modal frame and image stage. */
+@supports (-webkit-touch-callout: none) {
+  @media screen and (orientation: landscape) and (max-height: 480px) and (hover: none) and (pointer: coarse) {
+    .flashcard-image-overlay {
+      padding-top: max(4px, env(safe-area-inset-top)) !important;
+      padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
+    }
+
+    .close-flashcard-image-btn {
+      display: none !important;
+    }
+
+    .flashcard-image-modal {
+      height: calc(100dvh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
+      max-height: calc(100dvh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
+      height: calc(100svh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
+      max-height: calc(100svh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    .flashcard-image-viewport {
+      padding-top: 6px !important;
+      padding-bottom: 6px !important;
+    }
+  }
+}
