@@ -9473,3 +9473,17 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
     }
   }
 }
+
+/* Phase 22JO: iPhone label padding consistency.
+   Keep label bubble padding tight and consistent on iPhone in portrait/landscape,
+   fullscreen/non-fullscreen, and zoom/non-zoom study image views.
+   This changes only the label padding around the letter: 1px top/bottom and 1px left/right. */
+@supports (-webkit-touch-callout: none) {
+  @media screen and (orientation: portrait) and (max-width: 700px) and (hover: none) and (pointer: coarse),
+         screen and (orientation: landscape) and (max-height: 480px) and (hover: none) and (pointer: coarse) {
+    .diagram-study-label,
+    .flashcard-zoom-label {
+      padding: 1px 1px !important;
+    }
+  }
+}
