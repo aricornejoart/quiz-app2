@@ -20698,27 +20698,6 @@ function getFlashcardSideData(q, side) {
     };
 }
 
-function clearFlashcardFlipAnimationGuard(card) {
-    if (!card) return;
-    card.classList.remove('is-flip-animating');
-    if (card._flashcardFlipAnimationGuardTimer) {
-        clearTimeout(card._flashcardFlipAnimationGuardTimer);
-        card._flashcardFlipAnimationGuardTimer = null;
-    }
-}
-
-function startFlashcardFlipAnimationGuard(card) {
-    if (!card) return;
-    card.classList.add('is-flip-animating');
-    if (card._flashcardFlipAnimationGuardTimer) {
-        clearTimeout(card._flashcardFlipAnimationGuardTimer);
-    }
-    card._flashcardFlipAnimationGuardTimer = setTimeout(() => {
-        clearFlashcardFlipAnimationGuard(card);
-        queueFlashcardImageOverlaySync(card);
-    }, 650);
-}
-
 function toggleFlashcardFlip() {
     if (state.learningResourcesOverlayOpen) return;
     if (state.flashcardImageZoomOpen) return;
@@ -20728,7 +20707,6 @@ function toggleFlashcardFlip() {
 
     const card = document.getElementById('flashcardCard');
     if (card) {
-        startFlashcardFlipAnimationGuard(card);
         card.classList.toggle('is-flipped', state.flashcardFlipped);
         queueFlashcardImageOverlaySync(card);
         setTimeout(() => queueFlashcardImageOverlaySync(card), 520);
@@ -21174,7 +21152,6 @@ function showFlashcard(q) {
     cardInner.appendChild(buildFlashcardFace(backSide, 'back'));
     cardInner.addEventListener('transitionend', event => {
         if (event.propertyName === 'transform') {
-            clearFlashcardFlipAnimationGuard(card);
             queueFlashcardImageOverlaySync(card);
         }
     });
