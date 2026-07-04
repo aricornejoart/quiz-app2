@@ -3508,15 +3508,68 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(normalized.imageOnlyValue || normalized.imageOnlyMediaValue || normalized.imageValue || normalized.mediaValue);
     }
 
+    async function flattenStudioSavedImageValue(imageValue = '', labels = []) {
+        const normalizedValue = normalizeSheetText(imageValue);
+        const normalizedLabels = normalizeDiagramLabels(labels || []);
+        if (!normalizedValue || !normalizedLabels.length) return normalizedValue;
+        try {
+            const sourceValue = isSupabaseMediaReference(normalizedValue)
+                ? (await resolveSupabaseMediaValue(normalizedValue)) || normalizedValue
+                : normalizedValue;
+            const image = await loadImageElement(sourceValue);
+            const canvas = document.createElement('canvas');
+            canvas.width = image.naturalWidth || image.width || 1;
+            canvas.height = image.naturalHeight || image.height || 1;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+            drawImageEditorLabels(ctx, normalizedLabels, canvas);
+            return canvas.toDataURL('image/png');
+        } catch (error) {
+            console.warn('Could not flatten saved flashcard image; falling back to current image value.', error);
+            return normalizedValue;
+        }
+    }
+
+    async function buildStudioFlattenedSavedImageEntryFromFlashcardSlot(questionId = '', side = 'term') {
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        const row = getStudioFlashcardRowById(questionId);
+        const imageSnapshot = getStudioFlashcardImageSnapshot(row, safeSide);
+        const imageValue = normalizeSheetText(imageSnapshot.value);
+        if (!imageValue) return null;
+        const labels = normalizeDiagramLabels(getStudioFlashcardImageLabelsSnapshot(row, safeSide));
+        const imageLabel = normalizeSheetText(imageSnapshot.label) || (safeSide === 'definition' ? 'Definition image selected.' : 'Term image selected.');
+        const fileName = getSavedImageFileNameFromLabel(imageLabel, safeSide === 'definition' ? 'definition-image.png' : 'term-image.png');
+        const flattenedValue = await flattenStudioSavedImageValue(imageValue, labels);
+        const rowId = normalizeSheetText(row?.id || questionId);
+        const savedFlattenedValue = await savePrivateMediaValueWithDedupCache(flattenedValue, {
+            quizId: state.auth.editingQuizId || null,
+            questionId: rowId && !isStudioLocalFlashcardId(rowId) && rowId !== STUDIO_PENDING_NEW_FLASHCARD_ID ? rowId : null,
+            usageContext: `saved_image_${safeSide}_flattened`,
+            label: `Saved flattened ${fileName}`,
+            mediaSaveCache: state.auth.studioSavedImageMediaSaveCache instanceof Map
+                ? state.auth.studioSavedImageMediaSaveCache
+                : (state.auth.studioSavedImageMediaSaveCache = new Map())
+        });
+        return normalizeStudioSavedImageEntry({
+            id: createStableSavedImageId(`${savedFlattenedValue}::flattened`),
+            fileName,
+            imageValue: savedFlattenedValue,
+            imageOnlyValue: savedFlattenedValue,
+            mediaValue: isSupabaseMediaReference(savedFlattenedValue) ? savedFlattenedValue : '',
+            imageOnlyMediaValue: isSupabaseMediaReference(savedFlattenedValue) ? savedFlattenedValue : '',
+            imageLabel: `Saved: ${fileName}`,
+            imageOnlyLabel: `Saved: ${fileName}`,
+            labels: []
+        });
+    }
+
     function getStudioSavedImageDedupeKeys(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return [];
-        const labelsKey = JSON.stringify(normalizeDiagramLabels(normalized.labels || []));
         const keys = [
             getStudioSavedImageSignature(normalized),
             normalizeSheetText(normalized.mediaValue || ''),
-            normalizeSheetText(normalized.imageOnlyMediaValue || ''),
-            `${normalizeSheetText(normalized.fileName).toLowerCase()}::${labelsKey}`
+            normalizeSheetText(normalized.imageOnlyMediaValue || '')
         ].filter(Boolean);
         return Array.from(new Set(keys));
     }
@@ -3791,6 +3844,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function isStudioFlashcardImageReuseEnabled(questionId = '', side = 'term', entry = null) {
+        const storedSignature = getStudioFlashcardStoredReuseSignature(questionId, side);
+        if (storedSignature && findStudioSavedImageEntryBySignature(storedSignature)) return true;
         const normalizedEntry = entry || buildStudioSavedImageEntryFromFlashcardSlot(questionId, side);
         const key = getStudioFlashcardReusableImageKey(questionId, side, normalizedEntry);
         if (!key) return false;
@@ -3798,33 +3853,33 @@ MODIFICATION RULES FOR THIS APP
         if (reusableKeys.has(key)) return true;
         const signature = getStudioSavedImageSignature(normalizedEntry);
         if (!signature) return false;
-        if (getStudioFlashcardStoredReuseSignature(questionId, side) === signature && findStudioSavedImageEntryBySignature(signature)) {
+        if (storedSignature === signature && findStudioSavedImageEntryBySignature(signature)) {
             reusableKeys.add(key);
             return true;
         }
         return false;
     }
 
-    function toggleStudioFlashcardImageReuse(questionId = '', side = 'term') {
+    async function toggleStudioFlashcardImageReuse(questionId = '', side = 'term') {
         const safeSide = side === 'definition' ? 'definition' : 'term';
         if (isStudioFlashcardImageFromSavedImage(questionId, safeSide)) {
             setCreatorStatus('This flashcard is already using a Saved Image. Reuse is only for adding new images to Saved Images.', 'error');
             return;
         }
-        const entry = buildStudioSavedImageEntryFromFlashcardSlot(questionId, safeSide);
-        if (!entry?.imageValue) {
+        const currentEntry = buildStudioSavedImageEntryFromFlashcardSlot(questionId, safeSide);
+        if (!currentEntry?.imageValue) {
             setCreatorStatus(`Add a ${safeSide === 'definition' ? 'definition' : 'term'} image before turning on Reuse.`, 'error');
             return;
         }
-        const key = getStudioFlashcardReusableImageKey(questionId, safeSide, entry);
-        const signature = getStudioSavedImageSignature(entry);
+        const storedSignature = getStudioFlashcardStoredReuseSignature(questionId, safeSide);
+        const currentKey = getStudioFlashcardReusableImageKey(questionId, safeSide, currentEntry);
         const reusableKeys = getStudioFlashcardReusableImageSet();
-        const isCurrentlyEnabled = reusableKeys.has(key)
-            || (getStudioFlashcardStoredReuseSignature(questionId, safeSide) === signature && findStudioSavedImageEntryBySignature(signature));
+        const storedEntry = storedSignature ? findStudioSavedImageEntryBySignature(storedSignature) : null;
+        const isCurrentlyEnabled = !!storedEntry || reusableKeys.has(currentKey);
         if (isCurrentlyEnabled) {
-            reusableKeys.delete(key);
-            clearStudioFlashcardReusableImageKeysForSignature(signature);
-            removeStudioSavedImageSnapshot(entry);
+            if (currentKey) reusableKeys.delete(currentKey);
+            if (storedSignature) clearStudioFlashcardReusableImageKeysForSignature(storedSignature);
+            removeStudioSavedImageSnapshot(storedEntry || currentEntry);
             const row = getStudioFlashcardRowById(questionId);
             if (row) {
                 if (safeSide === 'definition') row.definition_image_reuse_signature = '';
@@ -3832,7 +3887,20 @@ MODIFICATION RULES FOR THIS APP
             }
             setCreatorStatus(`${safeSide === 'definition' ? 'Definition' : 'Term'} image removed from Saved Images.`, 'success');
         } else {
-            const savedEntry = upsertStudioSavedImageLibraryEntry(entry) || entry;
+            setCreatorStatus('Flattening and saving image to Saved Images...');
+            let flattenedEntry = null;
+            try {
+                flattenedEntry = await buildStudioFlattenedSavedImageEntryFromFlashcardSlot(questionId, safeSide);
+            } catch (error) {
+                console.error('Could not save flattened image to Saved Images:', error);
+                setCreatorStatus('Could not save the flattened image to Saved Images. Try again.', 'error');
+                return;
+            }
+            if (!flattenedEntry?.imageValue) {
+                setCreatorStatus('Could not prepare that image for Saved Images.', 'error');
+                return;
+            }
+            const savedEntry = upsertStudioSavedImageLibraryEntry(flattenedEntry) || flattenedEntry;
             clearStudioFlashcardReusableImageKeysForSlot(questionId, safeSide);
             const savedKey = getStudioFlashcardReusableImageKey(questionId, safeSide, savedEntry);
             if (savedKey) reusableKeys.add(savedKey);
@@ -3842,7 +3910,7 @@ MODIFICATION RULES FOR THIS APP
                 if (safeSide === 'definition') row.definition_image_reuse_signature = savedSignature;
                 else row.term_image_reuse_signature = savedSignature;
             }
-            setCreatorStatus(`${safeSide === 'definition' ? 'Definition' : 'Term'} image added to Saved Images.`, 'success');
+            setCreatorStatus(`${safeSide === 'definition' ? 'Definition' : 'Term'} flattened image added to Saved Images.`, 'success');
         }
         renderStudioQuestionList();
     }
@@ -4005,7 +4073,7 @@ MODIFICATION RULES FOR THIS APP
         const fileName = normalizedEntry.fileName || 'saved-image.png';
         const value = getStudioSavedImageApplyValue(normalizedEntry, includeEdits);
         const label = includeEdits ? `Saved: ${fileName}` : `Selected: ${fileName}`;
-        const labels = includeEdits ? normalizeDiagramLabels(normalizedEntry.labels || []) : [];
+        const labels = [];
         if (target.kind === 'flashcard-list') {
             const questionId = normalizeSheetText(target.questionId);
             const side = target.side === 'definition' ? 'definition' : 'term';
@@ -8249,18 +8317,23 @@ MODIFICATION RULES FOR THIS APP
         const rowId = normalizeSheetText(row?.id);
         const draft = rowId && !isStudioLocalFlashcardId(rowId) ? state.auth.studioQuestionDrafts.get(rowId) : null;
         const isActive = rowId && rowId === state.auth.editingQuestionId;
-        const withSavedImageFallback = labels => {
+        const storedSide = safeSide === 'definition'
+            ? parseStoredFlashcardSideContent(draft?.definitionHtml ?? row?.definition_html ?? '')
+            : parseStoredFlashcardSideContent(draft?.termHtml ?? row?.term_html ?? row?.prompt_html ?? '');
+        const withFallbacks = labels => {
             const directLabels = normalizeDiagramLabels(labels || []);
             if (directLabels.length) return directLabels;
+            const storedLabels = normalizeDiagramLabels(storedSide.labels || []);
+            if (storedLabels.length) return storedLabels;
             const imageSnapshot = getStudioFlashcardImageSnapshot(row, safeSide);
             return findStudioSavedImageLabelsForImageValue(imageSnapshot.value || '');
         };
         if (safeSide === 'definition') {
-            if (isActive) return withSavedImageFallback(state.auth.studioFlashcardDefinitionImageLabels || []);
-            return withSavedImageFallback(draft?.definitionImageLabels ?? row?.definition_image_labels ?? []);
+            if (isActive) return withFallbacks(state.auth.studioFlashcardDefinitionImageLabels || []);
+            return withFallbacks(draft?.definitionImageLabels ?? row?.definition_image_labels ?? []);
         }
-        if (isActive) return withSavedImageFallback(state.auth.studioFlashcardTermImageLabels || []);
-        return withSavedImageFallback(draft?.termImageLabels ?? row?.term_image_labels ?? []);
+        if (isActive) return withFallbacks(state.auth.studioFlashcardTermImageLabels || []);
+        return withFallbacks(draft?.termImageLabels ?? row?.term_image_labels ?? []);
     }
 
     function getStudioFlashcardImageDisplayLabel(snapshot = {}, side = 'term') {
@@ -9242,53 +9315,9 @@ MODIFICATION RULES FOR THIS APP
             .upsert(detailPayload, { onConflict: 'question_id' }), 'Saving new flashcard detail records', { attempts: 2 });
         if (detailResult.error) throw detailResult.error;
 
+        // Reuse now publishes a flattened Saved Image at toggle time.
+        // Do not rebuild or overwrite Saved Images from the live flashcard row during save.
         const reusableMediaSnapshots = [];
-        mediaRows.forEach(item => {
-            if (item.row.termReuseEnabled && item.savedTermImage) {
-                const labels = normalizeDiagramLabels(item.row.termImageLabels || []);
-                const label = item.row.termImageLabel || 'term image';
-                reusableMediaSnapshots.push({
-                    questionId: item.questionId,
-                    side: 'term',
-                    entry: {
-                        id: createStableSavedImageId(`${item.savedTermImage}::${JSON.stringify(labels)}`),
-                        fileName: getSavedImageFileNameFromLabel(label, 'term-image.png'),
-                        imageValue: item.savedTermImage,
-                        imageOnlyValue: item.savedTermImage,
-                        mediaValue: isSupabaseMediaReference(item.savedTermImage) ? item.savedTermImage : '',
-                        imageOnlyMediaValue: isSupabaseMediaReference(item.savedTermImage) ? item.savedTermImage : '',
-                        imageLabel: label,
-                        imageOnlyLabel: label,
-                        labels
-                    }
-                });
-            }
-            if (item.row.definitionReuseEnabled && item.savedDefinitionImage) {
-                const labels = normalizeDiagramLabels(item.row.definitionImageLabels || []);
-                const label = item.row.definitionImageLabel || 'definition image';
-                reusableMediaSnapshots.push({
-                    questionId: item.questionId,
-                    side: 'definition',
-                    entry: {
-                        id: createStableSavedImageId(`${item.savedDefinitionImage}::${JSON.stringify(labels)}`),
-                        fileName: getSavedImageFileNameFromLabel(label, 'definition-image.png'),
-                        imageValue: item.savedDefinitionImage,
-                        imageOnlyValue: item.savedDefinitionImage,
-                        mediaValue: isSupabaseMediaReference(item.savedDefinitionImage) ? item.savedDefinitionImage : '',
-                        imageOnlyMediaValue: isSupabaseMediaReference(item.savedDefinitionImage) ? item.savedDefinitionImage : '',
-                        imageLabel: label,
-                        imageOnlyLabel: label,
-                        labels
-                    }
-                });
-            }
-        });
-        const savedReusableEntries = addStudioSavedImageSnapshotsBulk(reusableMediaSnapshots.map(item => item.entry));
-        savedReusableEntries.forEach((entry, index) => {
-            const snapshot = reusableMediaSnapshots[index];
-            const key = snapshot ? getStudioFlashcardReusableImageKey(snapshot.questionId, snapshot.side, entry) : '';
-            if (key) getStudioFlashcardReusableImageSet().add(key);
-        });
 
         const orderedQuestionIds = (orderRows || state.auth.studioQuizQuestions)
             .map(row => localIdToSavedId.get(row.id) || row.id)
@@ -9587,37 +9616,9 @@ MODIFICATION RULES FOR THIS APP
         }
 
         const reusableSnapshotTargets = Array.isArray(options.reusableSnapshotTargets) ? options.reusableSnapshotTargets : null;
-        const queueReusableSnapshot = (side, savedImage, imageLabel, labels) => {
-            const safeSide = side === 'definition' ? 'definition' : 'term';
-            const normalizedSavedImage = normalizeSheetText(savedImage);
-            if (!normalizedSavedImage) return;
-            if (!reusableSnapshotTargets) {
-                addStudioSavedImageSnapshotForFlashcardSlotValue(
-                    normalizedQuestionId,
-                    safeSide,
-                    normalizedSavedImage,
-                    imageLabel,
-                    labels
-                );
-                return;
-            }
-            const normalizedLabels = normalizeDiagramLabels(labels || []);
-            const label = normalizeSheetText(imageLabel) || (safeSide === 'definition' ? 'definition image' : 'term image');
-            reusableSnapshotTargets.push({
-                questionId: normalizedQuestionId,
-                side: safeSide,
-                entry: {
-                    id: createStableSavedImageId(`${normalizedSavedImage}::${JSON.stringify(normalizedLabels)}`),
-                    fileName: getSavedImageFileNameFromLabel(label, safeSide === 'definition' ? 'definition-image.png' : 'term-image.png'),
-                    imageValue: normalizedSavedImage,
-                    imageOnlyValue: normalizedSavedImage,
-                    mediaValue: isSupabaseMediaReference(normalizedSavedImage) ? normalizedSavedImage : '',
-                    imageOnlyMediaValue: isSupabaseMediaReference(normalizedSavedImage) ? normalizedSavedImage : '',
-                    imageLabel: label,
-                    imageOnlyLabel: label,
-                    labels: normalizedLabels
-                }
-            });
+        const queueReusableSnapshot = () => {
+            // Reuse now publishes a flattened Saved Image at toggle time.
+            // Do not rebuild or overwrite Saved Images from the live flashcard row during save.
         };
         if (termReuseEnabled && savedTermImage) {
             queueReusableSnapshot('term', savedTermImage, draft.termImageLabel || 'term image', termImageLabels);
@@ -9691,12 +9692,7 @@ MODIFICATION RULES FOR THIS APP
                     throw error;
                 }
             }, saveConcurrency);
-            const savedReusableEntries = addStudioSavedImageSnapshotsBulk(reusableSnapshotTargets.map(item => item.entry));
-            savedReusableEntries.forEach((entry, index) => {
-                const snapshot = reusableSnapshotTargets[index];
-                const key = snapshot ? getStudioFlashcardReusableImageKey(snapshot.questionId, snapshot.side, entry) : '';
-                if (key) getStudioFlashcardReusableImageSet().add(key);
-            });
+            // Reuse entries are already published as flattened Saved Images at toggle time.
         }
 
         for (const [questionId, draft] of directMultipleChoiceDraftEntries) {
@@ -24012,7 +24008,7 @@ if (elements.studioQuestionList) {
             const questionId = normalizeSheetText(flashcardImageReuseBtn.dataset.studioFlashcardImageQuestionId);
             const side = flashcardImageReuseBtn.dataset.studioFlashcardImageReuse === 'definition' ? 'definition' : 'term';
             await ensureStudioFlashcardRowImagesLoaded(questionId);
-            toggleStudioFlashcardImageReuse(questionId, side);
+            await toggleStudioFlashcardImageReuse(questionId, side);
             return;
         }
 
