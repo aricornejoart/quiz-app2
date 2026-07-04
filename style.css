@@ -9448,8 +9448,8 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
 @supports (-webkit-touch-callout: none) {
   @media screen and (orientation: landscape) and (max-height: 480px) and (hover: none) and (pointer: coarse) {
     .flashcard-image-overlay {
-      padding-top: max(5px, env(safe-area-inset-top)) !important;
-      padding-bottom: max(5px, env(safe-area-inset-bottom)) !important;
+      padding-top: max(4px, env(safe-area-inset-top)) !important;
+      padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
     }
 
     .close-flashcard-image-btn {
