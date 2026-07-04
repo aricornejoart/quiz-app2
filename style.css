@@ -9437,11 +9437,13 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
   font-weight: 800;
 }
 
-/* Phase 22JM: iPhone landscape flashcard zoom outside-gap tighten.
-   Hide the zoom-overlay X only on iPhone/iOS-sized landscape screens and
-   use a 4px top/bottom outside gap so the outer zoom container has more room.
+/* Phase 22JN: iPhone landscape flashcard zoom bottom gap match.
+   Keep the 22JL hidden zoom-overlay X and the 22JM tight top spacing.
+   The bottom outside gap is now forced to 4px instead of using
+   env(safe-area-inset-bottom), because iOS landscape safe-area bottom can
+   create a larger uneven gap below the outer zoom container.
    Height controls for this overlay are:
-   - .flashcard-image-overlay padding-top/bottom = outside safe-area gap.
+   - .flashcard-image-overlay padding-top/bottom = outside screen-edge gap.
    - .flashcard-image-modal height/max-height = total outer modal height.
    - .flashcard-image-modal padding-top/bottom = inner top/bottom gap.
    - .flashcard-image-viewport padding = gap between modal frame and image stage. */
@@ -9449,7 +9451,7 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
   @media screen and (orientation: landscape) and (max-height: 480px) and (hover: none) and (pointer: coarse) {
     .flashcard-image-overlay {
       padding-top: max(4px, env(safe-area-inset-top)) !important;
-      padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
+      padding-bottom: 4px !important;
     }
 
     .close-flashcard-image-btn {
@@ -9457,10 +9459,10 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
     }
 
     .flashcard-image-modal {
-      height: calc(100dvh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
-      max-height: calc(100dvh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
-      height: calc(100svh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
-      max-height: calc(100svh - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)) - 8px) !important;
+      height: calc(100dvh - max(4px, env(safe-area-inset-top)) - 4px - 8px) !important;
+      max-height: calc(100dvh - max(4px, env(safe-area-inset-top)) - 4px - 8px) !important;
+      height: calc(100svh - max(4px, env(safe-area-inset-top)) - 4px - 8px) !important;
+      max-height: calc(100svh - max(4px, env(safe-area-inset-top)) - 4px - 8px) !important;
       padding-top: 8px !important;
       padding-bottom: 8px !important;
     }
