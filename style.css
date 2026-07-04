@@ -9487,3 +9487,18 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
     }
   }
 }
+
+/* Phase 22JP: iPhone/iPad flashcard flip overlay guard.
+   Hide the image label layer and zoom icon only while the card is rotating,
+   preventing mobile Safari/iPadOS from painting their backside during the 3D flip. */
+body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flip-animating .flashcard-side-image-label-layer,
+body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flip-animating .flashcard-image-zoom-btn,
+body.ipad-portrait-flashcard-layout .flashcard-card.is-flip-animating .flashcard-side-image-label-layer,
+body.ipad-portrait-flashcard-layout .flashcard-card.is-flip-animating .flashcard-image-zoom-btn,
+body.ipad-landscape-flashcard-layout .flashcard-card.is-flip-animating .flashcard-side-image-label-layer,
+body.ipad-landscape-flashcard-layout .flashcard-card.is-flip-animating .flashcard-image-zoom-btn {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
