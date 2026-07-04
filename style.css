@@ -9487,3 +9487,24 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
     }
   }
 }
+
+/* Phase 22JR: iPhone/iPad flashcard inactive-face overlay isolation.
+   iOS/iPadOS Safari can paint absolutely positioned image overlays from the inactive
+   flashcard face even though the parent face uses backface-visibility. Keep the
+   active side unchanged, but hide labels/zoom from the side that should not be visible. */
+body.narrow-iphone-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
+body.narrow-iphone-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-image-zoom-btn,
+body.ipad-portrait-flashcard-layout .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
+body.ipad-portrait-flashcard-layout .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-image-zoom-btn,
+body.ipad-landscape-flashcard-layout .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-side-image-label-layer,
+body.ipad-landscape-flashcard-layout .flashcard-card:not(.is-flipped) .flashcard-face.back .flashcard-image-zoom-btn,
+body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-side-image-label-layer,
+body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front .flashcard-image-zoom-btn,
+body.ipad-portrait-flashcard-layout .flashcard-card.is-flipped .flashcard-face.front .flashcard-side-image-label-layer,
+body.ipad-portrait-flashcard-layout .flashcard-card.is-flipped .flashcard-face.front .flashcard-image-zoom-btn,
+body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.front .flashcard-side-image-label-layer,
+body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.front .flashcard-image-zoom-btn {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
