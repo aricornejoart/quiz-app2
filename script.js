@@ -4514,6 +4514,65 @@ MODIFICATION RULES FOR THIS APP
         return !!(editor?.open && editor?.mode === 'labels' && editor?.labelsEnabled && Number.isInteger(editor.activeDrawLabelIndex) && editor.activeDrawLabelIndex >= 0 && editor.activeDrawLabelIndex < (editor.labels || []).length);
     }
 
+    function normalizeImageEditorLabels(labels = []) {
+        const source = Array.isArray(labels) ? labels : [];
+        return normalizeDiagramLabels(source);
+    }
+
+    function getImageEditorDrawVisibilityMap() {
+        const editor = state.auth.imageEditor;
+        if (!editor) return {};
+        if (!editor.drawVisibilityByLabel || typeof editor.drawVisibilityByLabel !== 'object') {
+            editor.drawVisibilityByLabel = {};
+        }
+        return editor.drawVisibilityByLabel;
+    }
+
+    function isImageEditorLabelDrawVisible(index) {
+        const map = getImageEditorDrawVisibilityMap();
+        return map[String(index)] !== false;
+    }
+
+    function setImageEditorLabelDrawVisible(index, visible) {
+        const map = getImageEditorDrawVisibilityMap();
+        map[String(index)] = visible !== false;
+        setImageEditorDrawStrokesVisibilityForLabel(index, visible !== false);
+    }
+
+    function syncImageEditorLabels() {
+        const editor = state.auth.imageEditor;
+        if (!editor) return [];
+        const normalized = normalizeImageEditorLabels(editor.labels || []);
+        editor.labels = normalized;
+        return normalized;
+    }
+
+    function setImageEditorExclusiveDrawVisibility(activeIndex) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled) return [];
+        const labels = normalizeImageEditorLabels(editor.labels || []);
+        editor.labels = labels;
+        const map = {};
+        labels.forEach((label, index) => {
+            map[String(index)] = index === activeIndex;
+        });
+        editor.drawVisibilityByLabel = map;
+        setImageEditorExclusiveDrawStrokeVisibility(activeIndex);
+        return labels;
+    }
+
+    function toggleImageEditorLabelDrawVisibility(index) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled) return;
+        const labels = syncImageEditorLabels();
+        if (!labels[index]) return;
+        const nextVisible = !isImageEditorLabelDrawVisible(index);
+        setImageEditorLabelDrawVisible(index, nextVisible);
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+        setImageEditorStatus(nextVisible ? 'Showing draw strokes for this label.' : 'Hid draw strokes for this label.');
+    }
+
     function cloneImageEditorDrawStrokes(strokes = []) {
         return (Array.isArray(strokes) ? strokes : []).map(stroke => ({
             labelIndex: Math.max(0, Number(stroke?.labelIndex) || 0),
@@ -4521,11 +4580,42 @@ MODIFICATION RULES FOR THIS APP
             color: normalizeEditorHexColor(stroke?.color || '#000000', '#000000'),
             size: Math.min(60, Math.max(2, Number(stroke?.size) || 14)),
             transparency: Math.min(1, Math.max(0, Number.isFinite(Number(stroke?.transparency)) ? Number(stroke?.transparency) : 0.65)),
+            visible: stroke?.visible !== false,
             points: (Array.isArray(stroke?.points) ? stroke.points : []).map(point => ({
                 x: Number(point?.x) || 0,
                 y: Number(point?.y) || 0
             }))
         })).filter(stroke => stroke.points.length);
+    }
+
+    function setImageEditorDrawStrokesVisibilityForLabel(index, visible) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []).map(stroke => (
+            Number(stroke.labelIndex) === Number(index)
+                ? { ...stroke, visible: visible !== false }
+                : stroke
+        ));
+    }
+
+    function setImageEditorExclusiveDrawStrokeVisibility(activeIndex) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []).map(stroke => ({
+            ...stroke,
+            visible: Number(stroke.labelIndex) === Number(activeIndex)
+        }));
+    }
+
+    function syncImageEditorDrawStrokeVisibilityToLabels() {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        const labels = normalizeImageEditorLabels(editor.labels || []);
+        editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []).map(stroke => {
+            const labelIndex = Math.max(0, Number(stroke.labelIndex) || 0);
+            const visible = labels[labelIndex]?.drawVisible !== false;
+            return { ...stroke, visible };
+        });
     }
 
     function drawImageEditorDot(ctx, point, size) {
@@ -4639,11 +4729,12 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         const strokes = cloneImageEditorDrawStrokes(editor?.drawStrokes || []);
         if (!canvas || !strokes.length) return;
-        const labels = normalizeDiagramLabels(editor?.labels || []);
+        const labels = normalizeImageEditorLabels(editor?.labels || []);
         const maxLabelIndex = Math.max(labels.length - 1, 0);
         const grouped = new Map();
         strokes.forEach(stroke => {
             const labelIndex = Math.min(maxLabelIndex, Math.max(0, Number(stroke.labelIndex) || 0));
+            if (!isImageEditorLabelDrawVisible(labelIndex)) return;
             if (!grouped.has(labelIndex)) grouped.set(labelIndex, []);
             grouped.get(labelIndex).push(stroke);
         });
@@ -4683,6 +4774,7 @@ MODIFICATION RULES FOR THIS APP
             color: getEditorArrowColor(editor.mode),
             size: editor.drawSize,
             transparency: editor.paintTransparency,
+            visible: isImageEditorLabelDrawVisible(editor.activeDrawLabelIndex),
             points: [point]
         };
         editor.activeDrawStroke = stroke;
@@ -4702,7 +4794,15 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels[index]) return;
         pushImageEditorHistory();
+        editor.labels = normalizeImageEditorLabels(editor.labels || []);
         editor.labels.splice(index, 1);
+        const currentVisibility = { ...(editor.drawVisibilityByLabel || {}) };
+        const nextVisibility = {};
+        editor.labels.forEach((label, nextIndex) => {
+            const oldIndex = nextIndex >= index ? nextIndex + 1 : nextIndex;
+            nextVisibility[String(nextIndex)] = currentVisibility[String(oldIndex)] !== false;
+        });
+        editor.drawVisibilityByLabel = nextVisibility;
         editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || [])
             .filter(stroke => stroke.labelIndex !== index)
             .map(stroke => ({ ...stroke, labelIndex: stroke.labelIndex > index ? stroke.labelIndex - 1 : stroke.labelIndex }));
@@ -4853,18 +4953,21 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorLabelList.innerHTML = '';
             return;
         }
-        const labels = normalizeDiagramLabels(editor.labels || []);
+        const labels = syncImageEditorLabels();
         if (!labels.length) {
             elements.studioImageEditorLabelList.innerHTML = '<div class="studio-image-editor-label-empty">No labels yet. Click Add Label, then drag it on the image to move it.</div>';
             return;
         }
         elements.studioImageEditorLabelList.innerHTML = labels.map((item, index) => {
             const isDrawActive = editor.activeDrawLabelIndex === index;
+            const isVisible = isImageEditorLabelDrawVisible(index);
+            const labelText = escapeHtml(displayMathChemTextForEditor(item.label));
             return `
             <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
-              <input type="text" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-text aria-label="Label ${index + 1} text">
-              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Currently drawing for' : 'Draw for'} label ${escapeHtml(displayMathChemTextForEditor(item.label))}">${isDrawActive ? 'Drawing' : 'Draw'}</button>
-              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-delete" data-image-editor-label-delete>Delete</button>
+              <input type="text" value="${labelText}" data-image-editor-label-text aria-label="Label ${index + 1} text">
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Currently drawing for' : 'Draw for'} label ${labelText}">${isDrawActive ? 'Drawing' : 'Draw'}</button>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-visibility ${isVisible ? 'is-visible' : 'is-hidden'}" data-image-editor-label-visibility aria-pressed="${isVisible ? 'true' : 'false'}" title="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}" aria-label="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}"><span aria-hidden="true">👁</span></button>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-delete studio-image-editor-label-delete-icon" data-image-editor-label-delete title="Delete label ${labelText}" aria-label="Delete label ${labelText}"><span aria-hidden="true">🗑</span></button>
             </div>
         `;
         }).join('');
@@ -5005,9 +5108,10 @@ MODIFICATION RULES FOR THIS APP
     function addImageEditorLabel() {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled) return;
-        const labels = normalizeDiagramLabels(editor.labels || []);
+        const labels = normalizeImageEditorLabels(editor.labels || []);
         labels.push({ label: getDiagramLabelName(labels.length), x: 50, y: 50 });
         editor.labels = labels;
+        setImageEditorLabelDrawVisible(labels.length - 1, true);
         editor.showLabelPanel = true;
         refreshImageEditorLabelUi();
         renderImageEditorCanvas();
@@ -5076,7 +5180,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             editor.history.push({
                 baseDataUrl: editor.baseCanvas.toDataURL('image/png'),
-                labels: normalizeDiagramLabels(editor.labels || []),
+                labels: normalizeImageEditorLabels(editor.labels || []),
                 drawStrokes: cloneImageEditorDrawStrokes(editor.drawStrokes || [])
             });
             if (editor.history.length > 20) editor.history.shift();
@@ -5183,7 +5287,7 @@ MODIFICATION RULES FOR THIS APP
         nextCanvas.width = w;
         nextCanvas.height = h;
         nextCanvas.getContext('2d').drawImage(baseCanvas, x, y, w, h, 0, 0, w, h);
-        const nextLabels = normalizeDiagramLabels(editor.labels || []).map(label => {
+        const nextLabels = normalizeImageEditorLabels(editor.labels || []).map(label => {
             const px = ((Number(label.x) || 0) / 100) * baseCanvas.width;
             const py = ((Number(label.y) || 0) / 100) * baseCanvas.height;
             if (px < x || px > x + w || py < y || py > y + h) return null;
@@ -5198,7 +5302,7 @@ MODIFICATION RULES FOR THIS APP
             points: stroke.points.map(point => ({ x: point.x - x, y: point.y - y }))
         }));
         editor.baseCanvas = nextCanvas;
-        editor.labels = nextLabels;
+        editor.labels = normalizeImageEditorLabels(nextLabels);
         editor.draftShape = null;
         refreshImageEditorLabelUi();
         renderImageEditorCanvas();
@@ -5218,7 +5322,7 @@ MODIFICATION RULES FOR THIS APP
         } else if (previous?.baseDataUrl) {
             const image = await loadImageElement(previous.baseDataUrl);
             paintImageIntoBaseCanvas(image);
-            editor.labels = normalizeDiagramLabels(previous.labels || editor.labels || []);
+            editor.labels = normalizeImageEditorLabels(previous.labels || editor.labels || []);
             editor.drawStrokes = cloneImageEditorDrawStrokes(previous.drawStrokes || []);
             if (editor.activeDrawLabelIndex !== null && editor.activeDrawLabelIndex >= editor.labels.length) editor.activeDrawLabelIndex = null;
             refreshImageEditorLabelUi();
@@ -5351,19 +5455,32 @@ MODIFICATION RULES FOR THIS APP
             if (!row || !editor?.labelsEnabled) return;
             const index = Number(row.dataset.imageEditorLabelIndex || -1);
             if (index < 0) return;
-            if (event.target.matches('[data-image-editor-label-draw]')) {
+            const drawBtn = event.target.closest('[data-image-editor-label-draw]');
+            const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
+            const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
+            if (drawBtn) {
                 editor.mode = 'labels';
                 editor.showLabelPanel = true;
-                editor.activeDrawLabelIndex = editor.activeDrawLabelIndex === index ? null : index;
+                const isSameLabel = editor.activeDrawLabelIndex === index;
+                if (isSameLabel) {
+                    editor.activeDrawLabelIndex = null;
+                } else {
+                    editor.activeDrawLabelIndex = index;
+                    setImageEditorExclusiveDrawVisibility(index);
+                }
                 editor.hoveredLabelIndex = null;
                 editor.draggingLabelIndex = null;
                 editor.activeDrawStroke = null;
                 refreshImageEditorLabelUi();
                 renderImageEditorCanvas();
-                setImageEditorStatus(editor.activeDrawLabelIndex === index ? 'Draw on the image for this label.' : '');
+                setImageEditorStatus(!isSameLabel ? 'Draw on the image for this label.' : '');
                 return;
             }
-            if (!event.target.matches('[data-image-editor-label-delete]')) return;
+            if (visibilityBtn) {
+                toggleImageEditorLabelDrawVisibility(index);
+                return;
+            }
+            if (!deleteBtn) return;
             removeImageEditorLabelAtIndex(index);
         });
         if (elements.studioImageEditorCanvas) {
@@ -5424,7 +5541,11 @@ MODIFICATION RULES FOR THIS APP
         if (elements.studioImageEditorPaintTransparencyValue) elements.studioImageEditorPaintTransparencyValue.textContent = `${Math.round((editor.paintTransparency || 0.65) * 100)}%`;
         closeImageEditorSliderPopovers();
         editor.labelsEnabled = !!info.labelsEnabled;
-        editor.labels = normalizeDiagramLabels(info.labels || []);
+        editor.labels = normalizeImageEditorLabels(info.labels || []);
+        editor.drawVisibilityByLabel = {};
+        editor.labels.forEach((label, index) => {
+            editor.drawVisibilityByLabel[String(index)] = true;
+        });
         editor.showLabelPanel = false;
         if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = 'Image Editor';
         if (elements.studioImageEditorSubtitle) {
@@ -25559,20 +25680,33 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
     const editor = state.auth.imageEditor;
     if (!row || !editor?.labelsEnabled) return;
     const index = Number(row.dataset.imageEditorLabelIndex || -1);
-    if (index < 0) return;
-    if (event.target.matches('[data-image-editor-label-draw]')) {
+    if (index < 0 || !editor.labels?.[index]) return;
+    const drawBtn = event.target.closest('[data-image-editor-label-draw]');
+    const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
+    const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
+    if (drawBtn) {
         editor.mode = 'labels';
         editor.showLabelPanel = true;
-        editor.activeDrawLabelIndex = editor.activeDrawLabelIndex === index ? null : index;
+        const isSameLabel = editor.activeDrawLabelIndex === index;
+        if (isSameLabel) {
+            editor.activeDrawLabelIndex = null;
+        } else {
+            editor.activeDrawLabelIndex = index;
+            setImageEditorExclusiveDrawVisibility(index);
+        }
         editor.hoveredLabelIndex = null;
         editor.draggingLabelIndex = null;
         editor.activeDrawStroke = null;
         refreshImageEditorLabelUi();
         renderImageEditorCanvas();
-        setImageEditorStatus(editor.activeDrawLabelIndex === index ? 'Draw on the image for this label.' : '');
+        setImageEditorStatus(!isSameLabel ? 'Draw on the image for this label.' : '');
         return;
     }
-    if (!event.target.matches('[data-image-editor-label-delete]')) return;
+    if (visibilityBtn) {
+        toggleImageEditorLabelDrawVisibility(index);
+        return;
+    }
+    if (!deleteBtn) return;
     removeImageEditorLabelAtIndex(index);
 });
 

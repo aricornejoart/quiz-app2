@@ -9832,6 +9832,72 @@ body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.
   }
 
   .studio-image-editor-popover-panel {
-    padding: 9px 11px;
+    padding: 9px 10px;
+  }
+}
+
+/* Phase 22KL: restore eye and trash icons in the label Draw UI. */
+.studio-image-editor-label-row {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-image-editor-label-row .studio-image-editor-label-draw,
+.studio-image-editor-label-row .studio-image-editor-label-visibility,
+.studio-image-editor-label-row .studio-image-editor-label-delete-icon {
+  white-space: nowrap;
+}
+
+.studio-image-editor-label-visibility,
+.studio-image-editor-label-delete-icon {
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.98rem;
+  line-height: 1;
+  position: relative;
+}
+
+.studio-image-editor-label-visibility.is-visible {
+  color: #fde68a;
+  border-color: rgba(250, 204, 21, 0.62);
+  background: rgba(250, 204, 21, 0.14);
+}
+
+.studio-image-editor-label-visibility.is-hidden {
+  color: rgba(255,255,255,0.72);
+  background: rgba(255,255,255,0.05);
+}
+
+.studio-image-editor-label-visibility.is-hidden::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(-38deg);
+}
+
+.studio-image-editor-label-delete-icon {
+  font-size: 1rem;
+}
+
+@media (max-width: 700px) {
+  .studio-image-editor-label-row {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 6px;
+  }
+
+  .studio-image-editor-label-visibility,
+  .studio-image-editor-label-delete-icon {
+    min-width: 32px;
+    width: 32px;
+    height: 32px;
   }
 }
