@@ -327,6 +327,12 @@ MODIFICATION RULES FOR THIS APP
                 dragStart: null,
                 history: [],
                 arrowColor: '#000000',
+                drawTool: 'paintbrush',
+                drawSize: 14,
+                paintTransparency: 0.65,
+                activeDrawLabelIndex: null,
+                activeDrawStroke: null,
+                drawStrokes: [],
                 labels: [],
                 labelsEnabled: false,
                 draggingLabelIndex: null,
@@ -550,6 +556,12 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorTitle: document.getElementById('studioImageEditorTitle'),
         studioImageEditorSubtitle: document.getElementById('studioImageEditorSubtitle'),
         studioImageEditorArrowColorInput: document.getElementById('studioImageEditorArrowColorInput'),
+        studioImageEditorDrawToolButtons: Array.from(document.querySelectorAll('[data-image-editor-draw-tool]')),
+        studioImageEditorDrawSizeInput: document.getElementById('studioImageEditorDrawSizeInput'),
+        studioImageEditorDrawSizeValue: document.getElementById('studioImageEditorDrawSizeValue'),
+        studioImageEditorDrawActiveLabelValue: document.getElementById('studioImageEditorDrawActiveLabelValue'),
+        studioImageEditorPaintTransparencyInput: document.getElementById('studioImageEditorPaintTransparencyInput'),
+        studioImageEditorPaintTransparencyValue: document.getElementById('studioImageEditorPaintTransparencyValue'),
         studioImageEditorLabelsBtn: document.getElementById('studioImageEditorLabelsBtn'),
         studioImageEditorLabelPanel: document.getElementById('studioImageEditorLabelPanel'),
         studioImageEditorLabelList: document.getElementById('studioImageEditorLabelList'),
@@ -4180,6 +4192,20 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorTitle = document.getElementById('studioImageEditorTitle');
         elements.studioImageEditorSubtitle = document.getElementById('studioImageEditorSubtitle');
         elements.studioImageEditorArrowColorInput = document.getElementById('studioImageEditorArrowColorInput');
+        elements.studioImageEditorLineThicknessInput = document.getElementById('studioImageEditorLineThicknessInput');
+        elements.studioImageEditorLineThicknessValue = document.getElementById('studioImageEditorLineThicknessValue');
+        elements.studioImageEditorLineThicknessToggle = document.getElementById('studioImageEditorLineThicknessToggle');
+        elements.studioImageEditorLineThicknessPopover = document.getElementById('studioImageEditorLineThicknessPopover');
+        elements.studioImageEditorDrawToolButtons = Array.from(document.querySelectorAll('[data-image-editor-draw-tool]'));
+        elements.studioImageEditorDrawSizeInput = document.getElementById('studioImageEditorDrawSizeInput');
+        elements.studioImageEditorDrawSizeValue = document.getElementById('studioImageEditorDrawSizeValue');
+        elements.studioImageEditorDrawSizeToggle = document.getElementById('studioImageEditorDrawSizeToggle');
+        elements.studioImageEditorDrawSizePopover = document.getElementById('studioImageEditorDrawSizePopover');
+        elements.studioImageEditorDrawActiveLabelValue = document.getElementById('studioImageEditorDrawActiveLabelValue');
+        elements.studioImageEditorPaintTransparencyInput = document.getElementById('studioImageEditorPaintTransparencyInput');
+        elements.studioImageEditorPaintTransparencyValue = document.getElementById('studioImageEditorPaintTransparencyValue');
+        elements.studioImageEditorPaintTransparencyToggle = document.getElementById('studioImageEditorPaintTransparencyToggle');
+        elements.studioImageEditorPaintTransparencyPopover = document.getElementById('studioImageEditorPaintTransparencyPopover');
         elements.studioImageEditorLabelsBtn = document.getElementById('studioImageEditorLabelsBtn');
         elements.studioImageEditorLabelPanel = document.getElementById('studioImageEditorLabelPanel');
         elements.studioImageEditorLabelList = document.getElementById('studioImageEditorLabelList');
@@ -4194,16 +4220,25 @@ MODIFICATION RULES FOR THIS APP
                 <div id="studioImageEditorOverlay" class="studio-image-editor-overlay hidden" aria-hidden="true">
                   <div class="studio-image-editor-dialog studio-image-editor-modal" role="dialog" aria-modal="true" aria-labelledby="studioImageEditorTitle">
                     <div class="studio-image-editor-header">
-                      <div class="studio-image-editor-title-wrap">
-                        <h3 id="studioImageEditorTitle">Edit Image</h3>
+                      <div class="studio-image-editor-title-wrap" hidden>
+                        <h3 id="studioImageEditorTitle">Image Editor</h3>
                         <p id="studioImageEditorSubtitle" class="studio-image-editor-subtitle" hidden></p>
                       </div>
                       <div class="studio-image-editor-toolbar" aria-label="Image editor tools">
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="crop">Crop</button>
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-rect">Blur Box</button>
-                        <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-oval">Blur Oval</button>
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow">Arrow</button>
-                        <label class="studio-image-editor-rgb-control" title="Arrow RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow RGB color"></label>
+                        <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="line">Line</button>
+                        <label class="studio-image-editor-rgb-control" title="Arrow, line, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, highlighter, and draw RGB color"></label>
+                        <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow and line thickness"><label class="studio-image-editor-range-control" title="Arrow and line thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow and line thickness"></label></div></div>
+                        <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
+                          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
+                          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="highlighter" id="studioImageEditorHighlighterBtn" title="Highlighter tool" aria-label="Highlighter tool">🖍️</button>
+                          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
+                        </div>
+                        <span id="studioImageEditorDrawActiveLabelValue" class="studio-image-editor-draw-active-label" aria-live="polite">Choose label Draw</span>
+                        <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Draw, highlighter, and eraser size"><label class="studio-image-editor-range-control" title="Draw, highlighter, and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Draw, highlighter, and eraser size"></label></div></div>
+                        <div class="studio-image-editor-slider-popover" data-image-editor-popover="transparency"><button type="button" id="studioImageEditorPaintTransparencyToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPaintTransparencyPopover">Opacity <span id="studioImageEditorPaintTransparencyValue" class="studio-image-editor-range-value" aria-live="polite">65%</span></button><div id="studioImageEditorPaintTransparencyPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush transparency"><label class="studio-image-editor-range-control" title="Paintbrush transparency"><span>Opacity</span><input id="studioImageEditorPaintTransparencyInput" type="range" min="0" max="100" step="1" value="65" aria-label="Paintbrush transparency"></label></div></div>
                         <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button>
                         <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
                         <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
@@ -4395,6 +4430,13 @@ MODIFICATION RULES FOR THIS APP
             dragStart: null,
             history: [],
             arrowColor: '#000000',
+            lineThickness: 7,
+            drawTool: 'paintbrush',
+            drawSize: 14,
+            paintTransparency: 0.65,
+            activeDrawLabelIndex: null,
+            activeDrawStroke: null,
+            drawStrokes: [],
             labels: [],
             labelsEnabled: false,
             draggingLabelIndex: null,
@@ -4438,6 +4480,238 @@ MODIFICATION RULES FOR THIS APP
         return normalizeEditorHexColor(inputColor || editor?.arrowColor || '#000000', '#000000');
     }
 
+    function getImageEditorLineThickness() {
+        const editor = state.auth.imageEditor;
+        const raw = Number(elements.studioImageEditorLineThicknessInput?.value || editor?.lineThickness || 7);
+        return Math.min(24, Math.max(1, Number.isFinite(raw) ? raw : 7));
+    }
+
+    function getImageEditorDrawSize() {
+        const editor = state.auth.imageEditor;
+        const raw = Number(elements.studioImageEditorDrawSizeInput?.value || editor?.drawSize || 14);
+        return Math.min(60, Math.max(2, Number.isFinite(raw) ? raw : 14));
+    }
+
+    function getImageEditorPaintTransparency() {
+        const editor = state.auth.imageEditor;
+        const fallbackPercent = Math.round((Number.isFinite(editor?.paintTransparency) ? editor.paintTransparency : 0.65) * 100);
+        const raw = Number(elements.studioImageEditorPaintTransparencyInput?.value ?? fallbackPercent);
+        const percent = Math.min(100, Math.max(0, Number.isFinite(raw) ? raw : fallbackPercent));
+        return percent / 100;
+    }
+
+    function getImageEditorPaintTransparencyPercent() {
+        return Math.round(getImageEditorPaintTransparency() * 100);
+    }
+
+    function normalizeImageEditorDrawTool(value) {
+        const normalized = normalizeSheetText(value);
+        return ['paintbrush', 'highlighter', 'eraser'].includes(normalized) ? normalized : 'paintbrush';
+    }
+
+    function isImageEditorLabelDrawActive() {
+        const editor = state.auth.imageEditor;
+        return !!(editor?.open && editor?.mode === 'labels' && editor?.labelsEnabled && Number.isInteger(editor.activeDrawLabelIndex) && editor.activeDrawLabelIndex >= 0 && editor.activeDrawLabelIndex < (editor.labels || []).length);
+    }
+
+    function cloneImageEditorDrawStrokes(strokes = []) {
+        return (Array.isArray(strokes) ? strokes : []).map(stroke => ({
+            labelIndex: Math.max(0, Number(stroke?.labelIndex) || 0),
+            tool: normalizeImageEditorDrawTool(stroke?.tool),
+            color: normalizeEditorHexColor(stroke?.color || '#000000', '#000000'),
+            size: Math.min(60, Math.max(2, Number(stroke?.size) || 14)),
+            transparency: Math.min(1, Math.max(0, Number.isFinite(Number(stroke?.transparency)) ? Number(stroke?.transparency) : 0.65)),
+            points: (Array.isArray(stroke?.points) ? stroke.points : []).map(point => ({
+                x: Number(point?.x) || 0,
+                y: Number(point?.y) || 0
+            }))
+        })).filter(stroke => stroke.points.length);
+    }
+
+    function drawImageEditorDot(ctx, point, size) {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, Math.max(1, size / 2), 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawImageEditorStrokePath(ctx, stroke, mode = 'stroke') {
+        const points = Array.isArray(stroke?.points) ? stroke.points : [];
+        if (!points.length) return;
+        const size = Math.min(60, Math.max(2, Number(stroke?.size) || 14));
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = size;
+        if (points.length === 1) {
+            drawImageEditorDot(ctx, points[0], size);
+            return;
+        }
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i += 1) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
+    }
+
+    function getImageEditorPaintTransparencyFromStroke(stroke) {
+        const raw = Number(stroke?.transparency ?? getImageEditorPaintTransparency());
+        return Math.min(1, Math.max(0, Number.isFinite(raw) ? raw : 0.65));
+    }
+
+    function renderImageEditorStroke(ctx, stroke) {
+        const tool = normalizeImageEditorDrawTool(stroke?.tool);
+        const alpha = tool === 'highlighter' ? 0.35 : getImageEditorPaintTransparencyFromStroke(stroke);
+        const canvas = ctx.canvas;
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.min(60, Math.max(2, Number(stroke?.size) || 14));
+        ctx.strokeStyle = normalizeEditorHexColor(stroke?.color || '#000000', '#000000');
+        ctx.fillStyle = ctx.strokeStyle;
+
+        if (tool === 'eraser') {
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.globalAlpha = 1;
+            drawImageEditorStrokePath(ctx, stroke);
+            ctx.restore();
+            return;
+        }
+
+        if (alpha <= 0 || !canvas) {
+            ctx.restore();
+            return;
+        }
+
+        const strokeMaskCanvas = document.createElement('canvas');
+        strokeMaskCanvas.width = canvas.width;
+        strokeMaskCanvas.height = canvas.height;
+        const maskCtx = strokeMaskCanvas.getContext('2d');
+        if (!maskCtx) {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = alpha;
+            drawImageEditorStrokePath(ctx, stroke);
+            ctx.restore();
+            return;
+        }
+        maskCtx.save();
+        maskCtx.lineCap = 'round';
+        maskCtx.lineJoin = 'round';
+        maskCtx.lineWidth = ctx.lineWidth;
+        maskCtx.strokeStyle = '#ffffff';
+        maskCtx.fillStyle = '#ffffff';
+        maskCtx.globalCompositeOperation = 'source-over';
+        maskCtx.globalAlpha = 1;
+        drawImageEditorStrokePath(maskCtx, stroke);
+        maskCtx.restore();
+
+        const strokeColorCanvas = document.createElement('canvas');
+        strokeColorCanvas.width = canvas.width;
+        strokeColorCanvas.height = canvas.height;
+        const colorCtx = strokeColorCanvas.getContext('2d');
+        if (!colorCtx) {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = alpha;
+            drawImageEditorStrokePath(ctx, stroke);
+            ctx.restore();
+            return;
+        }
+        colorCtx.save();
+        colorCtx.lineCap = 'round';
+        colorCtx.lineJoin = 'round';
+        colorCtx.lineWidth = ctx.lineWidth;
+        colorCtx.strokeStyle = ctx.strokeStyle;
+        colorCtx.fillStyle = ctx.fillStyle;
+        colorCtx.globalCompositeOperation = 'source-over';
+        colorCtx.globalAlpha = 1;
+        drawImageEditorStrokePath(colorCtx, stroke);
+        colorCtx.restore();
+
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalAlpha = 1;
+        ctx.drawImage(strokeMaskCanvas, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(strokeColorCanvas, 0, 0);
+        ctx.restore();
+    }
+
+    function drawImageEditorDrawLayer(ctx, canvas = elements.studioImageEditorCanvas) {
+        const editor = state.auth.imageEditor;
+        const strokes = cloneImageEditorDrawStrokes(editor?.drawStrokes || []);
+        if (!canvas || !strokes.length) return;
+        const labels = normalizeDiagramLabels(editor?.labels || []);
+        const maxLabelIndex = Math.max(labels.length - 1, 0);
+        const grouped = new Map();
+        strokes.forEach(stroke => {
+            const labelIndex = Math.min(maxLabelIndex, Math.max(0, Number(stroke.labelIndex) || 0));
+            if (!grouped.has(labelIndex)) grouped.set(labelIndex, []);
+            grouped.get(labelIndex).push(stroke);
+        });
+        Array.from(grouped.keys()).sort((a, b) => a - b).forEach(labelIndex => {
+            const layer = document.createElement('canvas');
+            layer.width = canvas.width;
+            layer.height = canvas.height;
+            const layerCtx = layer.getContext('2d');
+            grouped.get(labelIndex).forEach(stroke => renderImageEditorStroke(layerCtx, stroke));
+            ctx.drawImage(layer, 0, 0);
+        });
+    }
+
+    function getImageEditorCompositedCanvas() {
+        const editor = state.auth.imageEditor;
+        const baseCanvas = editor?.baseCanvas;
+        if (!baseCanvas) return null;
+        const outputCanvas = document.createElement('canvas');
+        outputCanvas.width = baseCanvas.width;
+        outputCanvas.height = baseCanvas.height;
+        const ctx = outputCanvas.getContext('2d');
+        ctx.drawImage(baseCanvas, 0, 0);
+        drawImageEditorDrawLayer(ctx, outputCanvas);
+        return outputCanvas;
+    }
+
+    function beginImageEditorDrawStroke(point) {
+        const editor = state.auth.imageEditor;
+        if (!editor || !point || !isImageEditorLabelDrawActive()) return;
+        const tool = normalizeImageEditorDrawTool(editor.drawTool);
+        pushImageEditorHistory();
+        editor.drawSize = getImageEditorDrawSize();
+        editor.paintTransparency = getImageEditorPaintTransparency();
+        const stroke = {
+            labelIndex: editor.activeDrawLabelIndex,
+            tool,
+            color: getEditorArrowColor(editor.mode),
+            size: editor.drawSize,
+            transparency: editor.paintTransparency,
+            points: [point]
+        };
+        editor.activeDrawStroke = stroke;
+        editor.drawStrokes.push(stroke);
+        renderImageEditorCanvas();
+    }
+
+    function continueImageEditorDrawStroke(point) {
+        const editor = state.auth.imageEditor;
+        const stroke = editor?.activeDrawStroke;
+        if (!stroke || !point) return;
+        stroke.points.push(point);
+        renderImageEditorCanvas();
+    }
+
+    function removeImageEditorLabelAtIndex(index) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled || index < 0 || !editor.labels[index]) return;
+        pushImageEditorHistory();
+        editor.labels.splice(index, 1);
+        editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || [])
+            .filter(stroke => stroke.labelIndex !== index)
+            .map(stroke => ({ ...stroke, labelIndex: stroke.labelIndex > index ? stroke.labelIndex - 1 : stroke.labelIndex }));
+        if (editor.activeDrawLabelIndex === index) editor.activeDrawLabelIndex = null;
+        else if (editor.activeDrawLabelIndex > index) editor.activeDrawLabelIndex -= 1;
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+    }
+
     function drawEditorEllipsePath(ctx, shape) {
         ctx.beginPath();
         ctx.ellipse(shape.x + shape.w / 2, shape.y + shape.h / 2, Math.max(1, shape.w / 2), Math.max(1, shape.h / 2), 0, 0, Math.PI * 2);
@@ -4450,11 +4724,12 @@ MODIFICATION RULES FOR THIS APP
         const angle = Math.atan2(dy, dx);
         const length = Math.hypot(dx, dy);
         if (length < 8) return;
+        const thickness = Math.min(24, Math.max(1, Number(shape.thickness) || getImageEditorLineThickness()));
         const headLength = Math.min(28, Math.max(14, length * 0.18));
         ctx.save();
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
-        ctx.lineWidth = preview ? 5 : 7;
+        ctx.lineWidth = thickness;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.globalAlpha = preview ? 0.72 : 0.95;
@@ -4468,6 +4743,23 @@ MODIFICATION RULES FOR THIS APP
         ctx.lineTo(shape.x2 - headLength * Math.cos(angle + Math.PI / 6), shape.y2 - headLength * Math.sin(angle + Math.PI / 6));
         ctx.closePath();
         ctx.fill();
+        ctx.restore();
+    }
+
+    function drawEditorLine(ctx, shape, preview = false) {
+        const length = Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
+        if (length < 8) return;
+        const thickness = Math.min(24, Math.max(1, Number(shape.thickness) || getImageEditorLineThickness()));
+        ctx.save();
+        ctx.strokeStyle = shape.color || '#000000';
+        ctx.lineWidth = thickness;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalAlpha = preview ? 0.72 : 0.95;
+        ctx.beginPath();
+        ctx.moveTo(shape.x1, shape.y1);
+        ctx.lineTo(shape.x2, shape.y2);
+        ctx.stroke();
         ctx.restore();
     }
 
@@ -4566,12 +4858,16 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorLabelList.innerHTML = '<div class="studio-image-editor-label-empty">No labels yet. Click Add Label, then drag it on the image to move it.</div>';
             return;
         }
-        elements.studioImageEditorLabelList.innerHTML = labels.map((item, index) => `
-            <div class="studio-image-editor-label-row" data-image-editor-label-row data-image-editor-label-index="${index}">
+        elements.studioImageEditorLabelList.innerHTML = labels.map((item, index) => {
+            const isDrawActive = editor.activeDrawLabelIndex === index;
+            return `
+            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
               <input type="text" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-text aria-label="Label ${index + 1} text">
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Currently drawing for' : 'Draw for'} label ${escapeHtml(displayMathChemTextForEditor(item.label))}">${isDrawActive ? 'Drawing' : 'Draw'}</button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-delete" data-image-editor-label-delete>Delete</button>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
 
@@ -4580,11 +4876,97 @@ MODIFICATION RULES FOR THIS APP
         const canvas = elements.studioImageEditorCanvas;
         if (!canvas) return;
         const isLabelMode = !!(editor?.open && editor?.mode === 'labels' && editor?.labelsEnabled);
-        const isDragging = isLabelMode && editor?.draggingLabelIndex !== null && editor?.draggingLabelIndex !== undefined;
-        const isHovering = isLabelMode && editor?.hoveredLabelIndex !== null && editor?.hoveredLabelIndex !== undefined;
-        canvas.classList.toggle('is-label-mode', isLabelMode);
+        const isDrawActive = isImageEditorLabelDrawActive();
+        const isDragging = isLabelMode && !isDrawActive && editor?.draggingLabelIndex !== null && editor?.draggingLabelIndex !== undefined;
+        const isHovering = isLabelMode && !isDrawActive && editor?.hoveredLabelIndex !== null && editor?.hoveredLabelIndex !== undefined;
+        canvas.classList.toggle('is-label-mode', isLabelMode && !isDrawActive);
         canvas.classList.toggle('is-label-hover', isHovering && !isDragging);
         canvas.classList.toggle('is-label-dragging', isDragging);
+        canvas.classList.toggle('is-draw-mode', isDrawActive);
+    }
+
+    function closeImageEditorSliderPopovers() {
+        const popovers = [
+            [elements.studioImageEditorLineThicknessToggle, elements.studioImageEditorLineThicknessPopover],
+            [elements.studioImageEditorDrawSizeToggle, elements.studioImageEditorDrawSizePopover],
+            [elements.studioImageEditorPaintTransparencyToggle, elements.studioImageEditorPaintTransparencyPopover]
+        ];
+        popovers.forEach(([toggle, panel]) => {
+            panel?.classList.add('hidden');
+            if (toggle) {
+                toggle.classList.remove('is-open');
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+    function toggleImageEditorSliderPopover(kind) {
+        const map = {
+            thickness: [elements.studioImageEditorLineThicknessToggle, elements.studioImageEditorLineThicknessPopover],
+            size: [elements.studioImageEditorDrawSizeToggle, elements.studioImageEditorDrawSizePopover],
+            transparency: [elements.studioImageEditorPaintTransparencyToggle, elements.studioImageEditorPaintTransparencyPopover]
+        };
+        const [toggle, panel] = map[kind] || [];
+        if (!toggle || !panel || toggle.disabled) return;
+        const shouldOpen = panel.classList.contains('hidden');
+        closeImageEditorSliderPopovers();
+        if (shouldOpen) {
+            panel.classList.remove('hidden');
+            toggle.classList.add('is-open');
+            toggle.setAttribute('aria-expanded', 'true');
+        }
+    }
+
+    function refreshImageEditorDrawUi() {
+        const editor = state.auth.imageEditor;
+        const drawActive = isImageEditorLabelDrawActive();
+        const activeTool = normalizeImageEditorDrawTool(editor?.drawTool || 'paintbrush');
+        const activeLabel = drawActive ? normalizeDiagramLabels(editor?.labels || [])[editor.activeDrawLabelIndex] : null;
+        const activeLabelText = htmlToDisplayText(activeLabel?.label || activeLabel?.name || '') || `Label ${Number(editor?.activeDrawLabelIndex) + 1}`;
+        const drawToolbar = elements.studioImageEditorDrawToolButtons?.[0]?.closest('.studio-image-editor-draw-toolbar');
+        drawToolbar?.classList.toggle('is-draw-ready', drawActive);
+        drawToolbar?.classList.toggle('is-draw-waiting', !drawActive);
+        if (elements.studioImageEditorDrawActiveLabelValue) {
+            elements.studioImageEditorDrawActiveLabelValue.textContent = drawActive ? `Drawing: ${activeLabelText}` : 'Choose label Draw';
+            elements.studioImageEditorDrawActiveLabelValue.classList.toggle('is-active', drawActive);
+        }
+        elements.studioImageEditorDrawToolButtons?.forEach(button => {
+            const tool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
+            const isActive = tool === activeTool;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            button.disabled = !drawActive;
+        });
+        if (elements.studioImageEditorLineThicknessInput) {
+            const thicknessValue = Math.min(24, Math.max(1, Number(editor?.lineThickness) || getImageEditorLineThickness()));
+            elements.studioImageEditorLineThicknessInput.value = String(thicknessValue);
+            if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(thicknessValue);
+            elements.studioImageEditorLineThicknessInput.disabled = false;
+            if (elements.studioImageEditorLineThicknessToggle) {
+                elements.studioImageEditorLineThicknessToggle.disabled = false;
+                elements.studioImageEditorLineThicknessToggle.classList.remove('is-disabled');
+            }
+        }
+        if (elements.studioImageEditorDrawSizeInput) {
+            const sizeValue = Math.min(60, Math.max(2, Number(editor?.drawSize) || getImageEditorDrawSize()));
+            elements.studioImageEditorDrawSizeInput.value = String(sizeValue);
+            if (elements.studioImageEditorDrawSizeValue) elements.studioImageEditorDrawSizeValue.textContent = String(sizeValue);
+            elements.studioImageEditorDrawSizeInput.disabled = false;
+            if (elements.studioImageEditorDrawSizeToggle) {
+                elements.studioImageEditorDrawSizeToggle.disabled = false;
+                elements.studioImageEditorDrawSizeToggle.classList.remove('is-disabled');
+            }
+        }
+        if (elements.studioImageEditorPaintTransparencyInput) {
+            const percent = Math.min(100, Math.max(0, Math.round((Number.isFinite(editor?.paintTransparency) ? editor.paintTransparency : 0.65) * 100)));
+            elements.studioImageEditorPaintTransparencyInput.value = String(percent);
+            if (elements.studioImageEditorPaintTransparencyValue) elements.studioImageEditorPaintTransparencyValue.textContent = `${percent}%`;
+            elements.studioImageEditorPaintTransparencyInput.disabled = false;
+            if (elements.studioImageEditorPaintTransparencyToggle) {
+                elements.studioImageEditorPaintTransparencyToggle.disabled = false;
+                elements.studioImageEditorPaintTransparencyToggle.classList.remove('is-disabled');
+            }
+        }
     }
 
     function refreshImageEditorLabelUi() {
@@ -4611,7 +4993,12 @@ MODIFICATION RULES FOR THIS APP
         }
         if (elements.studioImageEditorAddLabelBtn) elements.studioImageEditorAddLabelBtn.disabled = !editor?.labelsEnabled;
         if (elements.studioImageEditorRemoveLastLabelBtn) elements.studioImageEditorRemoveLastLabelBtn.disabled = !editor?.labelsEnabled || !(editor?.labels?.length);
+        if (!shouldShowPanel || !editor?.labels?.length) {
+            editor.activeDrawLabelIndex = null;
+            editor.activeDrawStroke = null;
+        }
         renderImageEditorLabelList();
+        refreshImageEditorDrawUi();
         updateImageEditorCanvasPointerState();
     }
 
@@ -4630,9 +5017,7 @@ MODIFICATION RULES FOR THIS APP
     function removeLastImageEditorLabel() {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || !(editor.labels || []).length) return;
-        editor.labels = normalizeDiagramLabels(editor.labels || []).slice(0, -1);
-        refreshImageEditorLabelUi();
-        renderImageEditorCanvas();
+        removeImageEditorLabelAtIndex((editor.labels || []).length - 1);
         setImageEditorStatus('');
     }
 
@@ -4647,6 +5032,7 @@ MODIFICATION RULES FOR THIS APP
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(baseCanvas, 0, 0);
+        drawImageEditorDrawLayer(ctx, canvas);
 
         const draft = editor.draftShape;
         if (!draft) {
@@ -4677,6 +5063,8 @@ MODIFICATION RULES FOR THIS APP
             ctx.stroke();
         } else if (draft.type === 'arrow') {
             drawEditorArrow(ctx, draft, true);
+        } else if (draft.type === 'line') {
+            drawEditorLine(ctx, draft, true);
         }
         ctx.restore();
         drawImageEditorLabels(ctx, editor.labels || [], canvas);
@@ -4686,7 +5074,11 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         if (!editor?.baseCanvas) return;
         try {
-            editor.history.push(editor.baseCanvas.toDataURL('image/png'));
+            editor.history.push({
+                baseDataUrl: editor.baseCanvas.toDataURL('image/png'),
+                labels: normalizeDiagramLabels(editor.labels || []),
+                drawStrokes: cloneImageEditorDrawStrokes(editor.drawStrokes || [])
+            });
             if (editor.history.length > 20) editor.history.shift();
         } catch (error) {
             console.warn('Could not store image editor undo history:', error);
@@ -4705,6 +5097,7 @@ MODIFICATION RULES FOR THIS APP
         const ctx = baseCanvas.getContext('2d');
         ctx.drawImage(image, 0, 0, width, height);
         editor.baseCanvas = baseCanvas;
+        editor.activeDrawStroke = null;
         editor.draftShape = null;
         renderImageEditorCanvas();
     }
@@ -4756,6 +5149,19 @@ MODIFICATION RULES FOR THIS APP
         setImageEditorStatus('');
     }
 
+    function applyImageEditorLine(shape) {
+        const editor = state.auth.imageEditor;
+        const baseCanvas = editor?.baseCanvas;
+        if (!baseCanvas) return;
+        if (Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1) < 8) return;
+        pushImageEditorHistory();
+        const ctx = baseCanvas.getContext('2d');
+        drawEditorLine(ctx, shape, false);
+        editor.draftShape = null;
+        renderImageEditorCanvas();
+        setImageEditorStatus('');
+    }
+
     function applyImageEditorCrop() {
         const editor = state.auth.imageEditor;
         const baseCanvas = editor?.baseCanvas;
@@ -4787,6 +5193,10 @@ MODIFICATION RULES FOR THIS APP
                 y: ((py - y) / h) * 100
             };
         }).filter(Boolean);
+        editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []).map(stroke => ({
+            ...stroke,
+            points: stroke.points.map(point => ({ x: point.x - x, y: point.y - y }))
+        }));
         editor.baseCanvas = nextCanvas;
         editor.labels = nextLabels;
         editor.draftShape = null;
@@ -4801,9 +5211,19 @@ MODIFICATION RULES FOR THIS APP
             setImageEditorStatus('Nothing to undo yet.');
             return;
         }
-        const previousDataUrl = editor.history.pop();
-        const image = await loadImageElement(previousDataUrl);
-        paintImageIntoBaseCanvas(image);
+        const previous = editor.history.pop();
+        if (typeof previous === 'string') {
+            const image = await loadImageElement(previous);
+            paintImageIntoBaseCanvas(image);
+        } else if (previous?.baseDataUrl) {
+            const image = await loadImageElement(previous.baseDataUrl);
+            paintImageIntoBaseCanvas(image);
+            editor.labels = normalizeDiagramLabels(previous.labels || editor.labels || []);
+            editor.drawStrokes = cloneImageEditorDrawStrokes(previous.drawStrokes || []);
+            if (editor.activeDrawLabelIndex !== null && editor.activeDrawLabelIndex >= editor.labels.length) editor.activeDrawLabelIndex = null;
+            refreshImageEditorLabelUi();
+            renderImageEditorCanvas();
+        }
         setImageEditorStatus('');
     }
 
@@ -4812,7 +5232,11 @@ MODIFICATION RULES FOR THIS APP
         if (!editor?.originalDataUrl) return;
         const image = await loadImageElement(editor.originalDataUrl);
         editor.history = [];
+        editor.drawStrokes = [];
+        editor.activeDrawStroke = null;
+        editor.activeDrawLabelIndex = null;
         paintImageIntoBaseCanvas(image);
+        refreshImageEditorLabelUi();
         setImageEditorStatus('');
     }
 
@@ -4826,7 +5250,9 @@ MODIFICATION RULES FOR THIS APP
         if (editor.mode !== 'labels') {
             editor.hoveredLabelIndex = null;
             editor.draggingLabelIndex = null;
+            editor.activeDrawLabelIndex = null;
         }
+        editor.activeDrawStroke = null;
         editor.draftShape = null;
         elements.studioImageEditorToolButtons?.forEach(button => {
             button.classList.toggle('active', normalizeSheetText(button.dataset.imageEditorTool) === editor.mode);
@@ -4848,16 +5274,64 @@ MODIFICATION RULES FOR THIS APP
             if (event.target === overlay) closeStudioImageEditor();
         });
         elements.studioImageEditorToolButtons?.forEach(button => {
-            button.addEventListener('click', () => setImageEditorMode(normalizeSheetText(button.dataset.imageEditorTool) || 'crop'));
+            button.addEventListener('click', () => {
+                closeImageEditorSliderPopovers();
+                setImageEditorMode(normalizeSheetText(button.dataset.imageEditorTool) || 'crop');
+            });
         });
         elements.studioImageEditorArrowColorInput?.addEventListener('input', () => {
             const editor = state.auth.imageEditor;
             if (!editor) return;
             editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput.value, '#000000');
-            if (editor.draftShape?.type === 'arrow') {
+            if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
                 editor.draftShape.color = editor.arrowColor;
                 renderImageEditorCanvas();
             }
+        });
+        elements.studioImageEditorLineThicknessInput?.addEventListener('input', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.lineThickness = getImageEditorLineThickness();
+            if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness);
+            if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
+                editor.draftShape.thickness = editor.lineThickness;
+                renderImageEditorCanvas();
+            }
+        });
+        elements.studioImageEditorLineThicknessToggle?.addEventListener('click', event => {
+            event.stopPropagation();
+            toggleImageEditorSliderPopover('thickness');
+        });
+        elements.studioImageEditorDrawSizeToggle?.addEventListener('click', event => {
+            event.stopPropagation();
+            toggleImageEditorSliderPopover('size');
+        });
+        elements.studioImageEditorPaintTransparencyToggle?.addEventListener('click', event => {
+            event.stopPropagation();
+            toggleImageEditorSliderPopover('transparency');
+        });
+        elements.studioImageEditorDrawToolButtons?.forEach(button => {
+            button.addEventListener('click', () => {
+                const editor = state.auth.imageEditor;
+                if (!editor || button.disabled) return;
+                editor.drawTool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
+                closeImageEditorSliderPopovers();
+                refreshImageEditorDrawUi();
+                updateImageEditorCanvasPointerState();
+                setImageEditorStatus(isImageEditorLabelDrawActive() ? (editor.drawTool === 'eraser' ? 'Erase strokes for the selected label.' : 'Draw on the image for the selected label.') : 'Choose Draw next to a label first.');
+            });
+        });
+        elements.studioImageEditorDrawSizeInput?.addEventListener('input', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.drawSize = getImageEditorDrawSize();
+            if (elements.studioImageEditorDrawSizeValue) elements.studioImageEditorDrawSizeValue.textContent = String(editor.drawSize);
+        });
+        elements.studioImageEditorPaintTransparencyInput?.addEventListener('input', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.paintTransparency = getImageEditorPaintTransparency();
+            if (elements.studioImageEditorPaintTransparencyValue) elements.studioImageEditorPaintTransparencyValue.textContent = `${Math.round(editor.paintTransparency * 100)}%`;
         });
         elements.studioImageEditorAddLabelBtn?.addEventListener('click', addImageEditorLabel);
         elements.studioImageEditorRemoveLastLabelBtn?.addEventListener('click', removeLastImageEditorLabel);
@@ -4874,12 +5348,23 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorLabelList?.addEventListener('click', event => {
             const row = event.target.closest('[data-image-editor-label-row]');
             const editor = state.auth.imageEditor;
-            if (!row || !event.target.matches('[data-image-editor-label-delete]') || !editor?.labelsEnabled) return;
+            if (!row || !editor?.labelsEnabled) return;
             const index = Number(row.dataset.imageEditorLabelIndex || -1);
             if (index < 0) return;
-            editor.labels.splice(index, 1);
-            refreshImageEditorLabelUi();
-            renderImageEditorCanvas();
+            if (event.target.matches('[data-image-editor-label-draw]')) {
+                editor.mode = 'labels';
+                editor.showLabelPanel = true;
+                editor.activeDrawLabelIndex = editor.activeDrawLabelIndex === index ? null : index;
+                editor.hoveredLabelIndex = null;
+                editor.draggingLabelIndex = null;
+                editor.activeDrawStroke = null;
+                refreshImageEditorLabelUi();
+                renderImageEditorCanvas();
+                setImageEditorStatus(editor.activeDrawLabelIndex === index ? 'Draw on the image for this label.' : '');
+                return;
+            }
+            if (!event.target.matches('[data-image-editor-label-delete]')) return;
+            removeImageEditorLabelAtIndex(index);
         });
         if (elements.studioImageEditorCanvas) {
             elements.studioImageEditorCanvas.addEventListener('pointerdown', handleImageEditorPointerDown);
@@ -4923,11 +5408,25 @@ MODIFICATION RULES FOR THIS APP
         editor.sourceValue = sourceValue;
         editor.sourceLabel = info.sourceLabel || info.fallbackLabel;
         editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput?.value || '#000000', '#000000');
+        editor.lineThickness = getImageEditorLineThickness();
+        editor.drawTool = 'paintbrush';
+        editor.drawSize = getImageEditorDrawSize();
+        editor.paintTransparency = getImageEditorPaintTransparency();
+        editor.activeDrawLabelIndex = null;
+        editor.activeDrawStroke = null;
+        editor.drawStrokes = [];
         if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = editor.arrowColor;
+        if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(editor.lineThickness || 7);
+        if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness || 7);
+        if (elements.studioImageEditorDrawSizeInput) elements.studioImageEditorDrawSizeInput.value = String(editor.drawSize || 14);
+        if (elements.studioImageEditorDrawSizeValue) elements.studioImageEditorDrawSizeValue.textContent = String(editor.drawSize || 14);
+        if (elements.studioImageEditorPaintTransparencyInput) elements.studioImageEditorPaintTransparencyInput.value = String(Math.round((editor.paintTransparency || 0.65) * 100));
+        if (elements.studioImageEditorPaintTransparencyValue) elements.studioImageEditorPaintTransparencyValue.textContent = `${Math.round((editor.paintTransparency || 0.65) * 100)}%`;
+        closeImageEditorSliderPopovers();
         editor.labelsEnabled = !!info.labelsEnabled;
         editor.labels = normalizeDiagramLabels(info.labels || []);
         editor.showLabelPanel = false;
-        if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = 'Edit Image';
+        if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = 'Image Editor';
         if (elements.studioImageEditorSubtitle) {
             elements.studioImageEditorSubtitle.textContent = '';
             elements.studioImageEditorSubtitle.hidden = true;
@@ -4958,6 +5457,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function closeStudioImageEditor() {
+        closeImageEditorSliderPopovers();
         if (elements.studioImageEditorOverlay) {
             elements.studioImageEditorOverlay.classList.add('hidden');
             elements.studioImageEditorOverlay.setAttribute('aria-hidden', 'true');
@@ -4996,11 +5496,10 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function saveStudioImageEditorImage() {
-        const editor = state.auth.imageEditor;
-        const baseCanvas = editor?.baseCanvas;
-        if (!baseCanvas) return;
+        const outputCanvas = getImageEditorCompositedCanvas();
+        if (!outputCanvas) return;
         try {
-            const editedDataUrl = baseCanvas.toDataURL('image/png');
+            const editedDataUrl = outputCanvas.toDataURL('image/png');
             applyStudioImageEditorResult(editedDataUrl);
             closeStudioImageEditor();
         } catch (error) {
@@ -5025,6 +5524,15 @@ MODIFICATION RULES FOR THIS APP
         if (!point) return;
         event.preventDefault();
         if (editor.mode === 'labels' && editor.labelsEnabled) {
+            if (isImageEditorLabelDrawActive()) {
+                editor.isDrawing = true;
+                editor.dragStart = point;
+                editor.draftShape = null;
+                beginImageEditorDrawStroke(point);
+                updateImageEditorCanvasPointerState();
+                elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+                return;
+            }
             const labelIndex = findImageEditorLabelIndexAtPoint(point);
             editor.hoveredLabelIndex = labelIndex >= 0 ? labelIndex : null;
             if (labelIndex >= 0) {
@@ -5051,6 +5559,11 @@ MODIFICATION RULES FOR THIS APP
         const point = getImageEditorCanvasPoint(event);
         if (!point) return;
         if (editor?.mode === 'labels' && editor.labelsEnabled) {
+            if (editor.isDrawing && editor.activeDrawStroke) {
+                event.preventDefault();
+                continueImageEditorDrawStroke(point);
+                return;
+            }
             if (editor.isDrawing && editor.draggingLabelIndex !== null) {
                 event.preventDefault();
                 const canvas = elements.studioImageEditorCanvas;
@@ -5065,6 +5578,7 @@ MODIFICATION RULES FOR THIS APP
                 }
                 return;
             }
+            if (isImageEditorLabelDrawActive()) return;
             const nextHover = findImageEditorLabelIndexAtPoint(point);
             const normalizedHover = nextHover >= 0 ? nextHover : null;
             if (editor.hoveredLabelIndex !== normalizedHover) {
@@ -5082,10 +5596,12 @@ MODIFICATION RULES FOR THIS APP
         } else if (editor.mode === 'blur-rect' || editor.mode === 'blur-oval') {
             const box = normalizeEditorBox(editor.dragStart, point);
             editor.draftShape = { type: editor.mode, ...box };
-        } else if (editor.mode === 'arrow') {
+        } else if (editor.mode === 'arrow' || editor.mode === 'line') {
+            editor.lineThickness = getImageEditorLineThickness();
             editor.draftShape = {
-                type: 'arrow',
+                type: editor.mode,
                 color: getEditorArrowColor(editor.mode),
+                thickness: editor.lineThickness,
                 x1: editor.dragStart.x,
                 y1: editor.dragStart.y,
                 x2: point.x,
@@ -5103,7 +5619,10 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorCanvas?.releasePointerCapture?.(event.pointerId);
         if (editor.mode === 'labels' && editor.labelsEnabled) {
             editor.draggingLabelIndex = null;
+            editor.activeDrawStroke = null;
+            editor.dragStart = null;
             setImageEditorStatus('');
+            renderImageEditorCanvas();
             return;
         }
         const draft = editor.draftShape;
@@ -5114,6 +5633,10 @@ MODIFICATION RULES FOR THIS APP
         }
         if (draft.type === 'arrow') {
             applyImageEditorArrow(draft);
+            return;
+        }
+        if (draft.type === 'line') {
+            applyImageEditorLine(draft);
             return;
         }
         if (draft.type === 'crop') {
@@ -24994,6 +25517,31 @@ elements.studioImageEditorArrowColorInput?.addEventListener('input', () => {
     }
 });
 
+elements.studioImageEditorDrawToolButtons?.forEach(button => {
+    button.addEventListener('click', () => {
+        const editor = state.auth.imageEditor;
+        if (!editor || button.disabled) return;
+        editor.drawTool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
+        refreshImageEditorDrawUi();
+        updateImageEditorCanvasPointerState();
+        setImageEditorStatus(isImageEditorLabelDrawActive() ? (editor.drawTool === 'eraser' ? 'Erase strokes for the selected label.' : 'Draw on the image for the selected label.') : 'Choose Draw next to a label first.');
+    });
+});
+
+elements.studioImageEditorDrawSizeInput?.addEventListener('input', () => {
+    const editor = state.auth.imageEditor;
+    if (!editor) return;
+    editor.drawSize = getImageEditorDrawSize();
+    if (elements.studioImageEditorDrawSizeValue) elements.studioImageEditorDrawSizeValue.textContent = String(editor.drawSize);
+});
+
+elements.studioImageEditorPaintTransparencyInput?.addEventListener('input', () => {
+    const editor = state.auth.imageEditor;
+    if (!editor) return;
+    editor.paintTransparency = getImageEditorPaintTransparency();
+    if (elements.studioImageEditorPaintTransparencyValue) elements.studioImageEditorPaintTransparencyValue.textContent = `${Math.round(editor.paintTransparency * 100)}%`;
+});
+
 elements.studioImageEditorAddLabelBtn?.addEventListener('click', addImageEditorLabel);
 elements.studioImageEditorRemoveLastLabelBtn?.addEventListener('click', removeLastImageEditorLabel);
 elements.studioImageEditorLabelList?.addEventListener('input', event => {
@@ -25009,12 +25557,23 @@ elements.studioImageEditorLabelList?.addEventListener('input', event => {
 elements.studioImageEditorLabelList?.addEventListener('click', event => {
     const row = event.target.closest('[data-image-editor-label-row]');
     const editor = state.auth.imageEditor;
-    if (!row || !event.target.matches('[data-image-editor-label-delete]') || !editor?.labelsEnabled) return;
+    if (!row || !editor?.labelsEnabled) return;
     const index = Number(row.dataset.imageEditorLabelIndex || -1);
     if (index < 0) return;
-    editor.labels.splice(index, 1);
-    refreshImageEditorLabelUi();
-    renderImageEditorCanvas();
+    if (event.target.matches('[data-image-editor-label-draw]')) {
+        editor.mode = 'labels';
+        editor.showLabelPanel = true;
+        editor.activeDrawLabelIndex = editor.activeDrawLabelIndex === index ? null : index;
+        editor.hoveredLabelIndex = null;
+        editor.draggingLabelIndex = null;
+        editor.activeDrawStroke = null;
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+        setImageEditorStatus(editor.activeDrawLabelIndex === index ? 'Draw on the image for this label.' : '');
+        return;
+    }
+    if (!event.target.matches('[data-image-editor-label-delete]')) return;
+    removeImageEditorLabelAtIndex(index);
 });
 
 if (elements.studioImageEditorCanvas) {
@@ -26095,3 +26654,65 @@ elements.questionImage.onclick = function () {
     openFlashcardImageOverlay(src, this.alt || 'Question image', { diagramLabels });
 };
 })();
+
+
+// Phase 22KJ: robust delegated floating slider handler.
+// This uses the actual clicked toggle and its aria-controls target so the
+// popover still opens even if earlier editor binding ran before new refs existed.
+document.addEventListener('click', event => {
+    const toggle = event.target?.closest?.('.studio-image-editor-popover-toggle');
+    if (!toggle) return;
+    const overlay = document.getElementById('studioImageEditorOverlay');
+    if (!overlay || overlay.classList.contains('hidden') || !overlay.contains(toggle)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const panelId = toggle.getAttribute('aria-controls');
+    const panel = panelId ? document.getElementById(panelId) : null;
+    if (!panel) return;
+    const wasHidden = panel.classList.contains('hidden');
+    document.querySelectorAll('.studio-image-editor-popover-panel').forEach(item => {
+        item.classList.add('hidden');
+        item.style.removeProperty('position');
+        item.style.removeProperty('top');
+        item.style.removeProperty('left');
+        item.style.removeProperty('z-index');
+    });
+    document.querySelectorAll('.studio-image-editor-popover-toggle').forEach(item => {
+        item.classList.remove('is-open');
+        item.setAttribute('aria-expanded', 'false');
+    });
+    if (!wasHidden) return;
+    const rect = toggle.getBoundingClientRect();
+    panel.classList.remove('hidden');
+    panel.style.position = 'fixed';
+    panel.style.zIndex = '2147483000';
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 8;
+    const panelWidth = Math.min(panelRect.width || 220, window.innerWidth - (margin * 2));
+    const panelHeight = panelRect.height || 76;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - panelWidth - margin));
+    const belowTop = rect.bottom + 6;
+    const aboveTop = rect.top - panelHeight - 6;
+    const top = belowTop + panelHeight + margin > window.innerHeight
+        ? Math.max(margin, aboveTop)
+        : belowTop;
+    panel.style.top = `${Math.round(top)}px`;
+    panel.style.left = `${Math.round(left)}px`;
+    toggle.classList.add('is-open');
+    toggle.setAttribute('aria-expanded', 'true');
+}, true);
+
+document.addEventListener('click', event => {
+    if (event.target?.closest?.('.studio-image-editor-slider-popover')) return;
+    document.querySelectorAll('.studio-image-editor-popover-panel').forEach(item => {
+        item.classList.add('hidden');
+        item.style.removeProperty('position');
+        item.style.removeProperty('top');
+        item.style.removeProperty('left');
+        item.style.removeProperty('z-index');
+    });
+    document.querySelectorAll('.studio-image-editor-popover-toggle').forEach(item => {
+        item.classList.remove('is-open');
+        item.setAttribute('aria-expanded', 'false');
+    });
+}, true);

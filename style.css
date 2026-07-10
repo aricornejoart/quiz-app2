@@ -9508,3 +9508,330 @@ body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+/* Phase 22JX: Draw UI placement only. Keep per-label Draw activation, but place
+   the actual Draw/Highlighter/Eraser tools in the main image-editor toolbar next
+   to RGB so the label panel stays focused on Label Name | Draw | Delete. */
+.studio-image-editor-draw-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.studio-image-editor-toolbar .studio-image-draw-tool {
+  min-width: 36px;
+  padding: 6px 8px;
+  line-height: 1;
+}
+
+.studio-image-editor-toolbar .studio-image-draw-tool.active {
+  border-color: rgba(250, 204, 21, 0.75);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.16);
+}
+
+.studio-image-editor-range-control {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.studio-image-editor-range-control input[type="range"] {
+  width: 78px;
+  accent-color: #facc15;
+}
+
+.studio-image-editor-range-control.is-disabled {
+  opacity: 0.55;
+}
+
+.studio-image-editor-label-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.studio-image-editor-label-row .studio-image-editor-label-draw,
+.studio-image-editor-label-row .studio-image-editor-label-delete {
+  white-space: nowrap;
+}
+
+.studio-image-editor-label-row.is-draw-selected {
+  border-color: rgba(250, 204, 21, 0.7);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.14);
+}
+
+@media (max-width: 700px) {
+  .studio-image-editor-range-control input[type="range"] {
+    width: 64px;
+  }
+
+  .studio-image-editor-label-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+}
+
+/* Phase 22JY: enable per-label highlighter/paintbrush drawing while keeping
+   eraser disabled for the next safer phase. */
+.studio-image-editor-label-draw.active {
+  border-color: rgba(250, 204, 21, 0.86);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.18);
+  background: rgba(250, 204, 21, 0.18);
+}
+
+.studio-image-editor-toolbar .studio-image-draw-tool:disabled,
+.studio-image-editor-range-control input:disabled {
+  cursor: not-allowed;
+}
+
+.studio-image-editor-toolbar .studio-image-draw-tool:disabled,
+.studio-image-editor-range-control.is-disabled {
+  opacity: 0.5;
+}
+
+.studio-image-editor-canvas.is-draw-mode {
+  cursor: crosshair;
+}
+
+/* Phase 22KB: make Draw slider readouts visible and keep the toolbar compact. */
+.studio-image-editor-range-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.1em;
+  padding: 2px 5px;
+  border-radius: 8px;
+  background: rgba(250, 204, 21, 0.14);
+  color: #fde68a;
+  font-size: 0.78rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+
+.studio-image-editor-slider-popover {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.studio-image-editor-popover-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-image-editor-popover-toggle.is-open {
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.14) inset;
+}
+
+.studio-image-editor-popover-toggle.is-disabled {
+  opacity: 0.45;
+}
+
+.studio-image-editor-popover-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 180px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(24, 26, 31, 0.98);
+  box-shadow: 0 14px 28px rgba(0,0,0,0.34);
+}
+
+.studio-image-editor-popover-panel.hidden {
+  display: none;
+}
+
+.studio-image-editor-popover-panel .studio-image-editor-range-control {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.studio-image-editor-popover-panel .studio-image-editor-range-control input[type="range"] {
+  min-width: 150px;
+}
+
+.studio-image-editor-range-control input[type="range"] + .studio-image-editor-range-value {
+  margin-left: -2px;
+}
+
+/* Phase 22KF: Draw UI polish and active selected-label feedback. */
+.studio-image-editor-draw-active-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  max-width: 150px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studio-image-editor-draw-active-label.is-active {
+  border-color: rgba(250, 204, 21, 0.72);
+  background: rgba(250, 204, 21, 0.16);
+  color: #fde68a;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.1);
+}
+
+.studio-image-editor-draw-toolbar.is-draw-waiting .studio-image-draw-tool {
+  opacity: 0.5;
+}
+
+.studio-image-editor-label-row.is-draw-selected input[type="text"] {
+  border-color: rgba(250, 204, 21, 0.72);
+  background: rgba(250, 204, 21, 0.08);
+}
+
+.studio-image-editor-label-row.is-draw-selected .studio-image-editor-label-draw.active {
+  color: #111827;
+  background: #facc15;
+  border-color: rgba(250, 204, 21, 0.95);
+}
+
+@media (max-width: 700px) {
+  .studio-image-editor-draw-active-label {
+    max-width: 118px;
+    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 0.72rem;
+  }
+}
+
+/* Phase 22KK: compact image-editor toolbar and mobile/iPad popover polish.
+   Keep the existing Thickness / Size / Opacity wording, but reduce permanent
+   toolbar footprint and keep floating panels within the visible screen. */
+.studio-image-editor-toolbar {
+  gap: 6px;
+  row-gap: 6px;
+  align-content: flex-start;
+}
+
+.studio-image-editor-header .studio-image-editor-toolbar .auth-action-btn,
+.studio-image-editor-popover-toggle,
+.studio-image-editor-rgb-control {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+}
+
+.studio-image-editor-draw-toolbar {
+  gap: 3px;
+}
+
+.studio-image-editor-toolbar .studio-image-draw-tool {
+  min-width: 34px;
+  padding: 5px 7px;
+}
+
+.studio-image-editor-rgb-control {
+  gap: 5px;
+}
+
+.studio-image-editor-rgb-control input[type="color"] {
+  width: 28px;
+  height: 22px;
+}
+
+.studio-image-editor-popover-toggle {
+  white-space: nowrap;
+}
+
+.studio-image-editor-popover-panel {
+  width: max-content;
+  max-width: min(230px, calc(100vw - 20px));
+}
+
+.studio-image-editor-popover-panel .studio-image-editor-range-control input[type="range"] {
+  width: min(170px, calc(100vw - 58px));
+  min-width: 132px;
+}
+
+.studio-image-editor-draw-active-label {
+  max-width: 132px;
+  min-height: 32px;
+  padding: 5px 8px;
+}
+
+@media (max-width: 920px) {
+  .studio-image-editor-header {
+    gap: 7px;
+  }
+
+  .studio-image-editor-header .studio-image-editor-toolbar {
+    row-gap: 6px;
+  }
+
+  .studio-image-editor-header .studio-image-editor-toolbar .auth-action-btn,
+  .studio-image-editor-popover-toggle {
+    flex: 0 0 auto;
+  }
+
+  .studio-image-editor-popover-panel {
+    max-width: calc(100vw - 16px);
+  }
+}
+
+@media (max-width: 700px) {
+  .studio-image-editor-toolbar {
+    gap: 5px;
+    row-gap: 5px;
+  }
+
+  .studio-image-editor-header .studio-image-editor-toolbar .auth-action-btn,
+  .studio-image-editor-popover-toggle,
+  .studio-image-editor-rgb-control {
+    min-height: 30px;
+    padding: 4px 7px;
+    font-size: 0.74rem;
+  }
+
+  .studio-image-editor-toolbar .studio-image-draw-tool {
+    min-width: 32px;
+    padding: 4px 6px;
+  }
+
+  .studio-image-editor-draw-active-label {
+    max-width: 112px;
+    min-height: 30px;
+    padding: 4px 7px;
+    font-size: 0.7rem;
+  }
+
+  .studio-image-editor-rgb-control input[type="color"] {
+    width: 26px;
+    height: 20px;
+  }
+}
+
+@media (max-width: 430px) {
+  .studio-image-editor-draw-active-label {
+    max-width: 96px;
+  }
+
+  .studio-image-editor-popover-panel {
+    padding: 9px 10px;
+  }
+}

@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22jl">
+  <link rel="stylesheet" href="style.css?v=22jn">
 </head>
 <body>
 
@@ -1567,16 +1567,40 @@ MODIFICATION RULES FOR THIS APP
   <div id="studioImageEditorOverlay" class="studio-image-editor-overlay hidden" aria-hidden="true">
     <div class="studio-image-editor-modal" role="dialog" aria-modal="true" aria-labelledby="studioImageEditorTitle">
       <div class="studio-image-editor-header">
-        <div class="studio-image-editor-title-wrap">
-          <div id="studioImageEditorTitle" class="studio-image-editor-title">Edit Image</div>
+        <div class="studio-image-editor-title-wrap" hidden>
+          <div id="studioImageEditorTitle" class="studio-image-editor-title">Image Editor</div>
           <div id="studioImageEditorSubtitle" class="studio-image-editor-subtitle" hidden></div>
         </div>
         <div class="studio-image-editor-toolbar" aria-label="Image editing tools">
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool active" data-image-editor-tool="crop">Crop</button>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-rect">Blur Box</button>
-          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-oval">Blur Oval</button>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="arrow">Arrow</button>
-          <label class="studio-image-editor-rgb-control" title="Arrow RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow RGB color"></label>
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="line">Line</button>
+          <label class="studio-image-editor-rgb-control" title="Arrow, line, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, highlighter, and draw RGB color"></label>
+          <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness">
+            <button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button>
+            <div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow and line thickness">
+              <label class="studio-image-editor-range-control" title="Arrow and line thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow and line thickness"></label>
+            </div>
+          </div>
+          <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
+            <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
+            <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="highlighter" id="studioImageEditorHighlighterBtn" title="Highlighter tool" aria-label="Highlighter tool">🖍️</button>
+            <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
+          </div>
+          <span id="studioImageEditorDrawActiveLabelValue" class="studio-image-editor-draw-active-label" aria-live="polite">Choose label Draw</span>
+          <div class="studio-image-editor-slider-popover" data-image-editor-popover="size">
+            <button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button>
+            <div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Draw, highlighter, and eraser size">
+              <label class="studio-image-editor-range-control" title="Draw, highlighter, and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Draw, highlighter, and eraser size"></label>
+            </div>
+          </div>
+          <div class="studio-image-editor-slider-popover" data-image-editor-popover="transparency">
+            <button type="button" id="studioImageEditorPaintTransparencyToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPaintTransparencyPopover">Opacity <span id="studioImageEditorPaintTransparencyValue" class="studio-image-editor-range-value" aria-live="polite">65%</span></button>
+            <div id="studioImageEditorPaintTransparencyPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush transparency">
+              <label class="studio-image-editor-range-control" title="Paintbrush transparency"><span>Opacity</span><input id="studioImageEditorPaintTransparencyInput" type="range" min="0" max="100" step="1" value="65" aria-label="Paintbrush transparency"></label>
+            </div>
+          </div>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button>
           <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
           <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
@@ -1610,6 +1634,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22jl"></script>
+  <script src="script.js?v=22jx"></script>
 </body>
 </html>
