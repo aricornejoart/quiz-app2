@@ -21,6 +21,7 @@ MODIFICATION RULES FOR THIS APP
         sheetId: '16bOgCaHG0Y450hwfl6tiHgAgTTxdxTVuMDhWLZbdD4E',
         speedDelay: 300,
         studioAutosaveDelayMs: 10 * 60 * 1000,
+        supabaseManagementCacheTtlMs: 5 * 60 * 1000,
         studyTimerStorageKey: 'studyBunnyTimerSettingsV1',
         optionDelayStorageKey: 'studyBunnyOptionDelaySettingsV1',
         autoStarStorageKey: 'studyBunnyAutoStarSettingsV1',
@@ -37,7 +38,7 @@ MODIFICATION RULES FOR THIS APP
         mediaAssets: {
             bucketName: 'study-bunny-media',
             referencePrefix: 'sb-media:',
-            signedUrlExpiresIn: 3600
+            signedUrlExpiresIn: 604800
         }
     };
 
@@ -294,8 +295,16 @@ MODIFICATION RULES FOR THIS APP
             localFlashcardDraftCounter: 0,
             backupImportPayload: null,
             backupImportFileName: '',
+            supabaseManagementCache: {
+                classes: null,
+                folders: null,
+                managedQuizzes: null,
+                quizList: null
+            },
+            supabaseManagementInFlight: new Map(),
             mediaSignedUrlCache: new Map(),
             mediaSignedUrlPromiseCache: new Map(),
+            mediaDisplaySourceCache: new Map(),
             flashcardImageDetailCache: new Map(),
             flashcardImageDetailPromiseCache: new Map(),
             mathChemToolsExpanded: false,
@@ -551,6 +560,7 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorCloseBtn: document.getElementById('studioImageEditorCloseBtn'),
         studioImageEditorCancelBtn: document.getElementById('studioImageEditorCancelBtn'),
         studioImageEditorSaveBtn: document.getElementById('studioImageEditorSaveBtn'),
+        studioImageEditorSendSavedBtn: document.getElementById('studioImageEditorSendSavedBtn'),
         studioImageEditorApplyCropBtn: document.getElementById('studioImageEditorApplyCropBtn'),
         studioImageEditorUndoBtn: document.getElementById('studioImageEditorUndoBtn'),
         studioImageEditorResetBtn: document.getElementById('studioImageEditorResetBtn'),
@@ -1740,7 +1750,7 @@ MODIFICATION RULES FOR THIS APP
             .from(bucketName)
             .upload(objectPath, blob, {
                 contentType: mimeType,
-                cacheControl: '3600',
+                cacheControl: '31536000',
                 upsert: false
             });
 
@@ -1978,14 +1988,27 @@ MODIFICATION RULES FOR THIS APP
     function setImageElementSourceWithMediaResolution(imageEl, sourceValue, callbacks = {}) {
         if (!imageEl) return;
         const normalizedSource = normalizeSheetText(sourceValue);
+        const currentSource = normalizeSheetText(imageEl.dataset.mediaPreviewSource || '');
+        const currentResolved = normalizeSheetText(imageEl.dataset.resolvedMediaUrl || '');
+        if (normalizedSource && currentSource === normalizedSource && currentResolved && imageEl.getAttribute('src')) {
+            callbacks.onLoad?.(normalizedSource, currentResolved);
+            return;
+        }
         imageEl.dataset.mediaPreviewSource = normalizedSource;
         imageEl.dataset.resolvedMediaUrl = '';
         imageEl.onload = null;
         imageEl.onerror = null;
         imageEl.removeAttribute('src');
 
+        const rememberDisplaySource = displaySource => {
+            if (!normalizedSource || !displaySource) return;
+            if (!(state.auth.mediaDisplaySourceCache instanceof Map)) state.auth.mediaDisplaySourceCache = new Map();
+            state.auth.mediaDisplaySourceCache.set(normalizedSource, displaySource);
+        };
+
         const applySource = displaySource => {
             if (!displaySource || imageEl.dataset.mediaPreviewSource !== normalizedSource) return;
+            rememberDisplaySource(displaySource);
             imageEl.onload = () => {
                 if (imageEl.dataset.mediaPreviewSource !== normalizedSource) return;
                 imageEl.dataset.resolvedMediaUrl = displaySource;
@@ -1999,6 +2022,13 @@ MODIFICATION RULES FOR THIS APP
         };
 
         if (!normalizedSource) return;
+        const cachedDisplaySource = state.auth.mediaDisplaySourceCache instanceof Map
+            ? normalizeSheetText(state.auth.mediaDisplaySourceCache.get(normalizedSource) || '')
+            : '';
+        if (cachedDisplaySource) {
+            applySource(cachedDisplaySource);
+            return;
+        }
         if (!isSupabaseMediaReference(normalizedSource)) {
             applySource(normalizedSource);
             return;
@@ -3399,8 +3429,8 @@ MODIFICATION RULES FOR THIS APP
 
 
     // ================= STUDIO SAVED IMAGE PICKER =================
-    // Phase 22IT: Flashcards-only reusable image snapshots. Images enter this library only
-    // when the user enables the flashcard-list Reuse toggle for that exact card side.
+    // Phase 22LA: Flashcards-only reusable image snapshots. Images enter this library from
+    // Edit Image > Send to Saved Images, not from the flashcard question-list controls.
     const STUDIO_SAVED_IMAGE_LIBRARY_KEY = 'study_bunny_saved_image_library_v1';
     const STUDIO_SAVED_IMAGE_LIBRARY_LIMIT = 40;
 
@@ -3728,6 +3758,17 @@ MODIFICATION RULES FOR THIS APP
         saveStudioSavedImageLibrary(withoutSignature(loadStudioSavedImageLibrary()));
     }
 
+    function removeStudioSavedImageEntryById(entryId = '') {
+        const safeId = normalizeSheetText(entryId);
+        if (!safeId) return false;
+        const match = getStudioSavedImageLibraryForPicker().find(item => item.id === safeId);
+        if (!match) return false;
+        removeStudioSavedImageSnapshot(match);
+        const signature = getStudioSavedImageSignature(match);
+        if (signature) clearStudioFlashcardReusableImageKeysForSignature(signature);
+        return true;
+    }
+
     function getStudioFlashcardReusableImageSet() {
         if (!(state.auth.studioFlashcardReusableImageKeys instanceof Set)) {
             state.auth.studioFlashcardReusableImageKeys = new Set();
@@ -4032,6 +4073,17 @@ MODIFICATION RULES FOR THIS APP
                     renderStudioSavedImagePicker();
                     return;
                 }
+                const deleteButton = event.target.closest('[data-saved-image-delete]');
+                if (deleteButton) {
+                    const entryId = normalizeSheetText(deleteButton.dataset.savedImageDelete);
+                    if (removeStudioSavedImageEntryById(entryId)) {
+                        setCreatorStatus('Saved image removed from Saved Images. Existing flashcards were not changed.', 'success');
+                    } else {
+                        setCreatorStatus('That saved image could not be found.', 'error');
+                    }
+                    renderStudioSavedImagePicker();
+                    return;
+                }
                 const useButton = event.target.closest('[data-saved-image-use]');
                 if (useButton) {
                     const entryId = normalizeSheetText(useButton.dataset.savedImageUse);
@@ -4130,6 +4182,7 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-saved-image-actions">
                       <button type="button" class="auth-action-btn auth-primary-btn" data-saved-image-use="${escapeHtml(entry.id)}" data-saved-image-mode="edits">Use edits</button>
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-use="${escapeHtml(entry.id)}" data-saved-image-mode="image-only">Use image only</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn studio-saved-image-delete-btn" data-saved-image-delete="${escapeHtml(entry.id)}">Delete</button>
                     </div>
                   </div>
                 `).join('')}
@@ -4227,6 +4280,7 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorCloseBtn = document.getElementById('studioImageEditorCloseBtn');
         elements.studioImageEditorCancelBtn = document.getElementById('studioImageEditorCancelBtn');
         elements.studioImageEditorSaveBtn = document.getElementById('studioImageEditorSaveBtn');
+        elements.studioImageEditorSendSavedBtn = document.getElementById('studioImageEditorSendSavedBtn');
         elements.studioImageEditorApplyCropBtn = document.getElementById('studioImageEditorApplyCropBtn');
         elements.studioImageEditorUndoBtn = document.getElementById('studioImageEditorUndoBtn');
         elements.studioImageEditorResetBtn = document.getElementById('studioImageEditorResetBtn');
@@ -4306,6 +4360,7 @@ MODIFICATION RULES FOR THIS APP
                     </div>
                     <div class="studio-image-editor-actions">
                       <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
+                      <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
                       <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
                     </div>
                   </div>
@@ -5322,6 +5377,14 @@ MODIFICATION RULES FOR THIS APP
                 ? 'Save image edits and image labels'
                 : 'Save edited image';
         }
+        if (elements.studioImageEditorSendSavedBtn) {
+            const isFlashcardTarget = isImageEditorFlashcardLabelTarget(editor);
+            elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isFlashcardTarget);
+            elements.studioImageEditorSendSavedBtn.disabled = !isFlashcardTarget || !editor?.baseCanvas;
+            elements.studioImageEditorSendSavedBtn.title = isFlashcardTarget
+                ? 'Save this edited image, labels, and draw strokes to Saved Images'
+                : 'Saved Images are only available for flashcards';
+        }
         const shouldShowPanel = !!(editor?.labelsEnabled && editor?.showLabelPanel);
         if (elements.studioImageEditorLabelPanel) {
             elements.studioImageEditorLabelPanel.classList.toggle('hidden', !shouldShowPanel);
@@ -5737,7 +5800,8 @@ MODIFICATION RULES FOR THIS APP
                 setImageEditorStatus('Could not reset the image.');
             });
         });
-        elements.studioImageEditorSaveBtn?.addEventListener('click', saveStudioImageEditorImage);
+        elements.studioImageEditorSaveBtn?.addEventListener('click', () => saveStudioImageEditorImage());
+        elements.studioImageEditorSendSavedBtn?.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true }));
     }
 
     async function openStudioImageEditor(target = {}) {
@@ -5852,7 +5916,60 @@ MODIFICATION RULES FOR THIS APP
         setCreatorStatus('Edited image applied. Save Changes to keep it.', 'success');
     }
 
-    function saveStudioImageEditorImage() {
+    function getImageEditorTargetSide(editor = state.auth.imageEditor) {
+        const target = editor?.target || {};
+        if (target.kind === 'flashcard-definition') return 'definition';
+        if (target.kind === 'flashcard-list') return target.side === 'definition' ? 'definition' : 'term';
+        return 'term';
+    }
+
+    function getImageEditorSavedImageFileName(editor = state.auth.imageEditor) {
+        const side = getImageEditorTargetSide(editor);
+        return getSavedImageFileNameFromLabel(
+            editor?.sourceLabel || '',
+            side === 'definition' ? 'definition-image.png' : 'term-image.png'
+        );
+    }
+
+    async function saveCurrentImageEditorToSavedImages(imageValue = '', options = {}) {
+        const editor = state.auth.imageEditor;
+        const normalizedValue = normalizeSheetText(imageValue);
+        if (!editor?.open || !normalizedValue || !isImageEditorFlashcardLabelTarget(editor)) return null;
+        const labels = normalizeDiagramLabels(options.labels || editor.labels || []);
+        const drawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || editor.drawStrokes || []);
+        const fileName = getImageEditorSavedImageFileName(editor);
+        setImageEditorStatus('Sending image to Saved Images...');
+        let sharedValue = normalizedValue;
+        try {
+            sharedValue = await savePrivateMediaValueWithDedupCache(normalizedValue, {
+                quizId: state.auth.editingQuizId || null,
+                questionId: normalizeSheetText(editor.target?.questionId || state.auth.editingQuestionId || '') || null,
+                usageContext: `saved_image_${getImageEditorTargetSide(editor)}_editor`,
+                label: `Saved ${fileName}`,
+                mediaSaveCache: state.auth.studioSavedImageMediaSaveCache instanceof Map
+                    ? state.auth.studioSavedImageMediaSaveCache
+                    : (state.auth.studioSavedImageMediaSaveCache = new Map())
+            }) || normalizedValue;
+        } catch (error) {
+            console.warn('Could not upload saved image snapshot; keeping local saved image copy instead:', error);
+            sharedValue = normalizedValue;
+        }
+        const entry = upsertStudioSavedImageLibraryEntry({
+            id: createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}`),
+            fileName,
+            imageValue: sharedValue,
+            imageOnlyValue: sharedValue,
+            mediaValue: isSupabaseMediaReference(sharedValue) ? sharedValue : '',
+            imageOnlyMediaValue: isSupabaseMediaReference(sharedValue) ? sharedValue : '',
+            imageLabel: `Saved: ${fileName}`,
+            imageOnlyLabel: `Saved: ${fileName}`,
+            labels,
+            drawStrokes
+        });
+        return { entry, value: sharedValue };
+    }
+
+    async function saveStudioImageEditorImage(options = {}) {
         const editor = state.auth.imageEditor;
         const targetKind = editor?.target?.kind || '';
         const isFlashcardTarget = ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(targetKind);
@@ -5860,8 +5977,18 @@ MODIFICATION RULES FOR THIS APP
         if (!outputCanvas) return;
         try {
             const editedDataUrl = outputCanvas.toDataURL('image/png');
-            applyStudioImageEditorResult(editedDataUrl, { drawStrokes: isFlashcardTarget ? cloneImageEditorDrawStrokes(editor.drawStrokes || []) : [] });
+            const imageLabels = normalizeDiagramLabels(editor?.labels || []);
+            const imageDrawStrokes = isFlashcardTarget ? cloneImageEditorDrawStrokes(editor.drawStrokes || []) : [];
+            let applyValue = editedDataUrl;
+            if (options.sendToSavedImages && isFlashcardTarget) {
+                const savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, drawStrokes: imageDrawStrokes });
+                applyValue = normalizeSheetText(savedResult?.value || editedDataUrl);
+            }
+            applyStudioImageEditorResult(applyValue, { drawStrokes: imageDrawStrokes });
             closeStudioImageEditor();
+            if (options.sendToSavedImages && isFlashcardTarget) {
+                setCreatorStatus('Image, labels, and draw strokes sent to Saved Images. Save Changes to keep this card update.', 'success');
+            }
         } catch (error) {
             console.error(error);
             setImageEditorStatus('Could not save this image. Try re-uploading it, then edit again.');
@@ -7387,7 +7514,7 @@ MODIFICATION RULES FOR THIS APP
 
             syncQuestionStarButton();
             updateProgress();
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             const selectedQuizValue = elements.quizSelector?.value || '';
             const selectedWasTargetQuiz = selectedQuizValue === `sb:${normalizedQuizId}`;
             await refreshQuizCatalog({ selectQuizId: selectedWasTargetQuiz ? `sb:${normalizedQuizId}` : selectedQuizValue, loadSelectedQuiz: selectedWasTargetQuiz, clearIfMissing: false });
@@ -7773,110 +7900,98 @@ MODIFICATION RULES FOR THIS APP
         return /classes|class_id|does not exist|could not find|schema cache|permission denied/.test(message);
     }
 
-    async function loadSupabaseClasses() {
-        if (!state.auth.client || !state.auth.user?.id) {
-            state.auth.supabaseClasses = [];
-            state.auth.supabaseClassesUnavailable = false;
-            populateFolderClassSelects();
-            populateStudioQuizClassFilter();
-            renderClassManagementList();
-            return [];
+    function clonePlainArrayRows(rows = []) {
+        return (Array.isArray(rows) ? rows : []).map(row => ({ ...row }));
+    }
+
+    function cloneQuizChallengeAchievementMap(source = new Map()) {
+        return new Map(source instanceof Map ? Array.from(source.entries()) : []);
+    }
+
+    function cloneStudioActivityCache(source = {}) {
+        return {
+            quizzes: new Map(source?.quizzes instanceof Map ? Array.from(source.quizzes.entries()) : []),
+            folders: new Map(source?.folders instanceof Map ? Array.from(source.folders.entries()) : []),
+            unavailable: !!source?.unavailable
+        };
+    }
+
+    function getSupabaseManagementCacheEntry(key) {
+        if (!state.auth.supabaseManagementCache) {
+            state.auth.supabaseManagementCache = { classes: null, folders: null, managedQuizzes: null, quizList: null };
         }
+        return state.auth.supabaseManagementCache[key] || null;
+    }
 
-        try {
-            let classResult = await state.auth.client
-                .from('classes')
-                .select('id, name, sort_order, updated_at')
-                .order('sort_order', { ascending: true })
-                .order('name', { ascending: true });
+    function isSupabaseManagementCacheFresh(key) {
+        const entry = getSupabaseManagementCacheEntry(key);
+        const currentUserId = normalizeSheetText(state.auth.user?.id);
+        if (!entry || !entry.loadedAt || !currentUserId || normalizeSheetText(entry.userId) !== currentUserId) return false;
+        return (Date.now() - Number(entry.loadedAt || 0)) < CONFIG.supabaseManagementCacheTtlMs;
+    }
 
-            if (classResult.error && /updated_at/i.test(classResult.error.message || '')) {
-                classResult = await state.auth.client
-                    .from('classes')
-                    .select('id, name, sort_order')
-                    .order('sort_order', { ascending: true })
-                    .order('name', { ascending: true });
+    function setSupabaseManagementCacheEntry(key, value = {}) {
+        if (!state.auth.supabaseManagementCache) {
+            state.auth.supabaseManagementCache = { classes: null, folders: null, managedQuizzes: null, quizList: null };
+        }
+        state.auth.supabaseManagementCache[key] = {
+            ...value,
+            userId: normalizeSheetText(state.auth.user?.id),
+            loadedAt: Date.now()
+        };
+        if (state.auth.supabaseManagementInFlight instanceof Map) {
+            state.auth.supabaseManagementInFlight.delete(key);
+        }
+        return state.auth.supabaseManagementCache[key];
+    }
+
+    function invalidateSupabaseManagementCache(keys = null) {
+        if (!state.auth.supabaseManagementCache) return;
+        const targetKeys = Array.isArray(keys) && keys.length ? keys : ['classes', 'folders', 'managedQuizzes', 'quizList'];
+        targetKeys.forEach(key => {
+            state.auth.supabaseManagementCache[key] = null;
+            if (state.auth.supabaseManagementInFlight instanceof Map) {
+                state.auth.supabaseManagementInFlight.delete(key);
             }
+        });
+    }
 
-            const { data, error } = classResult;
-            if (error) throw error;
-
-            state.auth.supabaseClassesUnavailable = false;
-            state.auth.supabaseClasses = (data || []).map(classRow => ({
-                id: classRow.id,
-                name: normalizeClassName(classRow.name),
-                sort_order: Number(classRow.sort_order ?? 0),
-                updatedAt: normalizeSheetText(classRow.updated_at)
-            }));
-        } catch (error) {
-            console.warn('Classes are unavailable. Run the Phase 22ES migration to enable class organization.', error);
-            state.auth.supabaseClassesUnavailable = true;
-            state.auth.supabaseClasses = [];
+    async function runCachedSupabaseManagementRequest(key, options = {}, loader) {
+        const currentUserId = normalizeSheetText(state.auth.user?.id);
+        if (!currentUserId || typeof loader !== 'function') return null;
+        if (!options.force && isSupabaseManagementCacheFresh(key)) {
+            return getSupabaseManagementCacheEntry(key);
         }
+        if (!options.force && state.auth.supabaseManagementInFlight instanceof Map) {
+            const pending = state.auth.supabaseManagementInFlight.get(key);
+            if (pending) return pending;
+        }
+        const request = Promise.resolve()
+            .then(loader)
+            .then(value => setSupabaseManagementCacheEntry(key, value || {}))
+            .catch(error => {
+                if (state.auth.supabaseManagementInFlight instanceof Map) {
+                    state.auth.supabaseManagementInFlight.delete(key);
+                }
+                throw error;
+            });
+        if (state.auth.supabaseManagementInFlight instanceof Map) {
+            state.auth.supabaseManagementInFlight.set(key, request);
+        }
+        return request;
+    }
 
+    function applyCachedSupabaseClasses(entry = null) {
+        state.auth.supabaseClassesUnavailable = !!entry?.unavailable;
+        state.auth.supabaseClasses = clonePlainArrayRows(entry?.classes || []);
         populateFolderClassSelects();
         populateStudioQuizClassFilter();
         renderClassManagementList();
         return state.auth.supabaseClasses;
     }
 
-    async function loadCreatorFolders() {
-        if (!state.auth.client || !state.auth.user?.id) {
-            state.auth.supabaseFolders = [];
-            populateCreatorFolderSelect();
-            populateFolderClassSelects();
-            populateStudioQuizClassFilter();
-            populateStudioQuizFolderFilter();
-            renderClassManagementList();
-            renderFolderManagementList();
-            renderStudioHomeDashboard();
-            return [];
-        }
-
-        let folderResult = await state.auth.client
-            .from('folders')
-            .select('id, class_id, name, sort_order, updated_at')
-            .order('sort_order', { ascending: true })
-            .order('name', { ascending: true });
-
-        if (folderResult.error && /class_id|schema cache|could not find/i.test(folderResult.error.message || '')) {
-            state.auth.supabaseClassesUnavailable = true;
-            folderResult = await state.auth.client
-                .from('folders')
-                .select('id, name, sort_order, updated_at')
-                .order('sort_order', { ascending: true })
-                .order('name', { ascending: true });
-        }
-
-        if (folderResult.error && /updated_at/i.test(folderResult.error.message || '')) {
-            folderResult = await state.auth.client
-                .from('folders')
-                .select('id, name, sort_order')
-                .order('sort_order', { ascending: true })
-                .order('name', { ascending: true });
-        }
-
-        const { data, error } = folderResult;
-        if (error) {
-            console.error('Failed to load creator folders:', error);
-            state.auth.supabaseFolders = [];
-            populateCreatorFolderSelect();
-            populateFolderClassSelects();
-            populateStudioQuizClassFilter();
-            populateStudioQuizFolderFilter();
-            renderClassManagementList();
-            renderFolderManagementList();
-            renderStudioHomeDashboard();
-            return [];
-        }
-
-        state.auth.supabaseFolders = (data || []).map(folder => ({
-            id: folder.id,
-            classId: normalizeSheetText(folder.class_id),
-            name: normalizeFolderName(folder.name),
-            sort_order: Number(folder.sort_order ?? 0),
-            updatedAt: normalizeSheetText(folder.updated_at)
-        }));
+    function applyCachedSupabaseFolders(entry = null) {
+        state.auth.supabaseFolders = clonePlainArrayRows(entry?.folders || []);
         populateCreatorFolderSelect();
         populateFolderClassSelects();
         populateStudioQuizClassFilter();
@@ -7888,125 +8003,285 @@ MODIFICATION RULES FOR THIS APP
         return state.auth.supabaseFolders;
     }
 
-    async function loadManagedSupabaseQuizzes() {
+    function applyCachedManagedSupabaseQuizzes(entry = null) {
+        state.auth.managedQuizzes = clonePlainArrayRows(entry?.managedQuizzes || []);
+        state.auth.quizChallengeAchievements = cloneQuizChallengeAchievementMap(entry?.quizChallengeAchievements);
+        state.auth.quizChallengeUnavailable = !!entry?.quizChallengeUnavailable;
+        state.auth.studioActivity = cloneStudioActivityCache(entry?.studioActivity);
+        renderQuizManagementList();
+        renderStudioHomeDashboard();
+        populateExportBackupControls();
+        return state.auth.managedQuizzes;
+    }
+
+    function buildSupabaseQuizDescriptorsFromManagedQuizzes() {
+        return (Array.isArray(state.auth.managedQuizzes) ? state.auth.managedQuizzes : [])
+            .filter(quiz => normalizeSheetText(quiz?.id) && Number(quiz?.questionCount || 0) > 0 && !quiz.isArchived)
+            .map(quiz => {
+                const folder = state.auth.supabaseFolders.find(item => normalizeSheetText(item.id) === normalizeSheetText(quiz.folderId)) || null;
+                return {
+                    id: `sb:${quiz.id}`,
+                    source: DATA_SOURCES.SUPABASE,
+                    sourceQuizId: quiz.id,
+                    quizType: normalizeSheetText(quiz.quizType || 'multiple_choice') || 'multiple_choice',
+                    folderId: quiz.folderId || '',
+                    folder: normalizeFolderName(folder?.name || quiz.folderName),
+                    folderSortOrder: Number(folder?.sort_order ?? 0),
+                    name: normalizeSheetText(quiz.name),
+                    rangeNumber: '',
+                    sortOrder: Number(quiz.sortOrder ?? 0)
+                };
+            })
+            .sort((a, b) => {
+                if (a.folderSortOrder !== b.folderSortOrder) return a.folderSortOrder - b.folderSortOrder;
+                if (a.folder !== b.folder) return a.folder.localeCompare(b.folder);
+                if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+                return a.name.localeCompare(b.name);
+            });
+    }
+
+    async function loadSupabaseClasses(options = {}) {
         if (!state.auth.client || !state.auth.user?.id) {
+            invalidateSupabaseManagementCache(['classes']);
+            state.auth.supabaseClasses = [];
+            state.auth.supabaseClassesUnavailable = false;
+            populateFolderClassSelects();
+            populateStudioQuizClassFilter();
+            renderClassManagementList();
+            return [];
+        }
+
+        try {
+            const entry = await runCachedSupabaseManagementRequest('classes', options, async () => {
+                try {
+                    let classResult = await state.auth.client
+                        .from('classes')
+                        .select('id, name, sort_order, updated_at')
+                        .order('sort_order', { ascending: true })
+                        .order('name', { ascending: true });
+
+                    if (classResult.error && /updated_at/i.test(classResult.error.message || '')) {
+                        classResult = await state.auth.client
+                            .from('classes')
+                            .select('id, name, sort_order')
+                            .order('sort_order', { ascending: true })
+                            .order('name', { ascending: true });
+                    }
+
+                    const { data, error } = classResult;
+                    if (error) throw error;
+
+                    return {
+                        unavailable: false,
+                        classes: (data || []).map(classRow => ({
+                            id: classRow.id,
+                            name: normalizeClassName(classRow.name),
+                            sort_order: Number(classRow.sort_order ?? 0),
+                            updatedAt: normalizeSheetText(classRow.updated_at)
+                        }))
+                    };
+                } catch (error) {
+                    console.warn('Classes are unavailable. Run the Phase 22ES migration to enable class organization.', error);
+                    return { unavailable: true, classes: [] };
+                }
+            });
+            return applyCachedSupabaseClasses(entry);
+        } catch (error) {
+            console.warn('Classes are unavailable. Run the Phase 22ES migration to enable class organization.', error);
+            return applyCachedSupabaseClasses({ unavailable: true, classes: [] });
+        }
+    }
+
+    async function loadCreatorFolders(options = {}) {
+        if (!state.auth.client || !state.auth.user?.id) {
+            invalidateSupabaseManagementCache(['folders']);
+            state.auth.supabaseFolders = [];
+            populateCreatorFolderSelect();
+            populateFolderClassSelects();
+            populateStudioQuizClassFilter();
+            populateStudioQuizFolderFilter();
+            renderClassManagementList();
+            renderFolderManagementList();
+            renderStudioHomeDashboard();
+            return [];
+        }
+
+        try {
+            const entry = await runCachedSupabaseManagementRequest('folders', options, async () => {
+                let folderResult = await state.auth.client
+                    .from('folders')
+                    .select('id, class_id, name, sort_order, updated_at')
+                    .order('sort_order', { ascending: true })
+                    .order('name', { ascending: true });
+
+                if (folderResult.error && /class_id|schema cache|could not find/i.test(folderResult.error.message || '')) {
+                    state.auth.supabaseClassesUnavailable = true;
+                    folderResult = await state.auth.client
+                        .from('folders')
+                        .select('id, name, sort_order, updated_at')
+                        .order('sort_order', { ascending: true })
+                        .order('name', { ascending: true });
+                }
+
+                if (folderResult.error && /updated_at/i.test(folderResult.error.message || '')) {
+                    folderResult = await state.auth.client
+                        .from('folders')
+                        .select('id, name, sort_order')
+                        .order('sort_order', { ascending: true })
+                        .order('name', { ascending: true });
+                }
+
+                const { data, error } = folderResult;
+                if (error) throw error;
+
+                return {
+                    folders: (data || []).map(folder => ({
+                        id: folder.id,
+                        classId: normalizeSheetText(folder.class_id),
+                        name: normalizeFolderName(folder.name),
+                        sort_order: Number(folder.sort_order ?? 0),
+                        updatedAt: normalizeSheetText(folder.updated_at)
+                    }))
+                };
+            });
+            return applyCachedSupabaseFolders(entry);
+        } catch (error) {
+            console.error('Failed to load creator folders:', error);
+            return applyCachedSupabaseFolders({ folders: [] });
+        }
+    }
+
+    async function loadManagedSupabaseQuizzes(options = {}) {
+        if (!state.auth.client || !state.auth.user?.id) {
+            invalidateSupabaseManagementCache(['managedQuizzes', 'quizList']);
             state.auth.managedQuizzes = [];
+            state.auth.quizChallengeAchievements = new Map();
+            state.auth.quizChallengeUnavailable = false;
+            state.auth.studioActivity = { quizzes: new Map(), folders: new Map(), unavailable: false };
             renderQuizManagementList();
             renderStudioHomeDashboard();
             return [];
         }
 
         try {
-            const [quizResult, questionRows, multipleChoiceRows] = await Promise.all([
-                state.auth.client
-                    .from('quizzes')
-                    .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
-                    .order('sort_order', { ascending: true })
-                    .order('name', { ascending: true }),
-                fetchAllSupabaseRows(
-                    () => state.auth.client
-                        .from('questions')
-                        .select('id, quiz_id, question_type, sort_order')
-                        .order('quiz_id', { ascending: true })
-                        .order('sort_order', { ascending: true }),
-                    { label: 'managed quiz question rows' }
-                ),
-                fetchAllSupabaseRows(
-                    () => state.auth.client
-                        .from('multiple_choice_questions')
-                        .select('question_id, options_json'),
-                    { label: 'managed quiz multiple-choice metadata rows' }
-                )
-            ]);
+            const entry = await runCachedSupabaseManagementRequest('managedQuizzes', options, async () => {
+                const [quizResult, questionRows, multipleChoiceRows] = await Promise.all([
+                    state.auth.client
+                        .from('quizzes')
+                        .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
+                        .order('sort_order', { ascending: true })
+                        .order('name', { ascending: true }),
+                    fetchAllSupabaseRows(
+                        () => state.auth.client
+                            .from('questions')
+                            .select('id, quiz_id, question_type, sort_order')
+                            .order('quiz_id', { ascending: true })
+                            .order('sort_order', { ascending: true }),
+                        { label: 'managed quiz question rows' }
+                    ),
+                    fetchAllSupabaseRows(
+                        () => state.auth.client
+                            .from('multiple_choice_questions')
+                            .select('question_id, options_json'),
+                        { label: 'managed quiz multiple-choice metadata rows' }
+                    )
+                ]);
 
-            let { data: quizzes, error: quizzesError } = quizResult;
-            if (quizzesError && /updated_at/i.test(quizzesError.message || '')) {
-                const { data: fallbackQuizzes, error: fallbackQuizzesError } = await state.auth.client
-                    .from('quizzes')
-                    .select('id, folder_id, name, description, sort_order, is_archived')
-                    .order('sort_order', { ascending: true })
-                    .order('name', { ascending: true });
-                if (fallbackQuizzesError) throw fallbackQuizzesError;
-                quizzes = fallbackQuizzes;
-            } else if (quizzesError) {
-                throw quizzesError;
-            }
-
-            const questionMap = new Map();
-            (questionRows || []).forEach(row => {
-                if (!questionMap.has(row.quiz_id)) {
-                    questionMap.set(row.quiz_id, []);
+                let { data: quizzes, error: quizzesError } = quizResult;
+                if (quizzesError && /updated_at/i.test(quizzesError.message || '')) {
+                    const { data: fallbackQuizzes, error: fallbackQuizzesError } = await state.auth.client
+                        .from('quizzes')
+                        .select('id, folder_id, name, description, sort_order, is_archived')
+                        .order('sort_order', { ascending: true })
+                        .order('name', { ascending: true });
+                    if (fallbackQuizzesError) throw fallbackQuizzesError;
+                    quizzes = fallbackQuizzes;
+                } else if (quizzesError) {
+                    throw quizzesError;
                 }
-                questionMap.get(row.quiz_id).push(row);
-            });
 
-            const multipleChoiceMetadataByQuestionId = new Map();
-            (multipleChoiceRows || []).forEach(row => {
-                multipleChoiceMetadataByQuestionId.set(row.question_id, row);
-            });
-
-            state.auth.managedQuizzes = (quizzes || []).map(quiz => {
-                const folder = state.auth.supabaseFolders.find(item => item.id === quiz.folder_id) || null;
-                const rows = questionMap.get(quiz.id) || [];
-                const types = rows.map(row => getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id)));
-                const uniqueTypes = Array.from(new Set(types));
-                const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : (rows.length ? 'mixed' : 'multiple_choice');
-                const typeLabelMap = {
-                    multiple_choice: 'Multiple choice',
-                    flashcard: 'Flashcard',
-                    hierarchy: 'Hierarchy',
-                    classify: 'Classify',
-                    diagrams: 'Diagrams',
-                    typed_answer: 'Typed Answer',
-                    mixed: 'Mixed types'
-                };
-                const hasBuildUpStrings = rows.some(row => {
-                    const effectiveType = getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id));
-                    if (effectiveType !== 'multiple_choice' && effectiveType !== 'diagrams') return false;
-                    const detail = multipleChoiceMetadataByQuestionId.get(row.id);
-                    return !!getBuildUpValueFromOptionsJson(detail?.options_json);
+                const questionMap = new Map();
+                (questionRows || []).forEach(row => {
+                    if (!questionMap.has(row.quiz_id)) {
+                        questionMap.set(row.quiz_id, []);
+                    }
+                    questionMap.get(row.quiz_id).push(row);
                 });
-                const directClassId = getQuizClassIdFromDescription(quiz.description || '');
-                const effectiveClassId = normalizeSheetText(folder?.classId || directClassId);
-                const classRow = effectiveClassId ? getSupabaseClassById(effectiveClassId) : null;
+
+                const multipleChoiceMetadataByQuestionId = new Map();
+                (multipleChoiceRows || []).forEach(row => {
+                    multipleChoiceMetadataByQuestionId.set(row.question_id, row);
+                });
+
+                const managedQuizzes = (quizzes || []).map(quiz => {
+                    const folder = state.auth.supabaseFolders.find(item => item.id === quiz.folder_id) || null;
+                    const rows = questionMap.get(quiz.id) || [];
+                    const types = rows.map(row => getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id)));
+                    const uniqueTypes = Array.from(new Set(types));
+                    const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : (rows.length ? 'mixed' : 'multiple_choice');
+                    const typeLabelMap = {
+                        multiple_choice: 'Multiple choice',
+                        flashcard: 'Flashcard',
+                        hierarchy: 'Hierarchy',
+                        classify: 'Classify',
+                        diagrams: 'Diagrams',
+                        typed_answer: 'Typed Answer',
+                        mixed: 'Mixed types'
+                    };
+                    const hasBuildUpStrings = rows.some(row => {
+                        const effectiveType = getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id));
+                        if (effectiveType !== 'multiple_choice' && effectiveType !== 'diagrams') return false;
+                        const detail = multipleChoiceMetadataByQuestionId.get(row.id);
+                        return !!getBuildUpValueFromOptionsJson(detail?.options_json);
+                    });
+                    const directClassId = getQuizClassIdFromDescription(quiz.description || '');
+                    const effectiveClassId = normalizeSheetText(folder?.classId || directClassId);
+                    const classRow = effectiveClassId ? getSupabaseClassById(effectiveClassId) : null;
+                    return {
+                        id: quiz.id,
+                        name: normalizeSheetText(quiz.name),
+                        folderId: quiz.folder_id || '',
+                        folderName: folder ? normalizeFolderName(folder.name) : '',
+                        classId: effectiveClassId,
+                        className: classRow ? normalizeClassName(classRow.name) : '',
+                        questionCount: rows.length,
+                        isArchived: !!quiz.is_archived,
+                        questionIds: rows.map(row => row.id).filter(Boolean),
+                        quizType,
+                        typeLabel: typeLabelMap[quizType] || 'Mixed types',
+                        hasBuildUpStrings,
+                        sortOrder: Number(quiz.sort_order ?? 0),
+                        updatedAt: normalizeSheetText(quiz.updated_at),
+                        firstQuestionId: rows[0]?.id || ''
+                    };
+                });
+
+                await loadQuizChallengeAchievementsFromSupabase();
+                await loadStudioActivityFromSupabase();
                 return {
-                    id: quiz.id,
-                    name: normalizeSheetText(quiz.name),
-                    folderId: quiz.folder_id || '',
-                    folderName: folder ? normalizeFolderName(folder.name) : '',
-                    classId: effectiveClassId,
-                    className: classRow ? normalizeClassName(classRow.name) : '',
-                    questionCount: rows.length,
-                    questionIds: rows.map(row => row.id).filter(Boolean),
-                    quizType,
-                    typeLabel: typeLabelMap[quizType] || 'Mixed types',
-                    hasBuildUpStrings,
-                    sortOrder: Number(quiz.sort_order ?? 0),
-                    updatedAt: normalizeSheetText(quiz.updated_at),
-                    firstQuestionId: rows[0]?.id || ''
+                    managedQuizzes,
+                    quizChallengeAchievements: cloneQuizChallengeAchievementMap(state.auth.quizChallengeAchievements),
+                    quizChallengeUnavailable: !!state.auth.quizChallengeUnavailable,
+                    studioActivity: cloneStudioActivityCache(state.auth.studioActivity)
                 };
             });
-
-            await loadQuizChallengeAchievementsFromSupabase();
-            await loadStudioActivityFromSupabase();
-            renderQuizManagementList();
-            renderStudioHomeDashboard();
-            populateExportBackupControls();
-            return state.auth.managedQuizzes;
+            const rows = applyCachedManagedSupabaseQuizzes(entry);
+            setSupabaseManagementCacheEntry('quizList', { quizList: buildSupabaseQuizDescriptorsFromManagedQuizzes() });
+            return rows;
         } catch (error) {
             console.error('Failed to load managed Supabase quizzes:', error);
-            state.auth.managedQuizzes = [];
-            state.auth.quizChallengeAchievements = new Map();
-            renderQuizManagementList();
-            renderStudioHomeDashboard();
-            return [];
+            return applyCachedManagedSupabaseQuizzes({ managedQuizzes: [], quizChallengeAchievements: new Map(), studioActivity: { quizzes: new Map(), folders: new Map(), unavailable: false } });
         }
     }
 
-    async function refreshStudioManagementData() {
-        await loadSupabaseClasses();
-        await loadCreatorFolders();
-        await loadManagedSupabaseQuizzes();
+    async function refreshStudioManagementData(options = {}) {
+        if (options.force) {
+            invalidateSupabaseManagementCache();
+        }
+        const loadOptions = { force: !!options.force };
+        await loadSupabaseClasses(loadOptions);
+        await loadCreatorFolders(loadOptions);
+        await loadManagedSupabaseQuizzes(loadOptions);
         await loadGoogleSheetsImportCatalog();
         renderStudioHomeDashboard();
         populateExportBackupControls();
@@ -9500,7 +9775,6 @@ MODIFICATION RULES FOR THIS APP
                 <span class="studio-flashcard-image-side-label">${escapeHtml(sideLabel)}</span>
                 <button type="button" class="studio-option-image-toggle studio-flashcard-image-main${hasImage ? ' has-image' : ''}${isDeferred ? ' is-deferred' : ''}" data-studio-flashcard-image-main="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}">${mainButtonLabel}</button>
                 <button type="button" class="studio-option-image-toggle studio-flashcard-image-remove" data-studio-flashcard-image-remove="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" ${hasImage ? '' : 'disabled'}>Remove Image</button>
-                <button type="button" class="studio-option-image-toggle studio-flashcard-image-reuse${reuseEnabled ? ' is-active' : ''}${isUsingSavedImage ? ' is-saved-origin' : ''}" data-studio-flashcard-image-reuse="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" aria-pressed="${reuseEnabled ? 'true' : 'false'}" title="${isUsingSavedImage ? 'This image already came from Saved Images.' : 'Add this image to Saved Images.'}" ${hasImage && !isUsingSavedImage ? '' : 'disabled'}>Reuse</button>
                 <input class="studio-flashcard-image-file-input" type="file" accept="image/*" data-studio-flashcard-image-file="${escapeHtml(safeSide)}" data-studio-flashcard-image-question-id="${escapeHtml(rowId)}" tabindex="-1" aria-hidden="true">
               </div>
               <div class="studio-flashcard-image-status${hasImage && isOpen ? '' : ' hidden'}" data-studio-flashcard-image-status title="${escapeHtml(displayLabel)}">
@@ -10714,12 +10988,12 @@ MODIFICATION RULES FOR THIS APP
         }
         const savedLocalIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows, flashcardOrderSnapshot, { mediaSaveCache: flashcardMediaSaveCache, skipQuizShellUpdate: true });
         if (savedLocalIds.length && state.auth.editingQuizId) {
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(state.auth.editingQuizId, savedLocalIds[savedLocalIds.length - 1], { force: true });
         } else if (flashcardDraftEntries.length || directMultipleChoiceDraftEntries.length) {
             renderStudioQuestionList();
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}` });
         }
         setStudioDirtyState(false);
@@ -11983,7 +12257,7 @@ MODIFICATION RULES FOR THIS APP
             protectedRefs: collectStudioFlashcardEditorMediaReferences({ excludeQuestionId: deletedQuestionId }),
             protectedValue: state.auth.studioDiagramSharing?.useSharedImage ? state.auth.studioDiagramSharing : null
         });
-        await refreshStudioManagementData();
+        await refreshStudioManagementData({ force: true });
         await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true, clearIfMissing: true });
 
         const shouldKeepCurrentSelection = state.auth.editingQuestionId && state.auth.editingQuestionId !== deletedQuestionId;
@@ -12037,7 +12311,7 @@ MODIFICATION RULES FOR THIS APP
 
         state.auth.pendingInsertAfterQuestionId = null;
         await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
-        await refreshStudioManagementData();
+        await refreshStudioManagementData({ force: true });
         await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
         renderStudioQuestionList();
         setCreatorStatus(direction === 'up' ? 'Question moved up.' : 'Question moved down.', 'success');
@@ -12615,7 +12889,7 @@ MODIFICATION RULES FOR THIS APP
 
         if (state.auth.editingQuizId) {
             await updateQuizShellFromEditor(state.auth.editingQuizId, { folder_id: folderId, name });
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${state.auth.editingQuizId}` });
             return state.auth.editingQuizId;
         }
@@ -12646,7 +12920,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizTypeSelect.value = quizType;
         }
 
-        await refreshStudioManagementData();
+        await refreshStudioManagementData({ force: true });
         await refreshQuizCatalog({ selectQuizId: `sb:${data.id}`, loadSelectedQuiz: false });
         updateCreateQuizModeUI();
         return data.id;
@@ -12850,7 +13124,7 @@ MODIFICATION RULES FOR THIS APP
         const previousQuizId = elements.quizSelector?.value || '';
         const targetQuizId = options.selectQuizId || previousQuizId;
 
-        await populateFolderDropdown();
+        await populateFolderDropdown({ force: !!options.force });
 
         const targetQuiz = getQuizBySelectorValue(targetQuizId);
         if (!targetQuiz) {
@@ -13724,7 +13998,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         setCreatorProgressStatus('Importing backup', 'refreshing Quiz Studio');
-        await refreshStudioManagementData();
+        await refreshStudioManagementData({ force: true });
         await refreshQuizCatalog({ selectQuizId: importedQuizIds[0] ? `sb:${importedQuizIds[0]}` : undefined, loadSelectedQuiz: false });
         state.auth.backupImportPayload = null;
         state.auth.backupImportFileName = '';
@@ -13753,8 +14027,9 @@ MODIFICATION RULES FOR THIS APP
 
         if (state.auth.user?.id) {
             await loadAuthProfile(state.auth.user.id);
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: !sameSignedInUser });
         } else {
+            invalidateSupabaseManagementCache();
             state.auth.profile = null;
             state.auth.supabaseFolders = [];
             state.auth.managedQuizzes = [];
@@ -14070,7 +14345,7 @@ MODIFICATION RULES FOR THIS APP
             state.auth.studioQuizClassFilterId = normalizedClassId;
             state.auth.studioQuizFolderFilterId = '';
             state.auth.studioClassQuickAddOpenId = normalizedClassId;
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog();
             renderQuizManagementList();
             setCreatorStatus(`Folder added to ${classRow.name}.`, 'success');
@@ -14089,7 +14364,7 @@ MODIFICATION RULES FOR THIS APP
         setCreatorStatus('Creating class...');
         try {
             const createdClass = await createSupabaseClassByName(className);
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             if (elements.createFolderClassSelect && createdClass?.id) {
                 elements.createFolderClassSelect.value = createdClass.id;
             }
@@ -14113,7 +14388,7 @@ MODIFICATION RULES FOR THIS APP
                 .update({ name: className })
                 .eq('id', classId);
             if (error) throw error;
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog();
             setCreatorStatus('Class updated.', 'success');
         } catch (error) {
@@ -14142,7 +14417,7 @@ MODIFICATION RULES FOR THIS APP
                 .eq('id', normalizedClassId);
             if (error) throw error;
             state.auth.studioQuizClassFilterId = '';
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog();
             setCreatorStatus('Class deleted. Its folders are now under No class / General.', 'success');
         } catch (error) {
@@ -14163,7 +14438,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             const selectedClassId = normalizeSheetText(elements.createFolderClassSelect?.value);
             const createdFolder = await createSupabaseFolderByName(folderName, { classId: selectedClassId });
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog();
             if (createdFolder?.id) {
                 refreshEditorClassFolderSelectors({ selectedFolderId: createdFolder.id });
@@ -14191,7 +14466,7 @@ MODIFICATION RULES FOR THIS APP
         try {
             const selectedClassId = getEditorSelectedClassId();
             const createdFolder = await createSupabaseFolderByName(folderName, { classId: selectedClassId });
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog();
             if (createdFolder?.id) {
                 refreshEditorClassFolderSelectors({ classId: selectedClassId, selectedFolderId: createdFolder.id });
@@ -14540,7 +14815,7 @@ MODIFICATION RULES FOR THIS APP
                 setCreatorStatus(isEditingQuestion ? (isTypedAnswerQuestion ? 'Typed-answer question updated.' : (isDiagramQuestion ? 'Diagram question updated.' : 'Question updated.')) : (isTypedAnswerQuestion ? 'Typed-answer question saved.' : (isDiagramQuestion ? 'Diagram question saved.' : 'Question saved.')), 'success');
                 return { quizId, questionId, questionRow: savedQuestionRow, fastSaved: true };
             }
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? (isTypedAnswerQuestion ? 'Typed-answer quiz created and first question saved.' : (isDiagramQuestion ? 'Diagrams quiz created and first question saved.' : 'Quiz created and first question saved.')) : (isEditingQuestion ? (isTypedAnswerQuestion ? 'Typed-answer question updated.' : (isDiagramQuestion ? 'Diagram question updated.' : 'Question updated.')) : (isTypedAnswerQuestion ? 'New typed-answer question added to the quiz.' : (isDiagramQuestion ? 'New diagram question added to the quiz.' : 'New question added to the quiz.'))), 'success');
@@ -14623,7 +14898,7 @@ MODIFICATION RULES FOR THIS APP
             clearStudioQuestionDraft(questionId);
             setStudioDirtyState(hasStudioQuestionDrafts());
             state.auth.studioPendingNewQuestionRow = null;
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? 'Flashcard quiz created and first card saved.' : (isEditingQuestion ? 'Flashcard updated.' : 'New flashcard added to the quiz.'), 'success');
@@ -14713,7 +14988,7 @@ MODIFICATION RULES FOR THIS APP
             clearStudioQuestionDraft(questionId);
             setStudioDirtyState(hasStudioQuestionDrafts());
             state.auth.studioPendingNewQuestionRow = null;
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? 'Hierarchy quiz created and first question saved.' : (isEditingQuestion ? 'Hierarchy question updated.' : 'New hierarchy question added to the quiz.'), 'success');
@@ -14788,7 +15063,7 @@ MODIFICATION RULES FOR THIS APP
             clearStudioQuestionDraft(questionId);
             setStudioDirtyState(hasStudioQuestionDrafts());
             state.auth.studioPendingNewQuestionRow = null;
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(quizId, questionId, { force: true });
             setCreatorStatus(!isEditingQuiz ? 'Classify quiz created and first question saved.' : (isEditingQuestion ? 'Classify question updated.' : 'New classify question added to the quiz.'), 'success');
@@ -14887,7 +15162,7 @@ MODIFICATION RULES FOR THIS APP
 
             if (result.error) throw result.error;
 
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog();
             setCreatorStatus('Folder updated.', 'success');
         } catch (error) {
@@ -15083,7 +15358,7 @@ MODIFICATION RULES FOR THIS APP
             const selectedFolderValue = normalizeFolderName(elements.folderSelector?.value || '');
             const currentSelectedWasDeleted = !!selectedQuizId && targets.quizIds.includes(selectedQuizId);
             const currentFolderDeckWasDeleted = selectedQuizValue.startsWith('fd:') && selectedFolderValue === normalizeFolderName(targets.folderName);
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ clearIfMissing: currentSelectedWasDeleted || currentFolderDeckWasDeleted });
             setCreatorStatus(`Folder deleted with ${quizLabel} and ${questionLabel}.`, 'success');
         } catch (error) {
@@ -15214,7 +15489,7 @@ MODIFICATION RULES FOR THIS APP
             }
 
             await recordStudioQuizActivity(quizId, 'metadata_updated');
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${quizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${quizId}` });
             setCreatorStatus('Quiz details updated.', 'success');
         } catch (error) {
@@ -15392,7 +15667,7 @@ MODIFICATION RULES FOR THIS APP
             const duplicatedQuestionId = await duplicateQuestionRecord(sourceQuestionId, state.auth.editingQuizId, nextSortOrder);
             clearStudioQuestionListFiltersForDirectSelection();
             await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
             clearStudioQuestionListFiltersForDirectSelection();
             await loadStudioQuestionIntoEditor(duplicatedQuestionId, { suppressStatus: true, revealInList: true, focusListButton: true, force: true });
@@ -15472,7 +15747,7 @@ MODIFICATION RULES FOR THIS APP
                 if (sourceRemapError) throw sourceRemapError;
             }
 
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${newQuizId}`, loadSelectedQuiz: false });
             setCreatorStatus('Quiz duplicated.', 'success');
         } catch (error) {
@@ -15513,7 +15788,7 @@ MODIFICATION RULES FOR THIS APP
 
             setCreatorProgressStatus('Deleting quiz', 'refreshing Quiz Studio');
             const currentSelectedWasDeleted = elements.quizSelector?.value === `sb:${quizId}`;
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ clearIfMissing: currentSelectedWasDeleted });
             setCreatorStatus('Quiz deleted.', 'success');
         } catch (error) {
@@ -15542,7 +15817,7 @@ MODIFICATION RULES FOR THIS APP
             .single();
 
         if (error) throw error;
-        await refreshStudioManagementData();
+        await refreshStudioManagementData({ force: true });
         return data?.id || '';
     }
 
@@ -16256,7 +16531,7 @@ MODIFICATION RULES FOR THIS APP
                 onProgress: progress => setImportProgressFromEvent(appendToQuizId ? 'Adding questions' : 'Importing quiz', progress)
             });
             setCreatorProgressStatus(appendToQuizId ? 'Adding questions' : 'Importing quiz', 'refreshing Quiz Studio');
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${result.quizId}` });
             renderGoogleSheetsImportControls();
             await setQuizStudioSection('manage');
@@ -16310,7 +16585,7 @@ MODIFICATION RULES FOR THIS APP
                 importedCount += 1;
             }
             setCreatorProgressStatus('Importing folder', 'refreshing Quiz Studio');
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog();
             renderGoogleSheetsImportControls();
             await setQuizStudioSection('manage');
@@ -16343,7 +16618,7 @@ MODIFICATION RULES FOR THIS APP
                 }
             );
             setCreatorProgressStatus(appendToQuizId ? 'Adding questions' : 'Importing template', 'refreshing Quiz Studio');
-            await refreshStudioManagementData();
+            await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog(result.quizId ? { selectQuizId: `sb:${result.quizId}` } : {});
             renderGoogleSheetsImportControls();
             await setQuizStudioSection('manage');
@@ -19386,89 +19661,98 @@ async function loadGoogleSheetsImportCatalog() {
     return state.googleSheetsImportQuizzes;
 }
 
-async function loadQuizListFromSupabase() {
+async function loadQuizListFromSupabase(options = {}) {
     if (!state.auth.client || !state.auth.user?.id) {
+        invalidateSupabaseManagementCache(['quizList']);
         return [];
     }
 
     try {
-        const [{ data: folders, error: foldersError }, { data: quizzes, error: quizzesError }, questionRows, multipleChoiceRows] = await Promise.all([
-            state.auth.client
-                .from('folders')
-                .select('id, name, sort_order')
-                .order('sort_order', { ascending: true })
-                .order('name', { ascending: true }),
-            state.auth.client
-                .from('quizzes')
-                .select('id, folder_id, name, sort_order, is_archived')
-                .eq('is_archived', false)
-                .order('sort_order', { ascending: true })
-                .order('name', { ascending: true }),
-            fetchAllSupabaseRows(
-                () => state.auth.client
-                    .from('questions')
-                    .select('id, quiz_id, question_type')
-                    .order('quiz_id', { ascending: true }),
-                { label: 'quiz catalog question rows' }
-            ),
-            fetchAllSupabaseRows(
-                () => state.auth.client
-                    .from('multiple_choice_questions')
-                    .select('question_id, options_json'),
-                { label: 'quiz catalog typed-answer metadata rows' }
-            )
-        ]);
+        if (!options.force && isSupabaseManagementCacheFresh('quizList')) {
+            return clonePlainArrayRows(getSupabaseManagementCacheEntry('quizList')?.quizList || []);
+        }
 
-        if (foldersError) throw foldersError;
-        if (quizzesError) throw quizzesError;
+        if (!options.force && isSupabaseManagementCacheFresh('managedQuizzes') && state.auth.managedQuizzes.length) {
+            const descriptors = buildSupabaseQuizDescriptorsFromManagedQuizzes();
+            setSupabaseManagementCacheEntry('quizList', { quizList: descriptors });
+            return clonePlainArrayRows(descriptors);
+        }
 
-        const folderMap = new Map((folders || []).map(folder => [folder.id, folder]));
-        const quizTypeMap = new Map();
-        const multipleChoiceMetadataByQuestionId = new Map();
-        (multipleChoiceRows || []).forEach(row => {
-            multipleChoiceMetadataByQuestionId.set(row.question_id, row);
-        });
+        const entry = await runCachedSupabaseManagementRequest('quizList', options, async () => {
+            const [{ data: folders, error: foldersError }, { data: quizzes, error: quizzesError }, questionRows, multipleChoiceRows] = await Promise.all([
+                state.auth.client
+                    .from('folders')
+                    .select('id, name, sort_order')
+                    .order('sort_order', { ascending: true })
+                    .order('name', { ascending: true }),
+                state.auth.client
+                    .from('quizzes')
+                    .select('id, folder_id, name, sort_order, is_archived')
+                    .eq('is_archived', false)
+                    .order('sort_order', { ascending: true })
+                    .order('name', { ascending: true }),
+                fetchAllSupabaseRows(
+                    () => state.auth.client
+                        .from('questions')
+                        .select('id, quiz_id, question_type')
+                        .order('quiz_id', { ascending: true }),
+                    { label: 'quiz catalog question rows' }
+                ),
+                fetchAllSupabaseRows(
+                    () => state.auth.client
+                        .from('multiple_choice_questions')
+                        .select('question_id, options_json'),
+                    { label: 'quiz catalog typed-answer metadata rows' }
+                )
+            ]);
 
-        (questionRows || []).forEach(row => {
-            if (!quizTypeMap.has(row.quiz_id)) {
-                quizTypeMap.set(row.quiz_id, []);
-            }
-            quizTypeMap.get(row.quiz_id).push(getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id)));
-        });
+            if (foldersError) throw foldersError;
+            if (quizzesError) throw quizzesError;
 
-        return (quizzes || [])
-            .filter(quiz => (quizTypeMap.get(quiz.id) || []).length > 0)
-            .map(quiz => {
-                const types = (quizTypeMap.get(quiz.id) || [])
-                    .map(type => normalizeSheetText(type || 'multiple_choice') || 'multiple_choice');
-                const uniqueTypes = Array.from(new Set(types));
-                const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : 'mixed';
-                const folder = folderMap.get(quiz.folder_id) || null;
-                return {
-                    id: `sb:${quiz.id}`,
-                    source: DATA_SOURCES.SUPABASE,
-                    sourceQuizId: quiz.id,
-                    quizType,
-                    folderId: quiz.folder_id || '',
-                    folder: normalizeFolderName(folder?.name),
-                    folderSortOrder: Number(folder?.sort_order ?? 0),
-                    name: normalizeSheetText(quiz.name),
-                    rangeNumber: '',
-                    sortOrder: Number(quiz.sort_order ?? 0)
-                };
-            })
-            .sort((a, b) => {
-                if (a.folderSortOrder !== b.folderSortOrder) {
-                    return a.folderSortOrder - b.folderSortOrder;
-                }
-                if (a.folder !== b.folder) {
-                    return a.folder.localeCompare(b.folder);
-                }
-                if (a.sortOrder !== b.sortOrder) {
-                    return a.sortOrder - b.sortOrder;
-                }
-                return a.name.localeCompare(b.name);
+            const folderMap = new Map((folders || []).map(folder => [folder.id, folder]));
+            const quizTypeMap = new Map();
+            const multipleChoiceMetadataByQuestionId = new Map();
+            (multipleChoiceRows || []).forEach(row => {
+                multipleChoiceMetadataByQuestionId.set(row.question_id, row);
             });
+
+            (questionRows || []).forEach(row => {
+                if (!quizTypeMap.has(row.quiz_id)) {
+                    quizTypeMap.set(row.quiz_id, []);
+                }
+                quizTypeMap.get(row.quiz_id).push(getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id)));
+            });
+
+            const quizList = (quizzes || [])
+                .filter(quiz => (quizTypeMap.get(quiz.id) || []).length > 0)
+                .map(quiz => {
+                    const types = (quizTypeMap.get(quiz.id) || [])
+                        .map(type => normalizeSheetText(type || 'multiple_choice') || 'multiple_choice');
+                    const uniqueTypes = Array.from(new Set(types));
+                    const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : 'mixed';
+                    const folder = folderMap.get(quiz.folder_id) || null;
+                    return {
+                        id: `sb:${quiz.id}`,
+                        source: DATA_SOURCES.SUPABASE,
+                        sourceQuizId: quiz.id,
+                        quizType,
+                        folderId: quiz.folder_id || '',
+                        folder: normalizeFolderName(folder?.name),
+                        folderSortOrder: Number(folder?.sort_order ?? 0),
+                        name: normalizeSheetText(quiz.name),
+                        rangeNumber: '',
+                        sortOrder: Number(quiz.sort_order ?? 0)
+                    };
+                })
+                .sort((a, b) => {
+                    if (a.folderSortOrder !== b.folderSortOrder) return a.folderSortOrder - b.folderSortOrder;
+                    if (a.folder !== b.folder) return a.folder.localeCompare(b.folder);
+                    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+                    return a.name.localeCompare(b.name);
+                });
+            return { quizList };
+        });
+        return clonePlainArrayRows(entry?.quizList || []);
     } catch (error) {
         console.error('Failed to load Supabase quiz list:', error);
         return [];
@@ -19726,12 +20010,12 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
     }
 }
 
-async function loadQuizList() {
+async function loadQuizList(options = {}) {
     if (!state.auth.user?.id) {
         return [];
     }
 
-    const supabaseQuizzes = await loadQuizListFromSupabase();
+    const supabaseQuizzes = await loadQuizListFromSupabase(options);
     const folderDeckDescriptors = buildFolderDeckDescriptors(supabaseQuizzes);
 
     return [...supabaseQuizzes, ...folderDeckDescriptors];
@@ -19754,8 +20038,8 @@ async function loadQuestions(quizReference) {
 }
 
 // ================= DROPDOWNS =================
-async function populateFolderDropdown() {
-    state.quizListCache = await loadQuizList();
+async function populateFolderDropdown(options = {}) {
+    state.quizListCache = await loadQuizList(options);
     elements.folderSelector.innerHTML = '<option value="">Choose folder</option>';
 
     if (!state.auth.user?.id) {
@@ -26135,7 +26419,10 @@ if (elements.studioImageEditorResetBtn) {
 }
 
 if (elements.studioImageEditorSaveBtn) {
-    elements.studioImageEditorSaveBtn.addEventListener('click', saveStudioImageEditorImage);
+    elements.studioImageEditorSaveBtn.addEventListener('click', () => saveStudioImageEditorImage());
+}
+if (elements.studioImageEditorSendSavedBtn) {
+    elements.studioImageEditorSendSavedBtn.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true }));
 }
 if (elements.studioImageEditorOverlay) {
     elements.studioImageEditorOverlay.dataset.imageEditorEventsBound = 'true';
