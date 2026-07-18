@@ -251,6 +251,7 @@ MODIFICATION RULES FOR THIS APP
             studioActivity: { quizzes: new Map(), folders: new Map(), unavailable: false },
             expandedQuizChallengeIds: new Set(),
             openQuizActionMenuId: '',
+            openQuizActionSubmenu: '',
             studioQuizSearchQuery: '',
             studioQuizFolderFilterId: '',
             studioQuizClassFilterId: '',
@@ -466,6 +467,7 @@ MODIFICATION RULES FOR THIS APP
         createQuizNewFolderCreateBtn: document.getElementById('createQuizNewFolderCreateBtn'),
         createQuizNewFolderCancelBtn: document.getElementById('createQuizNewFolderCancelBtn'),
         createQuizName: document.getElementById('createQuizName'),
+        createQuizDescription: document.getElementById('createQuizDescription'),
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
         studioQuestionList: document.getElementById('studioQuestionList'),
         studioQuestionSearchInput: document.getElementById('studioQuestionSearchInput'),
@@ -2365,13 +2367,46 @@ MODIFICATION RULES FOR THIS APP
         return `${STUDY_BUNNY_QUIZ_META_PREFIX}${JSON.stringify(safeMetadata)}`;
     }
 
+    const QUIZ_DESCRIPTION_MAX_LENGTH = 1000;
+
+    function getQuizMetadataForWrite(description = '') {
+        const raw = String(description ?? '').trim();
+        const metadata = parseQuizMetadata(raw);
+        if (raw && !raw.startsWith(STUDY_BUNNY_QUIZ_META_PREFIX) && !normalizeSheetText(metadata.quizDescription)) {
+            metadata.quizDescription = raw.slice(0, QUIZ_DESCRIPTION_MAX_LENGTH);
+        }
+        return metadata;
+    }
+
+    function getQuizUserDescriptionFromDescription(description = '') {
+        const raw = String(description ?? '').trim();
+        if (!raw.startsWith(STUDY_BUNNY_QUIZ_META_PREFIX)) {
+            return raw.slice(0, QUIZ_DESCRIPTION_MAX_LENGTH);
+        }
+        const metadata = parseQuizMetadata(raw);
+        return normalizeSheetText(metadata.quizDescription || metadata.userDescription).slice(0, QUIZ_DESCRIPTION_MAX_LENGTH);
+    }
+
+    function setQuizUserDescriptionInDescription(description = '', userDescription = '') {
+        const metadata = getQuizMetadataForWrite(description);
+        const normalizedDescription = normalizeSheetText(userDescription).slice(0, QUIZ_DESCRIPTION_MAX_LENGTH);
+        if (normalizedDescription) {
+            metadata.quizDescription = normalizedDescription;
+        } else {
+            delete metadata.quizDescription;
+            delete metadata.userDescription;
+        }
+        if (!Object.keys(metadata).length) return '';
+        return buildQuizDescriptionFromMetadata(metadata);
+    }
+
     function getQuizClassIdFromDescription(description = '') {
         const metadata = parseQuizMetadata(description);
         return normalizeSheetText(metadata.quizClassId || metadata.classId);
     }
 
     function setQuizClassInDescription(description = '', classId = '') {
-        const metadata = parseQuizMetadata(description);
+        const metadata = getQuizMetadataForWrite(description);
         const normalizedClassId = normalizeSheetText(classId);
         if (normalizedClassId && normalizedClassId !== '__none__') {
             metadata.quizClassId = normalizedClassId;
@@ -2404,9 +2439,14 @@ MODIFICATION RULES FOR THIS APP
             .eq('id', normalizedQuizId)
             .maybeSingle();
         if (existingQuizError) throw existingQuizError;
-        const nextDescription = applyEditorQuizClassToDescription(existingQuizRow?.description || '', folderId);
+        const editorDescription = Object.prototype.hasOwnProperty.call(payload, 'quiz_description')
+            ? normalizeSheetText(payload.quiz_description)
+            : normalizeSheetText(elements.createQuizDescription?.value);
+        let nextDescription = applyEditorQuizClassToDescription(existingQuizRow?.description || '', folderId);
+        nextDescription = setQuizUserDescriptionInDescription(nextDescription, editorDescription);
         const updatePayload = { ...payload, folder_id: folderId, description: nextDescription };
         delete updatePayload.folderId;
+        delete updatePayload.quiz_description;
         const { error } = await state.auth.client.from('quizzes').update(updatePayload).eq('id', normalizedQuizId);
         if (error) throw error;
         return nextDescription;
@@ -2414,8 +2454,14 @@ MODIFICATION RULES FOR THIS APP
 
     function buildQuizInsertPayloadFromEditor(payload = {}) {
         const folderId = normalizeSheetText(payload.folder_id ?? payload.folderId) || null;
-        const insertPayload = { ...payload, folder_id: folderId, description: applyEditorQuizClassToDescription(payload.description || '', folderId) };
+        const editorDescription = Object.prototype.hasOwnProperty.call(payload, 'quiz_description')
+            ? normalizeSheetText(payload.quiz_description)
+            : normalizeSheetText(elements.createQuizDescription?.value);
+        let storedDescription = applyEditorQuizClassToDescription(payload.description || '', folderId);
+        storedDescription = setQuizUserDescriptionInDescription(storedDescription, editorDescription);
+        const insertPayload = { ...payload, folder_id: folderId, description: storedDescription };
         delete insertPayload.folderId;
+        delete insertPayload.quiz_description;
         return insertPayload;
     }
 
@@ -2507,13 +2553,15 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(sharing.sharedImageUrl) ? 'Shared diagram image saved.' : 'No diagram image selected.';
     }
 
-    function remapDiagramSharingSourceQuestionId(description = '', idMap = new Map()) {
+    function remapDiagramSharingSourceQuestionId(description = '', idMap = new Map(), options = {}) {
         if (!idMap?.size) return description;
         const metadata = parseQuizMetadata(description);
         const diagramSharing = metadata.diagramSharing;
         if (!diagramSharing || typeof diagramSharing !== 'object') return description;
         const sourceQuestionId = getDiagramSharingSourceQuestionId(diagramSharing);
-        const nextSourceQuestionId = sourceQuestionId ? normalizeSheetText(idMap.get(sourceQuestionId)) : '';
+        const mappedSourceQuestionId = sourceQuestionId ? normalizeSheetText(idMap.get(sourceQuestionId)) : '';
+        const fallbackSourceQuestionId = normalizeSheetText(options.fallbackSourceQuestionId);
+        const nextSourceQuestionId = mappedSourceQuestionId || fallbackSourceQuestionId;
         if (!nextSourceQuestionId || nextSourceQuestionId === sourceQuestionId) return description;
         metadata.diagramSharing = { ...diagramSharing, sourceQuestionId: nextSourceQuestionId };
         return buildQuizDescriptionFromMetadata(metadata);
@@ -2535,7 +2583,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function setDiagramSharingInDescription(description = '', diagramSharingDraft = {}) {
-        const metadata = parseQuizMetadata(description);
+        const metadata = getQuizMetadataForWrite(description);
         const safeDraft = {
             useSharedImage: !!diagramSharingDraft.useSharedImage,
             useSharedLabels: !!diagramSharingDraft.useSharedLabels,
@@ -7417,6 +7465,87 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
+    async function switchStarredQuestionsForQuiz(quizId = '') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        if (!normalizedQuizId || !state.auth.client || !state.auth.user?.id) {
+            setCreatorStatus('Sign in before switching starred questions.', 'error');
+            return;
+        }
+
+        const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
+        if (!managedQuiz) {
+            setCreatorStatus('Could not find that quiz.', 'error');
+            return;
+        }
+
+        let questionIds = [];
+        let currentStarMap = new Map();
+        try {
+            questionIds = await getManagedQuizQuestionIds(managedQuiz, normalizedQuizId);
+            if (!questionIds.length) {
+                setCreatorStatus('That quiz has no questions to switch.', 'error');
+                return;
+            }
+            const { data, error } = await state.auth.client
+                .from('user_question_state')
+                .select('question_id, is_starred')
+                .eq('user_id', state.auth.user.id)
+                .in('question_id', questionIds);
+            if (error) throw error;
+            currentStarMap = new Map((data || []).map(row => [normalizeSheetText(row.question_id), !!row.is_starred]));
+        } catch (error) {
+            console.error('Could not load starred questions before switching:', error);
+            setCreatorStatus(error.message || 'Could not load starred questions for this quiz.', 'error');
+            return;
+        }
+
+        if (!confirm(`Switch starred and unstarred questions for "${managedQuiz.name || 'this quiz'}"? Starred questions will become unstarred, and unstarred questions will become starred.`)) {
+            return;
+        }
+
+        setCreatorStatus('Switching starred questions...');
+
+        try {
+            const nextStarMap = new Map();
+            const payload = questionIds.map(questionId => {
+                const normalizedQuestionId = normalizeSheetText(questionId);
+                const nextIsStarred = !currentStarMap.get(normalizedQuestionId);
+                nextStarMap.set(normalizedQuestionId, nextIsStarred);
+                return {
+                    user_id: state.auth.user.id,
+                    question_id: questionId,
+                    is_starred: nextIsStarred
+                };
+            });
+
+            const { error } = await state.auth.client
+                .from('user_question_state')
+                .upsert(payload, { onConflict: 'user_id,question_id' });
+            if (error) throw error;
+
+            const applySwitchedState = question => {
+                const questionId = normalizeSheetText(question?.sourceQuestionId || question?.id);
+                if (nextStarMap.has(questionId)) question.isStarred = !!nextStarMap.get(questionId);
+            };
+            state.sourceQuestions.forEach(applySwitchedState);
+            state.questions.forEach(applySwitchedState);
+            state.questionQueue.forEach(applySwitchedState);
+            if (state.auth.editingQuizId === normalizedQuizId) {
+                state.auth.studioQuizQuestions.forEach(applySwitchedState);
+                renderStudioQuestionList();
+            }
+            syncQuestionStarButton();
+            updateProgress();
+
+            const starredCount = Array.from(nextStarMap.values()).filter(Boolean).length;
+            setCreatorStatus(`Starred status switched. ${starredCount} ${starredCount === 1 ? 'question is' : 'questions are'} now starred.`, 'success');
+        } catch (error) {
+            console.error('Could not switch starred questions:', error);
+            setCreatorStatus(error.message || 'Could not switch starred questions.', 'error');
+        }
+    }
+
+
     async function getManagedQuizQuestionIds(managedQuiz, quizId = '') {
         let questionIds = Array.isArray(managedQuiz?.questionIds) ? managedQuiz.questionIds.filter(Boolean) : [];
         if (questionIds.length || !state.auth.client || !quizId) return questionIds;
@@ -7539,6 +7668,8 @@ MODIFICATION RULES FOR THIS APP
         const challengePanel = challengesExpanded ? renderQuizChallengePanel(quiz) : '';
         const challengeButtonLabel = challengesExpanded ? 'Hide Challenges' : `Challenges ${unlockedChallengeCount}/${QUIZ_CHALLENGES.length}`;
         const actionMenuOpen = state.auth.openQuizActionMenuId === quiz.id;
+        const duplicateOptionsOpen = actionMenuOpen && state.auth.openQuizActionSubmenu === `${quiz.id}:duplicate`;
+        const starOptionsOpen = actionMenuOpen && state.auth.openQuizActionSubmenu === `${quiz.id}:star`;
         return `
             <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
               <div class="studio-list-meta">
@@ -7558,10 +7689,19 @@ MODIFICATION RULES FOR THIS APP
                 <div class="studio-quiz-actions-menu-wrap">
                   <button type="button" class="auth-action-btn auth-secondary-btn studio-quiz-actions-toggle" data-action="toggle-quiz-actions" aria-haspopup="menu" aria-expanded="${actionMenuOpen ? 'true' : 'false'}" aria-label="More actions for ${escapeHtml(quiz.name)}">...</button>
                   <div class="studio-quiz-actions-menu${actionMenuOpen ? ' open' : ''}" role="menu">
-                    <button type="button" role="menuitem" data-action="reset-starred">Reset Stars</button>
-                    <button type="button" role="menuitem" data-action="delete-starred">Delete Stars</button>
-                    <button type="button" role="menuitem" data-action="duplicate-quiz">Duplicate</button>
-                    <button type="button" role="menuitem" data-action="delete-quiz">Delete</button>
+                    <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-duplicate-options" aria-expanded="${duplicateOptionsOpen ? 'true' : 'false'}"><span>Duplicate</span><span aria-hidden="true">${duplicateOptionsOpen ? '⌄' : '›'}</span></button>
+                    <div class="studio-quiz-actions-submenu${duplicateOptionsOpen ? ' open' : ''}" role="group" aria-label="Duplicate quiz options">
+                      <button type="button" role="menuitem" data-action="duplicate-quiz-all">Duplicate Entire Quiz</button>
+                      <button type="button" role="menuitem" data-action="duplicate-quiz-starred">Duplicate Starred Questions Only</button>
+                      <button type="button" role="menuitem" data-action="duplicate-quiz-unstarred">Duplicate Unstarred Questions Only</button>
+                    </div>
+                    <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-star-options" aria-expanded="${starOptionsOpen ? 'true' : 'false'}"><span>Star Options</span><span aria-hidden="true">${starOptionsOpen ? '⌄' : '›'}</span></button>
+                    <div class="studio-quiz-actions-submenu${starOptionsOpen ? ' open' : ''}" role="group" aria-label="Star options">
+                      <button type="button" role="menuitem" data-action="reset-starred">Reset Starred</button>
+                      <button type="button" role="menuitem" data-action="switch-starred">Switch Starred</button>
+                      <button type="button" role="menuitem" data-action="delete-starred">Delete Starred Questions</button>
+                    </div>
+                    <button type="button" role="menuitem" data-action="delete-quiz">Delete Quiz</button>
                   </div>
                 </div>
               </div>
@@ -12534,6 +12674,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizNewFolderCreateBtn,
             elements.createQuizNewFolderCancelBtn,
             elements.createQuizName,
+            elements.createQuizDescription,
             elements.createQuizTypeSelect,
             elements.studioQuestionSearchInput,
             elements.studioQuestionJumpInput,
@@ -12671,6 +12812,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.createClassName) elements.createClassName.value = '';
         if (elements.createFolderName) elements.createFolderName.value = '';
         if (elements.createQuizName) elements.createQuizName.value = '';
+        if (elements.createQuizDescription) elements.createQuizDescription.value = '';
         if (!keepFolderSelection) {
             refreshEditorClassFolderSelectors({ classId: '__none__', selectedFolderId: '' });
         }
@@ -12728,6 +12870,7 @@ MODIFICATION RULES FOR THIS APP
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         return {
             name: normalizeSheetText(elements.createQuizName?.value),
+            description: normalizeSheetText(elements.createQuizDescription?.value).slice(0, QUIZ_DESCRIPTION_MAX_LENGTH),
             folderId,
             classId: getDirectEditorQuizClassIdForFolder(folderId),
             quizType: getStudioCurrentQuizType()
@@ -12881,14 +13024,14 @@ MODIFICATION RULES FOR THIS APP
             return '';
         }
 
-        const { name, folderId, quizType } = getStudioQuizMetaDraft();
+        const { name, description, folderId, quizType } = getStudioQuizMetaDraft();
         if (!name) {
             setCreatorStatus('Enter a quiz name first.', 'error');
             return '';
         }
 
         if (state.auth.editingQuizId) {
-            await updateQuizShellFromEditor(state.auth.editingQuizId, { folder_id: folderId, name });
+            await updateQuizShellFromEditor(state.auth.editingQuizId, { folder_id: folderId, name, quiz_description: description });
             await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${state.auth.editingQuizId}` });
             return state.auth.editingQuizId;
@@ -12906,6 +13049,7 @@ MODIFICATION RULES FOR THIS APP
                 folder_id: folderId,
                 name,
                 description: '',
+                quiz_description: description,
                 sort_order: quizSortOrder,
                 is_archived: false
             }))
@@ -15415,6 +15559,7 @@ MODIFICATION RULES FOR THIS APP
                 classId: quizRow.folder_id ? undefined : (getQuizClassIdFromDescription(quizRow.description || '') || '__none__')
             });
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
+            if (elements.createQuizDescription) elements.createQuizDescription.value = getQuizUserDescriptionFromDescription(quizRow.description || '');
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
 
             const questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
@@ -15681,11 +15826,13 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function handleDuplicateQuiz(quizId) {
+    async function handleDuplicateQuiz(quizId, duplicateMode = 'all') {
         if (!state.auth.client || !state.auth.user?.id) {
             setCreatorStatus('Sign in before duplicating quizzes.', 'error');
             return;
         }
+
+        const normalizedMode = ['all', 'starred', 'unstarred'].includes(duplicateMode) ? duplicateMode : 'all';
 
         try {
             const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
@@ -15699,8 +15846,35 @@ MODIFICATION RULES FOR THIS APP
             if (quizError) throw quizError;
             if (!quizRow) throw new Error('Could not load the source quiz.');
 
+            const { data: allSourceQuestions, error: sourceQuestionsError } = await state.auth.client
+                .from('questions')
+                .select('id, sort_order, question_type')
+                .eq('quiz_id', quizId)
+                .order('sort_order', { ascending: true });
+            if (sourceQuestionsError) throw sourceQuestionsError;
+
+            let sourceQuestions = allSourceQuestions || [];
+            if (normalizedMode !== 'all') {
+                const starredQuestionIds = new Set(await loadStarredQuestionIdsForQuiz(managedQuiz, quizId));
+                sourceQuestions = sourceQuestions.filter(question => {
+                    const isStarred = starredQuestionIds.has(normalizeSheetText(question.id));
+                    return normalizedMode === 'starred' ? isStarred : !isStarred;
+                });
+            }
+
+            if (!sourceQuestions.length && normalizedMode !== 'all') {
+                const emptyLabel = normalizedMode === 'starred' ? 'starred' : 'unstarred';
+                setCreatorStatus(`This quiz has no ${emptyLabel} questions to duplicate.`, 'error');
+                return;
+            }
+
             const nextSortOrder = await getNextQuizSortOrder(quizRow.folder_id || null);
-            const duplicateName = `${normalizeSheetText(quizRow.name) || 'Untitled Quiz'} (Copy)`;
+            const baseName = normalizeSheetText(quizRow.name) || 'Untitled Quiz';
+            const duplicateName = normalizedMode === 'starred'
+                ? `${baseName} (Starred Copy)`
+                : normalizedMode === 'unstarred'
+                    ? `${baseName} (Unstarred Copy)`
+                    : `${baseName} (Copy)`;
             const { data: insertedQuiz, error: insertQuizError } = await state.auth.client
                 .from('quizzes')
                 .insert({
@@ -15726,19 +15900,18 @@ MODIFICATION RULES FOR THIS APP
                 if (descriptionCloneError) throw descriptionCloneError;
             }
 
-            const { data: sourceQuestions, error: sourceQuestionsError } = await state.auth.client
-                .from('questions')
-                .select('id, sort_order')
-                .eq('quiz_id', quizId)
-                .order('sort_order', { ascending: true });
-            if (sourceQuestionsError) throw sourceQuestionsError;
-
             const duplicatedQuestionIdMap = new Map();
-            for (const [index, question] of (sourceQuestions || []).entries()) {
+            const duplicatedQuestionTypeMap = new Map();
+            for (const [index, question] of sourceQuestions.entries()) {
                 const duplicatedQuestionId = await duplicateQuestionRecord(question.id, newQuizId, index);
                 duplicatedQuestionIdMap.set(question.id, duplicatedQuestionId);
+                duplicatedQuestionTypeMap.set(duplicatedQuestionId, normalizeSheetText(question.question_type));
             }
-            const remappedDescription = remapDiagramSharingSourceQuestionId(clonedDescription, duplicatedQuestionIdMap);
+            const fallbackSourceQuestionId = Array.from(duplicatedQuestionTypeMap.entries())
+                .find(([, type]) => type === 'diagrams' || type === 'typed_answer')?.[0]
+                || Array.from(duplicatedQuestionIdMap.values())[0]
+                || '';
+            const remappedDescription = remapDiagramSharingSourceQuestionId(clonedDescription, duplicatedQuestionIdMap, { fallbackSourceQuestionId });
             if (remappedDescription !== clonedDescription) {
                 const { error: sourceRemapError } = await state.auth.client
                     .from('quizzes')
@@ -15749,7 +15922,12 @@ MODIFICATION RULES FOR THIS APP
 
             await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${newQuizId}`, loadSelectedQuiz: false });
-            setCreatorStatus('Quiz duplicated.', 'success');
+            const modeLabel = normalizedMode === 'starred'
+                ? 'starred questions'
+                : normalizedMode === 'unstarred'
+                    ? 'unstarred questions'
+                    : 'entire quiz';
+            setCreatorStatus(`Duplicated ${modeLabel}. Copied questions start unstarred.`, 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not duplicate the quiz.', 'error');
@@ -26773,18 +26951,31 @@ if (elements.studioQuizList) {
                 state.auth.expandedQuizChallengeIds.add(quizId);
             }
             state.auth.openQuizActionMenuId = '';
+            state.auth.openQuizActionSubmenu = '';
             renderQuizManagementList();
             return;
         }
 
         if (action === 'toggle-quiz-actions') {
-            state.auth.openQuizActionMenuId = state.auth.openQuizActionMenuId === quizId ? '' : quizId;
+            const opening = state.auth.openQuizActionMenuId !== quizId;
+            state.auth.openQuizActionMenuId = opening ? quizId : '';
+            state.auth.openQuizActionSubmenu = '';
+            renderQuizManagementList();
+            return;
+        }
+
+        if (action === 'toggle-duplicate-options' || action === 'toggle-star-options') {
+            const submenuType = action === 'toggle-duplicate-options' ? 'duplicate' : 'star';
+            const submenuKey = `${quizId}:${submenuType}`;
+            state.auth.openQuizActionMenuId = quizId;
+            state.auth.openQuizActionSubmenu = state.auth.openQuizActionSubmenu === submenuKey ? '' : submenuKey;
             renderQuizManagementList();
             return;
         }
 
         if (action === 'reset-starred') {
             state.auth.openQuizActionMenuId = '';
+            state.auth.openQuizActionSubmenu = '';
             renderQuizManagementList();
             resetStarredQuestionsForQuiz(quizId).catch(err => {
                 console.error(err);
@@ -26793,8 +26984,20 @@ if (elements.studioQuizList) {
             return;
         }
 
+        if (action === 'switch-starred') {
+            state.auth.openQuizActionMenuId = '';
+            state.auth.openQuizActionSubmenu = '';
+            renderQuizManagementList();
+            switchStarredQuestionsForQuiz(quizId).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not switch starred questions.', 'error');
+            });
+            return;
+        }
+
         if (action === 'delete-starred') {
             state.auth.openQuizActionMenuId = '';
+            state.auth.openQuizActionSubmenu = '';
             renderQuizManagementList();
             deleteStarredQuestionsForQuiz(quizId).catch(err => {
                 console.error(err);
@@ -26822,13 +27025,20 @@ if (elements.studioQuizList) {
             });
         }
 
-        if (action === 'duplicate-quiz') {
+        if (action === 'duplicate-quiz-all' || action === 'duplicate-quiz-starred' || action === 'duplicate-quiz-unstarred') {
+            const duplicateMode = action === 'duplicate-quiz-starred'
+                ? 'starred'
+                : action === 'duplicate-quiz-unstarred'
+                    ? 'unstarred'
+                    : 'all';
             state.auth.openQuizActionMenuId = '';
+            state.auth.openQuizActionSubmenu = '';
             renderQuizManagementList();
-            handleDuplicateQuiz(quizId).catch(err => {
+            handleDuplicateQuiz(quizId, duplicateMode).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not duplicate the quiz.', 'error');
             });
+            return;
         }
 
         if (action === 'delete-quiz') {
@@ -27058,6 +27268,7 @@ if (elements.studioTemplateDownloadButtons.length) {
 
 const studioDirtyInputSelector = [
     '#createQuizName',
+    '#createQuizDescription',
     '#createQuizClassSelect',
     '#createQuizFolderSelect',
     '#createQuestionPrompt',
