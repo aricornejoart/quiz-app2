@@ -10405,9 +10405,11 @@ MODIFICATION RULES FOR THIS APP
             term_image_url: state.auth.studioFlashcardTermImageDataUrl || '',
             term_image_label: state.auth.studioFlashcardTermImageLabel || '',
             term_image_labels: normalizeDiagramLabels(state.auth.studioFlashcardTermImageLabels || []),
+            term_image_draw_strokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardTermImageDrawStrokes || []),
             definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || '',
             definition_image_label: state.auth.studioFlashcardDefinitionImageLabel || '',
             definition_image_labels: normalizeDiagramLabels(state.auth.studioFlashcardDefinitionImageLabels || []),
+            definition_image_draw_strokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []),
             sort_order: Number.MAX_SAFE_INTEGER,
             is_local_draft: true
         };
@@ -10605,8 +10607,8 @@ MODIFICATION RULES FOR THIS APP
         setLearningResourcesEditorHtml(row.learning_resources_html || '', '');
         setStudioLearningResourcesImageState(row.learning_resources_image_url || '', row.learning_resources_image_label || (row.learning_resources_image_url ? 'Existing learning resources image saved.' : 'No learning resources image selected.'));
         setStudioQuestionImageState('', 'No question image selected.');
-        setStudioFlashcardTermImageState(row.term_image_url || '', row.term_image_label || (row.term_image_url ? 'Existing term image saved.' : 'No term image selected.'), row.term_image_labels || []);
-        setStudioFlashcardDefinitionImageState(row.definition_image_url || '', row.definition_image_label || (row.definition_image_url ? 'Existing definition image saved.' : 'No definition image selected.'), row.definition_image_labels || []);
+        setStudioFlashcardTermImageState(row.term_image_url || '', row.term_image_label || (row.term_image_url ? 'Existing term image saved.' : 'No term image selected.'), row.term_image_labels || [], row.term_image_draw_strokes || []);
+        setStudioFlashcardDefinitionImageState(row.definition_image_url || '', row.definition_image_label || (row.definition_image_url ? 'Existing definition image saved.' : 'No definition image selected.'), row.definition_image_labels || [], row.definition_image_draw_strokes || []);
         if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = false;
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         syncCorrectOptionSelect('1');
