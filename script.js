@@ -289,11 +289,14 @@ MODIFICATION RULES FOR THIS APP
             studioHasUnsavedChanges: false,
             studioAutosaveTimerId: null,
             studioAutosaveInFlight: false,
+            studioSaveInFlightPromise: null,
             studioQuestionDrafts: new Map(),
             studioAutosaveQuiet: false,
             studioDraggingQuestionId: null,
             studioPendingNewQuestionRow: null,
             localFlashcardDraftCounter: 0,
+            studioLocalFlashcardSaveIdentities: new Map(),
+            studioIncompleteFlashcardQuestionIds: [],
             backupImportPayload: null,
             backupImportFileName: '',
             supabaseManagementCache: {
@@ -563,6 +566,7 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorCancelBtn: document.getElementById('studioImageEditorCancelBtn'),
         studioImageEditorSaveBtn: document.getElementById('studioImageEditorSaveBtn'),
         studioImageEditorSendSavedBtn: document.getElementById('studioImageEditorSendSavedBtn'),
+        studioImageEditorAttachAllFrontBtn: document.getElementById('studioImageEditorAttachAllFrontBtn'),
         studioImageEditorApplyCropBtn: document.getElementById('studioImageEditorApplyCropBtn'),
         studioImageEditorUndoBtn: document.getElementById('studioImageEditorUndoBtn'),
         studioImageEditorResetBtn: document.getElementById('studioImageEditorResetBtn'),
@@ -4329,6 +4333,7 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorCancelBtn = document.getElementById('studioImageEditorCancelBtn');
         elements.studioImageEditorSaveBtn = document.getElementById('studioImageEditorSaveBtn');
         elements.studioImageEditorSendSavedBtn = document.getElementById('studioImageEditorSendSavedBtn');
+        elements.studioImageEditorAttachAllFrontBtn = document.getElementById('studioImageEditorAttachAllFrontBtn');
         elements.studioImageEditorApplyCropBtn = document.getElementById('studioImageEditorApplyCropBtn');
         elements.studioImageEditorUndoBtn = document.getElementById('studioImageEditorUndoBtn');
         elements.studioImageEditorResetBtn = document.getElementById('studioImageEditorResetBtn');
@@ -4409,6 +4414,7 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-image-editor-actions">
                       <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
                       <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
+                      <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
                       <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
                     </div>
                   </div>
@@ -4670,6 +4676,13 @@ MODIFICATION RULES FOR THIS APP
 
     function isImageEditorFlashcardLabelTarget(editor = state.auth.imageEditor) {
         return ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(normalizeSheetText(editor?.target?.kind));
+    }
+
+    function isImageEditorFlashcardFrontTarget(editor = state.auth.imageEditor) {
+        const target = editor?.target || {};
+        const kind = normalizeSheetText(target.kind);
+        if (kind === 'flashcard-term') return true;
+        return kind === 'flashcard-list' && target.side !== 'definition';
     }
 
     function getNumberedFlashcardImageLabels(labels = []) {
@@ -5433,6 +5446,14 @@ MODIFICATION RULES FOR THIS APP
                 ? 'Save this edited image, labels, and draw strokes to Saved Images'
                 : 'Saved Images are only available for flashcards';
         }
+        if (elements.studioImageEditorAttachAllFrontBtn) {
+            const isFrontTarget = isImageEditorFlashcardFrontTarget(editor);
+            elements.studioImageEditorAttachAllFrontBtn.classList.toggle('hidden', !isFrontTarget);
+            elements.studioImageEditorAttachAllFrontBtn.disabled = !isFrontTarget || !editor?.baseCanvas;
+            elements.studioImageEditorAttachAllFrontBtn.title = isFrontTarget
+                ? 'Save this edited front image to Saved Images and attach it once to every current flashcard front that has no image'
+                : 'Attach to All Front is available while editing a flashcard front image';
+        }
         const shouldShowPanel = !!(editor?.labelsEnabled && editor?.showLabelPanel);
         if (elements.studioImageEditorLabelPanel) {
             elements.studioImageEditorLabelPanel.classList.toggle('hidden', !shouldShowPanel);
@@ -5850,6 +5871,7 @@ MODIFICATION RULES FOR THIS APP
         });
         elements.studioImageEditorSaveBtn?.addEventListener('click', () => saveStudioImageEditorImage());
         elements.studioImageEditorSendSavedBtn?.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true }));
+        elements.studioImageEditorAttachAllFrontBtn?.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }));
     }
 
     async function openStudioImageEditor(target = {}) {
@@ -5979,6 +6001,48 @@ MODIFICATION RULES FOR THIS APP
         );
     }
 
+    function studioFlashcardFrontHasImageForAttachAll(row = {}) {
+        const snapshot = getStudioFlashcardImageSnapshot(row, 'term');
+        if (normalizeSheetText(snapshot.value)) return true;
+        if (row?.term_image_present === true) return true;
+        // Unknown deferred image slots are skipped so an existing image is never overwritten.
+        return !!(row?.flashcard_images_deferred && row?.term_image_present !== false);
+    }
+
+    function attachStudioImageEditorResultToAllEmptyFronts(imageValue = '', options = {}) {
+        const normalizedValue = normalizeSheetText(imageValue);
+        if (!normalizedValue || !isStudioFlashcardMode()) return 0;
+        syncStudioFlashcardInlineRowsToState();
+        const imageLabel = normalizeSheetText(options.label) || 'Saved front image.';
+        const labels = normalizeDiagramLabels(options.labels || []);
+        const drawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || []);
+        const savedImageSignature = normalizeSheetText(options.savedImageSignature || '');
+        const rows = getStudioListRowsWithPendingDraft().filter(row =>
+            normalizeSheetText(row?.question_type || 'flashcard') === 'flashcard'
+        );
+        let attachedCount = 0;
+        rows.forEach(row => {
+            if (studioFlashcardFrontHasImageForAttachAll(row)) return;
+            const questionId = normalizeSheetText(row?.id);
+            if (!questionId) return;
+            applyStudioFlashcardListImageChange(questionId, 'term', normalizedValue, imageLabel, labels, {
+                drawStrokes,
+                savedImageSignature,
+                fromSavedImage: !!savedImageSignature,
+                suppressSync: true,
+                suppressDirty: true,
+                suppressRender: true
+            });
+            attachedCount += 1;
+        });
+        if (attachedCount) {
+            setStudioDirtyState(true);
+            renderStudioQuestionList();
+            updateStudioUnsavedChangesIndicator();
+        }
+        return attachedCount;
+    }
+
     async function saveCurrentImageEditorToSavedImages(imageValue = '', options = {}) {
         const editor = state.auth.imageEditor;
         const normalizedValue = normalizeSheetText(imageValue);
@@ -6021,6 +6085,7 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         const targetKind = editor?.target?.kind || '';
         const isFlashcardTarget = ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(targetKind);
+        const attachToAllFront = !!options.attachToAllFront && isImageEditorFlashcardFrontTarget(editor);
         const outputCanvas = isFlashcardTarget ? editor?.baseCanvas : getImageEditorCompositedCanvas();
         if (!outputCanvas) return;
         try {
@@ -6028,13 +6093,30 @@ MODIFICATION RULES FOR THIS APP
             const imageLabels = normalizeDiagramLabels(editor?.labels || []);
             const imageDrawStrokes = isFlashcardTarget ? cloneImageEditorDrawStrokes(editor.drawStrokes || []) : [];
             let applyValue = editedDataUrl;
-            if (options.sendToSavedImages && isFlashcardTarget) {
-                const savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, drawStrokes: imageDrawStrokes });
+            let savedResult = null;
+            if ((options.sendToSavedImages || attachToAllFront) && isFlashcardTarget) {
+                savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, drawStrokes: imageDrawStrokes });
                 applyValue = normalizeSheetText(savedResult?.value || editedDataUrl);
             }
             applyStudioImageEditorResult(applyValue, { drawStrokes: imageDrawStrokes });
+            let attachedCount = 0;
+            if (attachToAllFront) {
+                const savedEntry = normalizeStudioSavedImageEntry(savedResult?.entry || {});
+                attachedCount = attachStudioImageEditorResultToAllEmptyFronts(applyValue, {
+                    label: savedEntry?.imageLabel || `Saved: ${getImageEditorSavedImageFileName(editor)}`,
+                    labels: imageLabels,
+                    drawStrokes: imageDrawStrokes,
+                    savedImageSignature: savedEntry ? getStudioSavedImageSignature(savedEntry) : ''
+                });
+            }
             closeStudioImageEditor();
-            if (options.sendToSavedImages && isFlashcardTarget) {
+            if (attachToAllFront) {
+                const countLabel = attachedCount === 1 ? '1 empty flashcard front' : `${attachedCount} empty flashcard fronts`;
+                const suffix = attachedCount
+                    ? `Attached the image to ${countLabel}.`
+                    : 'No additional empty flashcard fronts were found.';
+                setCreatorStatus(`Image, labels, and draw strokes sent to Saved Images. ${suffix} Save Changes to keep the quiz updates. New cards added later are not filled automatically.`, 'success');
+            } else if (options.sendToSavedImages && isFlashcardTarget) {
                 setCreatorStatus('Image, labels, and draw strokes sent to Saved Images. Save Changes to keep this card update.', 'success');
             }
         } catch (error) {
@@ -9786,7 +9868,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function applyStudioFlashcardListImageChange(questionId, side = 'term', value = '', label = '', labels = undefined, options = {}) {
-        syncStudioFlashcardInlineRowsToState();
+        if (!options.suppressSync) syncStudioFlashcardInlineRowsToState();
         const safeSide = side === 'definition' ? 'definition' : 'term';
         const row = getStudioFlashcardRowById(questionId);
         if (!row) {
@@ -9879,9 +9961,11 @@ MODIFICATION RULES FOR THIS APP
         if (!normalizedValue) {
             state.auth.expandedFlashcardImageRows.delete(getStudioFlashcardImageKey(rowId, safeSide));
         }
-        setStudioDirtyState(true);
-        renderStudioQuestionList();
-        updateStudioUnsavedChangesIndicator();
+        if (!options.suppressDirty) setStudioDirtyState(true);
+        if (!options.suppressRender) {
+            renderStudioQuestionList();
+            updateStudioUnsavedChangesIndicator();
+        }
     }
 
     function buildStudioFlashcardImageQuickControls(row = {}, side = 'term') {
@@ -10198,6 +10282,26 @@ MODIFICATION RULES FOR THIS APP
     function createStudioLocalFlashcardId() {
         state.auth.localFlashcardDraftCounter = Number(state.auth.localFlashcardDraftCounter || 0) + 1;
         return `${STUDIO_LOCAL_FLASHCARD_PREFIX}${Date.now()}_${state.auth.localFlashcardDraftCounter}`;
+    }
+
+    function getStudioLocalFlashcardSaveIdentity(localId, proposedSortOrder = 0) {
+        const normalizedLocalId = normalizeSheetText(localId);
+        if (!(state.auth.studioLocalFlashcardSaveIdentities instanceof Map)) {
+            state.auth.studioLocalFlashcardSaveIdentities = new Map();
+        }
+        const existing = state.auth.studioLocalFlashcardSaveIdentities.get(normalizedLocalId);
+        if (existing?.questionId) return existing;
+        const identity = {
+            questionId: createMediaAssetId(),
+            sortOrder: Number.isFinite(Number(proposedSortOrder)) ? Number(proposedSortOrder) : 0
+        };
+        state.auth.studioLocalFlashcardSaveIdentities.set(normalizedLocalId, identity);
+        return identity;
+    }
+
+    function clearStudioLocalFlashcardSaveIdentity(localId) {
+        if (!(state.auth.studioLocalFlashcardSaveIdentities instanceof Map)) return;
+        state.auth.studioLocalFlashcardSaveIdentities.delete(normalizeSheetText(localId));
     }
 
     function getStudioLocalFlashcardRows(sourceRows = state.auth.studioQuizQuestions) {
@@ -10534,6 +10638,8 @@ MODIFICATION RULES FOR THIS APP
 
         let nextSortOrder = await getNextQuestionSortOrder(quizId);
         const preparedRows = localRows.map(row => {
+            const identity = getStudioLocalFlashcardSaveIdentity(row.id, nextSortOrder);
+            nextSortOrder = Math.max(nextSortOrder, Number(identity.sortOrder || 0) + 1);
             const term = normalizeSheetText(row.term_plain || row.prompt_plain);
             const definition = normalizeSheetText(row.definition_plain);
             const termHtml = sanitizeLearningResourcesHtml(row.term_html || '') || buildStoredHtmlFromPlain(term);
@@ -10569,6 +10675,7 @@ MODIFICATION RULES FOR THIS APP
             }
             return {
                 localId: row.id,
+                questionId: identity.questionId,
                 term,
                 definition,
                 termHtml,
@@ -10590,11 +10697,12 @@ MODIFICATION RULES FOR THIS APP
                 definitionImageDrawStrokes,
                 definitionReuseEnabled: !definitionSavedImageSignature && !!(definitionReusableEntry && isStudioFlashcardImageReuseEnabled(row.id, 'definition', definitionReusableEntry)),
                 definitionSavedImageSignature,
-                sortOrder: nextSortOrder++
+                sortOrder: identity.sortOrder
             };
         });
 
         const insertPayload = preparedRows.map(row => ({
+            id: row.questionId,
             quiz_id: quizId,
             question_type: 'flashcard',
             prompt_html: row.termHtml,
@@ -10607,24 +10715,22 @@ MODIFICATION RULES FOR THIS APP
 
         const { data: insertedRows, error: insertError } = await runWithTransientFetchRetry(() => state.auth.client
             .from('questions')
-            .insert(insertPayload)
+            .upsert(insertPayload, { onConflict: 'id' })
             .select('id, sort_order'), 'Saving new flashcard rows', { attempts: 2 });
 
         if (insertError) throw insertError;
 
-        const savedQuestionRows = (insertedRows || []).sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
-        if (savedQuestionRows.length !== preparedRows.length) {
+        const savedQuestionIdSet = new Set((insertedRows || []).map(row => normalizeSheetText(row?.id)).filter(Boolean));
+        if (preparedRows.some(row => !savedQuestionIdSet.has(normalizeSheetText(row.questionId)))) {
             throw new Error('Could not confirm every new flashcard was saved.');
         }
 
-        const savedIds = [];
-        const localIdToSavedId = new Map();
+        const savedIds = preparedRows.map(row => row.questionId);
+        const localIdToSavedId = new Map(preparedRows.map(row => [row.localId, row.questionId]));
         const hasLocalDataUrlMedia = preparedRows.some(row => hasPreparedFlashcardRowDataUrlMedia(row));
         const localMediaConcurrency = hasLocalDataUrlMedia ? 1 : 2;
-        const mediaRows = await runWithLimitedConcurrency(preparedRows, async (row, index) => {
-            const questionId = savedQuestionRows[index].id;
-            savedIds[index] = questionId;
-            localIdToSavedId.set(row.localId, questionId);
+        const mediaRows = await runWithLimitedConcurrency(preparedRows, async row => {
+            const questionId = row.questionId;
 
             const savedLearningResourcesImage = await savePrivateMediaValueWithDedupCache(row.learningResourcesImage, {
                 quizId,
@@ -10726,6 +10832,7 @@ MODIFICATION RULES FOR THIS APP
             await reorderStudioQuizQuestionIds(orderedQuestionIds);
         }
 
+        preparedRows.forEach(row => clearStudioLocalFlashcardSaveIdentity(row.localId));
         state.auth.studioQuizQuestions = state.auth.studioQuizQuestions.filter(row => !isStudioLocalFlashcardId(row.id));
         state.auth.studioPendingNewQuestionRow = null;
         return savedIds;
@@ -11061,6 +11168,20 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function saveStudioCachedDrafts(options = {}) {
+        if (state.auth.studioSaveInFlightPromise) {
+            return state.auth.studioSaveInFlightPromise;
+        }
+        const savePromise = performStudioCachedDraftSave(options)
+            .finally(() => {
+                if (state.auth.studioSaveInFlightPromise === savePromise) {
+                    state.auth.studioSaveInFlightPromise = null;
+                }
+            });
+        state.auth.studioSaveInFlightPromise = savePromise;
+        return savePromise;
+    }
+
+    async function performStudioCachedDraftSave(options = {}) {
         syncStudioFlashcardInlineRowsToState();
         cacheCurrentStudioQuestionDraft();
         const flashcardOrderSnapshot = state.auth.studioQuizQuestions.map(row => ({ id: row.id }));
@@ -11910,11 +12031,14 @@ MODIFICATION RULES FOR THIS APP
         if (starredStateRows?.error) throw starredStateRows.error;
         markLoad('detail rows');
         const flashcardMap = new Map((flashcardDetails || []).map(row => [row.question_id, row]));
+        const incompleteFlashcardQuestionIds = flashcardQuestionIds.filter(questionId => !flashcardMap.has(questionId));
+        state.auth.studioIncompleteFlashcardQuestionIds = incompleteFlashcardQuestionIds;
+        const loadableRows = rows.filter(row => row.question_type !== 'flashcard' || flashcardMap.has(row.id));
         const multipleChoiceDetailMap = new Map((multipleChoiceDetails || []).map(row => [normalizeSheetText(row.question_id), row]));
         const multipleChoiceBuildUpMap = new Map((multipleChoiceDetails || []).map(row => [normalizeSheetText(row.question_id), getBuildUpValueFromOptionsJson(row.options_json)]));
         const starredMap = new Map((starredStateRows?.data || []).map(row => [normalizeSheetText(row.question_id), !!row.is_starred]));
 
-        state.auth.studioQuizQuestions = rows.map(row => {
+        state.auth.studioQuizQuestions = loadableRows.map(row => {
             const normalizedQuestionId = normalizeSheetText(row.id);
             const flashcardDetail = flashcardMap.get(row.id) || {};
             const multipleChoiceDetail = multipleChoiceDetailMap.get(normalizedQuestionId) || {};
@@ -12832,6 +12956,8 @@ MODIFICATION RULES FOR THIS APP
             elements.createQuizTypeSelect.value = state.auth.editingQuizType;
         }
         state.auth.studioQuizQuestions = [];
+        state.auth.studioIncompleteFlashcardQuestionIds = [];
+        state.auth.studioLocalFlashcardSaveIdentities = new Map();
         clearStudioQuestionInputs();
         renderStudioQuestionList();
         updateCreateQuizModeUI();
@@ -15562,7 +15688,28 @@ MODIFICATION RULES FOR THIS APP
             if (elements.createQuizDescription) elements.createQuizDescription.value = getQuizUserDescriptionFromDescription(quizRow.description || '');
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
 
-            const questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
+            let questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
+            const incompleteFlashcardQuestionIds = Array.from(new Set(state.auth.studioIncompleteFlashcardQuestionIds || []));
+            if (incompleteFlashcardQuestionIds.length && !options.skipIncompleteFlashcardCleanupPrompt) {
+                const countLabel = incompleteFlashcardQuestionIds.length === 1
+                    ? '1 incomplete flashcard record'
+                    : `${incompleteFlashcardQuestionIds.length} incomplete flashcard records`;
+                const shouldRemoveIncomplete = window.confirm(
+                    `Study Bunny found ${countLabel} left behind by an interrupted save. These records have no flashcard details and cannot be opened. Remove them now? Complete flashcards will not be affected.`
+                );
+                if (shouldRemoveIncomplete) {
+                    const cleanupResult = await state.auth.client
+                        .from('questions')
+                        .delete()
+                        .eq('quiz_id', quizRow.id)
+                        .in('id', incompleteFlashcardQuestionIds);
+                    if (cleanupResult.error) throw cleanupResult.error;
+                    state.auth.studioIncompleteFlashcardQuestionIds = [];
+                    await refreshStudioManagementData({ force: true });
+                    await refreshQuizCatalog({ selectQuizId: `sb:${quizRow.id}` });
+                    questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
+                }
+            }
             await ensureSharedDiagramSourceQuestionForRows(quizRow.id, questionRows);
             await repairStudioSharedDiagramSourceImageOwnership(quizRow.id, questionRows);
             const repairedSharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
@@ -15604,7 +15751,14 @@ MODIFICATION RULES FOR THIS APP
             openQuizStudioPage('editor');
             recordStudioQuizActivity(quizRow.id, 'edited').catch(err => console.warn(err));
             const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'classify question' : (state.auth.editingQuizType === 'diagrams' ? 'diagram question' : 'question')));
-            setCreatorStatus(targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${nextItemTypeLabel} below.`, 'success');
+            const remainingIncompleteCount = (state.auth.studioIncompleteFlashcardQuestionIds || []).length;
+            const baseLoadStatus = targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${nextItemTypeLabel} below.`;
+            setCreatorStatus(
+                remainingIncompleteCount
+                    ? `${baseLoadStatus} ${remainingIncompleteCount} incomplete interrupted-save ${remainingIncompleteCount === 1 ? 'record was' : 'records were'} skipped.`
+                    : baseLoadStatus,
+                remainingIncompleteCount ? 'neutral' : 'success'
+            );
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not load the quiz editor.', 'error');
@@ -26601,6 +26755,9 @@ if (elements.studioImageEditorSaveBtn) {
 }
 if (elements.studioImageEditorSendSavedBtn) {
     elements.studioImageEditorSendSavedBtn.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true }));
+}
+if (elements.studioImageEditorAttachAllFrontBtn) {
+    elements.studioImageEditorAttachAllFrontBtn.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }));
 }
 if (elements.studioImageEditorOverlay) {
     elements.studioImageEditorOverlay.dataset.imageEditorEventsBound = 'true';
