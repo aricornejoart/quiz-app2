@@ -10234,3 +10234,17 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
   --flashcard-fixed-height: clamp(460px, calc(100dvh - 250px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 830px);
   margin-top: 2px;
 }
+
+/* Phase 22LU: iPad portrait fullscreen flashcard progress breathing room and width.
+   Scope guardrail: iPad portrait + fullscreen + active flashcard only. */
+body.fullscreen-mode.ipad-portrait-flashcard-layout .top-row {
+  row-gap: 5px;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
+  /* The portrait layout normally uses 18px horizontal padding. Reducing it by
+     10px per side widens the actual flashcard by 20px without overflowing the
+     existing iPad portrait container or altering other device layouts. */
+  padding-left: 8px;
+  padding-right: 8px;
+}
