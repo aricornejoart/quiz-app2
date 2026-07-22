@@ -10153,3 +10153,84 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout .bottom-controls {
 body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
   --flashcard-fixed-height: clamp(420px, calc(100dvh - 312px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 754px);
 }
+
+
+/* Phase 22LT: iPad portrait fullscreen flashcard controls and progress rail.
+   Scope guardrail: iPad portrait + fullscreen + active flashcard only. */
+body.fullscreen-mode.ipad-portrait-flashcard-layout .top-bar {
+  gap: 0;
+  margin-bottom: 4px;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .top-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto 3px;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 0;
+  width: 100%;
+  overflow: visible;
+}
+
+/* Let the navigation buttons and progress rail participate directly in the
+   fullscreen top-row grid so the rail can sit below every top control. */
+body.fullscreen-mode.ipad-portrait-flashcard-layout .bottom-controls {
+  display: contents;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .nav-buttons {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+  gap: 4px;
+  margin: 0;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .quiz-select-group {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+  margin: 0;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .utility-controls {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+  gap: 4px;
+  margin: 0;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: end;
+  position: relative;
+  left: 50%;
+  width: 100dvw;
+  max-width: none;
+  height: 3px;
+  min-height: 3px;
+  margin: 0;
+  padding: 0;
+  transform: translateX(-50%);
+  overflow: visible;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .progress-bar-row,
+body.fullscreen-mode.ipad-portrait-flashcard-layout #progressBar {
+  width: 100%;
+  max-width: none;
+  height: 3px;
+  min-height: 3px;
+  margin: 0;
+  padding: 0;
+}
+
+body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
+  --flashcard-fixed-height: clamp(460px, calc(100dvh - 250px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 830px);
+  margin-top: 2px;
+}
