@@ -10248,8 +10248,10 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout .flashcard-container {
   padding-right: 2px;
 }
 
-/* Keep the portrait fullscreen progress rail 10px inside each viewport edge. */
+/* Phase 22LW: compensate for the fullscreen container's 1.5x transform.
+   The unscaled rail is two-thirds of the desired visual width so, after the
+   parent scale, it finishes 10px inside both viewport edges without clipping. */
 body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
-  width: calc(100dvw - 20px);
+  width: calc(66.6667dvw - 13.3333px);
   box-sizing: border-box;
 }
