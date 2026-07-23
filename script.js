@@ -341,6 +341,14 @@ MODIFICATION RULES FOR THIS APP
                 revealedLabels: new Set()
             },
             studioSavedImageMemoryLibrary: [],
+            studioSavedImageSync: {
+                loadedUserId: '',
+                lastLoadedAt: 0,
+                tableUnavailable: false,
+                inFlight: null,
+                scheduleTimerId: null,
+                applyingRemote: false
+            },
             imageEditor: {
                 open: false,
                 target: null,
@@ -3573,6 +3581,12 @@ MODIFICATION RULES FOR THIS APP
     // Edit Image > Send to Saved Images, not from the flashcard question-list controls.
     const STUDIO_SAVED_IMAGE_LIBRARY_KEY = 'study_bunny_saved_image_library_v1';
     const STUDIO_SAVED_IMAGE_LIBRARY_LIMIT = 40;
+    const STUDIO_SAVED_IMAGE_USER_CACHE_KEY_PREFIX = 'study_bunny_saved_image_library_v2_';
+    const STUDIO_SAVED_IMAGE_LEGACY_OWNER_KEY = 'study_bunny_saved_image_library_v1_owner';
+    const STUDIO_SAVED_IMAGE_MIGRATION_KEY_PREFIX = 'study_bunny_saved_image_library_migrated_v1_';
+    const STUDIO_SAVED_IMAGE_PENDING_UPSERT_KEY_PREFIX = 'study_bunny_saved_image_pending_upserts_v1_';
+    const STUDIO_SAVED_IMAGE_PENDING_DELETE_KEY_PREFIX = 'study_bunny_saved_image_pending_deletes_v1_';
+    const STUDIO_SAVED_IMAGE_REMOTE_TABLE = 'saved_images';
 
     function getSavedImageFileNameFromLabel(label = '', fallback = 'saved-image.png') {
         const text = normalizeSheetText(label);
@@ -3623,7 +3637,68 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
-    function loadStudioSavedImageLibrary() {
+    function getStudioSavedImageSyncUserId() {
+        return normalizeSheetText(state.auth.user?.id || '');
+    }
+
+    function getStudioSavedImageUserStorageKey(prefix = '', userId = getStudioSavedImageSyncUserId()) {
+        const safeUserId = normalizeSheetText(userId);
+        return safeUserId ? `${prefix}${safeUserId}` : '';
+    }
+
+    function readStudioSavedImageJsonStorage(key = '', fallback = []) {
+        if (!key) return fallback;
+        try {
+            const raw = window.localStorage?.getItem(key);
+            if (!raw) return fallback;
+            const parsed = JSON.parse(raw);
+            return parsed;
+        } catch (error) {
+            console.warn('Could not read Saved Images synchronization storage:', error);
+            return fallback;
+        }
+    }
+
+    function writeStudioSavedImageJsonStorage(key = '', value = null) {
+        if (!key) return false;
+        try {
+            window.localStorage?.setItem(key, JSON.stringify(value));
+            return true;
+        } catch (error) {
+            console.warn('Could not write Saved Images synchronization storage:', error);
+            return false;
+        }
+    }
+
+    function getStudioSavedImageLegacyOwnerId() {
+        try {
+            return normalizeSheetText(window.localStorage?.getItem(STUDIO_SAVED_IMAGE_LEGACY_OWNER_KEY) || '');
+        } catch (error) {
+            return '';
+        }
+    }
+
+    function claimStudioSavedImageLegacyOwner(userId = getStudioSavedImageSyncUserId()) {
+        const safeUserId = normalizeSheetText(userId);
+        if (!safeUserId) return false;
+        const ownerId = getStudioSavedImageLegacyOwnerId();
+        if (ownerId && ownerId !== safeUserId) return false;
+        try {
+            window.localStorage?.setItem(STUDIO_SAVED_IMAGE_LEGACY_OWNER_KEY, safeUserId);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function canUseLegacyStudioSavedImagesForUser(userId = getStudioSavedImageSyncUserId()) {
+        const safeUserId = normalizeSheetText(userId);
+        if (!safeUserId) return true;
+        const ownerId = getStudioSavedImageLegacyOwnerId();
+        return !ownerId || ownerId === safeUserId;
+    }
+
+    function loadLegacyStudioSavedImageLibrary() {
         try {
             const raw = window.localStorage?.getItem(STUDIO_SAVED_IMAGE_LIBRARY_KEY) || '[]';
             const parsed = JSON.parse(raw);
@@ -3637,17 +3712,69 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function loadStudioSavedImageUserCache(userId = getStudioSavedImageSyncUserId()) {
+        const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_USER_CACHE_KEY_PREFIX, userId);
+        const parsed = readStudioSavedImageJsonStorage(key, []);
+        return (Array.isArray(parsed) ? parsed : [])
+            .map(normalizeStudioSavedImageEntry)
+            .filter(Boolean)
+            .slice(0, STUDIO_SAVED_IMAGE_LIBRARY_LIMIT);
+    }
+
+    function isStudioSavedImageLegacyMigrationComplete(userId = getStudioSavedImageSyncUserId()) {
+        const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_MIGRATION_KEY_PREFIX, userId);
+        return !!key && window.localStorage?.getItem(key) === 'true';
+    }
+
+    function setStudioSavedImageLegacyMigrationComplete(userId = getStudioSavedImageSyncUserId(), complete = true) {
+        const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_MIGRATION_KEY_PREFIX, userId);
+        if (!key) return;
+        try {
+            if (complete) window.localStorage?.setItem(key, 'true');
+            else window.localStorage?.removeItem(key);
+        } catch (error) {
+            console.warn('Could not update Saved Images migration state:', error);
+        }
+    }
+
+    function loadStudioSavedImageLibrary() {
+        const userId = getStudioSavedImageSyncUserId();
+        if (userId) {
+            const userCache = loadStudioSavedImageUserCache(userId);
+            const sync = state.auth.studioSavedImageSync || {};
+            if (userCache.length || sync.loadedUserId === userId || isStudioSavedImageLegacyMigrationComplete(userId)) {
+                return userCache;
+            }
+        }
+        return canUseLegacyStudioSavedImagesForUser(userId) ? loadLegacyStudioSavedImageLibrary() : [];
+    }
+
     function saveStudioSavedImageLibrary(entries = []) {
         const normalized = (Array.isArray(entries) ? entries : [])
             .map(normalizeStudioSavedImageEntry)
             .filter(Boolean)
             .slice(0, STUDIO_SAVED_IMAGE_LIBRARY_LIMIT);
+        const userId = getStudioSavedImageSyncUserId();
+        if (userId) {
+            writeStudioSavedImageJsonStorage(
+                getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_USER_CACHE_KEY_PREFIX, userId),
+                normalized
+            );
+        }
         try {
+            // Preserve the original Phase 22MF local key as a rollback-compatible cache.
+            if (userId) claimStudioSavedImageLegacyOwner(userId);
             window.localStorage?.setItem(STUDIO_SAVED_IMAGE_LIBRARY_KEY, JSON.stringify(normalized));
             return normalized;
         } catch (error) {
             console.warn('Could not save full image library, trimming older saved images:', error);
             const trimmed = normalized.slice(0, Math.max(5, Math.floor(normalized.length / 2)));
+            if (userId) {
+                writeStudioSavedImageJsonStorage(
+                    getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_USER_CACHE_KEY_PREFIX, userId),
+                    trimmed
+                );
+            }
             try {
                 window.localStorage?.setItem(STUDIO_SAVED_IMAGE_LIBRARY_KEY, JSON.stringify(trimmed));
                 return trimmed;
@@ -3659,15 +3786,14 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function clearStudioSavedImageLibrary() {
+        const existingEntries = getStudioSavedImageLibraryForPicker();
+        existingEntries.forEach(entry => markStudioSavedImagePendingDelete(entry));
         state.auth.studioSavedImageMemoryLibrary = [];
-        try {
-            window.localStorage?.removeItem(STUDIO_SAVED_IMAGE_LIBRARY_KEY);
-        } catch (error) {
-            console.warn('Could not clear saved image library:', error);
-        }
+        saveStudioSavedImageLibrary([]);
         if (state.auth.studioFlashcardReusableImageKeys instanceof Set) {
             state.auth.studioFlashcardReusableImageKeys.clear();
         }
+        scheduleStudioSavedImageRemoteSync({ reason: 'clear-library' });
         renderStudioQuestionList();
     }
 
@@ -3686,7 +3812,10 @@ MODIFICATION RULES FOR THIS APP
         );
         state.auth.studioSavedImageMemoryLibrary = merged;
         saveStudioSavedImageLibrary(merged);
-        return merged.find(item => getStudioSavedImageSignature(item) === signature) || updatedEntry;
+        const savedEntry = merged.find(item => getStudioSavedImageSignature(item) === signature) || updatedEntry;
+        markStudioSavedImagePendingUpsert(savedEntry);
+        scheduleStudioSavedImageRemoteSync({ reason: 'upsert-entry' });
+        return savedEntry;
     }
 
     function getStudioSavedImageSignature(entry = {}) {
@@ -3708,6 +3837,311 @@ MODIFICATION RULES FOR THIS APP
         if (!normalized) return '';
         const mediaKey = normalizeSheetText(normalized.mediaValue || normalized.imageValue);
         return `${mediaKey}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}`;
+    }
+
+    function getStudioSavedImageSyncKey(entry = {}) {
+        const normalized = normalizeStudioSavedImageEntry(entry);
+        if (!normalized) return '';
+        const storedId = normalizeSheetText(normalized.id);
+        // Remote rows and existing stable Saved Image records retain one identity even
+        // when a local data URL is converted into an sb-media reference during migration.
+        if (/^saved_img_live_[a-z0-9]+$/i.test(storedId)) return storedId;
+        const signature = getStudioSavedImageSignature(normalized)
+            || getStudioSavedImagePreMetadataSignature(normalized)
+            || getStudioSavedImageLegacySignature(normalized)
+            || storedId;
+        return createStableSavedImageId(signature);
+    }
+
+    function getStudioSavedImagePendingUpsertKeys(userId = getStudioSavedImageSyncUserId()) {
+        const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_PENDING_UPSERT_KEY_PREFIX, userId);
+        const parsed = readStudioSavedImageJsonStorage(key, []);
+        return new Set((Array.isArray(parsed) ? parsed : []).map(normalizeSheetText).filter(Boolean));
+    }
+
+    function saveStudioSavedImagePendingUpsertKeys(keys, userId = getStudioSavedImageSyncUserId()) {
+        const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_PENDING_UPSERT_KEY_PREFIX, userId);
+        if (!key) return;
+        writeStudioSavedImageJsonStorage(key, Array.from(keys || []).map(normalizeSheetText).filter(Boolean));
+    }
+
+    function getStudioSavedImagePendingDeletes(userId = getStudioSavedImageSyncUserId()) {
+        const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_PENDING_DELETE_KEY_PREFIX, userId);
+        const parsed = readStudioSavedImageJsonStorage(key, []);
+        return (Array.isArray(parsed) ? parsed : []).map(item => ({
+            syncKey: normalizeSheetText(item?.syncKey || item?.key || ''),
+            deletedAt: normalizeSheetText(item?.deletedAt || '') || new Date().toISOString()
+        })).filter(item => item.syncKey);
+    }
+
+    function saveStudioSavedImagePendingDeletes(items = [], userId = getStudioSavedImageSyncUserId()) {
+        const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_PENDING_DELETE_KEY_PREFIX, userId);
+        if (!key) return;
+        writeStudioSavedImageJsonStorage(key, items);
+    }
+
+    function markStudioSavedImagePendingUpsert(entry = {}) {
+        const userId = getStudioSavedImageSyncUserId();
+        const syncKey = getStudioSavedImageSyncKey(entry);
+        if (!userId || !syncKey || state.auth.studioSavedImageSync?.applyingRemote) return;
+        const keys = getStudioSavedImagePendingUpsertKeys(userId);
+        keys.add(syncKey);
+        saveStudioSavedImagePendingUpsertKeys(keys, userId);
+        const deletes = getStudioSavedImagePendingDeletes(userId).filter(item => item.syncKey !== syncKey);
+        saveStudioSavedImagePendingDeletes(deletes, userId);
+    }
+
+    function markStudioSavedImagePendingDelete(entry = {}) {
+        const userId = getStudioSavedImageSyncUserId();
+        const syncKey = getStudioSavedImageSyncKey(entry);
+        if (!userId || !syncKey || state.auth.studioSavedImageSync?.applyingRemote) return;
+        const keys = getStudioSavedImagePendingUpsertKeys(userId);
+        keys.delete(syncKey);
+        saveStudioSavedImagePendingUpsertKeys(keys, userId);
+        const deletes = getStudioSavedImagePendingDeletes(userId).filter(item => item.syncKey !== syncKey);
+        deletes.push({ syncKey, deletedAt: new Date().toISOString() });
+        saveStudioSavedImagePendingDeletes(deletes, userId);
+    }
+
+    function isStudioSavedImageRemoteSchemaError(error) {
+        const code = normalizeSheetText(error?.code || '');
+        const message = normalizeSheetText(error?.message || error?.details || '').toLowerCase();
+        return code === '42P01' || code === 'PGRST205' || (message.includes('saved_images') && (message.includes('does not exist') || message.includes('schema cache')));
+    }
+
+    function normalizeStudioSavedImageRemoteRow(row = {}) {
+        if (row?.deleted_at) return null;
+        const payload = row?.payload && typeof row.payload === 'object' ? row.payload : {};
+        return normalizeStudioSavedImageEntry({
+            ...payload,
+            id: normalizeSheetText(row.id || payload.id),
+            createdAt: normalizeSheetText(row.created_at || payload.createdAt),
+            updatedAt: normalizeSheetText(row.updated_at || payload.updatedAt)
+        });
+    }
+
+    async function prepareStudioSavedImageEntryForRemote(entry = {}, syncKey = getStudioSavedImageSyncKey(entry)) {
+        const normalized = normalizeStudioSavedImageEntry(entry);
+        if (!normalized || !syncKey) return null;
+        const cache = state.auth.studioSavedImageMediaSaveCache instanceof Map
+            ? state.auth.studioSavedImageMediaSaveCache
+            : (state.auth.studioSavedImageMediaSaveCache = new Map());
+        const saveValue = async (value, suffix) => {
+            const source = normalizeSheetText(value);
+            if (!source) return '';
+            if (isSupabaseMediaReference(source) || /^https?:\/\//i.test(source)) return source;
+            const saved = await savePrivateMediaValueWithDedupCache(source, {
+                quizId: null,
+                questionId: null,
+                usageContext: `saved_image_library_sync_${suffix}`,
+                label: `Synced ${normalized.fileName}`,
+                mediaSaveCache: cache
+            });
+            const result = normalizeSheetText(saved || '');
+            if (!result || (!isSupabaseMediaReference(result) && !/^https?:\/\//i.test(result))) {
+                throw new Error('Saved Image could not be prepared for cross-device storage.');
+            }
+            return result;
+        };
+        const imageValue = await saveValue(normalized.imageValue || normalized.mediaValue, 'edited');
+        const originalSource = normalizeSheetText(normalized.imageOnlyValue || normalized.imageOnlyMediaValue || normalized.imageValue);
+        const imageOnlyValue = originalSource === normalizeSheetText(normalized.imageValue)
+            ? imageValue
+            : await saveValue(originalSource, 'original');
+        return normalizeStudioSavedImageEntry({
+            ...normalized,
+            id: syncKey,
+            imageValue,
+            imageOnlyValue: imageOnlyValue || imageValue,
+            mediaValue: isSupabaseMediaReference(imageValue) ? imageValue : normalized.mediaValue,
+            imageOnlyMediaValue: isSupabaseMediaReference(imageOnlyValue || imageValue) ? (imageOnlyValue || imageValue) : normalized.imageOnlyMediaValue,
+            updatedAt: new Date().toISOString()
+        });
+    }
+
+    function buildStudioSavedImageRemoteRow(entry = {}, syncKey = getStudioSavedImageSyncKey(entry), options = {}) {
+        const normalized = normalizeStudioSavedImageEntry(entry);
+        const userId = getStudioSavedImageSyncUserId();
+        if (!normalized || !syncKey || !userId) return null;
+        const now = new Date().toISOString();
+        return {
+            id: syncKey,
+            user_id: userId,
+            dedupe_key: syncKey,
+            payload: { ...normalized, id: syncKey },
+            deleted_at: options.deletedAt || null,
+            created_at: normalizeSheetText(normalized.createdAt) || now,
+            updated_at: now
+        };
+    }
+
+    async function upsertStudioSavedImageRemoteEntry(entry = {}, options = {}) {
+        const userId = getStudioSavedImageSyncUserId();
+        if (!state.auth.client || !userId) return { ok: false, skipped: true };
+        const syncKey = normalizeSheetText(options.syncKey || getStudioSavedImageSyncKey(entry));
+        if (!syncKey) return { ok: false, skipped: true };
+        try {
+            const prepared = options.deletedAt
+                ? normalizeStudioSavedImageEntry(entry) || { id: syncKey, imageValue: 'deleted-placeholder' }
+                : await prepareStudioSavedImageEntryForRemote(entry, syncKey);
+            if (!prepared && !options.deletedAt) return { ok: false };
+            const row = options.deletedAt
+                ? {
+                    id: syncKey,
+                    user_id: userId,
+                    dedupe_key: syncKey,
+                    payload: {},
+                    deleted_at: options.deletedAt,
+                    updated_at: new Date().toISOString()
+                }
+                : buildStudioSavedImageRemoteRow(prepared, syncKey);
+            const { error } = await runWithTransientFetchRetry(() => state.auth.client
+                .from(STUDIO_SAVED_IMAGE_REMOTE_TABLE)
+                .upsert(row, { onConflict: 'user_id,dedupe_key' }), 'Synchronizing Saved Images', { attempts: 2 });
+            if (error) throw error;
+            state.auth.studioSavedImageSync.tableUnavailable = false;
+            return { ok: true, entry: prepared, syncKey };
+        } catch (error) {
+            if (isStudioSavedImageRemoteSchemaError(error)) {
+                state.auth.studioSavedImageSync.tableUnavailable = true;
+            } else {
+                console.warn('Could not synchronize Saved Image:', error);
+            }
+            return { ok: false, error, syncKey };
+        }
+    }
+
+    async function loadStudioSavedImageRemoteRows() {
+        const userId = getStudioSavedImageSyncUserId();
+        if (!state.auth.client || !userId) return { rows: [], ok: false };
+        try {
+            const { data, error } = await runWithTransientFetchRetry(() => state.auth.client
+                .from(STUDIO_SAVED_IMAGE_REMOTE_TABLE)
+                .select('id, dedupe_key, payload, deleted_at, created_at, updated_at')
+                .eq('user_id', userId)
+                .order('updated_at', { ascending: false })
+                .limit(500), 'Loading Saved Images', { attempts: 2 });
+            if (error) throw error;
+            state.auth.studioSavedImageSync.tableUnavailable = false;
+            return { rows: Array.isArray(data) ? data : [], ok: true };
+        } catch (error) {
+            if (isStudioSavedImageRemoteSchemaError(error)) {
+                state.auth.studioSavedImageSync.tableUnavailable = true;
+            } else {
+                console.warn('Could not load synchronized Saved Images:', error);
+            }
+            return { rows: [], ok: false, error };
+        }
+    }
+
+    async function flushStudioSavedImagePendingDeletes(userId = getStudioSavedImageSyncUserId()) {
+        const pending = getStudioSavedImagePendingDeletes(userId);
+        if (!pending.length) return true;
+        const remaining = [];
+        for (const item of pending) {
+            const result = await upsertStudioSavedImageRemoteEntry({ id: item.syncKey, imageValue: 'deleted-placeholder' }, {
+                syncKey: item.syncKey,
+                deletedAt: item.deletedAt
+            });
+            if (!result.ok) remaining.push(item);
+        }
+        saveStudioSavedImagePendingDeletes(remaining, userId);
+        return remaining.length === 0;
+    }
+
+    async function flushStudioSavedImagePendingUpserts(userId = getStudioSavedImageSyncUserId()) {
+        const pendingKeys = getStudioSavedImagePendingUpsertKeys(userId);
+        if (!pendingKeys.size) return true;
+        const cacheEntries = mergeStudioSavedImageEntries(
+            state.auth.studioSavedImageMemoryLibrary || [],
+            loadStudioSavedImageUserCache(userId),
+            loadLegacyStudioSavedImageLibrary()
+        );
+        const remaining = new Set(pendingKeys);
+        for (const entry of cacheEntries) {
+            const syncKey = getStudioSavedImageSyncKey(entry);
+            if (!pendingKeys.has(syncKey)) continue;
+            const result = await upsertStudioSavedImageRemoteEntry(entry, { syncKey });
+            if (result.ok) remaining.delete(syncKey);
+        }
+        saveStudioSavedImagePendingUpsertKeys(remaining, userId);
+        return remaining.size === 0;
+    }
+
+    async function migrateLegacyStudioSavedImagesToRemote(remoteRows = [], userId = getStudioSavedImageSyncUserId()) {
+        if (!userId || isStudioSavedImageLegacyMigrationComplete(userId)) return true;
+        if (!canUseLegacyStudioSavedImagesForUser(userId)) {
+            setStudioSavedImageLegacyMigrationComplete(userId, true);
+            return true;
+        }
+        claimStudioSavedImageLegacyOwner(userId);
+        const legacyEntries = loadLegacyStudioSavedImageLibrary();
+        const remoteKeys = new Set((remoteRows || []).map(row => normalizeSheetText(row?.dedupe_key || row?.id)).filter(Boolean));
+        const deletedKeys = new Set((remoteRows || []).filter(row => row?.deleted_at).map(row => normalizeSheetText(row?.dedupe_key || row?.id)).filter(Boolean));
+        const pendingDeleteKeys = new Set(getStudioSavedImagePendingDeletes(userId).map(item => item.syncKey));
+        let completed = true;
+        for (const entry of legacyEntries) {
+            const syncKey = getStudioSavedImageSyncKey(entry);
+            if (!syncKey || remoteKeys.has(syncKey) || deletedKeys.has(syncKey) || pendingDeleteKeys.has(syncKey)) continue;
+            const result = await upsertStudioSavedImageRemoteEntry(entry, { syncKey, migration: true });
+            if (!result.ok) {
+                completed = false;
+                markStudioSavedImagePendingUpsert(entry);
+            }
+        }
+        if (completed) setStudioSavedImageLegacyMigrationComplete(userId, true);
+        return completed;
+    }
+
+    async function syncStudioSavedImagesFromSupabase(options = {}) {
+        const userId = getStudioSavedImageSyncUserId();
+        const sync = state.auth.studioSavedImageSync;
+        if (!state.auth.client || !userId || !sync) return false;
+        if (sync.inFlight) return sync.inFlight;
+        if (options.force) sync.tableUnavailable = false;
+        const task = (async () => {
+            const firstLoad = await loadStudioSavedImageRemoteRows();
+            if (!firstLoad.ok) return false;
+            await flushStudioSavedImagePendingDeletes(userId);
+            await migrateLegacyStudioSavedImagesToRemote(firstLoad.rows, userId);
+            await flushStudioSavedImagePendingUpserts(userId);
+            const finalLoad = await loadStudioSavedImageRemoteRows();
+            if (!finalLoad.ok) return false;
+            const pendingKeys = getStudioSavedImagePendingUpsertKeys(userId);
+            const pendingLocalEntries = mergeStudioSavedImageEntries(
+                state.auth.studioSavedImageMemoryLibrary || [],
+                loadStudioSavedImageUserCache(userId),
+                loadLegacyStudioSavedImageLibrary()
+            ).filter(entry => pendingKeys.has(getStudioSavedImageSyncKey(entry)));
+            const remoteEntries = finalLoad.rows.map(normalizeStudioSavedImageRemoteRow).filter(Boolean);
+            const merged = mergeStudioSavedImageEntries(remoteEntries, pendingLocalEntries);
+            sync.applyingRemote = true;
+            try {
+                state.auth.studioSavedImageMemoryLibrary = merged;
+                saveStudioSavedImageLibrary(merged);
+            } finally {
+                sync.applyingRemote = false;
+            }
+            sync.loadedUserId = userId;
+            sync.lastLoadedAt = Date.now();
+            if (state.auth.studioSavedImagePicker?.open) renderStudioSavedImagePicker();
+            if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
+            return true;
+        })().finally(() => {
+            if (sync.inFlight === task) sync.inFlight = null;
+        });
+        sync.inFlight = task;
+        return task;
+    }
+
+    function scheduleStudioSavedImageRemoteSync(options = {}) {
+        const sync = state.auth.studioSavedImageSync;
+        if (!sync || !state.auth.client || !state.auth.user?.id || sync.applyingRemote) return;
+        if (sync.scheduleTimerId) window.clearTimeout(sync.scheduleTimerId);
+        sync.scheduleTimerId = window.setTimeout(() => {
+            sync.scheduleTimerId = null;
+            syncStudioSavedImagesFromSupabase(options).catch(error => console.warn('Saved Images synchronization failed:', error));
+        }, options.immediate ? 0 : 250);
     }
 
     function getStudioSavedImageApplyValue(entry = {}, includeEdits = true) {
@@ -3867,6 +4301,8 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioSavedImageMemoryLibrary = mergeStudioSavedImageEntries([entry], state.auth.studioSavedImageMemoryLibrary || []);
         const entries = mergeStudioSavedImageEntries([entry], loadStudioSavedImageLibrary());
         saveStudioSavedImageLibrary(entries);
+        markStudioSavedImagePendingUpsert(entry);
+        scheduleStudioSavedImageRemoteSync({ reason: 'add-snapshot' });
         return entry;
     }
 
@@ -3896,6 +4332,8 @@ MODIFICATION RULES FOR THIS APP
         );
         state.auth.studioSavedImageMemoryLibrary = merged;
         saveStudioSavedImageLibrary(merged);
+        entries.forEach(markStudioSavedImagePendingUpsert);
+        scheduleStudioSavedImageRemoteSync({ reason: 'add-snapshots-bulk' });
         return entries.map(entry => {
             const signature = getStudioSavedImageSignature(entry);
             return merged.find(item => getStudioSavedImageSignature(item) === signature) || entry;
@@ -3906,12 +4344,14 @@ MODIFICATION RULES FOR THIS APP
         const entry = normalizeStudioSavedImageEntry(snapshot);
         const signature = getStudioSavedImageSignature(entry);
         if (!entry || !signature) return;
+        markStudioSavedImagePendingDelete(entry);
         const withoutSignature = list => (Array.isArray(list) ? list : [])
             .map(normalizeStudioSavedImageEntry)
             .filter(Boolean)
             .filter(item => getStudioSavedImageSignature(item) !== signature && getStudioSavedImagePreMetadataSignature(item) !== signature && getStudioSavedImageLegacySignature(item) !== signature);
         state.auth.studioSavedImageMemoryLibrary = withoutSignature(state.auth.studioSavedImageMemoryLibrary || []);
         saveStudioSavedImageLibrary(withoutSignature(loadStudioSavedImageLibrary()));
+        scheduleStudioSavedImageRemoteSync({ reason: 'remove-entry' });
     }
 
     function removeStudioSavedImageEntryById(entryId = '') {
@@ -4215,6 +4655,9 @@ MODIFICATION RULES FOR THIS APP
                     state.auth.studioSavedImagePicker.view = 'saved';
                     state.auth.studioSavedImagePicker.searchQuery = '';
                     renderStudioSavedImagePicker();
+                    syncStudioSavedImagesFromSupabase({ force: true, reason: 'open-saved-image-picker' })
+                        .then(renderStudioSavedImagePicker)
+                        .catch(error => console.warn('Could not refresh Saved Images:', error));
                     return;
                 }
                 if (event.target.closest('[data-saved-image-picker-back]')) {
@@ -6652,6 +7095,15 @@ MODIFICATION RULES FOR THIS APP
             drawStrokes,
             metadata
         });
+        if (entry && state.auth.client && state.auth.user?.id) {
+            const syncKey = getStudioSavedImageSyncKey(entry);
+            const remoteResult = await upsertStudioSavedImageRemoteEntry(entry, { syncKey });
+            if (remoteResult.ok) {
+                const pendingKeys = getStudioSavedImagePendingUpsertKeys();
+                pendingKeys.delete(syncKey);
+                saveStudioSavedImagePendingUpsertKeys(pendingKeys);
+            }
+        }
         return { entry, value: sharedValue };
     }
 
@@ -13387,6 +13839,7 @@ MODIFICATION RULES FOR THIS APP
             button.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
         if (nextSection === 'review-mode') {
+            await syncStudioSavedImagesFromSupabase({ force: true, reason: 'open-review-mode' });
             renderReviewModeLibrary();
         } else if (getReviewModeState().overlayOpen) {
             closeReviewModeImage();
@@ -14963,6 +15416,7 @@ if (elements.openQuizStudioBtn) {
 
         if (state.auth.user?.id) {
             await loadAuthProfile(state.auth.user.id);
+            await syncStudioSavedImagesFromSupabase({ force: !sameSignedInUser, reason: 'auth-session' });
             await refreshStudioManagementData({ force: !sameSignedInUser });
         } else {
             invalidateSupabaseManagementCache();
@@ -14973,6 +15427,10 @@ if (elements.openQuizStudioBtn) {
             state.auth.quizChallengeUnavailable = false;
             state.googleSheetsImportQuizzes = [];
             state.auth.currentStudioSection = 'home';
+            state.auth.studioSavedImageMemoryLibrary = [];
+            state.auth.studioSavedImageSync.loadedUserId = '';
+            state.auth.studioSavedImageSync.lastLoadedAt = 0;
+            state.auth.studioSavedImageSync.tableUnavailable = false;
             state.auth.backupImportPayload = null;
             state.auth.backupImportFileName = '';
             clearCreatorInputs();
