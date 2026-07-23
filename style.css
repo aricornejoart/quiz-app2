@@ -10255,3 +10255,685 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   width: calc(66.6667dvw - 13.3333px);
   box-sizing: border-box;
 }
+
+/* Phase 22LX — standalone Diagram Creator, diagram metadata, and Saved Images filters. */
+.studio-diagram-creator-panel {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.studio-diagram-creator-actions {
+  display: flex;
+  justify-content: center;
+  padding: 18px 0 8px;
+}
+
+.studio-diagram-creator-help {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(124, 108, 255, 0.24);
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(124, 108, 255, 0.08);
+  line-height: 1.45;
+}
+
+.studio-image-editor-metadata-panel {
+  flex: 0 0 auto;
+  max-height: 190px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(124, 108, 255, 0.34);
+  border-radius: 16px;
+  background: rgba(37, 31, 74, 0.74);
+}
+
+.studio-image-editor-metadata-panel.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-metadata-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.studio-image-editor-metadata-title {
+  color: #fff;
+  font-weight: 900;
+}
+
+.studio-image-editor-metadata-subtitle {
+  margin-top: 2px;
+  color: rgba(232, 226, 255, 0.7);
+  font-size: 0.8rem;
+}
+
+.studio-image-editor-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.studio-image-editor-metadata-grid label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: rgba(232, 226, 255, 0.82);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.studio-image-editor-metadata-grid input,
+.studio-image-editor-metadata-grid select {
+  width: 100%;
+  min-width: 0;
+  min-height: 35px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 7px 9px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  outline: none;
+}
+
+.studio-image-editor-metadata-grid select option {
+  color: #171230;
+  background: #fff;
+}
+
+.studio-image-editor-metadata-grid input:focus,
+.studio-image-editor-metadata-grid select:focus {
+  border-color: rgba(250, 204, 21, 0.72);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.14);
+}
+
+.studio-image-editor-metadata-tags {
+  grid-column: span 2;
+}
+
+.studio-saved-image-search-wrap {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.studio-saved-image-search-input {
+  width: 100%;
+}
+
+.studio-saved-image-filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.studio-saved-image-filter-row select,
+.studio-saved-image-filter-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 8px 10px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-weight: 700;
+  outline: none;
+}
+
+.studio-saved-image-filter-row select option {
+  color: #171230;
+  background: #fff;
+}
+
+.studio-saved-image-meta {
+  min-height: 1.25em;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  text-transform: capitalize;
+}
+
+@media (max-width: 920px) {
+  .studio-image-editor-metadata-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .studio-image-editor-metadata-grid,
+  .studio-saved-image-filter-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .studio-image-editor-metadata-tags {
+    grid-column: auto;
+  }
+}
+
+
+/* Phase 22LY — collapsible Diagram Details and persistent Labels panel. */
+.studio-image-editor-metadata-panel {
+  max-height: 150px;
+  padding: 9px;
+  border-radius: 12px;
+}
+
+.studio-image-editor-metadata-heading {
+  gap: 9px;
+  margin-bottom: 7px;
+}
+
+.studio-image-editor-metadata-title {
+  font-size: 0.82rem;
+}
+
+.studio-image-editor-metadata-subtitle {
+  font-size: 0.68rem;
+}
+
+.studio-image-editor-metadata-grid {
+  gap: 7px;
+}
+
+.studio-image-editor-metadata-grid label {
+  gap: 3px;
+  font-size: 0.68rem;
+}
+
+.studio-image-editor-metadata-grid input,
+.studio-image-editor-metadata-grid select {
+  box-sizing: border-box;
+  min-height: 27px;
+  border-radius: 8px;
+  padding: 5px 7px;
+  font-size: 0.72rem;
+}
+
+#studioImageEditorMetadataToggleBtn[aria-expanded="true"] {
+  border-color: rgba(250, 204, 21, 0.72);
+  background: rgba(250, 204, 21, 0.14);
+}
+
+
+/* Phase 22LZ — reliable Show Details / Hide Details panel state. */
+#studioImageEditorMetadataPanel[hidden],
+.studio-image-editor-modal:not(.diagram-details-open) #studioImageEditorMetadataPanel {
+  display: none !important;
+}
+
+.studio-image-editor-modal.diagram-details-open #studioImageEditorMetadataPanel {
+  display: block !important;
+}
+
+
+/* Phase 22MC — standalone Saved Image Review Mode. */
+.studio-review-mode-panel {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.studio-review-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(124, 108, 255, 0.3);
+  border-radius: 16px;
+  background: rgba(37, 31, 74, 0.72);
+}
+
+.studio-review-filter-panel label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: rgba(239, 235, 255, 0.82);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.studio-review-filter-panel input,
+.studio-review-filter-panel select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 11px;
+  padding: 8px 10px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  outline: none;
+}
+
+.studio-review-filter-panel select option {
+  color: #171230;
+  background: #fff;
+}
+
+.studio-review-filter-panel input:focus,
+.studio-review-filter-panel select:focus {
+  border-color: rgba(250, 204, 21, 0.75);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.14);
+}
+
+.studio-review-filter-wide {
+  grid-column: span 2;
+}
+
+.studio-review-filter-actions {
+  display: flex;
+  align-items: end;
+}
+
+.studio-review-search-count {
+  margin: 13px 2px 9px;
+  color: rgba(239, 235, 255, 0.76);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.studio-review-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 13px;
+}
+
+.studio-review-image-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.studio-review-image-card:hover,
+.studio-review-image-card:focus-within {
+  transform: translateY(-2px);
+  border-color: rgba(250, 204, 21, 0.74);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.studio-review-image-open {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-review-image-open:focus-visible {
+  outline: 2px solid rgba(250, 204, 21, 0.9);
+  outline-offset: -2px;
+}
+
+.studio-review-image-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 11px;
+  padding: 0;
+  color: #fff;
+  background: rgba(20, 17, 43, 0.9);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.34);
+  font-size: 1rem;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.studio-review-image-delete:hover,
+.studio-review-image-delete:focus-visible {
+  border-color: rgba(255, 115, 115, 0.9);
+  background: rgba(133, 31, 47, 0.96);
+  outline: none;
+}
+
+.studio-review-image-thumb {
+  display: block;
+  width: 100%;
+  height: 170px;
+  object-fit: contain;
+  background: rgba(10, 8, 28, 0.72);
+}
+
+.studio-review-image-card-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px 12px;
+}
+
+.studio-review-image-name {
+  overflow: hidden;
+  color: #fff;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-review-image-meta,
+.studio-review-image-label-count {
+  color: rgba(239, 235, 255, 0.68);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-transform: capitalize;
+}
+
+.studio-review-image-label-count {
+  margin-top: auto;
+  padding-top: 4px;
+  color: rgba(250, 204, 21, 0.82);
+  font-weight: 800;
+}
+
+.studio-review-empty {
+  grid-column: 1 / -1;
+  padding: 28px 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  color: rgba(239, 235, 255, 0.72);
+  text-align: center;
+}
+
+.review-mode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482500;
+  overflow: hidden;
+  background: #080714;
+}
+
+.review-mode-toolbar {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.review-mode-toolbar-btn {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 13px;
+  padding: 8px 13px;
+  color: #fff;
+  background: rgba(20, 17, 43, 0.88);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.review-mode-close-btn {
+  width: 44px;
+  padding: 8px;
+  font-size: 1.05rem;
+}
+
+.review-mode-active-title {
+  min-width: 0;
+  overflow: hidden;
+  margin: 8px 0 12px;
+  border-radius: 12px;
+  padding: 8px 11px;
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.84rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-mode-options-panel {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 50px);
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 9;
+  width: min(290px, calc(100vw - 20px));
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+  padding: 14px;
+  color: #fff;
+  background: rgba(24, 20, 52, 0.94);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.44);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.review-mode-options-title {
+  margin-bottom: 9px;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.review-mode-switch-row,
+.review-mode-size-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 42px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.review-mode-switch-row input[type="checkbox"] {
+  width: 38px;
+  height: 22px;
+  accent-color: #facc15;
+  cursor: pointer;
+}
+
+.review-mode-size-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.review-mode-size-controls button {
+  width: 34px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.review-mode-size-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#reviewModeLabelSizeValue {
+  min-width: 45px;
+  color: #fde68a;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.review-mode-options-help {
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 10px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.review-mode-image-viewport {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  box-sizing: border-box;
+}
+
+.review-mode-image-stage {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 0 auto;
+}
+
+.review-mode-image,
+.review-mode-draw-canvas,
+.review-mode-label-layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.review-mode-image {
+  object-fit: fill;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.review-mode-draw-canvas,
+.review-mode-label-layer {
+  pointer-events: none;
+}
+
+.review-mode-draw-canvas {
+  z-index: 2;
+}
+
+.review-mode-label-layer {
+  z-index: 3;
+  --review-label-scale: 1;
+}
+
+.review-mode-label-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: calc(30px * var(--review-label-scale));
+  min-height: calc(30px * var(--review-label-scale));
+  max-width: min(72vw, 520px);
+  box-sizing: border-box;
+  border: calc(1px * var(--review-label-scale)) solid rgba(250, 204, 21, 0.9);
+  border-radius: calc(999px * var(--review-label-scale));
+  padding: calc(5px * var(--review-label-scale)) calc(9px * var(--review-label-scale));
+  color: #fff;
+  background: rgba(28, 23, 59, 0.9);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.34);
+  font: inherit;
+  font-size: calc(0.82rem * var(--review-label-scale));
+  font-weight: 950;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.review-mode-label-marker.is-name-visible {
+  border-color: rgba(255, 255, 255, 0.86);
+  background: rgba(63, 52, 118, 0.94);
+}
+
+.review-mode-label-marker:focus-visible {
+  outline: 3px solid rgba(250, 204, 21, 0.45);
+  outline-offset: 2px;
+}
+
+body.review-mode-image-open {
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+@media (max-width: 920px) {
+  .studio-review-filter-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .studio-review-filter-panel {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .studio-review-filter-wide {
+    grid-column: auto;
+  }
+
+  .studio-review-image-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .studio-review-image-thumb {
+    height: 130px;
+  }
+
+  .review-mode-toolbar {
+    gap: 6px;
+  }
+
+  .review-mode-toolbar-btn {
+    min-height: 40px;
+    padding: 7px 10px;
+    font-size: 0.78rem;
+  }
+
+  .review-mode-close-btn {
+    width: 40px;
+  }
+
+  .review-mode-active-title {
+    display: none;
+  }
+
+  .review-mode-options-panel {
+    top: calc(max(10px, env(safe-area-inset-top)) + 47px);
+  }
+}

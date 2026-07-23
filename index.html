@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22lw">
+  <link rel="stylesheet" href="style.css?v=22mf">
 </head>
 <body>
 
@@ -652,7 +652,9 @@ MODIFICATION RULES FOR THIS APP
                 <button id="quizStudioImportTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="import" role="tab" aria-selected="false">Import</button>
                 <button id="quizStudioBackupTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="backup" role="tab" aria-selected="false">Backup</button>
                 <button id="quizStudioEditorTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="editor" role="tab" aria-selected="false">Quiz Editor</button>
+                <button id="quizStudioDiagramCreatorTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="diagram-creator" role="tab" aria-selected="false">Diagram Creator</button>
                 <button id="appMenuStudyModeBtn" type="button" class="quiz-studio-nav-btn app-menu-study-btn">Study Mode</button>
+                <button id="quizStudioReviewModeTab" type="button" class="quiz-studio-nav-btn" data-studio-section-target="review-mode" role="tab" aria-selected="false">Review Mode</button>
                 <button id="appMenuAccountBtn" type="button" class="quiz-studio-nav-btn app-menu-secondary-btn">Account</button>
                 <button id="appMenuSettingsBtn" type="button" class="quiz-studio-nav-btn app-menu-secondary-btn">Study Settings</button>
               </div>
@@ -689,6 +691,39 @@ MODIFICATION RULES FOR THIS APP
                     <div id="studioProgressPanel" class="studio-progress-grid"></div>
                   </section>
                 </div>
+              </section>
+
+              <section id="quizStudioDiagramCreatorSection" class="quiz-studio-section hidden" data-studio-section="diagram-creator" role="tabpanel">
+                <section class="creator-subsection quiz-studio-panel studio-diagram-creator-panel">
+                  <div class="creator-subsection-title">Diagram Creator</div>
+                  <div class="creator-note">Create a reusable labeled diagram without making a quiz. The standalone creator uses the same dependable editor as flashcard images. Crop, blur, arrows, and lines stay flattened; labels and paint/highlighter strokes remain editable.</div>
+                  <input id="diagramCreatorFileInput" type="file" accept="image/*" class="hidden" aria-hidden="true">
+                  <div class="studio-diagram-creator-actions">
+                    <button id="diagramCreatorChooseBtn" type="button" class="auth-action-btn auth-primary-btn">Choose Image</button>
+                  </div>
+                  <div class="studio-diagram-creator-help">The editor footer contains only <strong>Cancel</strong> and <strong>Send to Saved Images</strong>. Saved diagrams can later be selected inside flashcard image controls.</div>
+                </section>
+              </section>
+
+              <section id="quizStudioReviewModeSection" class="quiz-studio-section hidden" data-studio-section="review-mode" role="tabpanel">
+                <section class="creator-subsection quiz-studio-panel studio-review-mode-panel">
+                  <div class="creator-subsection-title">Review Mode</div>
+                  <div class="creator-note">Search all nondeleted Saved Images, then open one as a full-screen interactive anatomy review.</div>
+                  <div class="studio-review-filter-panel" aria-label="Review Mode image filters">
+                    <label class="studio-review-filter-wide"><span>Search everything</span><input id="reviewModeSearchInput" type="search" autocomplete="off" placeholder="Search diagram names, subjects, tags, or label names"></label>
+                    <label><span>Diagram name</span><input id="reviewModeDiagramNameFilter" type="search" autocomplete="off" placeholder="Long Bone Anatomy"></label>
+                    <label><span>Subject</span><input id="reviewModeSubjectFilter" type="search" autocomplete="off" placeholder="Long bone"></label>
+                    <label><span>Type</span><select id="reviewModeAnatomyTypeFilter"><option value="">All types</option><option value="bone">Bone</option><option value="muscle">Muscle</option><option value="tissue">Tissue</option><option value="cartilage">Cartilage</option><option value="organ">Organ</option><option value="joint">Joint</option><option value="ligament">Ligament</option><option value="cell">Cell</option><option value="body region">Body region</option><option value="organ system">Organ system</option><option value="other">Other</option></select></label>
+                    <label><span>Organ system</span><select id="reviewModeOrganSystemFilter"><option value="">All systems</option><option value="skeletal">Skeletal</option><option value="muscular">Muscular</option><option value="nervous">Nervous</option><option value="cardiovascular">Cardiovascular</option><option value="respiratory">Respiratory</option><option value="digestive">Digestive</option><option value="urinary">Urinary</option><option value="reproductive">Reproductive</option><option value="endocrine">Endocrine</option><option value="lymphatic">Lymphatic</option><option value="integumentary">Integumentary</option><option value="special senses">Special senses</option><option value="other">Other</option></select></label>
+                    <label><span>Location</span><input id="reviewModeLocationFilter" type="search" autocomplete="off" placeholder="Upper limb"></label>
+                    <label><span>Organ</span><input id="reviewModeOrganFilter" type="search" autocomplete="off" placeholder="Heart"></label>
+                    <label><span>Muscle</span><input id="reviewModeMuscleFilter" type="search" autocomplete="off" placeholder="Biceps brachii"></label>
+                    <label><span>Tags</span><input id="reviewModeTagsFilter" type="search" autocomplete="off" placeholder="epiphysis, compact bone"></label>
+                    <div class="studio-review-filter-actions"><button id="reviewModeClearFiltersBtn" type="button" class="auth-action-btn auth-secondary-btn">Clear Filters</button></div>
+                  </div>
+                  <div id="reviewModeSearchCount" class="studio-review-search-count" aria-live="polite"></div>
+                  <div id="reviewModeImageGrid" class="studio-review-image-grid"></div>
+                </section>
               </section>
 
               <section id="quizStudioFoldersSection" class="quiz-studio-section hidden" data-studio-section="folders" role="tabpanel">
@@ -1567,6 +1602,42 @@ MODIFICATION RULES FOR THIS APP
 </div>
 
 
+  <!-- Phase 22MC: Saved Image Review Mode overlay -->
+  <div id="reviewModeOverlay" class="review-mode-overlay hidden" aria-hidden="true">
+    <div class="review-mode-toolbar" aria-label="Review image controls">
+      <button id="reviewModeCloseBtn" class="review-mode-toolbar-btn review-mode-close-btn" type="button" aria-label="Exit reviewed image">✕</button>
+      <button id="reviewModeOptionsBtn" class="review-mode-toolbar-btn review-mode-options-btn" type="button" aria-expanded="false" aria-controls="reviewModeOptionsPanel">Show Options</button>
+    </div>
+    <div id="reviewModeOptionsPanel" class="review-mode-options-panel hidden" aria-hidden="true">
+      <div class="review-mode-options-title">Review Options</div>
+      <div id="reviewModeActiveTitle" class="review-mode-active-title"></div>
+      <label class="review-mode-switch-row">
+        <span>Show all label names</span>
+        <input id="reviewModeShowAllNamesToggle" type="checkbox" role="switch" aria-label="Show all label names">
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Show label drawings</span>
+        <input id="reviewModeShowDrawDataToggle" type="checkbox" role="switch" aria-label="Show label paintbrush and drawing data" checked>
+      </label>
+      <div class="review-mode-size-row">
+        <span>Label size</span>
+        <div class="review-mode-size-controls">
+          <button id="reviewModeLabelSizeDownBtn" type="button" aria-label="Decrease label size">−</button>
+          <span id="reviewModeLabelSizeValue" aria-live="polite">100%</span>
+          <button id="reviewModeLabelSizeUpBtn" type="button" aria-label="Increase label size">+</button>
+        </div>
+      </div>
+      <div class="review-mode-options-help">Click a number on the image to reveal its label name and associated drawing. Click it again to return to the number.</div>
+    </div>
+    <div id="reviewModeImageViewport" class="review-mode-image-viewport">
+      <div id="reviewModeImageStage" class="review-mode-image-stage">
+        <img id="reviewModeImage" class="review-mode-image" alt="Saved diagram review">
+        <canvas id="reviewModeDrawCanvas" class="review-mode-draw-canvas" aria-hidden="true"></canvas>
+        <div id="reviewModeLabelLayer" class="review-mode-label-layer" aria-label="Interactive diagram labels"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Study Bunny Image Editor -->
   <div id="studioImageEditorOverlay" class="studio-image-editor-overlay hidden" aria-hidden="true">
     <div class="studio-image-editor-modal" role="dialog" aria-modal="true" aria-labelledby="studioImageEditorTitle">
@@ -1630,8 +1701,37 @@ MODIFICATION RULES FOR THIS APP
         </div>
       </div>
 
+
+      <div id="studioImageEditorMetadataPanel" class="studio-image-editor-metadata-panel hidden" aria-label="Diagram details" aria-hidden="true" hidden>
+        <div class="studio-image-editor-metadata-heading">
+          <div>
+            <div class="studio-image-editor-metadata-title">Diagram Details</div>
+            <div class="studio-image-editor-metadata-subtitle">These details make Saved Images searchable and filterable.</div>
+          </div>
+        </div>
+        <div class="studio-image-editor-metadata-grid">
+          <label><span>Diagram name</span><input id="studioImageEditorDiagramName" type="text" maxlength="120" placeholder="Anterior skull sutures"></label>
+          <label><span>Subject name</span><input id="studioImageEditorSubjectName" type="text" maxlength="120" placeholder="Coronal suture or long bone"></label>
+          <label><span>Type</span>
+            <select id="studioImageEditorAnatomyType">
+              <option value="">Not selected</option><option value="bone">Bone</option><option value="muscle">Muscle</option><option value="tissue">Tissue</option><option value="cartilage">Cartilage</option><option value="organ">Organ</option><option value="joint">Joint</option><option value="ligament">Ligament</option><option value="cell">Cell</option><option value="body region">Body region</option><option value="organ system">Organ system</option><option value="other">Other</option>
+            </select>
+          </label>
+          <label><span>Organ system</span>
+            <select id="studioImageEditorOrganSystem">
+              <option value="">Not selected</option><option value="skeletal">Skeletal</option><option value="muscular">Muscular</option><option value="nervous">Nervous</option><option value="cardiovascular">Cardiovascular</option><option value="respiratory">Respiratory</option><option value="digestive">Digestive</option><option value="urinary">Urinary</option><option value="reproductive">Reproductive</option><option value="endocrine">Endocrine</option><option value="lymphatic">Lymphatic</option><option value="integumentary">Integumentary</option><option value="special senses">Special senses</option><option value="other">Other</option>
+            </select>
+          </label>
+          <label><span>Location</span><input id="studioImageEditorLocation" type="text" maxlength="120" placeholder="Head, upper limb, microscopic"></label>
+          <label><span>Organ</span><input id="studioImageEditorOrgan" type="text" maxlength="120" placeholder="Heart, kidney, skin"></label>
+          <label><span>Muscle</span><input id="studioImageEditorMuscle" type="text" maxlength="120" placeholder="Biceps brachii"></label>
+          <label class="studio-image-editor-metadata-tags"><span>Tags</span><input id="studioImageEditorTags" type="text" maxlength="300" placeholder="long bone, epiphysis, compact bone"></label>
+        </div>
+      </div>
+
       <div class="studio-image-editor-actions">
         <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
+        <button id="studioImageEditorMetadataToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorMetadataPanel">Show Details</button>
         <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
         <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
         <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
@@ -1640,6 +1740,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22lw"></script>
+  <script src="script.js?v=22mf"></script>
 </body>
 </html>

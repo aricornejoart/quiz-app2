@@ -273,6 +273,10 @@ MODIFICATION RULES FOR THIS APP
             studioFlashcardDefinitionImageLabels: [],
             studioFlashcardTermImageDrawStrokes: [],
             studioFlashcardDefinitionImageDrawStrokes: [],
+            studioFlashcardTermImageMetadata: {},
+            studioFlashcardDefinitionImageMetadata: {},
+            diagramCreatorSourceDataUrl: '',
+            diagramCreatorSourceLabel: '',
             editingQuizId: null,
             editingQuestionId: null,
             editingQuizType: 'multiple_choice',
@@ -324,7 +328,17 @@ MODIFICATION RULES FOR THIS APP
                 target: null,
                 fileInput: null,
                 view: 'choice',
-                searchQuery: ''
+                searchQuery: '',
+                filters: { anatomyType: '', organSystem: '', location: '' }
+            },
+            reviewMode: {
+                activeEntryId: '',
+                overlayOpen: false,
+                optionsOpen: false,
+                showAllNames: false,
+                showDrawData: true,
+                labelScale: 1,
+                revealedLabels: new Set()
             },
             studioSavedImageMemoryLibrary: [],
             imageEditor: {
@@ -350,6 +364,9 @@ MODIFICATION RULES FOR THIS APP
                 drawStrokes: [],
                 labels: [],
                 labelsEnabled: false,
+                metadata: {},
+                metadataEnabled: false,
+                metadataPanelOpen: false,
                 draggingLabelIndex: null,
                 hoveredLabelIndex: null,
                 showLabelPanel: false
@@ -416,6 +433,35 @@ MODIFICATION RULES FOR THIS APP
         studioRecentQuizList: document.getElementById('studioRecentQuizList'),
         studioRecentFolderList: document.getElementById('studioRecentFolderList'),
         studioProgressPanel: document.getElementById('studioProgressPanel'),
+        diagramCreatorFileInput: document.getElementById('diagramCreatorFileInput'),
+        diagramCreatorChooseBtn: document.getElementById('diagramCreatorChooseBtn'),
+        reviewModeSearchInput: document.getElementById('reviewModeSearchInput'),
+        reviewModeDiagramNameFilter: document.getElementById('reviewModeDiagramNameFilter'),
+        reviewModeSubjectFilter: document.getElementById('reviewModeSubjectFilter'),
+        reviewModeAnatomyTypeFilter: document.getElementById('reviewModeAnatomyTypeFilter'),
+        reviewModeOrganSystemFilter: document.getElementById('reviewModeOrganSystemFilter'),
+        reviewModeLocationFilter: document.getElementById('reviewModeLocationFilter'),
+        reviewModeOrganFilter: document.getElementById('reviewModeOrganFilter'),
+        reviewModeMuscleFilter: document.getElementById('reviewModeMuscleFilter'),
+        reviewModeTagsFilter: document.getElementById('reviewModeTagsFilter'),
+        reviewModeClearFiltersBtn: document.getElementById('reviewModeClearFiltersBtn'),
+        reviewModeSearchCount: document.getElementById('reviewModeSearchCount'),
+        reviewModeImageGrid: document.getElementById('reviewModeImageGrid'),
+        reviewModeOverlay: document.getElementById('reviewModeOverlay'),
+        reviewModeCloseBtn: document.getElementById('reviewModeCloseBtn'),
+        reviewModeOptionsBtn: document.getElementById('reviewModeOptionsBtn'),
+        reviewModeOptionsPanel: document.getElementById('reviewModeOptionsPanel'),
+        reviewModeActiveTitle: document.getElementById('reviewModeActiveTitle'),
+        reviewModeImageViewport: document.getElementById('reviewModeImageViewport'),
+        reviewModeImageStage: document.getElementById('reviewModeImageStage'),
+        reviewModeImage: document.getElementById('reviewModeImage'),
+        reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
+        reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
+        reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
+        reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
+        reviewModeLabelSizeDownBtn: document.getElementById('reviewModeLabelSizeDownBtn'),
+        reviewModeLabelSizeUpBtn: document.getElementById('reviewModeLabelSizeUpBtn'),
+        reviewModeLabelSizeValue: document.getElementById('reviewModeLabelSizeValue'),
         createClassName: document.getElementById('createClassName'),
         createClassBtn: document.getElementById('createClassBtn'),
         createFolderClassSelect: document.getElementById('createFolderClassSelect'),
@@ -583,6 +629,16 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorLabelsBtn: document.getElementById('studioImageEditorLabelsBtn'),
         studioImageEditorLabelPanel: document.getElementById('studioImageEditorLabelPanel'),
         studioImageEditorLabelList: document.getElementById('studioImageEditorLabelList'),
+        studioImageEditorMetadataPanel: document.getElementById('studioImageEditorMetadataPanel'),
+        studioImageEditorMetadataToggleBtn: document.getElementById('studioImageEditorMetadataToggleBtn'),
+        studioImageEditorDiagramName: document.getElementById('studioImageEditorDiagramName'),
+        studioImageEditorSubjectName: document.getElementById('studioImageEditorSubjectName'),
+        studioImageEditorAnatomyType: document.getElementById('studioImageEditorAnatomyType'),
+        studioImageEditorOrganSystem: document.getElementById('studioImageEditorOrganSystem'),
+        studioImageEditorLocation: document.getElementById('studioImageEditorLocation'),
+        studioImageEditorOrgan: document.getElementById('studioImageEditorOrgan'),
+        studioImageEditorMuscle: document.getElementById('studioImageEditorMuscle'),
+        studioImageEditorTags: document.getElementById('studioImageEditorTags'),
         studioImageEditorAddLabelBtn: document.getElementById('studioImageEditorAddLabelBtn'),
         studioImageEditorRemoveLastLabelBtn: document.getElementById('studioImageEditorRemoveLastLabelBtn'),
         studioImageEditorToolButtons: Array.from(document.querySelectorAll('[data-image-editor-tool]')),
@@ -2297,6 +2353,25 @@ MODIFICATION RULES FOR THIS APP
         })).filter(label => label.label);
     }
 
+    function normalizeDiagramMetadata(metadata = {}) {
+        const source = metadata && typeof metadata === 'object' ? metadata : {};
+        const normalizeValue = value => normalizeSheetText(value).slice(0, 300);
+        return {
+            diagramName: normalizeValue(source.diagramName || source.name || ''),
+            subjectName: normalizeValue(source.subjectName || source.subject || ''),
+            anatomyType: normalizeValue(source.anatomyType || source.type || '').toLowerCase(),
+            organSystem: normalizeValue(source.organSystem || source.system || '').toLowerCase(),
+            location: normalizeValue(source.location || ''),
+            organ: normalizeValue(source.organ || ''),
+            muscle: normalizeValue(source.muscle || ''),
+            tags: normalizeValue(Array.isArray(source.tags) ? source.tags.join(', ') : (source.tags || ''))
+        };
+    }
+
+    function hasDiagramMetadata(metadata = {}) {
+        return Object.values(normalizeDiagramMetadata(metadata)).some(Boolean);
+    }
+
     const FLASHCARD_SIDE_META_COMMENT_PREFIX = 'STUDY_BUNNY_FLASHCARD_META:';
 
     function parseStoredFlashcardSideContent(rawHtml = '') {
@@ -2316,6 +2391,7 @@ MODIFICATION RULES FOR THIS APP
             html: cleaned,
             labels: normalizeDiagramLabels(meta.labels || []),
             drawStrokes: cloneImageEditorDrawStrokes(meta.drawStrokes || []),
+            metadata: normalizeDiagramMetadata(meta.metadata || {}),
             imagePresent,
             reuseSignature: normalizeSheetText(meta.reuseSignature || ''),
             savedImageSignature: normalizeSheetText(meta.savedImageSignature || '')
@@ -2326,12 +2402,14 @@ MODIFICATION RULES FOR THIS APP
         const parsed = parseStoredFlashcardSideContent(html || '');
         const labels = normalizeDiagramLabels(options.labels || []);
         const drawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || []);
+        const metadata = normalizeDiagramMetadata(options.metadata || {});
         const imagePresent = options.imagePresent === true ? true : (options.imagePresent === false ? false : undefined);
         const reuseSignature = normalizeSheetText(options.reuseSignature || '');
         const savedImageSignature = normalizeSheetText(options.savedImageSignature || '');
         const meta = {};
         if (labels.length) meta.labels = labels;
         if (drawStrokes.length) meta.drawStrokes = drawStrokes;
+        if (hasDiagramMetadata(metadata)) meta.metadata = metadata;
         if (imagePresent !== undefined) meta.imagePresent = imagePresent;
         if (reuseSignature) meta.reuseSignature = reuseSignature;
         if (savedImageSignature) meta.savedImageSignature = savedImageSignature;
@@ -3431,7 +3509,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
-    function setStudioFlashcardTermImageState(dataUrl = '', label = 'No term image selected.', labels = undefined, drawStrokes = undefined) {
+    function setStudioFlashcardTermImageState(dataUrl = '', label = 'No term image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
         const previousValue = normalizeSheetText(state.auth.studioFlashcardTermImageDataUrl);
         state.auth.studioFlashcardTermImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardTermImageLabel = label;
@@ -3445,6 +3523,11 @@ MODIFICATION RULES FOR THIS APP
         } else if (!state.auth.studioFlashcardTermImageDataUrl || state.auth.studioFlashcardTermImageDataUrl !== previousValue) {
             state.auth.studioFlashcardTermImageDrawStrokes = [];
         }
+        if (metadata !== undefined) {
+            state.auth.studioFlashcardTermImageMetadata = normalizeDiagramMetadata(metadata || {});
+        } else if (!state.auth.studioFlashcardTermImageDataUrl || state.auth.studioFlashcardTermImageDataUrl !== previousValue) {
+            state.auth.studioFlashcardTermImageMetadata = {};
+        }
         const hasImage = !!state.auth.studioFlashcardTermImageDataUrl;
         if (elements.createFlashcardTermImageName) elements.createFlashcardTermImageName.textContent = label;
         if (!dataUrl && elements.createFlashcardTermImageFile) elements.createFlashcardTermImageFile.value = '';
@@ -3455,7 +3538,7 @@ MODIFICATION RULES FOR THIS APP
         updateStudioImageEditButton(elements.createFlashcardTermImageEditBtn, state.auth.studioFlashcardTermImageDataUrl);
     }
 
-    function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.', labels = undefined, drawStrokes = undefined) {
+    function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
         const previousValue = normalizeSheetText(state.auth.studioFlashcardDefinitionImageDataUrl);
         state.auth.studioFlashcardDefinitionImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardDefinitionImageLabel = label;
@@ -3468,6 +3551,11 @@ MODIFICATION RULES FOR THIS APP
             state.auth.studioFlashcardDefinitionImageDrawStrokes = cloneImageEditorDrawStrokes(drawStrokes || []);
         } else if (!state.auth.studioFlashcardDefinitionImageDataUrl || state.auth.studioFlashcardDefinitionImageDataUrl !== previousValue) {
             state.auth.studioFlashcardDefinitionImageDrawStrokes = [];
+        }
+        if (metadata !== undefined) {
+            state.auth.studioFlashcardDefinitionImageMetadata = normalizeDiagramMetadata(metadata || {});
+        } else if (!state.auth.studioFlashcardDefinitionImageDataUrl || state.auth.studioFlashcardDefinitionImageDataUrl !== previousValue) {
+            state.auth.studioFlashcardDefinitionImageMetadata = {};
         }
         const hasImage = !!state.auth.studioFlashcardDefinitionImageDataUrl;
         if (elements.createFlashcardDefinitionImageName) elements.createFlashcardDefinitionImageName.textContent = label;
@@ -3529,6 +3617,7 @@ MODIFICATION RULES FOR THIS APP
             imageOnlyLabel: normalizeSheetText(entry.imageOnlyLabel || entry.sourceLabel || `Selected: ${fileName}`) || `Selected: ${fileName}`,
             labels: normalizeDiagramLabels(entry.labels || []),
             drawStrokes: cloneImageEditorDrawStrokes(entry.drawStrokes || entry.strokes || []),
+            metadata: normalizeDiagramMetadata(entry.metadata || entry.diagramMetadata || {}),
             createdAt: normalizeSheetText(entry.createdAt) || new Date().toISOString(),
             updatedAt: normalizeSheetText(entry.updatedAt) || new Date().toISOString()
         };
@@ -3604,6 +3693,13 @@ MODIFICATION RULES FOR THIS APP
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return '';
         const mediaKey = normalizeSheetText(normalized.mediaValue || normalized.imageValue);
+        return `${mediaKey}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}::${JSON.stringify(cloneImageEditorDrawStrokes(normalized.drawStrokes || []))}::${JSON.stringify(normalizeDiagramMetadata(normalized.metadata || {}))}`;
+    }
+
+    function getStudioSavedImagePreMetadataSignature(entry = {}) {
+        const normalized = normalizeStudioSavedImageEntry(entry);
+        if (!normalized) return '';
+        const mediaKey = normalizeSheetText(normalized.mediaValue || normalized.imageValue);
         return `${mediaKey}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}::${JSON.stringify(cloneImageEditorDrawStrokes(normalized.drawStrokes || []))}`;
     }
 
@@ -3634,6 +3730,7 @@ MODIFICATION RULES FOR THIS APP
         if (!imageValue) return null;
         const labels = normalizeDiagramLabels(getStudioFlashcardImageLabelsSnapshot(row, safeSide));
         const drawStrokes = cloneImageEditorDrawStrokes(getStudioFlashcardImageDrawStrokesSnapshot(row, safeSide));
+        const metadata = normalizeDiagramMetadata(getStudioFlashcardImageMetadataSnapshot(row, safeSide));
         const imageLabel = normalizeSheetText(imageSnapshot.label) || (safeSide === 'definition' ? 'Definition image selected.' : 'Term image selected.');
         const fileName = getSavedImageFileNameFromLabel(imageLabel, safeSide === 'definition' ? 'definition-image.png' : 'term-image.png');
         const rowId = normalizeSheetText(row?.id || questionId);
@@ -3648,7 +3745,7 @@ MODIFICATION RULES FOR THIS APP
         });
         const sharedValue = normalizeSheetText(savedImageValue || imageValue);
         return normalizeStudioSavedImageEntry({
-            id: createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}`),
+            id: createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}::${JSON.stringify(metadata)}`),
             fileName,
             imageValue: sharedValue,
             imageOnlyValue: sharedValue,
@@ -3657,7 +3754,8 @@ MODIFICATION RULES FOR THIS APP
             imageLabel: `Saved: ${fileName}`,
             imageOnlyLabel: `Saved: ${fileName}`,
             labels,
-            drawStrokes
+            drawStrokes,
+            metadata
         });
     }
 
@@ -3666,6 +3764,7 @@ MODIFICATION RULES FOR THIS APP
         if (!normalized) return [];
         const keys = [
             getStudioSavedImageSignature(normalized),
+            getStudioSavedImagePreMetadataSignature(normalized),
             getStudioSavedImageLegacySignature(normalized)
         ].filter(Boolean);
         return Array.from(new Set(keys));
@@ -3687,7 +3786,7 @@ MODIFICATION RULES FOR THIS APP
 
     function collectStudioFlashcardUsedImageSnapshots() {
         const snapshots = [];
-        const pushSnapshot = (value, label, labels = [], side = 'term', drawStrokes = []) => {
+        const pushSnapshot = (value, label, labels = [], side = 'term', drawStrokes = [], metadata = {}) => {
             const imageValue = normalizeSheetText(value);
             if (!imageValue) return;
             const imageLabel = normalizeSheetText(label) || (side === 'definition' ? 'Existing definition image saved.' : 'Existing term image saved.');
@@ -3702,7 +3801,8 @@ MODIFICATION RULES FOR THIS APP
                 imageLabel,
                 imageOnlyLabel: imageLabel,
                 labels: normalizedLabels,
-                drawStrokes: normalizedDrawStrokes
+                drawStrokes: normalizedDrawStrokes,
+                metadata: normalizeDiagramMetadata(metadata || {})
             }));
         };
 
@@ -3711,29 +3811,31 @@ MODIFICATION RULES FOR THIS APP
             state.auth.studioFlashcardTermImageLabel,
             state.auth.studioFlashcardTermImageLabels,
             'term',
-            state.auth.studioFlashcardTermImageDrawStrokes
+            state.auth.studioFlashcardTermImageDrawStrokes,
+            state.auth.studioFlashcardTermImageMetadata
         );
         pushSnapshot(
             state.auth.studioFlashcardDefinitionImageDataUrl,
             state.auth.studioFlashcardDefinitionImageLabel,
             state.auth.studioFlashcardDefinitionImageLabels,
             'definition',
-            state.auth.studioFlashcardDefinitionImageDrawStrokes
+            state.auth.studioFlashcardDefinitionImageDrawStrokes,
+            state.auth.studioFlashcardDefinitionImageMetadata
         );
 
         (state.auth.studioQuizQuestions || []).forEach(row => {
             const termImage = getStudioFlashcardImageSnapshot(row, 'term');
-            pushSnapshot(termImage.value, termImage.label, getStudioFlashcardImageLabelsSnapshot(row, 'term'), 'term', getStudioFlashcardImageDrawStrokesSnapshot(row, 'term'));
+            pushSnapshot(termImage.value, termImage.label, getStudioFlashcardImageLabelsSnapshot(row, 'term'), 'term', getStudioFlashcardImageDrawStrokesSnapshot(row, 'term'), getStudioFlashcardImageMetadataSnapshot(row, 'term'));
             const definitionImage = getStudioFlashcardImageSnapshot(row, 'definition');
-            pushSnapshot(definitionImage.value, definitionImage.label, getStudioFlashcardImageLabelsSnapshot(row, 'definition'), 'definition', getStudioFlashcardImageDrawStrokesSnapshot(row, 'definition'));
+            pushSnapshot(definitionImage.value, definitionImage.label, getStudioFlashcardImageLabelsSnapshot(row, 'definition'), 'definition', getStudioFlashcardImageDrawStrokesSnapshot(row, 'definition'), getStudioFlashcardImageMetadataSnapshot(row, 'definition'));
         });
 
         const pendingRow = getStudioPendingFlashcardRow?.();
         if (pendingRow) {
             const pendingTerm = getStudioFlashcardImageSnapshot(pendingRow, 'term');
-            pushSnapshot(pendingTerm.value, pendingTerm.label, getStudioFlashcardImageLabelsSnapshot(pendingRow, 'term'), 'term', getStudioFlashcardImageDrawStrokesSnapshot(pendingRow, 'term'));
+            pushSnapshot(pendingTerm.value, pendingTerm.label, getStudioFlashcardImageLabelsSnapshot(pendingRow, 'term'), 'term', getStudioFlashcardImageDrawStrokesSnapshot(pendingRow, 'term'), getStudioFlashcardImageMetadataSnapshot(pendingRow, 'term'));
             const pendingDefinition = getStudioFlashcardImageSnapshot(pendingRow, 'definition');
-            pushSnapshot(pendingDefinition.value, pendingDefinition.label, getStudioFlashcardImageLabelsSnapshot(pendingRow, 'definition'), 'definition', getStudioFlashcardImageDrawStrokesSnapshot(pendingRow, 'definition'));
+            pushSnapshot(pendingDefinition.value, pendingDefinition.label, getStudioFlashcardImageLabelsSnapshot(pendingRow, 'definition'), 'definition', getStudioFlashcardImageDrawStrokesSnapshot(pendingRow, 'definition'), getStudioFlashcardImageMetadataSnapshot(pendingRow, 'definition'));
         }
 
         return snapshots.filter(Boolean);
@@ -3757,7 +3859,8 @@ MODIFICATION RULES FOR THIS APP
             imageLabel: snapshot.imageLabel || snapshot.label || '',
             imageOnlyLabel: snapshot.imageOnlyLabel || snapshot.sourceLabel || snapshot.label || '',
             labels: snapshot.labels || [],
-            drawStrokes: snapshot.drawStrokes || snapshot.strokes || []
+            drawStrokes: snapshot.drawStrokes || snapshot.strokes || [],
+            metadata: snapshot.metadata || snapshot.diagramMetadata || {}
         });
         if (!entry?.imageValue) return null;
         entry.updatedAt = new Date().toISOString();
@@ -3780,7 +3883,8 @@ MODIFICATION RULES FOR THIS APP
                 imageLabel: snapshot?.imageLabel || snapshot?.label || '',
                 imageOnlyLabel: snapshot?.imageOnlyLabel || snapshot?.sourceLabel || snapshot?.label || '',
                 labels: snapshot?.labels || [],
-                drawStrokes: snapshot?.drawStrokes || snapshot?.strokes || []
+                drawStrokes: snapshot?.drawStrokes || snapshot?.strokes || [],
+                metadata: snapshot?.metadata || snapshot?.diagramMetadata || {}
             }))
             .filter(Boolean)
             .map(entry => ({ ...entry, updatedAt: now }));
@@ -3805,7 +3909,7 @@ MODIFICATION RULES FOR THIS APP
         const withoutSignature = list => (Array.isArray(list) ? list : [])
             .map(normalizeStudioSavedImageEntry)
             .filter(Boolean)
-            .filter(item => getStudioSavedImageSignature(item) !== signature && getStudioSavedImageLegacySignature(item) !== signature);
+            .filter(item => getStudioSavedImageSignature(item) !== signature && getStudioSavedImagePreMetadataSignature(item) !== signature && getStudioSavedImageLegacySignature(item) !== signature);
         state.auth.studioSavedImageMemoryLibrary = withoutSignature(state.auth.studioSavedImageMemoryLibrary || []);
         saveStudioSavedImageLibrary(withoutSignature(loadStudioSavedImageLibrary()));
     }
@@ -3909,7 +4013,7 @@ MODIFICATION RULES FOR THIS APP
         const safeSignature = normalizeSheetText(signature);
         if (!safeSignature) return null;
         const library = getStudioSavedImageLibraryForPicker();
-        return library.find(item => getStudioSavedImageSignature(item) === safeSignature || getStudioSavedImageLegacySignature(item) === safeSignature) || null;
+        return library.find(item => getStudioSavedImageSignature(item) === safeSignature || getStudioSavedImagePreMetadataSignature(item) === safeSignature || getStudioSavedImageLegacySignature(item) === safeSignature) || null;
     }
 
     function findStudioSavedImageLabelsForImageValue(imageValue = '') {
@@ -4151,6 +4255,23 @@ MODIFICATION RULES FOR THIS APP
                 }
             });
             overlay.addEventListener('input', event => {
+                const filterInput = event.target.closest('[data-saved-image-picker-filter]');
+                if (filterInput) {
+                    const key = normalizeSheetText(filterInput.dataset.savedImagePickerFilter);
+                    state.auth.studioSavedImagePicker.filters = {
+                        ...(state.auth.studioSavedImagePicker.filters || {}),
+                        [key]: filterInput.value || ''
+                    };
+                    const filterKey = key;
+                    const cursor = typeof filterInput.selectionStart === 'number' ? filterInput.selectionStart : null;
+                    renderStudioSavedImagePicker();
+                    const nextFilter = document.querySelector(`[data-saved-image-picker-filter="${filterKey}"]`);
+                    if (nextFilter && filterInput.tagName === 'INPUT') {
+                        nextFilter.focus();
+                        try { nextFilter.setSelectionRange(cursor ?? nextFilter.value.length, cursor ?? nextFilter.value.length); } catch (_) {}
+                    }
+                    return;
+                }
                 const searchInput = event.target.closest('[data-saved-image-picker-search]');
                 if (!searchInput) return;
                 state.auth.studioSavedImagePicker.searchQuery = searchInput.value || '';
@@ -4177,19 +4298,284 @@ MODIFICATION RULES FOR THIS APP
             normalized.fileName,
             normalized.imageLabel,
             normalized.imageOnlyLabel,
+            normalized.metadata?.diagramName,
+            normalized.metadata?.subjectName,
+            normalized.metadata?.anatomyType,
+            normalized.metadata?.organSystem,
+            normalized.metadata?.location,
+            normalized.metadata?.organ,
+            normalized.metadata?.muscle,
+            normalized.metadata?.tags,
             labelText
         ].map(value => normalizeSheetText(value).toLowerCase()).filter(Boolean).join(' ');
     }
 
-    function filterStudioSavedImageEntries(entries = [], query = '') {
+    function filterStudioSavedImageEntries(entries = [], query = '', filters = {}) {
         const normalizedQuery = normalizeSheetText(query).toLowerCase();
-        if (!normalizedQuery) return entries;
         const terms = normalizedQuery.split(/\s+/).filter(Boolean);
-        if (!terms.length) return entries;
+        const anatomyType = normalizeSheetText(filters.anatomyType || '').toLowerCase();
+        const organSystem = normalizeSheetText(filters.organSystem || '').toLowerCase();
+        const location = normalizeSheetText(filters.location || '').toLowerCase();
         return entries.filter(entry => {
-            const searchText = getStudioSavedImageSearchText(entry);
-            return terms.every(term => searchText.includes(term));
+            const normalized = normalizeStudioSavedImageEntry(entry);
+            if (!normalized) return false;
+            const searchText = getStudioSavedImageSearchText(normalized);
+            const metadata = normalizeDiagramMetadata(normalized.metadata || {});
+            if (terms.length && !terms.every(term => searchText.includes(term))) return false;
+            if (anatomyType && metadata.anatomyType !== anatomyType) return false;
+            if (organSystem && metadata.organSystem !== organSystem) return false;
+            if (location && !metadata.location.toLowerCase().includes(location)) return false;
+            return true;
         });
+    }
+
+    // ================= PHASE 22MC: REVIEW MODE =================
+    // Review Mode reads the existing Saved Images library without changing how
+    // images, flattened edits, labels, or editable draw strokes are stored.
+    function getReviewModeState() {
+        if (!state.auth.reviewMode || typeof state.auth.reviewMode !== 'object') {
+            state.auth.reviewMode = {};
+        }
+        const review = state.auth.reviewMode;
+        if (!(review.revealedLabels instanceof Set)) review.revealedLabels = new Set();
+        review.activeEntryId = normalizeSheetText(review.activeEntryId || '');
+        review.overlayOpen = review.overlayOpen === true;
+        review.optionsOpen = review.optionsOpen === true;
+        review.showAllNames = review.showAllNames === true;
+        review.showDrawData = review.showDrawData !== false;
+        review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1));
+        return review;
+    }
+
+    function getReviewModeFiltersFromDom() {
+        return {
+            search: normalizeSheetText(elements.reviewModeSearchInput?.value || '').toLowerCase(),
+            diagramName: normalizeSheetText(elements.reviewModeDiagramNameFilter?.value || '').toLowerCase(),
+            subjectName: normalizeSheetText(elements.reviewModeSubjectFilter?.value || '').toLowerCase(),
+            anatomyType: normalizeSheetText(elements.reviewModeAnatomyTypeFilter?.value || '').toLowerCase(),
+            organSystem: normalizeSheetText(elements.reviewModeOrganSystemFilter?.value || '').toLowerCase(),
+            location: normalizeSheetText(elements.reviewModeLocationFilter?.value || '').toLowerCase(),
+            organ: normalizeSheetText(elements.reviewModeOrganFilter?.value || '').toLowerCase(),
+            muscle: normalizeSheetText(elements.reviewModeMuscleFilter?.value || '').toLowerCase(),
+            tags: normalizeSheetText(elements.reviewModeTagsFilter?.value || '').toLowerCase()
+        };
+    }
+
+    function includesReviewFilter(value = '', query = '') {
+        if (!query) return true;
+        const text = normalizeSheetText(value).toLowerCase();
+        return query.split(/\s+/).filter(Boolean).every(term => text.includes(term));
+    }
+
+    function filterReviewModeEntries(entries = []) {
+        const filters = getReviewModeFiltersFromDom();
+        return (Array.isArray(entries) ? entries : []).map(normalizeStudioSavedImageEntry).filter(Boolean).filter(entry => {
+            const metadata = normalizeDiagramMetadata(entry.metadata || {});
+            if (filters.search && !includesReviewFilter(getStudioSavedImageSearchText(entry), filters.search)) return false;
+            if (!includesReviewFilter(metadata.diagramName, filters.diagramName)) return false;
+            if (!includesReviewFilter(metadata.subjectName, filters.subjectName)) return false;
+            if (filters.anatomyType && metadata.anatomyType !== filters.anatomyType) return false;
+            if (filters.organSystem && metadata.organSystem !== filters.organSystem) return false;
+            if (!includesReviewFilter(metadata.location, filters.location)) return false;
+            if (!includesReviewFilter(metadata.organ, filters.organ)) return false;
+            if (!includesReviewFilter(metadata.muscle, filters.muscle)) return false;
+            if (!includesReviewFilter(metadata.tags, filters.tags)) return false;
+            return true;
+        });
+    }
+
+    function renderReviewModeLibrary() {
+        if (!elements.reviewModeImageGrid) return;
+        const allEntries = getStudioSavedImageLibraryForPicker();
+        const entries = filterReviewModeEntries(allEntries);
+        if (elements.reviewModeSearchCount) {
+            elements.reviewModeSearchCount.textContent = `${entries.length} of ${allEntries.length} saved image${allEntries.length === 1 ? '' : 's'}`;
+        }
+        if (!allEntries.length) {
+            elements.reviewModeImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images are available yet. Create one in Diagram Creator or send an edited flashcard image to Saved Images.</div>';
+            return;
+        }
+        if (!entries.length) {
+            elements.reviewModeImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images match those search filters.</div>';
+            return;
+        }
+        elements.reviewModeImageGrid.innerHTML = entries.map(entry => {
+            const metadata = normalizeDiagramMetadata(entry.metadata || {});
+            const title = metadata.diagramName || metadata.subjectName || entry.fileName;
+            const summary = [metadata.subjectName, metadata.anatomyType, metadata.organSystem, metadata.location].filter(Boolean).join(' · ');
+            const labelCount = normalizeDiagramLabels(entry.labels || []).length;
+            return `
+                <article class="studio-review-image-card">
+                  <button type="button" class="studio-review-image-open" data-review-image-id="${escapeHtml(entry.id)}" aria-label="Review ${escapeHtml(title)}">
+                    <img class="studio-review-image-thumb" data-review-image-thumb="${escapeHtml(entry.imageValue)}" alt="${escapeHtml(title)}">
+                    <span class="studio-review-image-card-body">
+                      <span class="studio-review-image-name">${escapeHtml(title)}</span>
+                      ${summary ? `<span class="studio-review-image-meta">${escapeHtml(summary)}</span>` : ''}
+                      <span class="studio-review-image-label-count">${labelCount} label${labelCount === 1 ? '' : 's'}</span>
+                    </span>
+                  </button>
+                  <button type="button" class="studio-review-image-delete" data-review-image-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>
+                </article>
+            `;
+        }).join('');
+        elements.reviewModeImageGrid.querySelectorAll('[data-review-image-thumb]').forEach(img => {
+            setImageElementSourceWithMediaResolution(img, img.dataset.reviewImageThumb || '');
+        });
+    }
+
+    function getActiveReviewModeEntry() {
+        const review = getReviewModeState();
+        return getStudioSavedImageLibraryForPicker().find(entry => entry.id === review.activeEntryId) || null;
+    }
+
+    function setReviewModeOptionsOpen(open) {
+        const review = getReviewModeState();
+        review.optionsOpen = !!open;
+        elements.reviewModeOptionsPanel?.classList.toggle('hidden', !review.optionsOpen);
+        elements.reviewModeOptionsPanel?.setAttribute('aria-hidden', review.optionsOpen ? 'false' : 'true');
+        if (elements.reviewModeOptionsBtn) {
+            elements.reviewModeOptionsBtn.textContent = review.optionsOpen ? 'Hide Options' : 'Show Options';
+            elements.reviewModeOptionsBtn.setAttribute('aria-expanded', review.optionsOpen ? 'true' : 'false');
+        }
+    }
+
+    function getReviewModeVisibleLabelIndexes(entry = null) {
+        const review = getReviewModeState();
+        const labels = normalizeDiagramLabels(entry?.labels || []);
+        if (review.showAllNames) return new Set(labels.map((_, index) => index));
+        return new Set(Array.from(review.revealedLabels).filter(index => Number.isInteger(index) && index >= 0 && index < labels.length));
+    }
+
+    function renderReviewModeDrawData() {
+        const entry = getActiveReviewModeEntry();
+        const canvas = elements.reviewModeDrawCanvas;
+        const img = elements.reviewModeImage;
+        if (!canvas || !img) return;
+        const ctx = canvas.getContext('2d');
+        const width = Math.max(1, img.naturalWidth || 1);
+        const height = Math.max(1, img.naturalHeight || 1);
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const review = getReviewModeState();
+        if (!entry || !review.showDrawData) return;
+        const visibleIndexes = getReviewModeVisibleLabelIndexes(entry);
+        if (!visibleIndexes.size) return;
+        cloneImageEditorDrawStrokes(entry.drawStrokes || [])
+            .filter(stroke => visibleIndexes.has(Math.max(0, Number(stroke.labelIndex) || 0)))
+            .forEach(stroke => renderImageEditorStroke(ctx, { ...stroke, visible: true }));
+    }
+
+    function renderReviewModeLabels() {
+        const entry = getActiveReviewModeEntry();
+        const layer = elements.reviewModeLabelLayer;
+        if (!layer) return;
+        const review = getReviewModeState();
+        const labels = normalizeDiagramLabels(entry?.labels || []);
+        const visibleNames = getReviewModeVisibleLabelIndexes(entry);
+        layer.style.setProperty('--review-label-scale', String(review.labelScale));
+        layer.innerHTML = labels.map((item, index) => {
+            const isNameVisible = visibleNames.has(index);
+            const text = isNameVisible ? item.label : String(index + 1);
+            return `<button type="button" class="review-mode-label-marker${isNameVisible ? ' is-name-visible' : ''}" data-review-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" aria-pressed="${isNameVisible ? 'true' : 'false'}" aria-label="${isNameVisible ? 'Hide' : 'Show'} label ${index + 1}">${renderMathChemTextToHtml(text)}</button>`;
+        }).join('');
+        renderReviewModeDrawData();
+    }
+
+    function syncReviewModeImageStage() {
+        const viewport = elements.reviewModeImageViewport;
+        const stage = elements.reviewModeImageStage;
+        const img = elements.reviewModeImage;
+        if (!viewport || !stage || !img || !img.naturalWidth || !img.naturalHeight) return;
+        const widthLimit = Math.max(1, viewport.clientWidth - 16);
+        const heightLimit = Math.max(1, viewport.clientHeight - 16);
+        const scale = Math.min(widthLimit / img.naturalWidth, heightLimit / img.naturalHeight);
+        stage.style.width = `${Math.max(1, img.naturalWidth * scale)}px`;
+        stage.style.height = `${Math.max(1, img.naturalHeight * scale)}px`;
+        renderReviewModeDrawData();
+    }
+
+    function syncReviewModeControls() {
+        const review = getReviewModeState();
+        if (elements.reviewModeShowAllNamesToggle) elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
+        if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
+        if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelScale * 100)}%`;
+        if (elements.reviewModeLabelSizeDownBtn) elements.reviewModeLabelSizeDownBtn.disabled = review.labelScale <= 0.65;
+        if (elements.reviewModeLabelSizeUpBtn) elements.reviewModeLabelSizeUpBtn.disabled = review.labelScale >= 1.8;
+        setReviewModeOptionsOpen(review.optionsOpen);
+    }
+
+    function openReviewModeImage(entryId = '') {
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === normalizeSheetText(entryId));
+        if (!entry || !elements.reviewModeOverlay || !elements.reviewModeImage) return;
+        const review = getReviewModeState();
+        review.activeEntryId = entry.id;
+        review.overlayOpen = true;
+        review.optionsOpen = false;
+        review.showAllNames = false;
+        review.showDrawData = true;
+        review.labelScale = 1;
+        review.revealedLabels = new Set();
+        elements.reviewModeOverlay.classList.remove('hidden');
+        elements.reviewModeOverlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('review-mode-image-open');
+        const metadata = normalizeDiagramMetadata(entry.metadata || {});
+        if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = metadata.diagramName || metadata.subjectName || entry.fileName;
+        if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
+        if (elements.reviewModeDrawCanvas) {
+            const ctx = elements.reviewModeDrawCanvas.getContext('2d');
+            ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
+        }
+        syncReviewModeControls();
+        setImageElementSourceWithMediaResolution(elements.reviewModeImage, entry.imageValue, {
+            onLoad: () => {
+                syncReviewModeImageStage();
+                renderReviewModeLabels();
+                requestAnimationFrame(syncReviewModeImageStage);
+            },
+            onError: () => {
+                if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = 'This saved image could not be loaded.';
+            }
+        });
+        syncBodyScrollLock();
+    }
+
+    function closeReviewModeImage() {
+        const review = getReviewModeState();
+        review.activeEntryId = '';
+        review.overlayOpen = false;
+        review.optionsOpen = false;
+        review.revealedLabels = new Set();
+        elements.reviewModeOverlay?.classList.add('hidden');
+        elements.reviewModeOverlay?.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('review-mode-image-open');
+        if (elements.reviewModeImage) {
+            elements.reviewModeImage.onload = null;
+            elements.reviewModeImage.onerror = null;
+            elements.reviewModeImage.removeAttribute('src');
+        }
+        if (elements.reviewModeImageStage) {
+            elements.reviewModeImageStage.style.removeProperty('width');
+            elements.reviewModeImageStage.style.removeProperty('height');
+        }
+        setReviewModeOptionsOpen(false);
+        syncBodyScrollLock();
+    }
+
+    function setReviewModeLabelScale(nextScale) {
+        const review = getReviewModeState();
+        review.labelScale = Math.min(1.8, Math.max(0.65, Number(nextScale) || 1));
+        syncReviewModeControls();
+        renderReviewModeLabels();
+    }
+
+    function clearReviewModeFilters() {
+        [elements.reviewModeSearchInput, elements.reviewModeDiagramNameFilter, elements.reviewModeSubjectFilter, elements.reviewModeLocationFilter, elements.reviewModeOrganFilter, elements.reviewModeMuscleFilter, elements.reviewModeTagsFilter].forEach(input => {
+            if (input) input.value = '';
+        });
+        if (elements.reviewModeAnatomyTypeFilter) elements.reviewModeAnatomyTypeFilter.value = '';
+        if (elements.reviewModeOrganSystemFilter) elements.reviewModeOrganSystemFilter.value = '';
+        renderReviewModeLibrary();
     }
 
     function renderStudioSavedImagePicker() {
@@ -4219,10 +4605,20 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
         const searchQuery = normalizeSheetText(picker.searchQuery || '');
-        const filteredEntries = filterStudioSavedImageEntries(entries, searchQuery);
+        const filters = picker.filters || { anatomyType: '', organSystem: '', location: '' };
+        const filteredEntries = filterStudioSavedImageEntries(entries, searchQuery, filters);
         body.innerHTML = `
             <div class="studio-saved-image-search-wrap">
-              <input class="studio-saved-image-search-input" type="search" placeholder="Search saved images" value="${escapeHtml(searchQuery)}" data-saved-image-picker-search aria-label="Search saved images">
+              <input class="studio-saved-image-search-input" type="search" placeholder="Search name, subject, tags, labels..." value="${escapeHtml(searchQuery)}" data-saved-image-picker-search aria-label="Search saved images">
+              <div class="studio-saved-image-filter-row">
+                <select data-saved-image-picker-filter="anatomyType" aria-label="Filter by anatomy type">
+                  <option value="">All types</option>${['bone','muscle','tissue','cartilage','organ','joint','ligament','cell','body region','organ system','other'].map(value => `<option value="${value}" ${filters.anatomyType === value ? 'selected' : ''}>${value.replace(/\b\w/g, char => char.toUpperCase())}</option>`).join('')}
+                </select>
+                <select data-saved-image-picker-filter="organSystem" aria-label="Filter by organ system">
+                  <option value="">All systems</option>${['skeletal','muscular','nervous','cardiovascular','respiratory','digestive','urinary','reproductive','endocrine','lymphatic','integumentary','special senses','other'].map(value => `<option value="${value}" ${filters.organSystem === value ? 'selected' : ''}>${value.replace(/\b\w/g, char => char.toUpperCase())}</option>`).join('')}
+                </select>
+                <input type="search" value="${escapeHtml(filters.location || '')}" placeholder="Location" data-saved-image-picker-filter="location" aria-label="Filter by location">
+              </div>
               <div class="studio-saved-image-search-count">${filteredEntries.length} of ${entries.length} image${entries.length === 1 ? '' : 's'}</div>
             </div>
             ${filteredEntries.length ? `
@@ -4230,7 +4626,8 @@ MODIFICATION RULES FOR THIS APP
                 ${filteredEntries.map(entry => `
                   <div class="studio-saved-image-card">
                     <img class="studio-saved-image-thumb" data-studio-saved-image-thumb="${escapeHtml(entry.imageValue)}" alt="${escapeHtml(entry.fileName)}">
-                    <div class="studio-saved-image-name" title="${escapeHtml(entry.fileName)}">${escapeHtml(entry.fileName)}</div>
+                    <div class="studio-saved-image-name" title="${escapeHtml(entry.metadata?.diagramName || entry.fileName)}">${escapeHtml(entry.metadata?.diagramName || entry.fileName)}</div>
+                    ${(entry.metadata?.subjectName || entry.metadata?.anatomyType || entry.metadata?.organSystem) ? `<div class="studio-saved-image-meta">${[entry.metadata?.subjectName, entry.metadata?.anatomyType, entry.metadata?.organSystem].filter(Boolean).map(value => escapeHtml(value)).join(' · ')}</div>` : ''}
                     <div class="studio-saved-image-actions">
                       <button type="button" class="auth-action-btn auth-primary-btn" data-saved-image-use="${escapeHtml(entry.id)}" data-saved-image-mode="edits">Use edits</button>
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-use="${escapeHtml(entry.id)}" data-saved-image-mode="image-only">Use image only</button>
@@ -4266,7 +4663,8 @@ MODIFICATION RULES FOR THIS APP
             target,
             fileInput,
             view: 'choice',
-            searchQuery: ''
+            searchQuery: '',
+            filters: { anatomyType: '', organSystem: '', location: '' }
         };
         const overlay = document.getElementById('studioSavedImagePickerOverlay');
         if (overlay) {
@@ -4287,7 +4685,8 @@ MODIFICATION RULES FOR THIS APP
             target: null,
             fileInput: null,
             view: 'choice',
-            searchQuery: ''
+            searchQuery: '',
+            filters: { anatomyType: '', organSystem: '', location: '' }
         };
     }
 
@@ -4300,16 +4699,17 @@ MODIFICATION RULES FOR THIS APP
         const label = includeEdits ? `Saved: ${fileName}` : `Selected: ${fileName}`;
         const labels = includeEdits ? normalizeDiagramLabels(normalizedEntry.labels || []) : [];
         const drawStrokes = includeEdits ? cloneImageEditorDrawStrokes(normalizedEntry.drawStrokes || []) : [];
+        const metadata = includeEdits ? normalizeDiagramMetadata(normalizedEntry.metadata || {}) : {};
         if (target.kind === 'flashcard-list') {
             const questionId = normalizeSheetText(target.questionId);
             const side = target.side === 'definition' ? 'definition' : 'term';
             const savedSignature = getStudioSavedImageSignature(normalizedEntry);
-            applyStudioFlashcardListImageChange(questionId, side, value, label, labels, { savedImageSignature: savedSignature, fromSavedImage: true, drawStrokes });
+            applyStudioFlashcardListImageChange(questionId, side, value, label, labels, { savedImageSignature: savedSignature, fromSavedImage: true, drawStrokes, metadata });
             state.auth.expandedFlashcardImageRows.add(getStudioFlashcardImageKey(questionId, side));
         } else if (target.kind === 'flashcard-definition') {
-            setStudioFlashcardDefinitionImageState(value, label, labels, drawStrokes);
+            setStudioFlashcardDefinitionImageState(value, label, labels, drawStrokes, metadata);
         } else {
-            setStudioFlashcardTermImageState(value, label, labels, drawStrokes);
+            setStudioFlashcardTermImageState(value, label, labels, drawStrokes, metadata);
         }
         setStudioDirtyState(true);
         setCreatorStatus(includeEdits ? 'Saved image with edits copied into this flashcard.' : 'Saved image copied without edits.', 'success');
@@ -4358,6 +4758,16 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorLabelsBtn = document.getElementById('studioImageEditorLabelsBtn');
         elements.studioImageEditorLabelPanel = document.getElementById('studioImageEditorLabelPanel');
         elements.studioImageEditorLabelList = document.getElementById('studioImageEditorLabelList');
+        elements.studioImageEditorMetadataPanel = document.getElementById('studioImageEditorMetadataPanel');
+        elements.studioImageEditorMetadataToggleBtn = document.getElementById('studioImageEditorMetadataToggleBtn');
+        elements.studioImageEditorDiagramName = document.getElementById('studioImageEditorDiagramName');
+        elements.studioImageEditorSubjectName = document.getElementById('studioImageEditorSubjectName');
+        elements.studioImageEditorAnatomyType = document.getElementById('studioImageEditorAnatomyType');
+        elements.studioImageEditorOrganSystem = document.getElementById('studioImageEditorOrganSystem');
+        elements.studioImageEditorLocation = document.getElementById('studioImageEditorLocation');
+        elements.studioImageEditorOrgan = document.getElementById('studioImageEditorOrgan');
+        elements.studioImageEditorMuscle = document.getElementById('studioImageEditorMuscle');
+        elements.studioImageEditorTags = document.getElementById('studioImageEditorTags');
         elements.studioImageEditorAddLabelBtn = document.getElementById('studioImageEditorAddLabelBtn');
         elements.studioImageEditorRemoveLastLabelBtn = document.getElementById('studioImageEditorRemoveLastLabelBtn');
         elements.studioImageEditorToolButtons = Array.from(document.querySelectorAll('[data-image-editor-tool]'));
@@ -4472,7 +4882,76 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    function isImageEditorStandaloneDiagramTarget(editor = state.auth.imageEditor) {
+        return normalizeSheetText(editor?.target?.kind) === 'standalone-diagram';
+    }
+
+    function isImageEditorSavedDiagramTarget(editor = state.auth.imageEditor) {
+        return isImageEditorStandaloneDiagramTarget(editor) || isImageEditorFlashcardLabelTarget(editor);
+    }
+
+    function getImageEditorMetadataFromFields() {
+        return normalizeDiagramMetadata({
+            diagramName: elements.studioImageEditorDiagramName?.value,
+            subjectName: elements.studioImageEditorSubjectName?.value,
+            anatomyType: elements.studioImageEditorAnatomyType?.value,
+            organSystem: elements.studioImageEditorOrganSystem?.value,
+            location: elements.studioImageEditorLocation?.value,
+            organ: elements.studioImageEditorOrgan?.value,
+            muscle: elements.studioImageEditorMuscle?.value,
+            tags: elements.studioImageEditorTags?.value
+        });
+    }
+
+    function refreshImageEditorMetadataUi() {
+        const editor = state.auth.imageEditor;
+        const enabled = !!editor?.metadataEnabled;
+        const panelOpen = !!(enabled && editor?.metadataPanelOpen);
+        const panel = elements.studioImageEditorMetadataPanel;
+        const modal = elements.studioImageEditorOverlay?.querySelector('.studio-image-editor-modal');
+        if (panel) {
+            panel.classList.toggle('hidden', !panelOpen);
+            panel.hidden = !panelOpen;
+            panel.setAttribute('aria-hidden', panelOpen ? 'false' : 'true');
+        }
+        modal?.classList.toggle('diagram-details-open', panelOpen);
+        if (elements.studioImageEditorMetadataToggleBtn) {
+            elements.studioImageEditorMetadataToggleBtn.classList.toggle('hidden', !enabled);
+            elements.studioImageEditorMetadataToggleBtn.hidden = !enabled;
+            elements.studioImageEditorMetadataToggleBtn.disabled = !enabled;
+            elements.studioImageEditorMetadataToggleBtn.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
+            elements.studioImageEditorMetadataToggleBtn.textContent = panelOpen ? 'Hide Details' : 'Show Details';
+            elements.studioImageEditorMetadataToggleBtn.title = panelOpen
+                ? 'Hide diagram search and filter details'
+                : 'Show diagram search and filter details';
+        }
+        if (!enabled) return;
+        const metadata = normalizeDiagramMetadata(editor.metadata || {});
+        if (elements.studioImageEditorDiagramName && elements.studioImageEditorDiagramName !== document.activeElement) elements.studioImageEditorDiagramName.value = metadata.diagramName;
+        if (elements.studioImageEditorSubjectName && elements.studioImageEditorSubjectName !== document.activeElement) elements.studioImageEditorSubjectName.value = metadata.subjectName;
+        if (elements.studioImageEditorAnatomyType && elements.studioImageEditorAnatomyType !== document.activeElement) elements.studioImageEditorAnatomyType.value = metadata.anatomyType;
+        if (elements.studioImageEditorOrganSystem && elements.studioImageEditorOrganSystem !== document.activeElement) elements.studioImageEditorOrganSystem.value = metadata.organSystem;
+        if (elements.studioImageEditorLocation && elements.studioImageEditorLocation !== document.activeElement) elements.studioImageEditorLocation.value = metadata.location;
+        if (elements.studioImageEditorOrgan && elements.studioImageEditorOrgan !== document.activeElement) elements.studioImageEditorOrgan.value = metadata.organ;
+        if (elements.studioImageEditorMuscle && elements.studioImageEditorMuscle !== document.activeElement) elements.studioImageEditorMuscle.value = metadata.muscle;
+        if (elements.studioImageEditorTags && elements.studioImageEditorTags !== document.activeElement) elements.studioImageEditorTags.value = metadata.tags;
+    }
+
     function getImageEditorTargetInfo(target = {}) {
+        if (target.kind === 'standalone-diagram') {
+            const sourceLabel = normalizeSheetText(target.sourceLabel || state.auth.diagramCreatorSourceLabel || 'diagram-image.png');
+            const defaultName = getSavedImageFileNameFromLabel(sourceLabel, 'diagram-image.png').replace(/\.[^.]+$/, '');
+            return {
+                title: 'Diagram Creator',
+                sourceValue: target.sourceValue || state.auth.diagramCreatorSourceDataUrl || '',
+                sourceLabel,
+                fallbackLabel: 'Saved diagram image.',
+                labelsEnabled: true,
+                labels: normalizeDiagramLabels(target.labels || []),
+                drawStrokes: cloneImageEditorDrawStrokes(target.drawStrokes || []),
+                metadata: normalizeDiagramMetadata({ diagramName: defaultName, ...(target.metadata || {}) })
+            };
+        }
         if (target.kind === 'option') {
             const row = target.row;
             const optionIndex = Number(row?.dataset.optionIndex || 0) || 0;
@@ -4515,7 +4994,8 @@ MODIFICATION RULES FOR THIS APP
                 fallbackLabel: 'Edited term image.',
                 labelsEnabled: true,
                 labels: normalizeDiagramLabels(state.auth.studioFlashcardTermImageLabels || []),
-                drawStrokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardTermImageDrawStrokes || [])
+                drawStrokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardTermImageDrawStrokes || []),
+                metadata: normalizeDiagramMetadata(state.auth.studioFlashcardTermImageMetadata || {})
             };
         }
         if (target.kind === 'flashcard-definition') {
@@ -4526,7 +5006,8 @@ MODIFICATION RULES FOR THIS APP
                 fallbackLabel: 'Edited definition image.',
                 labelsEnabled: true,
                 labels: normalizeDiagramLabels(state.auth.studioFlashcardDefinitionImageLabels || []),
-                drawStrokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || [])
+                drawStrokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []),
+                metadata: normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {})
             };
         }
         if (target.kind === 'flashcard-list') {
@@ -4542,7 +5023,8 @@ MODIFICATION RULES FOR THIS APP
                 fallbackLabel: side === 'definition' ? 'Edited definition image.' : 'Edited term image.',
                 labelsEnabled: true,
                 labels,
-                drawStrokes
+                drawStrokes,
+                metadata: getStudioFlashcardImageMetadataSnapshot(row, side)
             };
         }
         const isDiagram = isStudioDiagramsMode();
@@ -4594,6 +5076,9 @@ MODIFICATION RULES FOR THIS APP
             drawStrokes: [],
             labels: [],
             labelsEnabled: false,
+            metadata: {},
+            metadataEnabled: false,
+            metadataPanelOpen: false,
             draggingLabelIndex: null,
             hoveredLabelIndex: null,
             showLabelPanel: false
@@ -4664,6 +5149,37 @@ MODIFICATION RULES FOR THIS APP
         return ['paintbrush', 'highlighter', 'eraser'].includes(normalized) ? normalized : 'paintbrush';
     }
 
+    function toggleImageEditorDrawTool(value) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        const nextTool = normalizeImageEditorDrawTool(value);
+        const isSameActiveTool = isImageEditorLabelDrawActive()
+            && normalizeImageEditorDrawTool(editor.drawTool) === nextTool;
+        closeImageEditorSliderPopovers();
+        if (isSameActiveTool) {
+            editor.activeDrawLabelIndex = null;
+            editor.activeDrawStroke = null;
+            editor.isDrawing = false;
+            editor.dragStart = null;
+            editor.draftShape = null;
+            editor.draggingLabelIndex = null;
+            editor.hoveredLabelIndex = null;
+            editor.mode = 'labels';
+            editor.showLabelPanel = true;
+            refreshImageEditorLabelUi();
+            updateImageEditorCanvasPointerState();
+            renderImageEditorCanvas();
+            setImageEditorStatus('Drawing tool off. Drag labels to move them.');
+            return;
+        }
+        editor.drawTool = nextTool;
+        refreshImageEditorDrawUi();
+        updateImageEditorCanvasPointerState();
+        setImageEditorStatus(isImageEditorLabelDrawActive()
+            ? (editor.drawTool === 'eraser' ? 'Erase strokes for the selected label.' : 'Draw on the image for the selected label.')
+            : 'Choose Draw next to a label first.');
+    }
+
     function isImageEditorLabelDrawActive() {
         const editor = state.auth.imageEditor;
         return !!(editor?.open && editor?.mode === 'labels' && editor?.labelsEnabled && Number.isInteger(editor.activeDrawLabelIndex) && editor.activeDrawLabelIndex >= 0 && editor.activeDrawLabelIndex < (editor.labels || []).length);
@@ -4676,6 +5192,10 @@ MODIFICATION RULES FOR THIS APP
 
     function isImageEditorFlashcardLabelTarget(editor = state.auth.imageEditor) {
         return ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(normalizeSheetText(editor?.target?.kind));
+    }
+
+    function isImageEditorNumberedLabelTarget(editor = state.auth.imageEditor) {
+        return isImageEditorStandaloneDiagramTarget(editor) || isImageEditorFlashcardLabelTarget(editor);
     }
 
     function isImageEditorFlashcardFrontTarget(editor = state.auth.imageEditor) {
@@ -4700,7 +5220,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getImageEditorDisplayLabels(labels = []) {
-        return isImageEditorFlashcardLabelTarget()
+        return isImageEditorNumberedLabelTarget()
             ? getNumberedFlashcardImageLabels(labels)
             : normalizeDiagramLabels(labels || []);
     }
@@ -5304,14 +5824,14 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorLabelList.innerHTML = '<div class="studio-image-editor-label-empty">No labels yet. Click Add Label, then drag it on the image to move it.</div>';
             return;
         }
-        const isFlashcardLabelTarget = isImageEditorFlashcardLabelTarget(editor);
+        const isNumberedLabelTarget = isImageEditorNumberedLabelTarget(editor);
         elements.studioImageEditorLabelList.innerHTML = labels.map((item, index) => {
             const isDrawActive = editor.activeDrawLabelIndex === index;
             const isVisible = isImageEditorLabelDrawVisible(index);
             const labelText = escapeHtml(displayMathChemTextForEditor(item.label));
             return `
-            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isFlashcardLabelTarget ? 'is-numbered-label-row' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
-              ${isFlashcardLabelTarget ? `<span class="studio-image-editor-label-number" aria-hidden="true">${index + 1}.</span>` : ''}
+            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
+              ${isNumberedLabelTarget ? `<span class="studio-image-editor-label-number" aria-hidden="true">${index + 1}.</span>` : ''}
               <input type="text" value="${labelText}" data-image-editor-label-text aria-label="Label ${index + 1} answer" placeholder="Label answer">
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Currently drawing for' : 'Draw for'} label ${labelText}">${isDrawActive ? 'Drawing' : 'Draw'}</button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-visibility ${isVisible ? 'is-visible' : 'is-hidden'}" data-image-editor-label-visibility aria-pressed="${isVisible ? 'true' : 'false'}" title="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}" aria-label="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}"><span aria-hidden="true">👁</span></button>
@@ -5383,7 +5903,7 @@ MODIFICATION RULES FOR THIS APP
         }
         elements.studioImageEditorDrawToolButtons?.forEach(button => {
             const tool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
-            const isActive = tool === activeTool;
+            const isActive = drawActive && tool === activeTool;
             button.classList.toggle('active', isActive);
             button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             button.disabled = !drawActive;
@@ -5432,19 +5952,22 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorLabelsBtn.setAttribute('aria-label', elements.studioImageEditorLabelsBtn.title);
         }
         if (elements.studioImageEditorSaveBtn) {
+            const standalone = isImageEditorStandaloneDiagramTarget(editor);
             const labelSaveText = editor?.labelsEnabled ? 'Save Image + Labels' : 'Save Edited Image';
             elements.studioImageEditorSaveBtn.textContent = labelSaveText;
             elements.studioImageEditorSaveBtn.title = editor?.labelsEnabled
                 ? 'Save image edits and image labels'
                 : 'Save edited image';
+            elements.studioImageEditorSaveBtn.classList.toggle('hidden', standalone);
+            elements.studioImageEditorSaveBtn.disabled = standalone;
         }
         if (elements.studioImageEditorSendSavedBtn) {
-            const isFlashcardTarget = isImageEditorFlashcardLabelTarget(editor);
-            elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isFlashcardTarget);
-            elements.studioImageEditorSendSavedBtn.disabled = !isFlashcardTarget || !editor?.baseCanvas;
-            elements.studioImageEditorSendSavedBtn.title = isFlashcardTarget
-                ? 'Save this edited image, labels, and draw strokes to Saved Images'
-                : 'Saved Images are only available for flashcards';
+            const isSavedDiagramTarget = isImageEditorSavedDiagramTarget(editor);
+            elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isSavedDiagramTarget);
+            elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas;
+            elements.studioImageEditorSendSavedBtn.title = isSavedDiagramTarget
+                ? 'Save this edited image, labels, draw strokes, and diagram details to Saved Images'
+                : 'Saved Images are available for flashcard and standalone diagrams';
         }
         if (elements.studioImageEditorAttachAllFrontBtn) {
             const isFrontTarget = isImageEditorFlashcardFrontTarget(editor);
@@ -5465,6 +5988,7 @@ MODIFICATION RULES FOR THIS APP
             editor.activeDrawStroke = null;
         }
         renderImageEditorLabelList();
+        refreshImageEditorMetadataUi();
         refreshImageEditorDrawUi();
         updateImageEditorCanvasPointerState();
     }
@@ -5473,7 +5997,7 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled) return;
         const labels = normalizeImageEditorLabels(editor.labels || []);
-        const nextLabel = isImageEditorFlashcardLabelTarget(editor) ? `Label ${labels.length + 1}` : getDiagramLabelName(labels.length);
+        const nextLabel = isImageEditorSavedDiagramTarget(editor) ? `Label ${labels.length + 1}` : getDiagramLabelName(labels.length);
         labels.push({ label: nextLabel, x: 50, y: 50 });
         editor.labels = labels;
         setImageEditorLabelDrawVisible(labels.length - 1, true);
@@ -5712,10 +6236,18 @@ MODIFICATION RULES FOR THIS APP
     function setImageEditorMode(mode) {
         const editor = state.auth.imageEditor;
         if (!editor) return;
-        const nextMode = mode || 'crop';
-        if (nextMode === 'labels' && !editor.labelsEnabled) return;
+        const requestedMode = mode || 'crop';
+        if (requestedMode === 'labels' && !editor.labelsEnabled) return;
+        const canToggleOff = ['blur-rect', 'blur-oval', 'arrow', 'line'].includes(requestedMode);
+        const toggledOff = canToggleOff && editor.mode === requestedMode;
+        const nextMode = toggledOff
+            ? (editor.labelsEnabled ? 'labels' : 'select')
+            : requestedMode;
         editor.mode = nextMode;
-        editor.showLabelPanel = editor.mode === 'labels' && editor.labelsEnabled;
+        // Phase 22LY: once the Labels panel is opened, keep it visible while the user
+        // switches to crop, blur, arrow, line, or other tools. Only label interaction
+        // mode changes; the panel itself remains available for reference and editing.
+        if (editor.mode === 'labels' && editor.labelsEnabled) editor.showLabelPanel = true;
         if (editor.mode !== 'labels') {
             editor.hoveredLabelIndex = null;
             editor.draggingLabelIndex = null;
@@ -5728,9 +6260,19 @@ MODIFICATION RULES FOR THIS APP
         });
         refreshImageEditorLabelUi();
         setImageEditorStatus(editor.mode === 'labels'
-            ? 'Click Add Label, then drag labels on the image. Save Image + Labels to keep them.'
-            : '');
+            ? (toggledOff
+                ? 'Tool off. Drag labels to move them.'
+                : 'Click Add Label, then drag labels on the image. Save Image + Labels to keep them.')
+            : (editor.mode === 'select' ? 'Tool off.' : ''));
         renderImageEditorCanvas();
+    }
+
+    function toggleImageEditorMetadataPanel() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.metadataEnabled) return;
+        editor.metadata = getImageEditorMetadataFromFields();
+        editor.metadataPanelOpen = !editor.metadataPanelOpen;
+        refreshImageEditorMetadataUi();
     }
 
     function bindStudioImageEditorEvents() {
@@ -5740,6 +6282,13 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorCloseBtn?.addEventListener('click', closeStudioImageEditor);
         elements.studioImageEditorCancelBtn?.addEventListener('click', closeStudioImageEditor);
         overlay.addEventListener('click', event => {
+            const metadataToggle = event.target.closest?.('#studioImageEditorMetadataToggleBtn');
+            if (metadataToggle) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleImageEditorMetadataPanel();
+                return;
+            }
             if (event.target === overlay) closeStudioImageEditor();
         });
         elements.studioImageEditorToolButtons?.forEach(button => {
@@ -5781,13 +6330,8 @@ MODIFICATION RULES FOR THIS APP
         });
         elements.studioImageEditorDrawToolButtons?.forEach(button => {
             button.addEventListener('click', () => {
-                const editor = state.auth.imageEditor;
-                if (!editor || button.disabled) return;
-                editor.drawTool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
-                closeImageEditorSliderPopovers();
-                refreshImageEditorDrawUi();
-                updateImageEditorCanvasPointerState();
-                setImageEditorStatus(isImageEditorLabelDrawActive() ? (editor.drawTool === 'eraser' ? 'Erase strokes for the selected label.' : 'Draw on the image for the selected label.') : 'Choose Draw next to a label first.');
+                if (button.disabled) return;
+                toggleImageEditorDrawTool(button.dataset.imageEditorDrawTool);
             });
         });
         elements.studioImageEditorDrawSizeInput?.addEventListener('input', () => {
@@ -5801,6 +6345,27 @@ MODIFICATION RULES FOR THIS APP
             if (!editor) return;
             editor.paintTransparency = getImageEditorPaintTransparency();
             if (elements.studioImageEditorPaintTransparencyValue) elements.studioImageEditorPaintTransparencyValue.textContent = `${Math.round(editor.paintTransparency * 100)}%`;
+        });
+        [
+            elements.studioImageEditorDiagramName,
+            elements.studioImageEditorSubjectName,
+            elements.studioImageEditorAnatomyType,
+            elements.studioImageEditorOrganSystem,
+            elements.studioImageEditorLocation,
+            elements.studioImageEditorOrgan,
+            elements.studioImageEditorMuscle,
+            elements.studioImageEditorTags
+        ].filter(Boolean).forEach(field => {
+            field.addEventListener('input', () => {
+                const editor = state.auth.imageEditor;
+                if (!editor?.metadataEnabled) return;
+                editor.metadata = getImageEditorMetadataFromFields();
+            });
+            field.addEventListener('change', () => {
+                const editor = state.auth.imageEditor;
+                if (!editor?.metadataEnabled) return;
+                editor.metadata = getImageEditorMetadataFromFields();
+            });
         });
         elements.studioImageEditorAddLabelBtn?.addEventListener('click', addImageEditorLabel);
         elements.studioImageEditorRemoveLastLabelBtn?.addEventListener('click', removeLastImageEditorLabel);
@@ -5899,6 +6464,9 @@ MODIFICATION RULES FOR THIS APP
         editor.activeDrawLabelIndex = null;
         editor.activeDrawStroke = null;
         editor.drawStrokes = cloneImageEditorDrawStrokes(info.drawStrokes || []);
+        editor.metadataEnabled = isImageEditorStandaloneDiagramTarget(editor) || isImageEditorFlashcardLabelTarget(editor);
+        editor.metadataPanelOpen = false;
+        editor.metadata = normalizeDiagramMetadata(info.metadata || {});
         // Existing flashcard brush/highlighter/eraser strokes reopen as editable overlay strokes.
         // The eye visibility map below controls what is shown in this editor session.
         if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = editor.arrowColor;
@@ -5916,7 +6484,8 @@ MODIFICATION RULES FOR THIS APP
             editor.drawVisibilityByLabel[String(index)] = true;
         });
         editor.showLabelPanel = false;
-        if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = 'Image Editor';
+        refreshImageEditorLabelUi();
+        if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = info.title || 'Image Editor';
         if (elements.studioImageEditorSubtitle) {
             elements.studioImageEditorSubtitle.textContent = '';
             elements.studioImageEditorSubtitle.hidden = true;
@@ -5963,16 +6532,17 @@ MODIFICATION RULES FOR THIS APP
         const label = `Edited: ${labelRoot}`;
         const imageLabels = normalizeDiagramLabels(editor?.labels || []);
         const imageDrawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || []);
+        const imageMetadata = normalizeDiagramMetadata(options.metadata || editor?.metadata || {});
         if (target.kind === 'option') {
             setStudioOptionImageState(target.row, dataUrl, label);
         } else if (target.kind === 'learning') {
             setStudioLearningResourcesImageState(dataUrl, label);
         } else if (target.kind === 'flashcard-term') {
-            setStudioFlashcardTermImageState(dataUrl, label, imageLabels, imageDrawStrokes);
+            setStudioFlashcardTermImageState(dataUrl, label, imageLabels, imageDrawStrokes, imageMetadata);
         } else if (target.kind === 'flashcard-definition') {
-            setStudioFlashcardDefinitionImageState(dataUrl, label, imageLabels, imageDrawStrokes);
+            setStudioFlashcardDefinitionImageState(dataUrl, label, imageLabels, imageDrawStrokes, imageMetadata);
         } else if (target.kind === 'flashcard-list') {
-            applyStudioFlashcardListImageChange(target.questionId, target.side, dataUrl, label, imageLabels, { drawStrokes: imageDrawStrokes });
+            applyStudioFlashcardListImageChange(target.questionId, target.side, dataUrl, label, imageLabels, { drawStrokes: imageDrawStrokes, metadata: imageMetadata });
         } else if (target.kind === 'classify-category') {
             setStudioClassifyRowImageState(target.wrapper, 'category', dataUrl, label);
             refreshStudioClassifyItemCategoryOptions();
@@ -6016,6 +6586,7 @@ MODIFICATION RULES FOR THIS APP
         const imageLabel = normalizeSheetText(options.label) || 'Saved front image.';
         const labels = normalizeDiagramLabels(options.labels || []);
         const drawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || []);
+        const metadata = normalizeDiagramMetadata(options.metadata || {});
         const savedImageSignature = normalizeSheetText(options.savedImageSignature || '');
         const rows = getStudioListRowsWithPendingDraft().filter(row =>
             normalizeSheetText(row?.question_type || 'flashcard') === 'flashcard'
@@ -6027,6 +6598,7 @@ MODIFICATION RULES FOR THIS APP
             if (!questionId) return;
             applyStudioFlashcardListImageChange(questionId, 'term', normalizedValue, imageLabel, labels, {
                 drawStrokes,
+                metadata,
                 savedImageSignature,
                 fromSavedImage: !!savedImageSignature,
                 suppressSync: true,
@@ -6046,9 +6618,10 @@ MODIFICATION RULES FOR THIS APP
     async function saveCurrentImageEditorToSavedImages(imageValue = '', options = {}) {
         const editor = state.auth.imageEditor;
         const normalizedValue = normalizeSheetText(imageValue);
-        if (!editor?.open || !normalizedValue || !isImageEditorFlashcardLabelTarget(editor)) return null;
+        if (!editor?.open || !normalizedValue || !isImageEditorSavedDiagramTarget(editor)) return null;
         const labels = normalizeDiagramLabels(options.labels || editor.labels || []);
         const drawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || editor.drawStrokes || []);
+        const metadata = normalizeDiagramMetadata(options.metadata || editor.metadata || getImageEditorMetadataFromFields());
         const fileName = getImageEditorSavedImageFileName(editor);
         setImageEditorStatus('Sending image to Saved Images...');
         let sharedValue = normalizedValue;
@@ -6067,7 +6640,7 @@ MODIFICATION RULES FOR THIS APP
             sharedValue = normalizedValue;
         }
         const entry = upsertStudioSavedImageLibraryEntry({
-            id: createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}`),
+            id: createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}::${JSON.stringify(metadata)}`),
             fileName,
             imageValue: sharedValue,
             imageOnlyValue: sharedValue,
@@ -6076,7 +6649,8 @@ MODIFICATION RULES FOR THIS APP
             imageLabel: `Saved: ${fileName}`,
             imageOnlyLabel: `Saved: ${fileName}`,
             labels,
-            drawStrokes
+            drawStrokes,
+            metadata
         });
         return { entry, value: sharedValue };
     }
@@ -6085,20 +6659,25 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         const targetKind = editor?.target?.kind || '';
         const isFlashcardTarget = ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(targetKind);
+        const isStandaloneDiagram = targetKind === 'standalone-diagram';
+        const isLayeredDiagramTarget = isFlashcardTarget || isStandaloneDiagram;
         const attachToAllFront = !!options.attachToAllFront && isImageEditorFlashcardFrontTarget(editor);
-        const outputCanvas = isFlashcardTarget ? editor?.baseCanvas : getImageEditorCompositedCanvas();
+        const outputCanvas = isLayeredDiagramTarget ? editor?.baseCanvas : getImageEditorCompositedCanvas();
         if (!outputCanvas) return;
         try {
             const editedDataUrl = outputCanvas.toDataURL('image/png');
             const imageLabels = normalizeDiagramLabels(editor?.labels || []);
-            const imageDrawStrokes = isFlashcardTarget ? cloneImageEditorDrawStrokes(editor.drawStrokes || []) : [];
+            const imageDrawStrokes = isLayeredDiagramTarget ? cloneImageEditorDrawStrokes(editor.drawStrokes || []) : [];
+            const imageMetadata = isLayeredDiagramTarget ? normalizeDiagramMetadata(editor.metadata || getImageEditorMetadataFromFields()) : {};
             let applyValue = editedDataUrl;
             let savedResult = null;
-            if ((options.sendToSavedImages || attachToAllFront) && isFlashcardTarget) {
-                savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, drawStrokes: imageDrawStrokes });
+            if ((options.sendToSavedImages || attachToAllFront) && isLayeredDiagramTarget) {
+                savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, drawStrokes: imageDrawStrokes, metadata: imageMetadata });
                 applyValue = normalizeSheetText(savedResult?.value || editedDataUrl);
             }
-            applyStudioImageEditorResult(applyValue, { drawStrokes: imageDrawStrokes });
+            if (!isStandaloneDiagram) {
+                applyStudioImageEditorResult(applyValue, { drawStrokes: imageDrawStrokes, metadata: imageMetadata });
+            }
             let attachedCount = 0;
             if (attachToAllFront) {
                 const savedEntry = normalizeStudioSavedImageEntry(savedResult?.entry || {});
@@ -6106,6 +6685,7 @@ MODIFICATION RULES FOR THIS APP
                     label: savedEntry?.imageLabel || `Saved: ${getImageEditorSavedImageFileName(editor)}`,
                     labels: imageLabels,
                     drawStrokes: imageDrawStrokes,
+                    metadata: imageMetadata,
                     savedImageSignature: savedEntry ? getStudioSavedImageSignature(savedEntry) : ''
                 });
             }
@@ -6116,8 +6696,13 @@ MODIFICATION RULES FOR THIS APP
                     ? `Attached the image to ${countLabel}.`
                     : 'No additional empty flashcard fronts were found.';
                 setCreatorStatus(`Image, labels, and draw strokes sent to Saved Images. ${suffix} Save Changes to keep the quiz updates. New cards added later are not filled automatically.`, 'success');
+            } else if (options.sendToSavedImages && isStandaloneDiagram) {
+                state.auth.diagramCreatorSourceDataUrl = '';
+                state.auth.diagramCreatorSourceLabel = '';
+                if (elements.diagramCreatorFileInput) elements.diagramCreatorFileInput.value = '';
+                setCreatorStatus('Diagram, labels, draw strokes, and search details sent to Saved Images.', 'success');
             } else if (options.sendToSavedImages && isFlashcardTarget) {
-                setCreatorStatus('Image, labels, and draw strokes sent to Saved Images. Save Changes to keep this card update.', 'success');
+                setCreatorStatus('Image, labels, draw strokes, and diagram details sent to Saved Images. Save Changes to keep this card update.', 'success');
             }
         } catch (error) {
             console.error(error);
@@ -6140,6 +6725,7 @@ MODIFICATION RULES FOR THIS APP
         const point = getImageEditorCanvasPoint(event);
         if (!point) return;
         event.preventDefault();
+        if (editor.mode === 'select') return;
         if (editor.mode === 'labels' && editor.labelsEnabled) {
             if (isImageEditorLabelDrawActive()) {
                 editor.isDrawing = true;
@@ -9800,6 +10386,22 @@ MODIFICATION RULES FOR THIS APP
         return cloneImageEditorDrawStrokes(draft?.termImageDrawStrokes ?? row?.term_image_draw_strokes ?? storedSide.drawStrokes ?? []);
     }
 
+    function getStudioFlashcardImageMetadataSnapshot(row = {}, side = 'term') {
+        const safeSide = side === 'definition' ? 'definition' : 'term';
+        const rowId = normalizeSheetText(row?.id);
+        const draft = rowId && !isStudioLocalFlashcardId(rowId) ? state.auth.studioQuestionDrafts.get(rowId) : null;
+        const isActive = rowId && rowId === state.auth.editingQuestionId;
+        const storedSide = safeSide === 'definition'
+            ? parseStoredFlashcardSideContent(draft?.definitionHtml ?? row?.definition_html ?? '')
+            : parseStoredFlashcardSideContent(draft?.termHtml ?? row?.term_html ?? row?.prompt_html ?? '');
+        if (safeSide === 'definition') {
+            if (isActive) return normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {});
+            return normalizeDiagramMetadata(draft?.definitionImageMetadata ?? row?.definition_image_metadata ?? storedSide.metadata ?? {});
+        }
+        if (isActive) return normalizeDiagramMetadata(state.auth.studioFlashcardTermImageMetadata || {});
+        return normalizeDiagramMetadata(draft?.termImageMetadata ?? row?.term_image_metadata ?? storedSide.metadata ?? {});
+    }
+
     function getStudioFlashcardImageDisplayLabel(snapshot = {}, side = 'term') {
         const safeSide = side === 'definition' ? 'definition' : 'term';
         const hasImage = !!normalizeSheetText(snapshot.value);
@@ -9838,11 +10440,13 @@ MODIFICATION RULES FOR THIS APP
             termImageLabel: termImage.label || '',
             termImageLabels: getStudioFlashcardImageLabelsSnapshot(row, 'term'),
             termImageDrawStrokes: getStudioFlashcardImageDrawStrokesSnapshot(row, 'term'),
+            termImageMetadata: getStudioFlashcardImageMetadataSnapshot(row, 'term'),
             termImageSavedSignature: normalizeSheetText(row.term_image_saved_signature || ''),
             definitionImage: definitionImage.value || '',
             definitionImageLabel: definitionImage.label || '',
             definitionImageLabels: getStudioFlashcardImageLabelsSnapshot(row, 'definition'),
             definitionImageDrawStrokes: getStudioFlashcardImageDrawStrokesSnapshot(row, 'definition'),
+            definitionImageMetadata: getStudioFlashcardImageMetadataSnapshot(row, 'definition'),
             definitionImageSavedSignature: normalizeSheetText(row.definition_image_saved_signature || '')
         };
     }
@@ -9893,6 +10497,9 @@ MODIFICATION RULES FOR THIS APP
         const nextDrawStrokes = options.drawStrokes !== undefined
             ? cloneImageEditorDrawStrokes(options.drawStrokes || [])
             : (!normalizedValue ? [] : null);
+        const nextMetadata = options.metadata !== undefined
+            ? normalizeDiagramMetadata(options.metadata || {})
+            : (!normalizedValue ? {} : null);
         if (safeSide === 'definition') {
             row.definition_image_url = normalizedValue;
             row.definition_image_label = nextLabel;
@@ -9901,8 +10508,9 @@ MODIFICATION RULES FOR THIS APP
             if (!normalizedValue || fromSavedImage) row.definition_image_reuse_signature = '';
             if (nextLabels !== null) row.definition_image_labels = nextLabels;
             if (nextDrawStrokes !== null) row.definition_image_draw_strokes = nextDrawStrokes;
+            if (nextMetadata !== null) row.definition_image_metadata = nextMetadata;
             if (rowId === state.auth.editingQuestionId || rowId === STUDIO_PENDING_NEW_FLASHCARD_ID) {
-                setStudioFlashcardDefinitionImageState(normalizedValue, nextLabel, nextLabels === null ? undefined : nextLabels, nextDrawStrokes === null ? undefined : nextDrawStrokes);
+                setStudioFlashcardDefinitionImageState(normalizedValue, nextLabel, nextLabels === null ? undefined : nextLabels, nextDrawStrokes === null ? undefined : nextDrawStrokes, nextMetadata === null ? undefined : nextMetadata);
             }
         } else {
             row.term_image_url = normalizedValue;
@@ -9912,8 +10520,9 @@ MODIFICATION RULES FOR THIS APP
             if (!normalizedValue || fromSavedImage) row.term_image_reuse_signature = '';
             if (nextLabels !== null) row.term_image_labels = nextLabels;
             if (nextDrawStrokes !== null) row.term_image_draw_strokes = nextDrawStrokes;
+            if (nextMetadata !== null) row.term_image_metadata = nextMetadata;
             if (rowId === state.auth.editingQuestionId || rowId === STUDIO_PENDING_NEW_FLASHCARD_ID) {
-                setStudioFlashcardTermImageState(normalizedValue, nextLabel, nextLabels === null ? undefined : nextLabels, nextDrawStrokes === null ? undefined : nextDrawStrokes);
+                setStudioFlashcardTermImageState(normalizedValue, nextLabel, nextLabels === null ? undefined : nextLabels, nextDrawStrokes === null ? undefined : nextDrawStrokes, nextMetadata === null ? undefined : nextMetadata);
             }
         }
 
@@ -9937,6 +10546,7 @@ MODIFICATION RULES FOR THIS APP
                     if (fromSavedImage) draft.definitionImageReuseSignature = '';
                     if (nextLabels !== null) draft.definitionImageLabels = nextLabels;
                     if (nextDrawStrokes !== null) draft.definitionImageDrawStrokes = nextDrawStrokes;
+                    if (nextMetadata !== null) draft.definitionImageMetadata = nextMetadata;
                 } else {
                     draft.termImage = normalizedValue;
                     draft.termImageLabel = nextLabel;
@@ -9944,6 +10554,7 @@ MODIFICATION RULES FOR THIS APP
                     if (fromSavedImage) draft.termImageReuseSignature = '';
                     if (nextLabels !== null) draft.termImageLabels = nextLabels;
                     if (nextDrawStrokes !== null) draft.termImageDrawStrokes = nextDrawStrokes;
+                    if (nextMetadata !== null) draft.termImageMetadata = nextMetadata;
                 }
                 state.auth.studioQuestionDrafts.set(rowId, draft);
             }
@@ -10406,10 +11017,12 @@ MODIFICATION RULES FOR THIS APP
             term_image_label: state.auth.studioFlashcardTermImageLabel || '',
             term_image_labels: normalizeDiagramLabels(state.auth.studioFlashcardTermImageLabels || []),
             term_image_draw_strokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardTermImageDrawStrokes || []),
+            term_image_metadata: normalizeDiagramMetadata(state.auth.studioFlashcardTermImageMetadata || {}),
             definition_image_url: state.auth.studioFlashcardDefinitionImageDataUrl || '',
             definition_image_label: state.auth.studioFlashcardDefinitionImageLabel || '',
             definition_image_labels: normalizeDiagramLabels(state.auth.studioFlashcardDefinitionImageLabels || []),
             definition_image_draw_strokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []),
+            definition_image_metadata: normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {}),
             sort_order: Number.MAX_SAFE_INTEGER,
             is_local_draft: true
         };
@@ -10497,10 +11110,12 @@ MODIFICATION RULES FOR THIS APP
             draft.termImageLabel = state.auth.studioFlashcardTermImageLabel || '';
             draft.termImageLabels = normalizeDiagramLabels(state.auth.studioFlashcardTermImageLabels || []);
             draft.termImageDrawStrokes = cloneImageEditorDrawStrokes(state.auth.studioFlashcardTermImageDrawStrokes || []);
+            draft.termImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardTermImageMetadata || {});
             draft.definitionImage = state.auth.studioFlashcardDefinitionImageDataUrl || '';
             draft.definitionImageLabel = state.auth.studioFlashcardDefinitionImageLabel || '';
             draft.definitionImageLabels = normalizeDiagramLabels(state.auth.studioFlashcardDefinitionImageLabels || []);
             draft.definitionImageDrawStrokes = cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []);
+            draft.definitionImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {});
         } else if (questionType === 'hierarchy') {
             draft.hierarchyDrafts = getStudioHierarchyDraftsFromDOM();
         } else if (questionType === 'classify') {
@@ -10560,8 +11175,8 @@ MODIFICATION RULES FOR THIS APP
         if (draft.questionType === 'flashcard') {
             setFlashcardTermEditorHtml(draft.termHtml || '', draft.term || '');
             setFlashcardDefinitionEditorHtml(draft.definitionHtml || '', draft.definition || '');
-            setStudioFlashcardTermImageState(draft.termImage || '', draft.termImageLabel || (draft.termImage ? 'Existing term image saved.' : 'No term image selected.'), draft.termImageLabels || [], draft.termImageDrawStrokes || []);
-            setStudioFlashcardDefinitionImageState(draft.definitionImage || '', draft.definitionImageLabel || (draft.definitionImage ? 'Existing definition image saved.' : 'No definition image selected.'), draft.definitionImageLabels || [], draft.definitionImageDrawStrokes || []);
+            setStudioFlashcardTermImageState(draft.termImage || '', draft.termImageLabel || (draft.termImage ? 'Existing term image saved.' : 'No term image selected.'), draft.termImageLabels || [], draft.termImageDrawStrokes || [], draft.termImageMetadata || {});
+            setStudioFlashcardDefinitionImageState(draft.definitionImage || '', draft.definitionImageLabel || (draft.definitionImage ? 'Existing definition image saved.' : 'No definition image selected.'), draft.definitionImageLabels || [], draft.definitionImageDrawStrokes || [], draft.definitionImageMetadata || {});
         } else if (draft.questionType === 'hierarchy') {
             renderStudioHierarchyFields(draft.hierarchyDrafts || null);
         } else if (draft.questionType === 'classify') {
@@ -10607,8 +11222,8 @@ MODIFICATION RULES FOR THIS APP
         setLearningResourcesEditorHtml(row.learning_resources_html || '', '');
         setStudioLearningResourcesImageState(row.learning_resources_image_url || '', row.learning_resources_image_label || (row.learning_resources_image_url ? 'Existing learning resources image saved.' : 'No learning resources image selected.'));
         setStudioQuestionImageState('', 'No question image selected.');
-        setStudioFlashcardTermImageState(row.term_image_url || '', row.term_image_label || (row.term_image_url ? 'Existing term image saved.' : 'No term image selected.'), row.term_image_labels || [], row.term_image_draw_strokes || []);
-        setStudioFlashcardDefinitionImageState(row.definition_image_url || '', row.definition_image_label || (row.definition_image_url ? 'Existing definition image saved.' : 'No definition image selected.'), row.definition_image_labels || [], row.definition_image_draw_strokes || []);
+        setStudioFlashcardTermImageState(row.term_image_url || '', row.term_image_label || (row.term_image_url ? 'Existing term image saved.' : 'No term image selected.'), row.term_image_labels || [], row.term_image_draw_strokes || [], row.term_image_metadata || {});
+        setStudioFlashcardDefinitionImageState(row.definition_image_url || '', row.definition_image_label || (row.definition_image_url ? 'Existing definition image saved.' : 'No definition image selected.'), row.definition_image_labels || [], row.definition_image_draw_strokes || [], row.definition_image_metadata || {});
         if (elements.createAllowMultipleAnswers) elements.createAllowMultipleAnswers.checked = false;
         renderStudioOptionFields(Array.from({ length: 4 }, () => ({ text: '', explanation: '', imageUrl: '', imageLabel: '' })));
         syncCorrectOptionSelect('1');
@@ -10652,10 +11267,12 @@ MODIFICATION RULES FOR THIS APP
             const definitionImageLabels = normalizeDiagramLabels(row.definition_image_labels || []);
             const termImageDrawStrokes = cloneImageEditorDrawStrokes(row.term_image_draw_strokes || []);
             const definitionImageDrawStrokes = cloneImageEditorDrawStrokes(row.definition_image_draw_strokes || []);
+            const termImageMetadata = normalizeDiagramMetadata(row.term_image_metadata || {});
+            const definitionImageMetadata = normalizeDiagramMetadata(row.definition_image_metadata || {});
             const termSavedImageSignature = normalizeSheetText(row.term_image_saved_signature || row.termImageSavedSignature || '');
             const definitionSavedImageSignature = normalizeSheetText(row.definition_image_saved_signature || row.definitionImageSavedSignature || '');
-            const storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, imagePresent: !!termImage, savedImageSignature: termSavedImageSignature });
-            const storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, imagePresent: !!definitionImage, savedImageSignature: definitionSavedImageSignature });
+            const storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!termImage, savedImageSignature: termSavedImageSignature });
+            const storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!definitionImage, savedImageSignature: definitionSavedImageSignature });
             const termReusableEntry = termImage ? normalizeStudioSavedImageEntry({
                 imageValue: termImage,
                 imageOnlyValue: termImage,
@@ -10691,12 +11308,14 @@ MODIFICATION RULES FOR THIS APP
                 termImageLabel: row.term_image_label || 'term image',
                 termImageLabels,
                 termImageDrawStrokes,
+                termImageMetadata,
                 termReuseEnabled: !termSavedImageSignature && !!(termReusableEntry && isStudioFlashcardImageReuseEnabled(row.id, 'term', termReusableEntry)),
                 termSavedImageSignature,
                 definitionImage,
                 definitionImageLabel: row.definition_image_label || 'definition image',
                 definitionImageLabels,
                 definitionImageDrawStrokes,
+                definitionImageMetadata,
                 definitionReuseEnabled: !definitionSavedImageSignature && !!(definitionReusableEntry && isStudioFlashcardImageReuseEnabled(row.id, 'definition', definitionReusableEntry)),
                 definitionSavedImageSignature,
                 sortOrder: identity.sortOrder
@@ -10788,7 +11407,8 @@ MODIFICATION RULES FOR THIS APP
                     imageOnlyMediaValue: isSupabaseMediaReference(item.savedTermImage) ? item.savedTermImage : '',
                     imageLabel: item.row.termImageLabel || 'term image',
                     labels: termLabels,
-                    drawStrokes: item.row.termImageDrawStrokes || []
+                    drawStrokes: item.row.termImageDrawStrokes || [],
+                    metadata: item.row.termImageMetadata || {}
                 }))
                 : '';
             const definitionReuseSignature = item.row.definitionReuseEnabled && item.savedDefinitionImage
@@ -10799,13 +11419,14 @@ MODIFICATION RULES FOR THIS APP
                     imageOnlyMediaValue: isSupabaseMediaReference(item.savedDefinitionImage) ? item.savedDefinitionImage : '',
                     imageLabel: item.row.definitionImageLabel || 'definition image',
                     labels: definitionLabels,
-                    drawStrokes: item.row.definitionImageDrawStrokes || []
+                    drawStrokes: item.row.definitionImageDrawStrokes || [],
+                    metadata: item.row.definitionImageMetadata || {}
                 }))
                 : '';
             return {
                 question_id: item.questionId,
-                term_html: buildStoredFlashcardSideContent(item.row.termHtml, { labels: termLabels, drawStrokes: item.row.termImageDrawStrokes || [], imagePresent: !!item.savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: item.row.termSavedImageSignature }),
-                definition_html: buildStoredFlashcardSideContent(item.row.definitionHtml, { labels: definitionLabels, drawStrokes: item.row.definitionImageDrawStrokes || [], imagePresent: !!item.savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: item.row.definitionSavedImageSignature }),
+                term_html: buildStoredFlashcardSideContent(item.row.termHtml, { labels: termLabels, drawStrokes: item.row.termImageDrawStrokes || [], metadata: item.row.termImageMetadata || {}, imagePresent: !!item.savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: item.row.termSavedImageSignature }),
+                definition_html: buildStoredFlashcardSideContent(item.row.definitionHtml, { labels: definitionLabels, drawStrokes: item.row.definitionImageDrawStrokes || [], metadata: item.row.definitionImageMetadata || {}, imagePresent: !!item.savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: item.row.definitionSavedImageSignature }),
                 term_plain: item.row.term,
                 definition_plain: item.row.definition,
                 term_image_url: item.savedTermImage || '',
@@ -10983,8 +11604,8 @@ MODIFICATION RULES FOR THIS APP
         const definition = normalizeSheetText(draft.definition || '');
         const termHtml = sanitizeLearningResourcesHtml(draft.termHtml || '') || buildStoredHtmlFromPlain(term);
         const definitionHtml = sanitizeLearningResourcesHtml(draft.definitionHtml || '') || buildStoredHtmlFromPlain(definition);
-        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: draft.termImageLabels || [], drawStrokes: draft.termImageDrawStrokes || [], imagePresent: !!normalizeSheetText(draft.termImage) });
-        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: draft.definitionImageLabels || [], drawStrokes: draft.definitionImageDrawStrokes || [], imagePresent: !!normalizeSheetText(draft.definitionImage) });
+        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: draft.termImageLabels || [], drawStrokes: draft.termImageDrawStrokes || [], metadata: draft.termImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.termImage) });
+        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: draft.definitionImageLabels || [], drawStrokes: draft.definitionImageDrawStrokes || [], metadata: draft.definitionImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.definitionImage) });
         const learningResourcesHtml = sanitizeLearningResourcesHtml(draft.learningResourcesHtml || '');
 
         if (!quizId) throw new Error('Save or open a flashcard quiz before updating cards.');
@@ -11006,6 +11627,8 @@ MODIFICATION RULES FOR THIS APP
         const definitionImageLabels = normalizeDiagramLabels(draft.definitionImageLabels || []);
         const termImageDrawStrokes = cloneImageEditorDrawStrokes(draft.termImageDrawStrokes || []);
         const definitionImageDrawStrokes = cloneImageEditorDrawStrokes(draft.definitionImageDrawStrokes || []);
+        const termImageMetadata = normalizeDiagramMetadata(draft.termImageMetadata || {});
+        const definitionImageMetadata = normalizeDiagramMetadata(draft.definitionImageMetadata || {});
         const termReuseEntry = nextTermImageInput ? normalizeStudioSavedImageEntry({
             imageValue: nextTermImageInput,
             imageOnlyValue: nextTermImageInput,
@@ -11075,8 +11698,8 @@ MODIFICATION RULES FOR THIS APP
         }) : null;
         const termReuseSignature = termReuseEnabled && savedTermReuseEntry ? getStudioSavedImageSignature(savedTermReuseEntry) : '';
         const definitionReuseSignature = definitionReuseEnabled && savedDefinitionReuseEntry ? getStudioSavedImageSignature(savedDefinitionReuseEntry) : '';
-        storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, imagePresent: !!savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: termSavedImageSignature });
-        storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, imagePresent: !!savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: definitionSavedImageSignature });
+        storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: termSavedImageSignature });
+        storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: definitionSavedImageSignature });
 
         const questionPayload = {
             prompt_html: termHtml,
@@ -11156,6 +11779,8 @@ MODIFICATION RULES FOR THIS APP
             row.definition_image_labels = definitionImageLabels;
             row.term_image_draw_strokes = termImageDrawStrokes;
             row.definition_image_draw_strokes = definitionImageDrawStrokes;
+            row.term_image_metadata = termImageMetadata;
+            row.definition_image_metadata = definitionImageMetadata;
             row.term_image_present = !!savedTermImage;
             row.definition_image_present = !!savedDefinitionImage;
             row.term_image_reuse_signature = termReuseSignature;
@@ -12067,6 +12692,8 @@ MODIFICATION RULES FOR THIS APP
                 definition_image_labels: parsedDefinitionSide.labels,
                 term_image_draw_strokes: parsedTermSide.drawStrokes,
                 definition_image_draw_strokes: parsedDefinitionSide.drawStrokes,
+                term_image_metadata: parsedTermSide.metadata,
+                definition_image_metadata: parsedDefinitionSide.metadata,
                 question_type: getEffectiveQuestionTypeFromDetail(row.question_type || 'multiple_choice', multipleChoiceDetail),
                 storage_question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
                 image_url: normalizeSheetText(row.image_url),
@@ -12189,6 +12816,8 @@ MODIFICATION RULES FOR THIS APP
                 studioRow.definition_image_labels = parsedDefinitionSide.labels;
                 studioRow.term_image_draw_strokes = cloneImageEditorDrawStrokes(parsedTermSide.drawStrokes || []);
                 studioRow.definition_image_draw_strokes = cloneImageEditorDrawStrokes(parsedDefinitionSide.drawStrokes || []);
+                studioRow.term_image_metadata = normalizeDiagramMetadata(parsedTermSide.metadata || {});
+                studioRow.definition_image_metadata = normalizeDiagramMetadata(parsedDefinitionSide.metadata || {});
                 studioRow.term_image_present = !!normalizeSheetText(detailRow.term_image_url);
                 studioRow.definition_image_present = !!normalizeSheetText(detailRow.definition_image_url);
                 studioRow.term_image_reuse_signature = parsedTermSide.reuseSignature;
@@ -12206,13 +12835,15 @@ MODIFICATION RULES FOR THIS APP
                 normalizeSheetText(detailRow.term_image_url),
                 normalizeSheetText(detailRow.term_image_url) ? 'Existing term image saved.' : 'No term image selected.',
                 parsedTermSide.labels,
-                parsedTermSide.drawStrokes
+                parsedTermSide.drawStrokes,
+                parsedTermSide.metadata
             );
             setStudioFlashcardDefinitionImageState(
                 normalizeSheetText(detailRow.definition_image_url),
                 normalizeSheetText(detailRow.definition_image_url) ? 'Existing definition image saved.' : 'No definition image selected.',
                 parsedDefinitionSide.labels,
-                parsedDefinitionSide.drawStrokes
+                parsedDefinitionSide.drawStrokes,
+                parsedDefinitionSide.metadata
             );
             setStudioQuestionImageState('', 'No question image selected.');
             if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = '';
@@ -12732,7 +13363,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     async function setQuizStudioSection(sectionName = 'home', options = {}) {
-        const nextSection = ['home', 'folders', 'manage', 'backup', 'import', 'editor'].includes(sectionName)
+        const nextSection = ['home', 'folders', 'manage', 'backup', 'import', 'editor', 'diagram-creator', 'review-mode'].includes(sectionName)
             ? sectionName
             : 'home';
 
@@ -12755,6 +13386,11 @@ MODIFICATION RULES FOR THIS APP
             button.classList.toggle('active', isActive);
             button.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
+        if (nextSection === 'review-mode') {
+            renderReviewModeLibrary();
+        } else if (getReviewModeState().overlayOpen) {
+            closeReviewModeImage();
+        }
         return true;
     }
 
@@ -12912,7 +13548,35 @@ MODIFICATION RULES FOR THIS APP
             });
         }
 
-        if (elements.openQuizStudioBtn) {
+        if (elements.diagramCreatorChooseBtn && elements.diagramCreatorFileInput) {
+    elements.diagramCreatorChooseBtn.addEventListener('click', () => {
+        if (!state.auth.user?.id) {
+            setCreatorStatus('Sign in before using Diagram Creator.', 'error');
+            return;
+        }
+        elements.diagramCreatorFileInput.value = '';
+        elements.diagramCreatorFileInput.click();
+    });
+    elements.diagramCreatorFileInput.addEventListener('change', async () => {
+        const file = elements.diagramCreatorFileInput.files?.[0];
+        if (!file) return;
+        try {
+            const dataUrl = await readFileAsDataUrl(file);
+            state.auth.diagramCreatorSourceDataUrl = dataUrl;
+            state.auth.diagramCreatorSourceLabel = `Selected: ${file.name || 'diagram-image.png'}`;
+            await openStudioImageEditor({
+                kind: 'standalone-diagram',
+                sourceValue: dataUrl,
+                sourceLabel: state.auth.diagramCreatorSourceLabel
+            });
+        } catch (error) {
+            console.error(error);
+            setCreatorStatus('Could not open that image in Diagram Creator.', 'error');
+        }
+    });
+}
+
+if (elements.openQuizStudioBtn) {
             elements.openQuizStudioBtn.disabled = !creatorEnabled;
         }
 
@@ -15107,8 +15771,8 @@ MODIFICATION RULES FOR THIS APP
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
         const termHtml = getFlashcardTermEditorHtml() || buildStoredHtmlFromPlain(term);
         const definitionHtml = getFlashcardDefinitionEditorHtml() || buildStoredHtmlFromPlain(definition);
-        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: state.auth.studioFlashcardTermImageLabels || [], drawStrokes: state.auth.studioFlashcardTermImageDrawStrokes || [], imagePresent: !!state.auth.studioFlashcardTermImageDataUrl });
-        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: state.auth.studioFlashcardDefinitionImageLabels || [], drawStrokes: state.auth.studioFlashcardDefinitionImageDrawStrokes || [], imagePresent: !!state.auth.studioFlashcardDefinitionImageDataUrl });
+        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: state.auth.studioFlashcardTermImageLabels || [], drawStrokes: state.auth.studioFlashcardTermImageDrawStrokes || [], metadata: state.auth.studioFlashcardTermImageMetadata || {}, imagePresent: !!state.auth.studioFlashcardTermImageDataUrl });
+        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: state.auth.studioFlashcardDefinitionImageLabels || [], drawStrokes: state.auth.studioFlashcardDefinitionImageDrawStrokes || [], metadata: state.auth.studioFlashcardDefinitionImageMetadata || {}, imagePresent: !!state.auth.studioFlashcardDefinitionImageDataUrl });
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
         const termImageValue = state.auth.studioFlashcardTermImageDataUrl || '';
@@ -15157,8 +15821,10 @@ MODIFICATION RULES FOR THIS APP
             const definitionImageLabels = normalizeDiagramLabels(state.auth.studioFlashcardDefinitionImageLabels || []);
             const termImageDrawStrokes = cloneImageEditorDrawStrokes(state.auth.studioFlashcardTermImageDrawStrokes || []);
             const definitionImageDrawStrokes = cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []);
-            storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, imagePresent: !!savedFlashcardMedia.term_image_url });
-            storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, imagePresent: !!savedFlashcardMedia.definition_image_url });
+            const termImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardTermImageMetadata || {});
+            const definitionImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {});
+            storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedFlashcardMedia.term_image_url });
+            storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedFlashcardMedia.definition_image_url });
             const detailPayload = { question_id: questionId, term_html: storedTermHtml, definition_html: storedDefinitionHtml, term_plain: term, definition_plain: definition, term_image_url: savedFlashcardMedia.term_image_url || '', definition_image_url: savedFlashcardMedia.definition_image_url || '' };
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
@@ -24974,6 +25640,119 @@ elements.quizStudioSectionButtons.forEach(button => {
     });
 });
 
+const reviewModeFilterElements = [
+    elements.reviewModeSearchInput,
+    elements.reviewModeDiagramNameFilter,
+    elements.reviewModeSubjectFilter,
+    elements.reviewModeAnatomyTypeFilter,
+    elements.reviewModeOrganSystemFilter,
+    elements.reviewModeLocationFilter,
+    elements.reviewModeOrganFilter,
+    elements.reviewModeMuscleFilter,
+    elements.reviewModeTagsFilter
+].filter(Boolean);
+reviewModeFilterElements.forEach(control => {
+    const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
+    control.addEventListener(eventName, renderReviewModeLibrary);
+});
+
+if (elements.reviewModeClearFiltersBtn) {
+    elements.reviewModeClearFiltersBtn.addEventListener('click', clearReviewModeFilters);
+}
+
+if (elements.reviewModeImageGrid) {
+    elements.reviewModeImageGrid.addEventListener('click', event => {
+        const deleteButton = event.target.closest('[data-review-image-delete]');
+        if (deleteButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            const entryId = normalizeSheetText(deleteButton.dataset.reviewImageDelete || '');
+            if (removeStudioSavedImageEntryById(entryId)) {
+                setCreatorStatus('Saved image removed from Saved Images. Existing flashcards were not changed.', 'success');
+            } else {
+                setCreatorStatus('That saved image could not be found.', 'error');
+            }
+            renderReviewModeLibrary();
+            return;
+        }
+        const card = event.target.closest('[data-review-image-id]');
+        if (!card) return;
+        openReviewModeImage(card.dataset.reviewImageId || '');
+    });
+}
+
+if (elements.reviewModeCloseBtn) {
+    elements.reviewModeCloseBtn.addEventListener('click', closeReviewModeImage);
+}
+
+if (elements.reviewModeOptionsBtn) {
+    elements.reviewModeOptionsBtn.addEventListener('click', () => {
+        const review = getReviewModeState();
+        setReviewModeOptionsOpen(!review.optionsOpen);
+    });
+}
+
+if (elements.reviewModeShowAllNamesToggle) {
+    elements.reviewModeShowAllNamesToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.showAllNames = elements.reviewModeShowAllNamesToggle.checked;
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeShowDrawDataToggle) {
+    elements.reviewModeShowDrawDataToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.showDrawData = elements.reviewModeShowDrawDataToggle.checked;
+        renderReviewModeDrawData();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeLabelSizeDownBtn) {
+    elements.reviewModeLabelSizeDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
+}
+
+if (elements.reviewModeLabelSizeUpBtn) {
+    elements.reviewModeLabelSizeUpBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale + 0.1));
+}
+
+if (elements.reviewModeLabelLayer) {
+    elements.reviewModeLabelLayer.addEventListener('click', event => {
+        const marker = event.target.closest('[data-review-label-index]');
+        if (!marker) return;
+        const index = Number(marker.dataset.reviewLabelIndex);
+        if (!Number.isInteger(index) || index < 0) return;
+        const review = getReviewModeState();
+        if (review.showAllNames) {
+            review.showAllNames = false;
+            review.revealedLabels = new Set(normalizeDiagramLabels(getActiveReviewModeEntry()?.labels || []).map((_, labelIndex) => labelIndex));
+            review.revealedLabels.delete(index);
+        } else if (review.revealedLabels.has(index)) {
+            review.revealedLabels.delete(index);
+        } else {
+            review.revealedLabels.add(index);
+        }
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
+window.addEventListener('resize', () => {
+    if (getReviewModeState().overlayOpen) requestAnimationFrame(syncReviewModeImageStage);
+});
+window.addEventListener('orientationchange', () => {
+    if (getReviewModeState().overlayOpen) setTimeout(syncReviewModeImageStage, 120);
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && getReviewModeState().overlayOpen) {
+        event.preventDefault();
+        closeReviewModeImage();
+    }
+});
+
 if (elements.closeQuizStudioBtn) {
     elements.closeQuizStudioBtn.addEventListener('click', () => {
         closeQuizStudioPage().catch(err => {
@@ -26653,12 +27432,8 @@ elements.studioImageEditorArrowColorInput?.addEventListener('input', () => {
 
 elements.studioImageEditorDrawToolButtons?.forEach(button => {
     button.addEventListener('click', () => {
-        const editor = state.auth.imageEditor;
-        if (!editor || button.disabled) return;
-        editor.drawTool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
-        refreshImageEditorDrawUi();
-        updateImageEditorCanvasPointerState();
-        setImageEditorStatus(isImageEditorLabelDrawActive() ? (editor.drawTool === 'eraser' ? 'Erase strokes for the selected label.' : 'Draw on the image for the selected label.') : 'Choose Draw next to a label first.');
+        if (button.disabled) return;
+        toggleImageEditorDrawTool(button.dataset.imageEditorDrawTool);
     });
 });
 
@@ -26760,6 +27535,16 @@ if (elements.studioImageEditorSendSavedBtn) {
 }
 if (elements.studioImageEditorAttachAllFrontBtn) {
     elements.studioImageEditorAttachAllFrontBtn.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }));
+}
+// Phase 22MA: the static editor is bound by this legacy startup block before
+// ensureStudioImageEditorDom() runs. Bind only the missing Diagram Details
+// button here so the later guard does not suppress its Show/Hide handler.
+if (elements.studioImageEditorMetadataToggleBtn) {
+    elements.studioImageEditorMetadataToggleBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleImageEditorMetadataPanel();
+    });
 }
 if (elements.studioImageEditorOverlay) {
     elements.studioImageEditorOverlay.dataset.imageEditorEventsBound = 'true';
