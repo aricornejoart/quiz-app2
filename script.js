@@ -375,6 +375,8 @@ MODIFICATION RULES FOR THIS APP
                 metadata: {},
                 metadataEnabled: false,
                 metadataPanelOpen: false,
+                labelInfoEnabled: false,
+                labelInfoPanelOpen: false,
                 draggingLabelIndex: null,
                 hoveredLabelIndex: null,
                 showLabelPanel: false
@@ -467,6 +469,8 @@ MODIFICATION RULES FOR THIS APP
         reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
         reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
+        reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
+        reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
         reviewModeLabelSizeDownBtn: document.getElementById('reviewModeLabelSizeDownBtn'),
         reviewModeLabelSizeUpBtn: document.getElementById('reviewModeLabelSizeUpBtn'),
         reviewModeLabelSizeValue: document.getElementById('reviewModeLabelSizeValue'),
@@ -639,6 +643,9 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorLabelList: document.getElementById('studioImageEditorLabelList'),
         studioImageEditorMetadataPanel: document.getElementById('studioImageEditorMetadataPanel'),
         studioImageEditorMetadataToggleBtn: document.getElementById('studioImageEditorMetadataToggleBtn'),
+        studioImageEditorLabelInfoPanel: document.getElementById('studioImageEditorLabelInfoPanel'),
+        studioImageEditorLabelInfoList: document.getElementById('studioImageEditorLabelInfoList'),
+        studioImageEditorLabelInfoToggleBtn: document.getElementById('studioImageEditorLabelInfoToggleBtn'),
         studioImageEditorDiagramName: document.getElementById('studioImageEditorDiagramName'),
         studioImageEditorSubjectName: document.getElementById('studioImageEditorSubjectName'),
         studioImageEditorAnatomyType: document.getElementById('studioImageEditorAnatomyType'),
@@ -2356,6 +2363,7 @@ MODIFICATION RULES FOR THIS APP
         const source = Array.isArray(labels) ? labels : [];
         return source.map((label, index) => ({
             label: displayMathChemTextForEditor(normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index))) || getDiagramLabelName(index),
+            description: normalizeSheetText(label?.description || label?.labelDescription || label?.information || label?.info || '').slice(0, 2000),
             x: Math.min(100, Math.max(0, Number(label?.x ?? label?.left ?? 50) || 50)),
             y: Math.min(100, Math.max(0, Number(label?.y ?? label?.top ?? 50) || 50))
         })).filter(label => label.label);
@@ -4786,6 +4794,8 @@ MODIFICATION RULES FOR THIS APP
         review.optionsOpen = review.optionsOpen === true;
         review.showAllNames = review.showAllNames === true;
         review.showDrawData = review.showDrawData !== false;
+        review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
+        review.includeLabelDescriptions = review.includeLabelDescriptions === true;
         review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1));
         return review;
     }
@@ -4889,6 +4899,14 @@ MODIFICATION RULES FOR THIS APP
         return new Set(Array.from(review.revealedLabels).filter(index => Number.isInteger(index) && index >= 0 && index < labels.length));
     }
 
+    function getReviewModeVisibleNameIndexes(entry = null) {
+        const review = getReviewModeState();
+        const labels = normalizeDiagramLabels(entry?.labels || []);
+        if (review.showAllNames) return new Set(labels.map((_, index) => index));
+        if (review.disableLabelNamesOnClick) return new Set();
+        return getReviewModeVisibleLabelIndexes(entry);
+    }
+
     function renderReviewModeDrawData() {
         const entry = getActiveReviewModeEntry();
         const canvas = elements.reviewModeDrawCanvas;
@@ -4915,12 +4933,21 @@ MODIFICATION RULES FOR THIS APP
         if (!layer) return;
         const review = getReviewModeState();
         const labels = normalizeDiagramLabels(entry?.labels || []);
-        const visibleNames = getReviewModeVisibleLabelIndexes(entry);
+        const selectedLabels = getReviewModeVisibleLabelIndexes(entry);
+        const visibleNames = getReviewModeVisibleNameIndexes(entry);
         layer.style.setProperty('--review-label-scale', String(review.labelScale));
         layer.innerHTML = labels.map((item, index) => {
+            const isSelected = selectedLabels.has(index);
             const isNameVisible = visibleNames.has(index);
-            const text = isNameVisible ? item.label : String(index + 1);
-            return `<button type="button" class="review-mode-label-marker${isNameVisible ? ' is-name-visible' : ''}" data-review-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" aria-pressed="${isNameVisible ? 'true' : 'false'}" aria-label="${isNameVisible ? 'Hide' : 'Show'} label ${index + 1}">${renderMathChemTextToHtml(text)}</button>`;
+            const description = normalizeSheetText(item.description || '');
+            const isDescriptionVisible = !!(review.includeLabelDescriptions && description && isSelected && isNameVisible);
+            const actionText = isSelected ? 'Hide' : 'Show';
+            const targetText = review.disableLabelNamesOnClick && !review.showAllNames ? 'drawing for' : 'label';
+            const nameHtml = isNameVisible ? renderMathChemTextToHtml(item.label) : String(index + 1);
+            const descriptionHtml = isDescriptionVisible
+                ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
+                : '';
+            return `<button type="button" class="review-mode-label-marker${isSelected ? ' is-selected' : ''}${isNameVisible ? ' is-name-visible' : ''}${isDescriptionVisible ? ' has-description' : ''}" data-review-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" aria-pressed="${isSelected ? 'true' : 'false'}" aria-label="${actionText} ${targetText} ${index + 1}"><span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}</button>`;
         }).join('');
         renderReviewModeDrawData();
     }
@@ -4942,6 +4969,8 @@ MODIFICATION RULES FOR THIS APP
         const review = getReviewModeState();
         if (elements.reviewModeShowAllNamesToggle) elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
+        if (elements.reviewModeDisableNamesOnClickToggle) elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
+        if (elements.reviewModeIncludeDescriptionsToggle) elements.reviewModeIncludeDescriptionsToggle.checked = review.includeLabelDescriptions;
         if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelScale * 100)}%`;
         if (elements.reviewModeLabelSizeDownBtn) elements.reviewModeLabelSizeDownBtn.disabled = review.labelScale <= 0.65;
         if (elements.reviewModeLabelSizeUpBtn) elements.reviewModeLabelSizeUpBtn.disabled = review.labelScale >= 1.8;
@@ -4957,6 +4986,8 @@ MODIFICATION RULES FOR THIS APP
         review.optionsOpen = false;
         review.showAllNames = false;
         review.showDrawData = true;
+        review.disableLabelNamesOnClick = false;
+        review.includeLabelDescriptions = false;
         review.labelScale = 1;
         review.revealedLabels = new Set();
         elements.reviewModeOverlay.classList.remove('hidden');
@@ -5203,6 +5234,9 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorLabelList = document.getElementById('studioImageEditorLabelList');
         elements.studioImageEditorMetadataPanel = document.getElementById('studioImageEditorMetadataPanel');
         elements.studioImageEditorMetadataToggleBtn = document.getElementById('studioImageEditorMetadataToggleBtn');
+        elements.studioImageEditorLabelInfoPanel = document.getElementById('studioImageEditorLabelInfoPanel');
+        elements.studioImageEditorLabelInfoList = document.getElementById('studioImageEditorLabelInfoList');
+        elements.studioImageEditorLabelInfoToggleBtn = document.getElementById('studioImageEditorLabelInfoToggleBtn');
         elements.studioImageEditorDiagramName = document.getElementById('studioImageEditorDiagramName');
         elements.studioImageEditorSubjectName = document.getElementById('studioImageEditorSubjectName');
         elements.studioImageEditorAnatomyType = document.getElementById('studioImageEditorAnatomyType');
@@ -5264,8 +5298,13 @@ MODIFICATION RULES FOR THIS APP
                         <div id="studioImageEditorLabelList" class="studio-image-editor-label-list"></div>
                       </div>
                     </div>
+                    <div id="studioImageEditorLabelInfoPanel" class="studio-image-editor-label-info-panel hidden" aria-label="Label information" aria-hidden="true" hidden>
+                      <div class="studio-image-editor-label-info-heading"><div><div class="studio-image-editor-label-info-title">Label Information</div><div class="studio-image-editor-label-info-subtitle">Edit each numbered label name and add study information for that label.</div></div></div>
+                      <div id="studioImageEditorLabelInfoList" class="studio-image-editor-label-info-list"></div>
+                    </div>
                     <div class="studio-image-editor-actions">
                       <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
+                      <button id="studioImageEditorLabelInfoToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorLabelInfoPanel">Show Label Information</button>
                       <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
                       <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
                       <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
@@ -5378,6 +5417,89 @@ MODIFICATION RULES FOR THIS APP
         if (elements.studioImageEditorOrgan && elements.studioImageEditorOrgan !== document.activeElement) elements.studioImageEditorOrgan.value = metadata.organ;
         if (elements.studioImageEditorMuscle && elements.studioImageEditorMuscle !== document.activeElement) elements.studioImageEditorMuscle.value = metadata.muscle;
         if (elements.studioImageEditorTags && elements.studioImageEditorTags !== document.activeElement) elements.studioImageEditorTags.value = metadata.tags;
+    }
+
+    function resizeImageEditorLabelInfoTextarea(textarea) {
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+        const minimumHeight = 31;
+        const maximumHeight = 150;
+        textarea.style.height = 'auto';
+        const scrollHeight = textarea.scrollHeight || minimumHeight;
+        const nextHeight = Math.min(maximumHeight, Math.max(minimumHeight, scrollHeight));
+        textarea.style.height = `${nextHeight}px`;
+        textarea.style.overflowY = scrollHeight > maximumHeight ? 'auto' : 'hidden';
+    }
+
+    function resizeAllImageEditorLabelInfoTextareas() {
+        elements.studioImageEditorLabelInfoList?.querySelectorAll('[data-image-editor-label-info-description]').forEach(resizeImageEditorLabelInfoTextarea);
+    }
+
+    function renderImageEditorLabelInfoList() {
+        const editor = state.auth.imageEditor;
+        const list = elements.studioImageEditorLabelInfoList;
+        if (!list) return;
+        if (!editor?.labelInfoEnabled || !editor.labelInfoPanelOpen) {
+            list.innerHTML = '';
+            return;
+        }
+        const labels = syncImageEditorLabels();
+        if (!labels.length) {
+            list.innerHTML = '<div class="studio-image-editor-label-info-empty">No labels yet. Add a label to create its information row.</div>';
+            return;
+        }
+        list.innerHTML = labels.map((item, index) => `
+            <div class="studio-image-editor-label-info-row" data-image-editor-label-info-row data-image-editor-label-index="${index}">
+              <span class="studio-image-editor-label-info-number" aria-hidden="true">${index + 1}.</span>
+              <input type="text" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-info-name aria-label="Label ${index + 1} name" placeholder="Label name">
+              <textarea rows="1" maxlength="2000" data-image-editor-label-info-description aria-label="Label ${index + 1} information" placeholder="Enter label information">${escapeHtml(item.description || '')}</textarea>
+            </div>
+        `).join('');
+        requestAnimationFrame(resizeAllImageEditorLabelInfoTextareas);
+    }
+
+    function refreshImageEditorLabelInfoUi() {
+        const editor = state.auth.imageEditor;
+        const enabled = !!(editor?.labelInfoEnabled && editor?.labelsEnabled);
+        const panelOpen = !!(enabled && editor?.labelInfoPanelOpen);
+        const panel = elements.studioImageEditorLabelInfoPanel;
+        if (panel) {
+            panel.classList.toggle('hidden', !panelOpen);
+            panel.hidden = !panelOpen;
+            panel.setAttribute('aria-hidden', panelOpen ? 'false' : 'true');
+        }
+        if (elements.studioImageEditorLabelInfoToggleBtn) {
+            elements.studioImageEditorLabelInfoToggleBtn.classList.toggle('hidden', !enabled);
+            elements.studioImageEditorLabelInfoToggleBtn.hidden = !enabled;
+            elements.studioImageEditorLabelInfoToggleBtn.disabled = !enabled;
+            elements.studioImageEditorLabelInfoToggleBtn.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
+            elements.studioImageEditorLabelInfoToggleBtn.textContent = panelOpen ? 'Hide Label Information' : 'Show Label Information';
+            elements.studioImageEditorLabelInfoToggleBtn.title = panelOpen
+                ? 'Hide label names and study information'
+                : 'Show label names and study information';
+        }
+        renderImageEditorLabelInfoList();
+    }
+
+    function toggleImageEditorLabelInfoPanel() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelInfoEnabled) return;
+        editor.labelInfoPanelOpen = !editor.labelInfoPanelOpen;
+        refreshImageEditorLabelInfoUi();
+    }
+
+    function syncImageEditorLabelNameFields(index, sourceElement = null) {
+        const editor = state.auth.imageEditor;
+        const label = editor?.labels?.[index];
+        if (!label) return;
+        const value = displayMathChemTextForEditor(label.label);
+        const selectors = [
+            `[data-image-editor-label-row][data-image-editor-label-index="${index}"] [data-image-editor-label-text]`,
+            `[data-image-editor-label-info-row][data-image-editor-label-index="${index}"] [data-image-editor-label-info-name]`
+        ];
+        selectors.forEach(selector => {
+            const input = elements.studioImageEditorOverlay?.querySelector(selector);
+            if (input && input !== sourceElement && input !== document.activeElement) input.value = value;
+        });
     }
 
     function getImageEditorTargetInfo(target = {}) {
@@ -5522,6 +5644,8 @@ MODIFICATION RULES FOR THIS APP
             metadata: {},
             metadataEnabled: false,
             metadataPanelOpen: false,
+            labelInfoEnabled: false,
+            labelInfoPanelOpen: false,
             draggingLabelIndex: null,
             hoveredLabelIndex: null,
             showLabelPanel: false
@@ -6432,6 +6556,7 @@ MODIFICATION RULES FOR THIS APP
         }
         renderImageEditorLabelList();
         refreshImageEditorMetadataUi();
+        refreshImageEditorLabelInfoUi();
         refreshImageEditorDrawUi();
         updateImageEditorCanvasPointerState();
     }
@@ -6441,7 +6566,7 @@ MODIFICATION RULES FOR THIS APP
         if (!editor?.labelsEnabled) return;
         const labels = normalizeImageEditorLabels(editor.labels || []);
         const nextLabel = isImageEditorSavedDiagramTarget(editor) ? `Label ${labels.length + 1}` : getDiagramLabelName(labels.length);
-        labels.push({ label: nextLabel, x: 50, y: 50 });
+        labels.push({ label: nextLabel, description: '', x: 50, y: 50 });
         editor.labels = labels;
         setImageEditorLabelDrawVisible(labels.length - 1, true);
         editor.showLabelPanel = true;
@@ -6732,6 +6857,13 @@ MODIFICATION RULES FOR THIS APP
                 toggleImageEditorMetadataPanel();
                 return;
             }
+            const labelInfoToggle = event.target.closest?.('#studioImageEditorLabelInfoToggleBtn');
+            if (labelInfoToggle) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleImageEditorLabelInfoPanel();
+                return;
+            }
             if (event.target === overlay) closeStudioImageEditor();
         });
         elements.studioImageEditorToolButtons?.forEach(button => {
@@ -6820,7 +6952,25 @@ MODIFICATION RULES FOR THIS APP
             if (index < 0 || !editor.labels[index]) return;
             if (!event.target.matches('[data-image-editor-label-text]')) return;
             editor.labels[index].label = normalizeAuthoredMathChemText(event.target.value) || getDiagramLabelName(index);
+            syncImageEditorLabelNameFields(index, event.target);
             renderImageEditorCanvas();
+        });
+        elements.studioImageEditorLabelInfoList?.addEventListener('input', event => {
+            const row = event.target.closest('[data-image-editor-label-info-row]');
+            const editor = state.auth.imageEditor;
+            if (!row || !editor?.labelInfoEnabled) return;
+            const index = Number(row.dataset.imageEditorLabelIndex || -1);
+            if (index < 0 || !editor.labels?.[index]) return;
+            if (event.target.matches('[data-image-editor-label-info-name]')) {
+                editor.labels[index].label = normalizeAuthoredMathChemText(event.target.value) || getDiagramLabelName(index);
+                syncImageEditorLabelNameFields(index, event.target);
+                renderImageEditorCanvas();
+                return;
+            }
+            if (event.target.matches('[data-image-editor-label-info-description]')) {
+                editor.labels[index].description = String(event.target.value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
+        resizeImageEditorLabelInfoTextarea(event.target);
+            }
         });
         elements.studioImageEditorLabelList?.addEventListener('click', event => {
             const row = event.target.closest('[data-image-editor-label-row]');
@@ -6922,6 +7072,8 @@ MODIFICATION RULES FOR THIS APP
         closeImageEditorSliderPopovers();
         editor.labelsEnabled = !!info.labelsEnabled;
         editor.labels = normalizeImageEditorLabels(info.labels || []);
+        editor.labelInfoEnabled = !!(editor.labelsEnabled && isImageEditorNumberedLabelTarget(editor));
+        editor.labelInfoPanelOpen = false;
         editor.drawVisibilityByLabel = {};
         editor.labels.forEach((label, index) => {
             editor.drawVisibilityByLabel[String(index)] = true;
@@ -26168,6 +26320,24 @@ if (elements.reviewModeShowDrawDataToggle) {
     });
 }
 
+if (elements.reviewModeDisableNamesOnClickToggle) {
+    elements.reviewModeDisableNamesOnClickToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.disableLabelNamesOnClick = elements.reviewModeDisableNamesOnClickToggle.checked;
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeIncludeDescriptionsToggle) {
+    elements.reviewModeIncludeDescriptionsToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.includeLabelDescriptions = elements.reviewModeIncludeDescriptionsToggle.checked;
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
 if (elements.reviewModeLabelSizeDownBtn) {
     elements.reviewModeLabelSizeDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
 }
@@ -27919,7 +28089,24 @@ elements.studioImageEditorLabelList?.addEventListener('input', event => {
     if (index < 0 || !editor.labels[index]) return;
     if (!event.target.matches('[data-image-editor-label-text]')) return;
     editor.labels[index].label = normalizeAuthoredMathChemText(event.target.value) || getDiagramLabelName(index);
+    syncImageEditorLabelNameFields(index, event.target);
     renderImageEditorCanvas();
+});
+elements.studioImageEditorLabelInfoList?.addEventListener('input', event => {
+    const row = event.target.closest('[data-image-editor-label-info-row]');
+    const editor = state.auth.imageEditor;
+    if (!row || !editor?.labelInfoEnabled) return;
+    const index = Number(row.dataset.imageEditorLabelIndex || -1);
+    if (index < 0 || !editor.labels?.[index]) return;
+    if (event.target.matches('[data-image-editor-label-info-name]')) {
+        editor.labels[index].label = normalizeAuthoredMathChemText(event.target.value) || getDiagramLabelName(index);
+        syncImageEditorLabelNameFields(index, event.target);
+        renderImageEditorCanvas();
+        return;
+    }
+    if (event.target.matches('[data-image-editor-label-info-description]')) {
+        editor.labels[index].description = String(event.target.value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
+    }
 });
 elements.studioImageEditorLabelList?.addEventListener('click', event => {
     const row = event.target.closest('[data-image-editor-label-row]');
@@ -28002,6 +28189,13 @@ if (elements.studioImageEditorMetadataToggleBtn) {
         event.preventDefault();
         event.stopPropagation();
         toggleImageEditorMetadataPanel();
+    });
+}
+if (elements.studioImageEditorLabelInfoToggleBtn) {
+    elements.studioImageEditorLabelInfoToggleBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleImageEditorLabelInfoPanel();
     });
 }
 if (elements.studioImageEditorOverlay) {

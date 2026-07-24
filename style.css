@@ -10755,11 +10755,60 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   font-weight: 800;
 }
 
-.review-mode-switch-row input[type="checkbox"] {
-  width: 38px;
-  height: 22px;
-  accent-color: #facc15;
+.review-mode-toggle-control {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 42px;
+}
+
+.review-mode-toggle-control input[type="checkbox"] {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
   cursor: pointer;
+}
+
+.review-mode-toggle-track {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.review-mode-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.34);
+  transition: transform 0.16s ease;
+}
+
+.review-mode-toggle-control input[type="checkbox"]:checked + .review-mode-toggle-track {
+  border-color: rgba(250, 204, 21, 0.9);
+  background: rgba(250, 204, 21, 0.8);
+}
+
+.review-mode-toggle-control input[type="checkbox"]:checked + .review-mode-toggle-track::after {
+  transform: translateX(18px);
+}
+
+.review-mode-toggle-control input[type="checkbox"]:focus-visible + .review-mode-toggle-track {
+  outline: 3px solid rgba(250, 204, 21, 0.38);
+  outline-offset: 2px;
 }
 
 .review-mode-size-controls {
@@ -10875,9 +10924,42 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   -webkit-backdrop-filter: blur(8px);
 }
 
+.review-mode-label-marker.is-selected:not(.is-name-visible) {
+  border-color: rgba(250, 204, 21, 1);
+  background: rgba(75, 61, 26, 0.94);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2), 0 6px 16px rgba(0, 0, 0, 0.34);
+}
+
 .review-mode-label-marker.is-name-visible {
   border-color: rgba(255, 255, 255, 0.86);
   background: rgba(63, 52, 118, 0.94);
+}
+
+.review-mode-label-name {
+  display: block;
+}
+
+.review-mode-label-marker.has-description {
+  width: max-content;
+  min-width: min(190px, 62vw);
+  max-width: min(78vw, 520px);
+  border-radius: calc(14px * var(--review-label-scale));
+  text-align: left;
+}
+
+.review-mode-label-description {
+  display: block;
+  max-height: min(28vh, 180px);
+  margin-top: calc(6px * var(--review-label-scale));
+  padding-top: calc(6px * var(--review-label-scale));
+  overflow-y: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: calc(0.7rem * var(--review-label-scale));
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .review-mode-label-marker:focus-visible {
@@ -10935,5 +11017,127 @@ body.review-mode-image-open {
 
   .review-mode-options-panel {
     top: calc(max(10px, env(safe-area-inset-top)) + 47px);
+  }
+}
+
+/* Phase 22MI — collapsible per-label names and study information. */
+.studio-image-editor-label-info-panel {
+  flex: 0 0 auto;
+  max-height: 230px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(124, 108, 255, 0.34);
+  border-radius: 13px;
+  background: rgba(37, 31, 74, 0.74);
+}
+
+.studio-image-editor-label-info-panel.hidden,
+.studio-image-editor-label-info-panel[hidden] {
+  display: none !important;
+}
+
+.studio-image-editor-label-info-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.studio-image-editor-label-info-title {
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.studio-image-editor-label-info-subtitle,
+.studio-image-editor-label-info-empty {
+  color: rgba(232, 226, 255, 0.7);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.studio-image-editor-label-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studio-image-editor-label-info-row {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 0.38fr) minmax(220px, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.studio-image-editor-label-info-number {
+  min-width: 1.8em;
+  padding-top: 7px;
+  color: rgba(250, 204, 21, 0.92);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.studio-image-editor-label-info-row input,
+.studio-image-editor-label-info-row textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  padding: 6px 8px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  outline: none;
+}
+
+.studio-image-editor-label-info-row input {
+  min-height: 31px;
+}
+
+.studio-image-editor-label-info-row textarea {
+  height: 31px;
+  min-height: 31px;
+  max-height: 150px;
+  overflow-y: hidden;
+  resize: none;
+}
+
+.studio-image-editor-label-info-row input:focus,
+.studio-image-editor-label-info-row textarea:focus {
+  border-color: rgba(250, 204, 21, 0.72);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.14);
+}
+
+#studioImageEditorLabelInfoToggleBtn[aria-expanded="true"] {
+  border-color: rgba(250, 204, 21, 0.72);
+  background: rgba(250, 204, 21, 0.14);
+}
+
+@media (max-width: 760px) {
+  .studio-image-editor-label-info-panel {
+    max-height: 240px;
+  }
+
+  .studio-image-editor-label-info-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .studio-image-editor-label-info-row textarea {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 460px) {
+  .studio-image-editor-label-info-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .studio-image-editor-label-info-row textarea {
+    grid-column: 1 / -1;
   }
 }

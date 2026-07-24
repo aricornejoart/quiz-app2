@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22mg">
+  <link rel="stylesheet" href="style.css?v=22mj">
 </head>
 <body>
 
@@ -1613,11 +1613,31 @@ MODIFICATION RULES FOR THIS APP
       <div id="reviewModeActiveTitle" class="review-mode-active-title"></div>
       <label class="review-mode-switch-row">
         <span>Show all label names</span>
-        <input id="reviewModeShowAllNamesToggle" type="checkbox" role="switch" aria-label="Show all label names">
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowAllNamesToggle" type="checkbox" role="switch" aria-label="Show all label names">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
       </label>
       <label class="review-mode-switch-row">
         <span>Show label drawings</span>
-        <input id="reviewModeShowDrawDataToggle" type="checkbox" role="switch" aria-label="Show label paintbrush and drawing data" checked>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowDrawDataToggle" type="checkbox" role="switch" aria-label="Show label paintbrush and drawing data" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Disable label names on click</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeDisableNamesOnClickToggle" type="checkbox" role="switch" aria-label="Disable label names on click">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Include label descriptions</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeIncludeDescriptionsToggle" type="checkbox" role="switch" aria-label="Include label descriptions">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
       </label>
       <div class="review-mode-size-row">
         <span>Label size</span>
@@ -1627,7 +1647,7 @@ MODIFICATION RULES FOR THIS APP
           <button id="reviewModeLabelSizeUpBtn" type="button" aria-label="Increase label size">+</button>
         </div>
       </div>
-      <div class="review-mode-options-help">Click a number on the image to reveal its label name and associated drawing. Click it again to return to the number.</div>
+      <div class="review-mode-options-help">Click a number to toggle its associated drawing. Label descriptions appear with revealed names when enabled.</div>
     </div>
     <div id="reviewModeImageViewport" class="review-mode-image-viewport">
       <div id="reviewModeImageStage" class="review-mode-image-stage">
@@ -1729,9 +1749,20 @@ MODIFICATION RULES FOR THIS APP
         </div>
       </div>
 
+      <div id="studioImageEditorLabelInfoPanel" class="studio-image-editor-label-info-panel hidden" aria-label="Label information" aria-hidden="true" hidden>
+        <div class="studio-image-editor-label-info-heading">
+          <div>
+            <div class="studio-image-editor-label-info-title">Label Information</div>
+            <div class="studio-image-editor-label-info-subtitle">Edit each numbered label name and add study information for that label.</div>
+          </div>
+        </div>
+        <div id="studioImageEditorLabelInfoList" class="studio-image-editor-label-info-list"></div>
+      </div>
+
       <div class="studio-image-editor-actions">
         <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
         <button id="studioImageEditorMetadataToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorMetadataPanel">Show Details</button>
+        <button id="studioImageEditorLabelInfoToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorLabelInfoPanel">Show Label Information</button>
         <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
         <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
         <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
@@ -1740,6 +1771,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22mg"></script>
+  <script src="script.js?v=22mj"></script>
 </body>
 </html>
