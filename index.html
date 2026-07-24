@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22mj">
+  <link rel="stylesheet" href="style.css?v=22mp">
 </head>
 <body>
 
@@ -1639,6 +1639,13 @@ MODIFICATION RULES FOR THIS APP
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
+      <label class="review-mode-switch-row">
+        <span>Show connector lines</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowConnectorsToggle" type="checkbox" role="switch" aria-label="Show connector lines" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
       <div class="review-mode-size-row">
         <span>Label size</span>
         <div class="review-mode-size-controls">
@@ -1647,12 +1654,13 @@ MODIFICATION RULES FOR THIS APP
           <button id="reviewModeLabelSizeUpBtn" type="button" aria-label="Increase label size">+</button>
         </div>
       </div>
-      <div class="review-mode-options-help">Click a number to toggle its associated drawing. Label descriptions appear with revealed names when enabled.</div>
+      <div class="review-mode-options-help">Click a number to toggle its associated drawing. Drag labels to rearrange them temporarily; connector anchors stay fixed. Label descriptions appear with revealed names when enabled.</div>
     </div>
     <div id="reviewModeImageViewport" class="review-mode-image-viewport">
       <div id="reviewModeImageStage" class="review-mode-image-stage">
         <img id="reviewModeImage" class="review-mode-image" alt="Saved diagram review">
         <canvas id="reviewModeDrawCanvas" class="review-mode-draw-canvas" aria-hidden="true"></canvas>
+        <svg id="reviewModeConnectorLayer" class="review-mode-connector-layer" aria-hidden="true" focusable="false"></svg>
         <div id="reviewModeLabelLayer" class="review-mode-label-layer" aria-label="Interactive diagram labels"></div>
       </div>
     </div>
@@ -1671,11 +1679,11 @@ MODIFICATION RULES FOR THIS APP
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-rect">Blur Box</button>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="arrow">Arrow</button>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="line">Line</button>
-          <label class="studio-image-editor-rgb-control" title="Arrow, line, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, highlighter, and draw RGB color"></label>
+          <label class="studio-image-editor-rgb-control" title="Arrow, line, connector, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, connector, highlighter, and draw RGB color"></label>
           <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness">
             <button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button>
-            <div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow and line thickness">
-              <label class="studio-image-editor-range-control" title="Arrow and line thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow and line thickness"></label>
+            <div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow, line, and connector thickness">
+              <label class="studio-image-editor-range-control" title="Arrow, line, and connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow, line, and connector thickness"></label>
             </div>
           </div>
           <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
@@ -1771,6 +1779,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22mj"></script>
+  <script src="script.js?v=22mp"></script>
 </body>
 </html>

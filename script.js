@@ -337,8 +337,10 @@ MODIFICATION RULES FOR THIS APP
                 optionsOpen: false,
                 showAllNames: false,
                 showDrawData: true,
+                showConnectors: true,
                 labelScale: 1,
-                revealedLabels: new Set()
+                revealedLabels: new Set(),
+                temporaryLabelPositions: {}
             },
             studioSavedImageMemoryLibrary: [],
             studioSavedImageSync: {
@@ -377,6 +379,10 @@ MODIFICATION RULES FOR THIS APP
                 metadataPanelOpen: false,
                 labelInfoEnabled: false,
                 labelInfoPanelOpen: false,
+                activeConnectorLabelIndex: null,
+                connectorStylePickerLabelIndex: null,
+                pendingConnectorStyle: 'straight',
+                draggingConnectorAnchor: false,
                 draggingLabelIndex: null,
                 hoveredLabelIndex: null,
                 showLabelPanel: false
@@ -466,11 +472,13 @@ MODIFICATION RULES FOR THIS APP
         reviewModeImageStage: document.getElementById('reviewModeImageStage'),
         reviewModeImage: document.getElementById('reviewModeImage'),
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
+        reviewModeConnectorLayer: document.getElementById('reviewModeConnectorLayer'),
         reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
         reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
         reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
+        reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
         reviewModeLabelSizeDownBtn: document.getElementById('reviewModeLabelSizeDownBtn'),
         reviewModeLabelSizeUpBtn: document.getElementById('reviewModeLabelSizeUpBtn'),
         reviewModeLabelSizeValue: document.getElementById('reviewModeLabelSizeValue'),
@@ -2359,14 +2367,119 @@ MODIFICATION RULES FOR THIS APP
         return `${alphabet[index % alphabet.length]}${Math.floor(index / alphabet.length) + 1}`;
     }
 
+    const DIAGRAM_CONNECTOR_STYLES = new Set(['straight', 'curved', 'elbow', 'angled']);
+
+    function normalizeDiagramConnectorStyle(style = '') {
+        const normalized = normalizeSheetText(style || '').toLowerCase();
+        return DIAGRAM_CONNECTOR_STYLES.has(normalized) ? normalized : 'straight';
+    }
+
+    function getDiagramConnectorStyle(connector = null) {
+        const source = connector && typeof connector === 'object' ? connector : null;
+        return normalizeDiagramConnectorStyle(source?.style || source?.connectorStyle || 'straight');
+    }
+
+    function normalizeDiagramConnector(connector = null) {
+        const source = connector && typeof connector === 'object' ? connector : null;
+        if (!source) return null;
+        const anchorXValue = Number(source.anchorX ?? source.targetX ?? source.x);
+        const anchorYValue = Number(source.anchorY ?? source.targetY ?? source.y);
+        if (!Number.isFinite(anchorXValue) || !Number.isFinite(anchorYValue)) return null;
+        const style = getDiagramConnectorStyle(source);
+        return {
+            anchorX: Math.min(100, Math.max(0, anchorXValue)),
+            anchorY: Math.min(100, Math.max(0, anchorYValue)),
+            color: normalizeEditorHexColor(source.color || source.strokeColor || '#000000', '#000000'),
+            thickness: Math.min(24, Math.max(1, Number(source.thickness ?? source.lineWidth ?? 7) || 7)),
+            ...(style !== 'straight' ? { style } : {})
+        };
+    }
+
     function normalizeDiagramLabels(labels = []) {
         const source = Array.isArray(labels) ? labels : [];
-        return source.map((label, index) => ({
-            label: displayMathChemTextForEditor(normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index))) || getDiagramLabelName(index),
-            description: normalizeSheetText(label?.description || label?.labelDescription || label?.information || label?.info || '').slice(0, 2000),
-            x: Math.min(100, Math.max(0, Number(label?.x ?? label?.left ?? 50) || 50)),
-            y: Math.min(100, Math.max(0, Number(label?.y ?? label?.top ?? 50) || 50))
-        })).filter(label => label.label);
+        return source.map((label, index) => {
+            const connector = normalizeDiagramConnector(label?.connector || label?.connectorLine || null);
+            return {
+                label: displayMathChemTextForEditor(normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index))) || getDiagramLabelName(index),
+                description: normalizeSheetText(label?.description || label?.labelDescription || label?.information || label?.info || '').slice(0, 2000),
+                x: Math.min(100, Math.max(0, Number(label?.x ?? label?.left ?? 50) || 50)),
+                y: Math.min(100, Math.max(0, Number(label?.y ?? label?.top ?? 50) || 50)),
+                ...(connector ? { connector } : {})
+            };
+        }).filter(label => label.label);
+    }
+
+    function getDiagramConnectorSvgGeometry(connector = null, label = null, width = 1, height = 1, screenScale = 1) {
+        const normalizedConnector = normalizeDiagramConnector(connector);
+        if (!normalizedConnector || !label) return null;
+        const safeWidth = Math.max(1, Number(width) || 1);
+        const safeHeight = Math.max(1, Number(height) || 1);
+        const labelPoint = {
+            x: (Math.min(100, Math.max(0, Number(label.x) || 0)) / 100) * safeWidth,
+            y: (Math.min(100, Math.max(0, Number(label.y) || 0)) / 100) * safeHeight
+        };
+        const anchor = {
+            x: (normalizedConnector.anchorX / 100) * safeWidth,
+            y: (normalizedConnector.anchorY / 100) * safeHeight
+        };
+        const style = getDiagramConnectorStyle(normalizedConnector);
+        const dx = anchor.x - labelPoint.x;
+        const dy = anchor.y - labelPoint.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const direction = dx >= 0 ? 1 : -1;
+        const point = value => Number(value).toFixed(3);
+        let path = `M ${point(labelPoint.x)} ${point(labelPoint.y)}`;
+        if (style === 'curved') {
+            const scale = Math.max(0.0001, Number(screenScale) || 1);
+            const minimumControl = 24 / scale;
+            const controlLength = Math.min(distance * 0.48, Math.max(minimumControl, Math.abs(dx) * 0.55));
+            path += ` C ${point(labelPoint.x + direction * controlLength)} ${point(labelPoint.y)} ${point(anchor.x - direction * controlLength * 0.38)} ${point(anchor.y)} ${point(anchor.x)} ${point(anchor.y)}`;
+        } else if (style === 'elbow') {
+            const midX = labelPoint.x + dx * 0.5;
+            path += ` L ${point(midX)} ${point(labelPoint.y)} L ${point(midX)} ${point(anchor.y)} L ${point(anchor.x)} ${point(anchor.y)}`;
+        } else if (style === 'angled') {
+            const scale = Math.max(0.0001, Number(screenScale) || 1);
+            const minSegment = 12 / scale;
+            const maxSegment = 40 / scale;
+            const horizontalLength = Math.min(maxSegment, Math.max(minSegment, distance * 0.15));
+            path += ` L ${point(labelPoint.x + direction * horizontalLength)} ${point(labelPoint.y)} L ${point(anchor.x)} ${point(anchor.y)}`;
+        } else {
+            path += ` L ${point(anchor.x)} ${point(anchor.y)}`;
+        }
+        return {
+            path,
+            anchor,
+            color: normalizedConnector.color || '#000000',
+            thickness: Math.min(24, Math.max(1, Number(normalizedConnector.thickness) || 7))
+        };
+    }
+
+    function buildDiagramConnectorSvgMarkup(labels = [], width = 1, height = 1, screenScale = 1) {
+        return normalizeDiagramLabels(labels || []).map((label, index) => {
+            const geometry = getDiagramConnectorSvgGeometry(label.connector, label, width, height, screenScale);
+            if (!geometry) return '';
+            const radius = Math.max(4, geometry.thickness * 0.9);
+            return `<g data-diagram-connector-index="${index}"><path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}"></circle></g>`;
+        }).join('');
+    }
+
+    function renderDiagramConnectorSvgLayer(svg = null, labels = [], image = null, stage = null, visible = true) {
+        if (!svg) return;
+        const safeLabels = normalizeDiagramLabels(labels || []);
+        const hasConnectors = safeLabels.some(label => !!normalizeDiagramConnector(label.connector));
+        if (!visible || !hasConnectors || !image?.complete || !image.naturalWidth || !image.naturalHeight) {
+            svg.innerHTML = '';
+            svg.classList.toggle('hidden', !visible || !hasConnectors);
+            return;
+        }
+        const width = Math.max(1, image.naturalWidth);
+        const height = Math.max(1, image.naturalHeight);
+        const renderedWidth = Math.max(1, stage?.getBoundingClientRect?.().width || image.getBoundingClientRect?.().width || width);
+        const screenScale = renderedWidth / width;
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.innerHTML = buildDiagramConnectorSvgMarkup(safeLabels, width, height, screenScale);
+        svg.classList.remove('hidden');
     }
 
     function normalizeDiagramMetadata(metadata = {}) {
@@ -3194,22 +3307,53 @@ MODIFICATION RULES FOR THIS APP
         return safePosition;
     }
 
+    function ensureDiagramStudyConnectorLayer() {
+        const wrap = elements.diagramStudyImageWrap;
+        if (!wrap) return null;
+        let svg = wrap.querySelector('.diagram-study-connector-layer');
+        if (svg) return svg;
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('diagram-study-connector-layer');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        if (elements.diagramStudyLabelLayer?.parentElement === wrap) wrap.insertBefore(svg, elements.diagramStudyLabelLayer);
+        else wrap.appendChild(svg);
+        return svg;
+    }
+
+    function renderDiagramStudyConnectors(labels = []) {
+        const drafts = normalizeDiagramLabels(labels);
+        const hasConnectors = drafts.some(label => !!normalizeDiagramConnector(label.connector));
+        let svg = elements.diagramStudyImageWrap?.querySelector?.('.diagram-study-connector-layer');
+        if (!svg && hasConnectors) svg = ensureDiagramStudyConnectorLayer();
+        if (!svg) return;
+        renderDiagramConnectorSvgLayer(svg, drafts, elements.questionImage, elements.diagramStudyImageWrap, true);
+    }
+
     function renderDiagramStudyLabels(labels = []) {
         const layer = elements.diagramStudyLabelLayer;
         if (!layer) return;
         const drafts = normalizeDiagramLabels(labels);
+        state.currentDiagramStudyLabels = drafts;
         layer.innerHTML = drafts.map(item => `
             <span class="diagram-study-label" style="left:${item.x}%; top:${item.y}%;">${renderMathChemTextToHtml(item.label)}</span>
         `).join('');
         layer.classList.toggle('hidden', !drafts.length);
         layer.setAttribute('aria-hidden', drafts.length ? 'false' : 'true');
+        renderDiagramStudyConnectors(drafts);
     }
 
     function clearDiagramStudyLabels() {
         if (!elements.diagramStudyLabelLayer) return;
+        state.currentDiagramStudyLabels = [];
         elements.diagramStudyLabelLayer.innerHTML = '';
         elements.diagramStudyLabelLayer.classList.add('hidden');
         elements.diagramStudyLabelLayer.setAttribute('aria-hidden', 'true');
+        const connectorLayer = elements.diagramStudyImageWrap?.querySelector?.('.diagram-study-connector-layer');
+        if (connectorLayer) {
+            connectorLayer.innerHTML = '';
+            connectorLayer.classList.add('hidden');
+        }
     }
 
     async function replaceMediaRefsForCopiedValue(value, options = {}) {
@@ -4783,6 +4927,8 @@ MODIFICATION RULES FOR THIS APP
     // ================= PHASE 22MC: REVIEW MODE =================
     // Review Mode reads the existing Saved Images library without changing how
     // images, flattened edits, labels, or editable draw strokes are stored.
+    let reviewModeLabelDrag = null;
+
     function getReviewModeState() {
         if (!state.auth.reviewMode || typeof state.auth.reviewMode !== 'object') {
             state.auth.reviewMode = {};
@@ -4794,8 +4940,11 @@ MODIFICATION RULES FOR THIS APP
         review.optionsOpen = review.optionsOpen === true;
         review.showAllNames = review.showAllNames === true;
         review.showDrawData = review.showDrawData !== false;
+        review.showConnectors = review.showConnectors !== false;
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
         review.includeLabelDescriptions = review.includeLabelDescriptions === true;
+        if (!review.temporaryLabelPositions || typeof review.temporaryLabelPositions !== 'object' || Array.isArray(review.temporaryLabelPositions)) review.temporaryLabelPositions = {};
+        review.suppressLabelClickUntil = Math.max(0, Number(review.suppressLabelClickUntil) || 0);
         review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1));
         return review;
     }
@@ -4907,6 +5056,64 @@ MODIFICATION RULES FOR THIS APP
         return getReviewModeVisibleLabelIndexes(entry);
     }
 
+    function getReviewModeDisplayLabels(entry = null) {
+        const review = getReviewModeState();
+        return normalizeDiagramLabels(entry?.labels || []).map((label, index) => {
+            const override = review.temporaryLabelPositions?.[index];
+            if (!override || !Number.isFinite(Number(override.x)) || !Number.isFinite(Number(override.y))) return label;
+            return { ...label, x: Math.min(100, Math.max(0, Number(override.x))), y: Math.min(100, Math.max(0, Number(override.y))) };
+        });
+    }
+
+    function renderReviewModeConnectors() {
+        const review = getReviewModeState();
+        renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, getReviewModeDisplayLabels(getActiveReviewModeEntry()), elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors);
+    }
+
+    function setReviewModeTemporaryLabelPosition(index, x, y) {
+        const review = getReviewModeState();
+        review.temporaryLabelPositions[index] = { x: Math.min(100, Math.max(0, Number(x) || 0)), y: Math.min(100, Math.max(0, Number(y) || 0)) };
+    }
+
+    function beginReviewModeLabelDrag(event, marker) {
+        if (!marker || (event.button !== undefined && event.button !== 0)) return;
+        const index = Number(marker.dataset.reviewLabelIndex);
+        const rect = elements.reviewModeImageStage?.getBoundingClientRect?.();
+        const label = getReviewModeDisplayLabels(getActiveReviewModeEntry())[index];
+        if (!Number.isInteger(index) || index < 0 || !label || !rect?.width || !rect?.height) return;
+        reviewModeLabelDrag = { index, pointerId: event.pointerId, marker, rect, startClientX: event.clientX, startClientY: event.clientY, startX: label.x, startY: label.y, moved: false };
+        marker.classList.add('is-dragging');
+        try { marker.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+
+    function moveReviewModeLabelDrag(event) {
+        const drag = reviewModeLabelDrag;
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+        drag.moved = true;
+        event.preventDefault();
+        setReviewModeTemporaryLabelPosition(drag.index, drag.startX + (dx / drag.rect.width) * 100, drag.startY + (dy / drag.rect.height) * 100);
+        const next = getReviewModeState().temporaryLabelPositions[drag.index];
+        drag.marker.style.left = `${next.x}%`;
+        drag.marker.style.top = `${next.y}%`;
+        renderReviewModeConnectors();
+    }
+
+    function endReviewModeLabelDrag(event) {
+        const drag = reviewModeLabelDrag;
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        drag.marker.classList.remove('is-dragging');
+        try { drag.marker.releasePointerCapture(event.pointerId); } catch (_) {}
+        if (drag.moved) {
+            const review = getReviewModeState();
+            review.suppressLabelClickUntil = Date.now() + 700;
+            event.preventDefault();
+        }
+        reviewModeLabelDrag = null;
+    }
+
     function renderReviewModeDrawData() {
         const entry = getActiveReviewModeEntry();
         const canvas = elements.reviewModeDrawCanvas;
@@ -4932,7 +5139,7 @@ MODIFICATION RULES FOR THIS APP
         const layer = elements.reviewModeLabelLayer;
         if (!layer) return;
         const review = getReviewModeState();
-        const labels = normalizeDiagramLabels(entry?.labels || []);
+        const labels = getReviewModeDisplayLabels(entry);
         const selectedLabels = getReviewModeVisibleLabelIndexes(entry);
         const visibleNames = getReviewModeVisibleNameIndexes(entry);
         layer.style.setProperty('--review-label-scale', String(review.labelScale));
@@ -4950,6 +5157,7 @@ MODIFICATION RULES FOR THIS APP
             return `<button type="button" class="review-mode-label-marker${isSelected ? ' is-selected' : ''}${isNameVisible ? ' is-name-visible' : ''}${isDescriptionVisible ? ' has-description' : ''}" data-review-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" aria-pressed="${isSelected ? 'true' : 'false'}" aria-label="${actionText} ${targetText} ${index + 1}"><span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}</button>`;
         }).join('');
         renderReviewModeDrawData();
+        renderReviewModeConnectors();
     }
 
     function syncReviewModeImageStage() {
@@ -4963,6 +5171,7 @@ MODIFICATION RULES FOR THIS APP
         stage.style.width = `${Math.max(1, img.naturalWidth * scale)}px`;
         stage.style.height = `${Math.max(1, img.naturalHeight * scale)}px`;
         renderReviewModeDrawData();
+        renderReviewModeConnectors();
     }
 
     function syncReviewModeControls() {
@@ -4971,6 +5180,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
         if (elements.reviewModeDisableNamesOnClickToggle) elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
         if (elements.reviewModeIncludeDescriptionsToggle) elements.reviewModeIncludeDescriptionsToggle.checked = review.includeLabelDescriptions;
+        if (elements.reviewModeShowConnectorsToggle) elements.reviewModeShowConnectorsToggle.checked = review.showConnectors;
         if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelScale * 100)}%`;
         if (elements.reviewModeLabelSizeDownBtn) elements.reviewModeLabelSizeDownBtn.disabled = review.labelScale <= 0.65;
         if (elements.reviewModeLabelSizeUpBtn) elements.reviewModeLabelSizeUpBtn.disabled = review.labelScale >= 1.8;
@@ -4986,16 +5196,20 @@ MODIFICATION RULES FOR THIS APP
         review.optionsOpen = false;
         review.showAllNames = false;
         review.showDrawData = true;
+        review.showConnectors = true;
         review.disableLabelNamesOnClick = false;
         review.includeLabelDescriptions = false;
         review.labelScale = 1;
         review.revealedLabels = new Set();
+        review.temporaryLabelPositions = {};
+        review.suppressLabelClickUntil = 0;
         elements.reviewModeOverlay.classList.remove('hidden');
         elements.reviewModeOverlay.setAttribute('aria-hidden', 'false');
         document.body.classList.add('review-mode-image-open');
         const metadata = normalizeDiagramMetadata(entry.metadata || {});
         if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = metadata.diagramName || metadata.subjectName || entry.fileName;
         if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
+        if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         if (elements.reviewModeDrawCanvas) {
             const ctx = elements.reviewModeDrawCanvas.getContext('2d');
             ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
@@ -5020,6 +5234,10 @@ MODIFICATION RULES FOR THIS APP
         review.overlayOpen = false;
         review.optionsOpen = false;
         review.revealedLabels = new Set();
+        review.temporaryLabelPositions = {};
+        review.suppressLabelClickUntil = 0;
+        reviewModeLabelDrag = null;
+        if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         elements.reviewModeOverlay?.classList.add('hidden');
         elements.reviewModeOverlay?.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('review-mode-image-open');
@@ -5265,8 +5483,8 @@ MODIFICATION RULES FOR THIS APP
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-rect">Blur Box</button>
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow">Arrow</button>
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="line">Line</button>
-                        <label class="studio-image-editor-rgb-control" title="Arrow, line, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, highlighter, and draw RGB color"></label>
-                        <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow and line thickness"><label class="studio-image-editor-range-control" title="Arrow and line thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow and line thickness"></label></div></div>
+                        <label class="studio-image-editor-rgb-control" title="Arrow, line, connector, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, connector, highlighter, and draw RGB color"></label>
+                        <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow, line, and connector thickness"><label class="studio-image-editor-range-control" title="Arrow, line, and connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow, line, and connector thickness"></label></div></div>
                         <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="highlighter" id="studioImageEditorHighlighterBtn" title="Highlighter tool" aria-label="Highlighter tool">🖍️</button>
@@ -5646,6 +5864,10 @@ MODIFICATION RULES FOR THIS APP
             metadataPanelOpen: false,
             labelInfoEnabled: false,
             labelInfoPanelOpen: false,
+            activeConnectorLabelIndex: null,
+            connectorStylePickerLabelIndex: null,
+            pendingConnectorStyle: 'straight',
+            draggingConnectorAnchor: false,
             draggingLabelIndex: null,
             hoveredLabelIndex: null,
             showLabelPanel: false
@@ -5792,6 +6014,37 @@ MODIFICATION RULES FOR THIS APP
             : normalizeDiagramLabels(labels || []);
     }
 
+    function isImageEditorConnectorMode(editor = state.auth.imageEditor) {
+        return !!(editor?.open
+            && editor?.labelsEnabled
+            && editor?.mode === 'connector'
+            && Number.isInteger(editor.activeConnectorLabelIndex)
+            && editor.activeConnectorLabelIndex >= 0
+            && editor.activeConnectorLabelIndex < (editor.labels || []).length);
+    }
+
+    function getImageEditorActiveConnector(editor = state.auth.imageEditor) {
+        if (!isImageEditorConnectorMode(editor)) return null;
+        return normalizeDiagramConnector(editor.labels?.[editor.activeConnectorLabelIndex]?.connector || null);
+    }
+
+    function getImageEditorConnectorCanvasPoint(connector = null, canvas = elements.studioImageEditorCanvas) {
+        const normalized = normalizeDiagramConnector(connector);
+        if (!normalized || !canvas) return null;
+        return {
+            x: (normalized.anchorX / 100) * canvas.width,
+            y: (normalized.anchorY / 100) * canvas.height
+        };
+    }
+
+    function getImageEditorCanvasScreenTolerance(screenPixels = 18) {
+        const canvas = elements.studioImageEditorCanvas;
+        if (!canvas) return screenPixels;
+        const rect = canvas.getBoundingClientRect();
+        const scale = rect.width ? canvas.width / rect.width : 1;
+        return Math.max(8, screenPixels * scale);
+    }
+
     function buildFlashcardLabelAnswerHtml(labels = []) {
         const safeLabels = normalizeDiagramLabels(labels || []);
         if (!safeLabels.length) return '';
@@ -5863,6 +6116,70 @@ MODIFICATION RULES FOR THIS APP
         cloneImageEditorDrawStrokes(strokes)
             .filter(stroke => visibleLabels.has(Math.max(0, Number(stroke.labelIndex) || 0)))
             .forEach(stroke => renderImageEditorStroke(ctx, { ...stroke, visible: true }));
+    }
+
+    function ensureFlashcardStudyConnectorLayer(frame) {
+        if (!frame) return null;
+        let svg = frame.querySelector('.flashcard-side-image-connector-layer');
+        if (svg) return svg;
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('flashcard-side-image-connector-layer');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        const labelLayer = frame.querySelector('.flashcard-side-image-label-layer');
+        if (labelLayer) frame.insertBefore(svg, labelLayer);
+        else {
+            const zoomButton = frame.querySelector('.flashcard-image-zoom-btn');
+            if (zoomButton) frame.insertBefore(svg, zoomButton);
+            else frame.appendChild(svg);
+        }
+        return svg;
+    }
+
+    function renderFlashcardStudyConnectorLayer(frame) {
+        if (!frame) return;
+        const labels = normalizeDiagramLabels(frame.__flashcardImageLabels || []);
+        const hasConnectors = labels.some(label => !!normalizeDiagramConnector(label.connector));
+        let svg = frame.querySelector('.flashcard-side-image-connector-layer');
+        if (!svg && hasConnectors) svg = ensureFlashcardStudyConnectorLayer(frame);
+        if (!svg) return;
+        renderDiagramConnectorSvgLayer(svg, labels, frame.querySelector('.flashcard-side-image'), frame, true);
+    }
+
+    function ensureFlashcardZoomConnectorLayer() {
+        const wrap = elements.flashcardZoomImageWrap;
+        if (!wrap) return null;
+        let svg = wrap.querySelector('.flashcard-zoom-image-connector-layer');
+        if (svg) return svg;
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('flashcard-zoom-image-connector-layer');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        const labelLayer = ensureFlashcardZoomLabelLayer();
+        if (labelLayer && labelLayer.parentElement === wrap) wrap.insertBefore(svg, labelLayer);
+        else wrap.appendChild(svg);
+        return svg;
+    }
+
+    function renderFlashcardZoomConnectorLayer() {
+        const wrap = elements.flashcardZoomImageWrap;
+        if (!wrap) return;
+        const labels = normalizeDiagramLabels(wrap.__flashcardImageLabels || []);
+        const hasConnectors = labels.some(label => !!normalizeDiagramConnector(label.connector));
+        let svg = wrap.querySelector('.flashcard-zoom-image-connector-layer');
+        if (!svg && hasConnectors) svg = ensureFlashcardZoomConnectorLayer();
+        if (!svg) return;
+        renderDiagramConnectorSvgLayer(svg, labels, elements.flashcardZoomImage, wrap, true);
+    }
+
+    function clearFlashcardZoomConnectorLayer() {
+        const wrap = elements.flashcardZoomImageWrap;
+        if (wrap) wrap.__flashcardImageLabels = [];
+        const svg = wrap?.querySelector?.('.flashcard-zoom-image-connector-layer');
+        if (svg) {
+            svg.innerHTML = '';
+            svg.classList.add('hidden');
+        }
     }
 
     function renderFlashcardStudyStrokeLayer(frame) {
@@ -6223,6 +6540,123 @@ MODIFICATION RULES FOR THIS APP
         renderImageEditorCanvas();
     }
 
+    function getImageEditorConnectorStylePreviewSvg(style = 'straight') {
+        const safeStyle = normalizeDiagramConnectorStyle(style);
+        const pathByStyle = {
+            straight: 'M4 11 H50',
+            curved: 'M4 17 C18 17 32 5 50 5',
+            elbow: 'M4 17 H27 V5 H50',
+            angled: 'M4 17 H14 L50 5'
+        };
+        return `<svg class="studio-image-editor-connector-style-preview" viewBox="0 0 54 22" aria-hidden="true" focusable="false"><path d="${pathByStyle[safeStyle]}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="4" cy="${safeStyle === 'straight' ? 11 : 17}" r="2.3" fill="currentColor"></circle></svg>`;
+    }
+
+    function closeImageEditorConnectorStylePicker(refresh = true) {
+        const editor = state.auth.imageEditor;
+        if (!editor || editor.connectorStylePickerLabelIndex === null || editor.connectorStylePickerLabelIndex === undefined) return false;
+        editor.connectorStylePickerLabelIndex = null;
+        if (refresh) refreshImageEditorLabelUi();
+        return true;
+    }
+
+    function toggleImageEditorConnectorStylePicker(index) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
+        const isSameActive = editor.mode === 'connector' && editor.activeConnectorLabelIndex === index;
+        if (isSameActive) {
+            toggleImageEditorLabelConnector(index);
+            return;
+        }
+        const isOpen = editor.connectorStylePickerLabelIndex === index;
+        editor.connectorStylePickerLabelIndex = isOpen ? null : index;
+        editor.pendingConnectorStyle = getDiagramConnectorStyle(editor.labels[index].connector);
+        editor.showLabelPanel = true;
+        editor.mode = 'labels';
+        editor.activeDrawLabelIndex = null;
+        editor.activeDrawStroke = null;
+        editor.activeConnectorLabelIndex = null;
+        editor.draggingConnectorAnchor = false;
+        editor.draggingLabelIndex = null;
+        editor.hoveredLabelIndex = null;
+        elements.studioImageEditorToolButtons?.forEach(button => button.classList.remove('active'));
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+        setImageEditorStatus(isOpen ? '' : 'Choose a connector style for this label.');
+    }
+
+    function selectImageEditorConnectorStyle(index, style = 'straight') {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
+        const nextStyle = normalizeDiagramConnectorStyle(style);
+        const existing = normalizeDiagramConnector(editor.labels[index].connector);
+        if (existing && getDiagramConnectorStyle(existing) !== nextStyle) {
+            pushImageEditorLabelHistory();
+            const nextConnector = { ...existing };
+            if (nextStyle === 'straight') delete nextConnector.style;
+            else nextConnector.style = nextStyle;
+            editor.labels[index] = { ...editor.labels[index], connector: nextConnector };
+        }
+        editor.pendingConnectorStyle = nextStyle;
+        editor.connectorStylePickerLabelIndex = null;
+        toggleImageEditorLabelConnector(index, nextStyle);
+    }
+
+    function toggleImageEditorLabelConnector(index, preferredStyle = null) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
+        const requestedStyle = preferredStyle === null || preferredStyle === undefined
+            ? null
+            : normalizeDiagramConnectorStyle(preferredStyle);
+        const isSameActive = editor.mode === 'connector' && editor.activeConnectorLabelIndex === index;
+        editor.activeDrawLabelIndex = null;
+        editor.activeDrawStroke = null;
+        editor.connectorStylePickerLabelIndex = null;
+        editor.draggingConnectorAnchor = false;
+        editor.draggingLabelIndex = null;
+        editor.hoveredLabelIndex = null;
+        editor.draftShape = null;
+        editor.showLabelPanel = true;
+        if (isSameActive) {
+            editor.mode = 'labels';
+            editor.activeConnectorLabelIndex = null;
+            setImageEditorStatus('Connector tool off. Drag labels to move them.');
+        } else {
+            editor.mode = 'connector';
+            editor.activeConnectorLabelIndex = index;
+            const connector = normalizeDiagramConnector(editor.labels[index].connector);
+            editor.pendingConnectorStyle = requestedStyle || getDiagramConnectorStyle(connector);
+            if (connector) {
+                editor.arrowColor = connector.color;
+                editor.lineThickness = connector.thickness;
+                if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = connector.color;
+                if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(connector.thickness);
+                if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(connector.thickness);
+                setImageEditorStatus(`${editor.pendingConnectorStyle[0].toUpperCase()}${editor.pendingConnectorStyle.slice(1)} connector active. Drag its image anchor or drag any label. Use RGB and Thickness to restyle it.`);
+            } else {
+                setImageEditorStatus(`${editor.pendingConnectorStyle[0].toUpperCase()}${editor.pendingConnectorStyle.slice(1)} connector active. Click the target area on the image to place its fixed anchor.`);
+            }
+        }
+        elements.studioImageEditorToolButtons?.forEach(button => button.classList.remove('active'));
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+    }
+
+    function removeImageEditorLabelConnector(index) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index] || !normalizeDiagramConnector(editor.labels[index].connector)) return;
+        pushImageEditorLabelHistory();
+        editor.labels[index] = { ...editor.labels[index], connector: null };
+        if (editor.connectorStylePickerLabelIndex === index) editor.connectorStylePickerLabelIndex = null;
+        if (editor.activeConnectorLabelIndex === index) {
+            editor.activeConnectorLabelIndex = null;
+            editor.draggingConnectorAnchor = false;
+            editor.mode = 'labels';
+        }
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+        setImageEditorStatus('Connector deleted. The label and its information were kept.');
+    }
+
     function removeImageEditorLabelAtIndex(index) {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels[index]) return;
@@ -6241,6 +6675,18 @@ MODIFICATION RULES FOR THIS APP
             .map(stroke => ({ ...stroke, labelIndex: stroke.labelIndex > index ? stroke.labelIndex - 1 : stroke.labelIndex }));
         if (editor.activeDrawLabelIndex === index) editor.activeDrawLabelIndex = null;
         else if (editor.activeDrawLabelIndex > index) editor.activeDrawLabelIndex -= 1;
+        if (editor.activeConnectorLabelIndex === index) {
+            editor.activeConnectorLabelIndex = null;
+            editor.draggingConnectorAnchor = false;
+            if (editor.mode === 'connector') editor.mode = 'labels';
+        } else if (editor.activeConnectorLabelIndex > index) {
+            editor.activeConnectorLabelIndex -= 1;
+        }
+        if (editor.connectorStylePickerLabelIndex === index) {
+            editor.connectorStylePickerLabelIndex = null;
+        } else if (editor.connectorStylePickerLabelIndex > index) {
+            editor.connectorStylePickerLabelIndex -= 1;
+        }
         refreshImageEditorLabelUi();
         renderImageEditorCanvas();
     }
@@ -6301,6 +6747,92 @@ MODIFICATION RULES FOR THIS APP
             x: ((Number(label?.x) || 50) / 100) * canvas.width,
             y: ((Number(label?.y) || 50) / 100) * canvas.height
         };
+    }
+
+    function traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint) {
+        const style = getDiagramConnectorStyle(connector);
+        const dx = anchor.x - labelPoint.x;
+        const dy = anchor.y - labelPoint.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const direction = dx >= 0 ? 1 : -1;
+        ctx.moveTo(labelPoint.x, labelPoint.y);
+        if (style === 'curved') {
+            const controlLength = Math.min(distance * 0.48, Math.max(getImageEditorCanvasScreenTolerance(24), Math.abs(dx) * 0.55));
+            ctx.bezierCurveTo(
+                labelPoint.x + direction * controlLength,
+                labelPoint.y,
+                anchor.x - direction * controlLength * 0.38,
+                anchor.y,
+                anchor.x,
+                anchor.y
+            );
+            return;
+        }
+        if (style === 'elbow') {
+            const midX = labelPoint.x + dx * 0.5;
+            ctx.lineTo(midX, labelPoint.y);
+            ctx.lineTo(midX, anchor.y);
+            ctx.lineTo(anchor.x, anchor.y);
+            return;
+        }
+        if (style === 'angled') {
+            const minSegment = getImageEditorCanvasScreenTolerance(12);
+            const maxSegment = getImageEditorCanvasScreenTolerance(40);
+            const horizontalLength = Math.min(maxSegment, Math.max(minSegment, distance * 0.15));
+            ctx.lineTo(labelPoint.x + direction * horizontalLength, labelPoint.y);
+            ctx.lineTo(anchor.x, anchor.y);
+            return;
+        }
+        ctx.lineTo(anchor.x, anchor.y);
+    }
+
+    function drawImageEditorConnectors(ctx, labels = [], canvas = elements.studioImageEditorCanvas) {
+        const editor = state.auth.imageEditor;
+        const drafts = normalizeDiagramLabels(labels || []);
+        if (!ctx || !canvas || !drafts.length) return;
+        drafts.forEach((item, index) => {
+            const connector = normalizeDiagramConnector(item.connector);
+            if (!connector) return;
+            const anchor = getImageEditorConnectorCanvasPoint(connector, canvas);
+            const labelPoint = getImageEditorLabelPixelPosition(item, canvas);
+            if (!anchor || !labelPoint) return;
+            const isActive = editor?.mode === 'connector' && editor?.activeConnectorLabelIndex === index;
+            const thickness = Math.min(24, Math.max(1, Number(connector.thickness) || 7));
+            ctx.save();
+            ctx.strokeStyle = connector.color || '#000000';
+            ctx.fillStyle = connector.color || '#000000';
+            ctx.lineWidth = thickness;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalAlpha = 0.96;
+            ctx.beginPath();
+            traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint);
+            ctx.stroke();
+            const dotRadius = Math.max(4, thickness * 0.9);
+            ctx.beginPath();
+            ctx.arc(anchor.x, anchor.y, dotRadius, 0, Math.PI * 2);
+            ctx.fill();
+            if (isActive) {
+                ctx.globalAlpha = 1;
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = Math.max(2, thickness * 0.45);
+                ctx.beginPath();
+                ctx.arc(anchor.x, anchor.y, dotRadius + Math.max(6, thickness), 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+        });
+    }
+
+    function findImageEditorActiveConnectorAnchorAtPoint(point) {
+        const editor = state.auth.imageEditor;
+        const canvas = elements.studioImageEditorCanvas;
+        if (!point || !canvas || !isImageEditorConnectorMode(editor)) return false;
+        const connector = getImageEditorActiveConnector(editor);
+        const anchor = getImageEditorConnectorCanvasPoint(connector, canvas);
+        if (!anchor) return false;
+        const tolerance = getImageEditorCanvasScreenTolerance(20);
+        return Math.hypot(point.x - anchor.x, point.y - anchor.y) <= tolerance;
     }
 
     function drawImageEditorLabels(ctx, labels = [], canvas = elements.studioImageEditorCanvas) {
@@ -6391,18 +6923,42 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorLabelList.innerHTML = '<div class="studio-image-editor-label-empty">No labels yet. Click Add Label, then drag it on the image to move it.</div>';
             return;
         }
+        const connectorStyles = [
+            ['straight', 'Straight'],
+            ['curved', 'Curved'],
+            ['elbow', 'Elbow'],
+            ['angled', 'Angled']
+        ];
         const isNumberedLabelTarget = isImageEditorNumberedLabelTarget(editor);
         elements.studioImageEditorLabelList.innerHTML = labels.map((item, index) => {
             const isDrawActive = editor.activeDrawLabelIndex === index;
             const isVisible = isImageEditorLabelDrawVisible(index);
+            const connector = normalizeDiagramConnector(item.connector);
+            const hasConnector = !!connector;
+            const currentConnectorStyle = getDiagramConnectorStyle(connector || { style: editor.pendingConnectorStyle || 'straight' });
+            const isConnectorActive = editor.mode === 'connector' && editor.activeConnectorLabelIndex === index;
+            const isConnectorStylePickerOpen = editor.connectorStylePickerLabelIndex === index;
             const labelText = escapeHtml(displayMathChemTextForEditor(item.label));
+            const stylePicker = isConnectorStylePickerOpen ? `
+              <div class="studio-image-editor-connector-style-picker" data-image-editor-connector-style-picker role="menu" aria-label="Connector style for label ${labelText}">
+                ${connectorStyles.map(([style, title]) => `
+                  <button type="button" class="studio-image-editor-connector-style-option ${currentConnectorStyle === style ? 'is-selected' : ''}" data-image-editor-connector-style="${style}" role="menuitemradio" aria-checked="${currentConnectorStyle === style ? 'true' : 'false'}" title="${title} connector">
+                    ${getImageEditorConnectorStylePreviewSvg(style)}
+                    <span>${title}</span>
+                  </button>
+                `).join('')}
+              </div>
+            ` : '';
             return `
-            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
+            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isConnectorActive ? 'is-connector-selected' : ''} ${isConnectorStylePickerOpen ? 'is-connector-style-open' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
               ${isNumberedLabelTarget ? `<span class="studio-image-editor-label-number" aria-hidden="true">${index + 1}.</span>` : ''}
               <input type="text" value="${labelText}" data-image-editor-label-text aria-label="Label ${index + 1} answer" placeholder="Label answer">
-              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Currently drawing for' : 'Draw for'} label ${labelText}">${isDrawActive ? 'Drawing' : 'Draw'}</button>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}" aria-label="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}"><span aria-hidden="true">🖌</span></button>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector ${isConnectorActive ? 'active' : ''} ${hasConnector ? 'has-connector' : ''}" data-image-editor-label-connector aria-pressed="${isConnectorActive ? 'true' : 'false'}" aria-expanded="${isConnectorStylePickerOpen ? 'true' : 'false'}" aria-haspopup="menu" title="${isConnectorActive ? 'Exit connector editing for' : (hasConnector ? 'Choose or edit connector style for' : 'Choose connector style for')} label ${labelText}" aria-label="${isConnectorActive ? 'Exit connector editing for' : (hasConnector ? 'Choose or edit connector style for' : 'Choose connector style for')} label ${labelText}"><span class="studio-image-editor-label-connector-icon" aria-hidden="true">🔗</span></button>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector-delete" data-image-editor-label-connector-delete title="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" aria-label="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" ${hasConnector ? '' : 'disabled'}><span aria-hidden="true">✕</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-visibility ${isVisible ? 'is-visible' : 'is-hidden'}" data-image-editor-label-visibility aria-pressed="${isVisible ? 'true' : 'false'}" title="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}" aria-label="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}"><span aria-hidden="true">👁</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-delete studio-image-editor-label-delete-icon" data-image-editor-label-delete title="Delete label ${labelText}" aria-label="Delete label ${labelText}"><span aria-hidden="true">🗑</span></button>
+              ${stylePicker}
             </div>
         `;
         }).join('');
@@ -6414,13 +6970,16 @@ MODIFICATION RULES FOR THIS APP
         const canvas = elements.studioImageEditorCanvas;
         if (!canvas) return;
         const isLabelMode = !!(editor?.open && editor?.mode === 'labels' && editor?.labelsEnabled);
+        const isConnectorMode = isImageEditorConnectorMode(editor);
         const isDrawActive = isImageEditorLabelDrawActive();
-        const isDragging = isLabelMode && !isDrawActive && editor?.draggingLabelIndex !== null && editor?.draggingLabelIndex !== undefined;
-        const isHovering = isLabelMode && !isDrawActive && editor?.hoveredLabelIndex !== null && editor?.hoveredLabelIndex !== undefined;
-        canvas.classList.toggle('is-label-mode', isLabelMode && !isDrawActive);
+        const isDragging = (isLabelMode || isConnectorMode) && !isDrawActive && editor?.draggingLabelIndex !== null && editor?.draggingLabelIndex !== undefined;
+        const isHovering = (isLabelMode || isConnectorMode) && !isDrawActive && editor?.hoveredLabelIndex !== null && editor?.hoveredLabelIndex !== undefined;
+        canvas.classList.toggle('is-label-mode', (isLabelMode || isConnectorMode) && !isDrawActive);
         canvas.classList.toggle('is-label-hover', isHovering && !isDragging);
         canvas.classList.toggle('is-label-dragging', isDragging);
         canvas.classList.toggle('is-draw-mode', isDrawActive);
+        canvas.classList.toggle('is-connector-mode', isConnectorMode);
+        canvas.classList.toggle('is-connector-anchor-dragging', isConnectorMode && editor?.draggingConnectorAnchor === true);
     }
 
     function closeImageEditorSliderPopovers() {
@@ -6458,15 +7017,19 @@ MODIFICATION RULES FOR THIS APP
     function refreshImageEditorDrawUi() {
         const editor = state.auth.imageEditor;
         const drawActive = isImageEditorLabelDrawActive();
+        const connectorActive = isImageEditorConnectorMode(editor);
         const activeTool = normalizeImageEditorDrawTool(editor?.drawTool || 'paintbrush');
-        const activeLabel = drawActive ? normalizeDiagramLabels(editor?.labels || [])[editor.activeDrawLabelIndex] : null;
-        const activeLabelText = htmlToDisplayText(activeLabel?.label || activeLabel?.name || '') || `Label ${Number(editor?.activeDrawLabelIndex) + 1}`;
+        const activeLabelIndex = drawActive ? editor.activeDrawLabelIndex : editor?.activeConnectorLabelIndex;
+        const activeLabel = (drawActive || connectorActive) ? normalizeDiagramLabels(editor?.labels || [])[activeLabelIndex] : null;
+        const activeLabelText = htmlToDisplayText(activeLabel?.label || activeLabel?.name || '') || `Label ${Number(activeLabelIndex) + 1}`;
         const drawToolbar = elements.studioImageEditorDrawToolButtons?.[0]?.closest('.studio-image-editor-draw-toolbar');
         drawToolbar?.classList.toggle('is-draw-ready', drawActive);
         drawToolbar?.classList.toggle('is-draw-waiting', !drawActive);
         if (elements.studioImageEditorDrawActiveLabelValue) {
-            elements.studioImageEditorDrawActiveLabelValue.textContent = drawActive ? `Drawing: ${activeLabelText}` : 'Choose label Draw';
-            elements.studioImageEditorDrawActiveLabelValue.classList.toggle('is-active', drawActive);
+            elements.studioImageEditorDrawActiveLabelValue.textContent = connectorActive
+                ? `Connector: ${activeLabelText}`
+                : (drawActive ? `Drawing: ${activeLabelText}` : 'Choose label Draw');
+            elements.studioImageEditorDrawActiveLabelValue.classList.toggle('is-active', drawActive || connectorActive);
         }
         elements.studioImageEditorDrawToolButtons?.forEach(button => {
             const tool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
@@ -6523,7 +7086,7 @@ MODIFICATION RULES FOR THIS APP
             const labelSaveText = editor?.labelsEnabled ? 'Save Image + Labels' : 'Save Edited Image';
             elements.studioImageEditorSaveBtn.textContent = labelSaveText;
             elements.studioImageEditorSaveBtn.title = editor?.labelsEnabled
-                ? 'Save image edits and image labels'
+                ? 'Save image edits, labels, and connector lines'
                 : 'Save edited image';
             elements.studioImageEditorSaveBtn.classList.toggle('hidden', standalone);
             elements.studioImageEditorSaveBtn.disabled = standalone;
@@ -6533,7 +7096,7 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isSavedDiagramTarget);
             elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas;
             elements.studioImageEditorSendSavedBtn.title = isSavedDiagramTarget
-                ? 'Save this edited image, labels, draw strokes, and diagram details to Saved Images'
+                ? 'Save this edited image, labels, connector lines, draw strokes, and diagram details to Saved Images'
                 : 'Saved Images are available for flashcard and standalone diagrams';
         }
         if (elements.studioImageEditorAttachAllFrontBtn) {
@@ -6594,6 +7157,7 @@ MODIFICATION RULES FOR THIS APP
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(baseCanvas, 0, 0);
         drawImageEditorDrawLayer(ctx, canvas);
+        drawImageEditorConnectors(ctx, editor.labels || [], canvas);
 
         const draft = editor.draftShape;
         if (!draft) {
@@ -6644,6 +7208,17 @@ MODIFICATION RULES FOR THIS APP
         } catch (error) {
             console.warn('Could not store image editor undo history:', error);
         }
+    }
+
+    function pushImageEditorLabelHistory() {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        editor.history.push({
+            labelsOnly: true,
+            labels: normalizeImageEditorLabels(editor.labels || []),
+            drawStrokes: cloneImageEditorDrawStrokes(editor.drawStrokes || [])
+        });
+        if (editor.history.length > 20) editor.history.shift();
     }
 
     function paintImageIntoBaseCanvas(image) {
@@ -6748,10 +7323,24 @@ MODIFICATION RULES FOR THIS APP
             const px = ((Number(label.x) || 0) / 100) * baseCanvas.width;
             const py = ((Number(label.y) || 0) / 100) * baseCanvas.height;
             if (px < x || px > x + w || py < y || py > y + h) return null;
+            const connector = normalizeDiagramConnector(label.connector);
+            let nextConnector = null;
+            if (connector) {
+                const anchorPx = (connector.anchorX / 100) * baseCanvas.width;
+                const anchorPy = (connector.anchorY / 100) * baseCanvas.height;
+                if (anchorPx >= x && anchorPx <= x + w && anchorPy >= y && anchorPy <= y + h) {
+                    nextConnector = {
+                        ...connector,
+                        anchorX: ((anchorPx - x) / w) * 100,
+                        anchorY: ((anchorPy - y) / h) * 100
+                    };
+                }
+            }
             return {
-                label: label.label,
+                ...label,
                 x: ((px - x) / w) * 100,
-                y: ((py - y) / h) * 100
+                y: ((py - y) / h) * 100,
+                connector: nextConnector
             };
         }).filter(Boolean);
         editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []).map(stroke => ({
@@ -6776,12 +7365,27 @@ MODIFICATION RULES FOR THIS APP
         if (typeof previous === 'string') {
             const image = await loadImageElement(previous);
             paintImageIntoBaseCanvas(image);
+        } else if (previous?.labelsOnly) {
+            editor.labels = normalizeImageEditorLabels(previous.labels || editor.labels || []);
+            editor.drawStrokes = cloneImageEditorDrawStrokes(previous.drawStrokes || editor.drawStrokes || []);
+            if (editor.activeConnectorLabelIndex !== null && editor.activeConnectorLabelIndex >= editor.labels.length) {
+                editor.activeConnectorLabelIndex = null;
+                editor.draggingConnectorAnchor = false;
+                if (editor.mode === 'connector') editor.mode = 'labels';
+            }
+            refreshImageEditorLabelUi();
+            renderImageEditorCanvas();
         } else if (previous?.baseDataUrl) {
             const image = await loadImageElement(previous.baseDataUrl);
             paintImageIntoBaseCanvas(image);
             editor.labels = normalizeImageEditorLabels(previous.labels || editor.labels || []);
             editor.drawStrokes = cloneImageEditorDrawStrokes(previous.drawStrokes || []);
             if (editor.activeDrawLabelIndex !== null && editor.activeDrawLabelIndex >= editor.labels.length) editor.activeDrawLabelIndex = null;
+            if (editor.activeConnectorLabelIndex !== null && editor.activeConnectorLabelIndex >= editor.labels.length) {
+                editor.activeConnectorLabelIndex = null;
+                editor.draggingConnectorAnchor = false;
+                if (editor.mode === 'connector') editor.mode = 'labels';
+            }
             refreshImageEditorLabelUi();
             renderImageEditorCanvas();
         }
@@ -6812,6 +7416,7 @@ MODIFICATION RULES FOR THIS APP
             ? (editor.labelsEnabled ? 'labels' : 'select')
             : requestedMode;
         editor.mode = nextMode;
+        editor.connectorStylePickerLabelIndex = null;
         // Phase 22LY: once the Labels panel is opened, keep it visible while the user
         // switches to crop, blur, arrow, line, or other tools. Only label interaction
         // mode changes; the panel itself remains available for reference and editing.
@@ -6820,6 +7425,10 @@ MODIFICATION RULES FOR THIS APP
             editor.hoveredLabelIndex = null;
             editor.draggingLabelIndex = null;
             editor.activeDrawLabelIndex = null;
+        }
+        if (editor.mode !== 'connector') {
+            editor.activeConnectorLabelIndex = null;
+            editor.draggingConnectorAnchor = false;
         }
         editor.activeDrawStroke = null;
         editor.draftShape = null;
@@ -6876,20 +7485,40 @@ MODIFICATION RULES FOR THIS APP
             const editor = state.auth.imageEditor;
             if (!editor) return;
             editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput.value, '#000000');
+            let shouldRender = false;
             if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
                 editor.draftShape.color = editor.arrowColor;
-                renderImageEditorCanvas();
+                shouldRender = true;
             }
+            if (isImageEditorConnectorMode(editor)) {
+                const index = editor.activeConnectorLabelIndex;
+                const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
+                if (connector && editor.labels?.[index]) {
+                    editor.labels[index].connector = { ...connector, color: editor.arrowColor };
+                    shouldRender = true;
+                }
+            }
+            if (shouldRender) renderImageEditorCanvas();
         });
         elements.studioImageEditorLineThicknessInput?.addEventListener('input', () => {
             const editor = state.auth.imageEditor;
             if (!editor) return;
             editor.lineThickness = getImageEditorLineThickness();
             if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness);
+            let shouldRender = false;
             if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
                 editor.draftShape.thickness = editor.lineThickness;
-                renderImageEditorCanvas();
+                shouldRender = true;
             }
+            if (isImageEditorConnectorMode(editor)) {
+                const index = editor.activeConnectorLabelIndex;
+                const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
+                if (connector && editor.labels?.[index]) {
+                    editor.labels[index].connector = { ...connector, thickness: editor.lineThickness };
+                    shouldRender = true;
+                }
+            }
+            if (shouldRender) renderImageEditorCanvas();
         });
         elements.studioImageEditorLineThicknessToggle?.addEventListener('click', event => {
             event.stopPropagation();
@@ -6979,10 +7608,28 @@ MODIFICATION RULES FOR THIS APP
             const index = Number(row.dataset.imageEditorLabelIndex || -1);
             if (index < 0) return;
             const drawBtn = event.target.closest('[data-image-editor-label-draw]');
+            const connectorBtn = event.target.closest('[data-image-editor-label-connector]');
+            const connectorStyleBtn = event.target.closest('[data-image-editor-connector-style]');
+            const connectorDeleteBtn = event.target.closest('[data-image-editor-label-connector-delete]');
             const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
             const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
+            if (connectorStyleBtn) {
+                selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight');
+                return;
+            }
+            if (connectorBtn) {
+                toggleImageEditorConnectorStylePicker(index);
+                return;
+            }
+            if (connectorDeleteBtn) {
+                removeImageEditorLabelConnector(index);
+                return;
+            }
             if (drawBtn) {
                 editor.mode = 'labels';
+                editor.activeConnectorLabelIndex = null;
+                editor.connectorStylePickerLabelIndex = null;
+                editor.draggingConnectorAnchor = false;
                 editor.showLabelPanel = true;
                 const isSameLabel = editor.activeDrawLabelIndex === index;
                 if (isSameLabel) {
@@ -7304,9 +7951,9 @@ MODIFICATION RULES FOR THIS APP
                 state.auth.diagramCreatorSourceDataUrl = '';
                 state.auth.diagramCreatorSourceLabel = '';
                 if (elements.diagramCreatorFileInput) elements.diagramCreatorFileInput.value = '';
-                setCreatorStatus('Diagram, labels, draw strokes, and search details sent to Saved Images.', 'success');
+                setCreatorStatus('Diagram, labels, connector lines, draw strokes, and search details sent to Saved Images.', 'success');
             } else if (options.sendToSavedImages && isFlashcardTarget) {
-                setCreatorStatus('Image, labels, draw strokes, and diagram details sent to Saved Images. Save Changes to keep this card update.', 'success');
+                setCreatorStatus('Image, labels, connector lines, draw strokes, and diagram details sent to Saved Images. Save Changes to keep this card update.', 'success');
             }
         } catch (error) {
             console.error(error);
@@ -7317,7 +7964,7 @@ MODIFICATION RULES FOR THIS APP
 
     function handleImageEditorPointerLeave(event) {
         const editor = state.auth.imageEditor;
-        if (!editor?.open || editor.mode !== 'labels' || editor.isDrawing) return;
+        if (!editor?.open || !['labels', 'connector'].includes(editor.mode) || editor.isDrawing) return;
         editor.hoveredLabelIndex = null;
         updateImageEditorCanvasPointerState();
         renderImageEditorCanvas();
@@ -7330,6 +7977,49 @@ MODIFICATION RULES FOR THIS APP
         if (!point) return;
         event.preventDefault();
         if (editor.mode === 'select') return;
+        if (editor.mode === 'connector' && editor.labelsEnabled && isImageEditorConnectorMode(editor)) {
+            const labelIndex = findImageEditorLabelIndexAtPoint(point);
+            editor.hoveredLabelIndex = labelIndex >= 0 ? labelIndex : null;
+            if (labelIndex >= 0) {
+                pushImageEditorLabelHistory();
+                editor.isDrawing = true;
+                editor.draggingLabelIndex = labelIndex;
+                editor.draggingConnectorAnchor = false;
+                editor.dragStart = point;
+                updateImageEditorCanvasPointerState();
+                renderImageEditorCanvas();
+                elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+                return;
+            }
+            const activeIndex = editor.activeConnectorLabelIndex;
+            const activeLabel = editor.labels?.[activeIndex];
+            if (!activeLabel) return;
+            pushImageEditorLabelHistory();
+            editor.isDrawing = true;
+            editor.draggingLabelIndex = null;
+            editor.draggingConnectorAnchor = true;
+            editor.dragStart = point;
+            const canvas = elements.studioImageEditorCanvas;
+            const existing = normalizeDiagramConnector(activeLabel.connector);
+            const clickedExistingAnchor = findImageEditorActiveConnectorAnchorAtPoint(point);
+            if (!existing || !clickedExistingAnchor) {
+                const connectorStyle = existing
+                    ? getDiagramConnectorStyle(existing)
+                    : normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || 'straight');
+                activeLabel.connector = {
+                    anchorX: Math.min(100, Math.max(0, (point.x / canvas.width) * 100)),
+                    anchorY: Math.min(100, Math.max(0, (point.y / canvas.height) * 100)),
+                    color: existing?.color || normalizeEditorHexColor(editor.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000', '#000000'),
+                    thickness: existing?.thickness || Math.min(24, Math.max(1, Number(editor.lineThickness) || getImageEditorLineThickness())),
+                    ...(connectorStyle !== 'straight' ? { style: connectorStyle } : {})
+                };
+            }
+            updateImageEditorCanvasPointerState();
+            refreshImageEditorLabelUi();
+            renderImageEditorCanvas();
+            elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+            return;
+        }
         if (editor.mode === 'labels' && editor.labelsEnabled) {
             if (isImageEditorLabelDrawActive()) {
                 editor.isDrawing = true;
@@ -7365,6 +8055,46 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         const point = getImageEditorCanvasPoint(event);
         if (!point) return;
+        if (editor?.mode === 'connector' && editor.labelsEnabled && isImageEditorConnectorMode(editor)) {
+            if (editor.isDrawing && editor.draggingLabelIndex !== null) {
+                event.preventDefault();
+                const canvas = elements.studioImageEditorCanvas;
+                const nextX = Math.min(100, Math.max(0, (point.x / canvas.width) * 100));
+                const nextY = Math.min(100, Math.max(0, (point.y / canvas.height) * 100));
+                if (editor.labels[editor.draggingLabelIndex]) {
+                    editor.labels[editor.draggingLabelIndex].x = nextX;
+                    editor.labels[editor.draggingLabelIndex].y = nextY;
+                    editor.hoveredLabelIndex = editor.draggingLabelIndex;
+                    updateImageEditorCanvasPointerState();
+                    renderImageEditorCanvas();
+                }
+                return;
+            }
+            if (editor.isDrawing && editor.draggingConnectorAnchor) {
+                event.preventDefault();
+                const canvas = elements.studioImageEditorCanvas;
+                const index = editor.activeConnectorLabelIndex;
+                const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
+                if (connector && editor.labels?.[index]) {
+                    editor.labels[index].connector = {
+                        ...connector,
+                        anchorX: Math.min(100, Math.max(0, (point.x / canvas.width) * 100)),
+                        anchorY: Math.min(100, Math.max(0, (point.y / canvas.height) * 100))
+                    };
+                    updateImageEditorCanvasPointerState();
+                    renderImageEditorCanvas();
+                }
+                return;
+            }
+            const nextHover = findImageEditorLabelIndexAtPoint(point);
+            const normalizedHover = nextHover >= 0 ? nextHover : null;
+            if (editor.hoveredLabelIndex !== normalizedHover) {
+                editor.hoveredLabelIndex = normalizedHover;
+                updateImageEditorCanvasPointerState();
+                renderImageEditorCanvas();
+            }
+            return;
+        }
         if (editor?.mode === 'labels' && editor.labelsEnabled) {
             if (editor.isDrawing && editor.activeDrawStroke) {
                 event.preventDefault();
@@ -7424,6 +8154,15 @@ MODIFICATION RULES FOR THIS APP
         event.preventDefault();
         editor.isDrawing = false;
         elements.studioImageEditorCanvas?.releasePointerCapture?.(event.pointerId);
+        if (editor.mode === 'connector' && editor.labelsEnabled) {
+            editor.draggingLabelIndex = null;
+            editor.draggingConnectorAnchor = false;
+            editor.dragStart = null;
+            setImageEditorStatus('Connector saved in this editor. Drag the label or anchor to adjust it, or click Connector again to exit.');
+            refreshImageEditorLabelUi();
+            renderImageEditorCanvas();
+            return;
+        }
         if (editor.mode === 'labels' && editor.labelsEnabled) {
             editor.draggingLabelIndex = null;
             editor.activeDrawStroke = null;
@@ -20563,6 +21302,7 @@ function ensureFlashcardZoomLabelLayer() {
 function renderFlashcardZoomLabels(labels = []) {
     const layer = ensureFlashcardZoomLabelLayer();
     const safeLabels = normalizeDiagramLabels(labels);
+    if (elements.flashcardZoomImageWrap) elements.flashcardZoomImageWrap.__flashcardImageLabels = safeLabels;
     if (!layer) return;
     if (!safeLabels.length) {
         layer.innerHTML = '';
@@ -20573,6 +21313,7 @@ function renderFlashcardZoomLabels(labels = []) {
         layer.style.removeProperty('width');
         layer.style.removeProperty('height');
         elements.flashcardZoomImageWrap?.classList.remove('has-diagram-labels');
+        clearFlashcardZoomConnectorLayer();
         return;
     }
 
@@ -20583,6 +21324,7 @@ function renderFlashcardZoomLabels(labels = []) {
     layer.setAttribute('aria-hidden', 'false');
     elements.flashcardZoomImageWrap?.classList.add('has-diagram-labels');
     syncFlashcardZoomStrokeToggleButtons();
+    renderFlashcardZoomConnectorLayer();
     queueFlashcardZoomOverlayLabelSync();
 }
 
@@ -20672,6 +21414,7 @@ function syncFlashcardZoomOverlayLabelBounds() {
 
     applyImageStageSize(wrap, img, viewport);
     clearStageLabelLayerOffsets(layer);
+    renderFlashcardZoomConnectorLayer();
 }
 
 function queueFlashcardZoomOverlayLabelSync() {
@@ -20692,12 +21435,14 @@ function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
     clearImageStageSize(elements.flashcardZoomImageWrap);
     if (elements.flashcardZoomImageWrap) {
         elements.flashcardZoomImageWrap.__flashcardImageDrawStrokes = cloneImageEditorDrawStrokes(options.imageDrawStrokes || []);
+        elements.flashcardZoomImageWrap.__flashcardImageLabels = normalizeDiagramLabels(options.diagramLabels || []);
         elements.flashcardZoomImageWrap.dataset.visibleStrokeLabels = '';
     }
     elements.flashcardZoomImage.src = src;
     elements.flashcardZoomImage.alt = alt;
     renderFlashcardZoomLabels(options.diagramLabels || []);
     renderFlashcardZoomStrokeLayer();
+    renderFlashcardZoomConnectorLayer();
 
     if (elements.flashcardImageViewport) {
         elements.flashcardImageViewport.scrollTop = 0;
@@ -20710,10 +21455,12 @@ function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
 
     if (elements.flashcardZoomImage.complete && elements.flashcardZoomImage.naturalWidth) {
         renderFlashcardZoomStrokeLayer();
+        renderFlashcardZoomConnectorLayer();
         queueFlashcardZoomOverlayLabelSync();
     } else {
         elements.flashcardZoomImage.addEventListener('load', () => {
             renderFlashcardZoomStrokeLayer();
+            renderFlashcardZoomConnectorLayer();
             queueFlashcardZoomOverlayLabelSync();
         }, { once: true });
     }
@@ -20731,6 +21478,7 @@ function closeFlashcardImageOverlay() {
     elements.flashcardZoomImage.alt = 'Flashcard image';
     clearImageStageSize(elements.flashcardZoomImageWrap);
     clearFlashcardZoomStrokeLayer();
+    clearFlashcardZoomConnectorLayer();
     renderFlashcardZoomLabels([]);
     state.flashcardImageZoomOpen = false;
     syncBodyScrollLock();
@@ -23638,6 +24386,7 @@ function buildFlashcardFace(sideData, faceClass) {
             onLoad: () => {
                 queueFlashcardImageOverlaySync(face);
                 renderFlashcardStudyStrokeLayer(imageFrame);
+                renderFlashcardStudyConnectorLayer(imageFrame);
             }
         });
 
@@ -23672,6 +24421,7 @@ function buildFlashcardFace(sideData, faceClass) {
         const imageFrame = document.createElement('div');
         imageFrame.className = 'flashcard-side-image-frame';
         imageFrame.__flashcardImageDrawStrokes = imageDrawStrokes;
+        imageFrame.__flashcardImageLabels = displayImageLabels;
         imageFrame.dataset.visibleStrokeLabels = '';
         imageFrame.appendChild(img);
         if (imageDrawStrokes.length) {
@@ -23679,6 +24429,13 @@ function buildFlashcardFace(sideData, faceClass) {
             strokeCanvas.className = 'flashcard-side-image-stroke-layer';
             strokeCanvas.setAttribute('aria-hidden', 'true');
             imageFrame.appendChild(strokeCanvas);
+        }
+        if (displayImageLabels.some(item => !!normalizeDiagramConnector(item.connector))) {
+            const connectorLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            connectorLayer.classList.add('flashcard-side-image-connector-layer');
+            connectorLayer.setAttribute('aria-hidden', 'true');
+            connectorLayer.setAttribute('focusable', 'false');
+            imageFrame.appendChild(connectorLayer);
         }
         if (displayImageLabels.length) {
             const labelLayer = document.createElement('div');
@@ -23692,6 +24449,7 @@ function buildFlashcardFace(sideData, faceClass) {
         imageWrap.appendChild(imageFrame);
         content.appendChild(imageWrap);
         renderFlashcardStudyStrokeLayer(imageFrame);
+        renderFlashcardStudyConnectorLayer(imageFrame);
         syncFlashcardStudyStrokeToggleButtons(face);
         queueFlashcardImageOverlaySync(face);
     }
@@ -23743,6 +24501,7 @@ function syncFlashcardImageFrameOverlayBounds(frame) {
     frame.style.removeProperty('--flashcard-image-visual-width');
     frame.style.removeProperty('--flashcard-image-visual-height');
     clearStageLabelLayerOffsets(labelLayer);
+    renderFlashcardStudyConnectorLayer(frame);
 
     if (zoomBtn) {
         // Keep the zoom button under CSS control; do not write inline positions here.
@@ -26338,6 +27097,15 @@ if (elements.reviewModeIncludeDescriptionsToggle) {
     });
 }
 
+if (elements.reviewModeShowConnectorsToggle) {
+    elements.reviewModeShowConnectorsToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.showConnectors = elements.reviewModeShowConnectorsToggle.checked;
+        renderReviewModeConnectors();
+        syncReviewModeControls();
+    });
+}
+
 if (elements.reviewModeLabelSizeDownBtn) {
     elements.reviewModeLabelSizeDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
 }
@@ -26347,12 +27115,24 @@ if (elements.reviewModeLabelSizeUpBtn) {
 }
 
 if (elements.reviewModeLabelLayer) {
+    elements.reviewModeLabelLayer.addEventListener('pointerdown', event => {
+        const marker = event.target.closest('[data-review-label-index]');
+        if (marker) beginReviewModeLabelDrag(event, marker);
+    });
+    elements.reviewModeLabelLayer.addEventListener('pointermove', moveReviewModeLabelDrag);
+    elements.reviewModeLabelLayer.addEventListener('pointerup', endReviewModeLabelDrag);
+    elements.reviewModeLabelLayer.addEventListener('pointercancel', endReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('click', event => {
         const marker = event.target.closest('[data-review-label-index]');
         if (!marker) return;
+        const review = getReviewModeState();
+        if (Date.now() < review.suppressLabelClickUntil) {
+            review.suppressLabelClickUntil = 0;
+            event.preventDefault();
+            return;
+        }
         const index = Number(marker.dataset.reviewLabelIndex);
         if (!Number.isInteger(index) || index < 0) return;
-        const review = getReviewModeState();
         if (review.showAllNames) {
             review.showAllNames = false;
             review.revealedLabels = new Set(normalizeDiagramLabels(getActiveReviewModeEntry()?.labels || []).map((_, labelIndex) => labelIndex));
@@ -28052,10 +28832,32 @@ elements.studioImageEditorArrowColorInput?.addEventListener('input', () => {
     const editor = state.auth.imageEditor;
     if (!editor) return;
     editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput.value, '#000000');
-    if (editor.draftShape?.type === 'arrow') {
+    let shouldRender = false;
+    if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
         editor.draftShape.color = editor.arrowColor;
-        renderImageEditorCanvas();
+        shouldRender = true;
     }
+    if (isImageEditorConnectorMode(editor)) {
+        const index = editor.activeConnectorLabelIndex;
+        const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
+        if (connector && editor.labels?.[index]) {
+            editor.labels[index].connector = { ...connector, color: editor.arrowColor };
+            shouldRender = true;
+        }
+    }
+    if (shouldRender) renderImageEditorCanvas();
+});
+
+elements.studioImageEditorLineThicknessInput?.addEventListener('input', () => {
+    const editor = state.auth.imageEditor;
+    if (!editor || !isImageEditorConnectorMode(editor)) return;
+    editor.lineThickness = getImageEditorLineThickness();
+    if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness);
+    const index = editor.activeConnectorLabelIndex;
+    const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
+    if (!connector || !editor.labels?.[index]) return;
+    editor.labels[index].connector = { ...connector, thickness: editor.lineThickness };
+    renderImageEditorCanvas();
 });
 
 elements.studioImageEditorDrawToolButtons?.forEach(button => {
@@ -28115,10 +28917,28 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
     const index = Number(row.dataset.imageEditorLabelIndex || -1);
     if (index < 0 || !editor.labels?.[index]) return;
     const drawBtn = event.target.closest('[data-image-editor-label-draw]');
+    const connectorBtn = event.target.closest('[data-image-editor-label-connector]');
+    const connectorStyleBtn = event.target.closest('[data-image-editor-connector-style]');
+    const connectorDeleteBtn = event.target.closest('[data-image-editor-label-connector-delete]');
     const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
     const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
+    if (connectorStyleBtn) {
+        selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight');
+        return;
+    }
+    if (connectorBtn) {
+        toggleImageEditorConnectorStylePicker(index);
+        return;
+    }
+    if (connectorDeleteBtn) {
+        removeImageEditorLabelConnector(index);
+        return;
+    }
     if (drawBtn) {
         editor.mode = 'labels';
+        editor.activeConnectorLabelIndex = null;
+        editor.connectorStylePickerLabelIndex = null;
+        editor.draggingConnectorAnchor = false;
         editor.showLabelPanel = true;
         const isSameLabel = editor.activeDrawLabelIndex === index;
         if (isSameLabel) {
@@ -28210,12 +29030,24 @@ handleRichColorInput(elements.createFlashcardColor, color => applyFlashcardRichI
 document.addEventListener('click', event => {
     if (!event.target.closest('#learningResourcesRichToolbar')) closeLearningResourcesRichMenus();
     if (!event.target.closest('#flashcardRichToolbar')) closeFlashcardRichMenus();
+    if (state.auth.imageEditor?.connectorStylePickerLabelIndex !== null
+        && state.auth.imageEditor?.connectorStylePickerLabelIndex !== undefined
+        && !event.target.closest('[data-image-editor-label-connector]')
+        && !event.target.closest('[data-image-editor-connector-style-picker]')) {
+        closeImageEditorConnectorStylePicker(true);
+    }
 });
 
 document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
         closeLearningResourcesRichMenus();
         closeFlashcardRichMenus();
+        if (state.auth.imageEditor?.connectorStylePickerLabelIndex !== null
+            && state.auth.imageEditor?.connectorStylePickerLabelIndex !== undefined) {
+            event.preventDefault();
+            closeImageEditorConnectorStylePicker(true);
+            return;
+        }
         if (state.auth.imageEditor?.open) closeStudioImageEditor();
         if (state.auth.studioSavedImagePicker?.open) closeStudioSavedImagePicker();
     }
@@ -29231,6 +30063,7 @@ if (window.visualViewport) {
 }
 if (elements.questionImage) {
     elements.questionImage.addEventListener('load', queuePhoneLandscapeMultipleChoiceImageStageSync);
+    elements.questionImage.addEventListener('load', () => renderDiagramStudyConnectors(state.currentDiagramStudyLabels || []));
 }
 if (elements.optionsContainer) {
     elements.optionsContainer.addEventListener('scroll', updateOptionsScrollIndicators, { passive: true });
