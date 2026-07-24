@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22mp">
+  <link rel="stylesheet" href="style.css?v=22mq">
 </head>
 <body>
 
@@ -696,12 +696,38 @@ MODIFICATION RULES FOR THIS APP
               <section id="quizStudioDiagramCreatorSection" class="quiz-studio-section hidden" data-studio-section="diagram-creator" role="tabpanel">
                 <section class="creator-subsection quiz-studio-panel studio-diagram-creator-panel">
                   <div class="creator-subsection-title">Diagram Creator</div>
-                  <div class="creator-note">Create a reusable labeled diagram without making a quiz. The standalone creator uses the same dependable editor as flashcard images. Crop, blur, arrows, and lines stay flattened; labels and paint/highlighter strokes remain editable.</div>
-                  <input id="diagramCreatorFileInput" type="file" accept="image/*" class="hidden" aria-hidden="true">
-                  <div class="studio-diagram-creator-actions">
-                    <button id="diagramCreatorChooseBtn" type="button" class="auth-action-btn auth-primary-btn">Choose Image</button>
+                  <div class="creator-note">Create a new reusable diagram or edit an existing Saved Image. Existing flashcards remain unchanged when a Saved Image is updated.</div>
+
+                  <div class="studio-diagram-creator-view-tabs" role="tablist" aria-label="Diagram Creator source">
+                    <button id="diagramCreatorNewViewBtn" type="button" class="auth-action-btn auth-primary-btn active" role="tab" aria-selected="true" aria-controls="diagramCreatorNewView">New Image</button>
+                    <button id="diagramCreatorSavedViewBtn" type="button" class="auth-action-btn auth-secondary-btn" role="tab" aria-selected="false" aria-controls="diagramCreatorSavedView">Saved Images</button>
                   </div>
-                  <div class="studio-diagram-creator-help">The editor footer contains only <strong>Cancel</strong> and <strong>Send to Saved Images</strong>. Saved diagrams can later be selected inside flashcard image controls.</div>
+
+                  <div id="diagramCreatorNewView" class="studio-diagram-creator-view" role="tabpanel">
+                    <div class="creator-note">The standalone creator uses the same dependable editor as flashcard images. Crop, blur, arrows, and lines stay flattened; labels, descriptions, drawings, and connector lines remain editable.</div>
+                    <input id="diagramCreatorFileInput" type="file" accept="image/*" class="hidden" aria-hidden="true">
+                    <div class="studio-diagram-creator-actions">
+                      <button id="diagramCreatorChooseBtn" type="button" class="auth-action-btn auth-primary-btn">Choose Image</button>
+                    </div>
+                    <div class="studio-diagram-creator-help">New diagrams use <strong>Send to Saved Images</strong>. Editing an existing library item uses <strong>Update Saved Image</strong> and replaces that same item.</div>
+                  </div>
+
+                  <div id="diagramCreatorSavedView" class="studio-diagram-creator-view hidden" role="tabpanel" aria-hidden="true">
+                    <div class="studio-review-filter-panel studio-diagram-library-filter-panel" aria-label="Diagram Creator Saved Image filters">
+                      <label class="studio-review-filter-wide"><span>Search everything</span><input id="diagramCreatorSearchInput" type="search" autocomplete="off" placeholder="Search diagram names, subjects, tags, or label names"></label>
+                      <label><span>Diagram name</span><input id="diagramCreatorDiagramNameFilter" type="search" autocomplete="off" placeholder="Long Bone Anatomy"></label>
+                      <label><span>Subject</span><input id="diagramCreatorSubjectFilter" type="search" autocomplete="off" placeholder="Long bone"></label>
+                      <label><span>Type</span><select id="diagramCreatorAnatomyTypeFilter"><option value="">All types</option><option value="bone">Bone</option><option value="muscle">Muscle</option><option value="tissue">Tissue</option><option value="cartilage">Cartilage</option><option value="organ">Organ</option><option value="joint">Joint</option><option value="ligament">Ligament</option><option value="cell">Cell</option><option value="body region">Body region</option><option value="organ system">Organ system</option><option value="other">Other</option></select></label>
+                      <label><span>Organ system</span><select id="diagramCreatorOrganSystemFilter"><option value="">All systems</option><option value="skeletal">Skeletal</option><option value="muscular">Muscular</option><option value="nervous">Nervous</option><option value="cardiovascular">Cardiovascular</option><option value="respiratory">Respiratory</option><option value="digestive">Digestive</option><option value="urinary">Urinary</option><option value="reproductive">Reproductive</option><option value="endocrine">Endocrine</option><option value="lymphatic">Lymphatic</option><option value="integumentary">Integumentary</option><option value="special senses">Special senses</option><option value="other">Other</option></select></label>
+                      <label><span>Location</span><input id="diagramCreatorLocationFilter" type="search" autocomplete="off" placeholder="Upper limb"></label>
+                      <label><span>Organ</span><input id="diagramCreatorOrganFilter" type="search" autocomplete="off" placeholder="Heart"></label>
+                      <label><span>Muscle</span><input id="diagramCreatorMuscleFilter" type="search" autocomplete="off" placeholder="Biceps brachii"></label>
+                      <label><span>Tags</span><input id="diagramCreatorTagsFilter" type="search" autocomplete="off" placeholder="epiphysis, compact bone"></label>
+                      <div class="studio-review-filter-actions"><button id="diagramCreatorClearFiltersBtn" type="button" class="auth-action-btn auth-secondary-btn">Clear Filters</button></div>
+                    </div>
+                    <div id="diagramCreatorSearchCount" class="studio-review-search-count" aria-live="polite"></div>
+                    <div id="diagramCreatorImageGrid" class="studio-diagram-library-grid"></div>
+                  </div>
                 </section>
               </section>
 
@@ -1779,6 +1805,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22mp"></script>
+  <script src="script.js?v=22mq"></script>
 </body>
 </html>

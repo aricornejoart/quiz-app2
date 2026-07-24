@@ -277,6 +277,20 @@ MODIFICATION RULES FOR THIS APP
             studioFlashcardDefinitionImageMetadata: {},
             diagramCreatorSourceDataUrl: '',
             diagramCreatorSourceLabel: '',
+            diagramCreatorLibrary: {
+                view: 'new',
+                searchQuery: '',
+                filters: {
+                    diagramName: '',
+                    subjectName: '',
+                    anatomyType: '',
+                    organSystem: '',
+                    location: '',
+                    organ: '',
+                    muscle: '',
+                    tags: ''
+                }
+            },
             editingQuizId: null,
             editingQuestionId: null,
             editingQuizType: 'multiple_choice',
@@ -451,6 +465,22 @@ MODIFICATION RULES FOR THIS APP
         studioProgressPanel: document.getElementById('studioProgressPanel'),
         diagramCreatorFileInput: document.getElementById('diagramCreatorFileInput'),
         diagramCreatorChooseBtn: document.getElementById('diagramCreatorChooseBtn'),
+        diagramCreatorNewViewBtn: document.getElementById('diagramCreatorNewViewBtn'),
+        diagramCreatorSavedViewBtn: document.getElementById('diagramCreatorSavedViewBtn'),
+        diagramCreatorNewView: document.getElementById('diagramCreatorNewView'),
+        diagramCreatorSavedView: document.getElementById('diagramCreatorSavedView'),
+        diagramCreatorSearchInput: document.getElementById('diagramCreatorSearchInput'),
+        diagramCreatorDiagramNameFilter: document.getElementById('diagramCreatorDiagramNameFilter'),
+        diagramCreatorSubjectFilter: document.getElementById('diagramCreatorSubjectFilter'),
+        diagramCreatorAnatomyTypeFilter: document.getElementById('diagramCreatorAnatomyTypeFilter'),
+        diagramCreatorOrganSystemFilter: document.getElementById('diagramCreatorOrganSystemFilter'),
+        diagramCreatorLocationFilter: document.getElementById('diagramCreatorLocationFilter'),
+        diagramCreatorOrganFilter: document.getElementById('diagramCreatorOrganFilter'),
+        diagramCreatorMuscleFilter: document.getElementById('diagramCreatorMuscleFilter'),
+        diagramCreatorTagsFilter: document.getElementById('diagramCreatorTagsFilter'),
+        diagramCreatorClearFiltersBtn: document.getElementById('diagramCreatorClearFiltersBtn'),
+        diagramCreatorSearchCount: document.getElementById('diagramCreatorSearchCount'),
+        diagramCreatorImageGrid: document.getElementById('diagramCreatorImageGrid'),
         reviewModeSearchInput: document.getElementById('reviewModeSearchInput'),
         reviewModeDiagramNameFilter: document.getElementById('reviewModeDiagramNameFilter'),
         reviewModeSubjectFilter: document.getElementById('reviewModeSubjectFilter'),
@@ -3970,6 +4000,38 @@ MODIFICATION RULES FOR THIS APP
         return savedEntry;
     }
 
+    function replaceStudioSavedImageLibraryEntry(originalEntry = {}, replacementEntry = {}) {
+        const original = normalizeStudioSavedImageEntry(originalEntry);
+        if (!original) return null;
+        const stableId = getStudioSavedImageSyncKey(original) || normalizeSheetText(original.id) || createSavedImageId();
+        const replacement = normalizeStudioSavedImageEntry({
+            ...replacementEntry,
+            id: stableId,
+            createdAt: original.createdAt,
+            updatedAt: new Date().toISOString()
+        });
+        if (!replacement) return null;
+        const originalSyncKey = getStudioSavedImageSyncKey(original);
+        const originalId = normalizeSheetText(original.id);
+        const shouldKeep = entry => {
+            const normalized = normalizeStudioSavedImageEntry(entry);
+            if (!normalized) return false;
+            if (originalId && normalized.id === originalId) return false;
+            if (originalSyncKey && getStudioSavedImageSyncKey(normalized) === originalSyncKey) return false;
+            return true;
+        };
+        const currentLibrary = getStudioSavedImageLibraryForPicker();
+        const originalIndex = currentLibrary.findIndex(entry => !shouldKeep(entry));
+        const nextLibrary = currentLibrary.filter(shouldKeep);
+        nextLibrary.splice(Math.max(0, originalIndex), 0, replacement);
+        const merged = mergeStudioSavedImageEntries(nextLibrary);
+        state.auth.studioSavedImageMemoryLibrary = merged;
+        saveStudioSavedImageLibrary(merged);
+        markStudioSavedImagePendingUpsert(replacement);
+        scheduleStudioSavedImageRemoteSync({ reason: 'replace-entry' });
+        return merged.find(item => getStudioSavedImageSyncKey(item) === stableId) || replacement;
+    }
+
     function getStudioSavedImageSignature(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return '';
@@ -4278,6 +4340,7 @@ MODIFICATION RULES FOR THIS APP
             sync.lastLoadedAt = Date.now();
             if (state.auth.studioSavedImagePicker?.open) renderStudioSavedImagePicker();
             if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
+            if (state.auth.currentStudioSection === 'diagram-creator' && getDiagramCreatorLibraryState().view === 'saved') renderDiagramCreatorSavedImages();
             return true;
         })().finally(() => {
             if (sync.inFlight === task) sync.inFlight = null;
@@ -4921,6 +4984,168 @@ MODIFICATION RULES FOR THIS APP
             if (organSystem && metadata.organSystem !== organSystem) return false;
             if (location && !metadata.location.toLowerCase().includes(location)) return false;
             return true;
+        });
+    }
+
+    // ================= PHASE 22MQ: DIAGRAM CREATOR SAVED IMAGE LIBRARY =================
+    function getDiagramCreatorLibraryState() {
+        if (!state.auth.diagramCreatorLibrary || typeof state.auth.diagramCreatorLibrary !== 'object') {
+            state.auth.diagramCreatorLibrary = {};
+        }
+        const library = state.auth.diagramCreatorLibrary;
+        library.view = library.view === 'saved' ? 'saved' : 'new';
+        library.searchQuery = normalizeSheetText(library.searchQuery || '');
+        library.filters = {
+            diagramName: normalizeSheetText(library.filters?.diagramName || ''),
+            subjectName: normalizeSheetText(library.filters?.subjectName || ''),
+            anatomyType: normalizeSheetText(library.filters?.anatomyType || ''),
+            organSystem: normalizeSheetText(library.filters?.organSystem || ''),
+            location: normalizeSheetText(library.filters?.location || ''),
+            organ: normalizeSheetText(library.filters?.organ || ''),
+            muscle: normalizeSheetText(library.filters?.muscle || ''),
+            tags: normalizeSheetText(library.filters?.tags || '')
+        };
+        return library;
+    }
+
+    function setDiagramCreatorLibraryView(view = 'new') {
+        const library = getDiagramCreatorLibraryState();
+        library.view = view === 'saved' ? 'saved' : 'new';
+        const savedOpen = library.view === 'saved';
+        elements.diagramCreatorNewView?.classList.toggle('hidden', savedOpen);
+        elements.diagramCreatorSavedView?.classList.toggle('hidden', !savedOpen);
+        elements.diagramCreatorSavedView?.setAttribute('aria-hidden', savedOpen ? 'false' : 'true');
+        elements.diagramCreatorNewViewBtn?.classList.toggle('active', !savedOpen);
+        elements.diagramCreatorSavedViewBtn?.classList.toggle('active', savedOpen);
+        elements.diagramCreatorNewViewBtn?.classList.toggle('auth-primary-btn', !savedOpen);
+        elements.diagramCreatorNewViewBtn?.classList.toggle('auth-secondary-btn', savedOpen);
+        elements.diagramCreatorSavedViewBtn?.classList.toggle('auth-primary-btn', savedOpen);
+        elements.diagramCreatorSavedViewBtn?.classList.toggle('auth-secondary-btn', !savedOpen);
+        elements.diagramCreatorNewViewBtn?.setAttribute('aria-selected', savedOpen ? 'false' : 'true');
+        elements.diagramCreatorSavedViewBtn?.setAttribute('aria-selected', savedOpen ? 'true' : 'false');
+        if (savedOpen) renderDiagramCreatorSavedImages();
+    }
+
+    function getDiagramCreatorFiltersFromDom() {
+        return {
+            searchQuery: normalizeSheetText(elements.diagramCreatorSearchInput?.value || '').toLowerCase(),
+            diagramName: normalizeSheetText(elements.diagramCreatorDiagramNameFilter?.value || '').toLowerCase(),
+            subjectName: normalizeSheetText(elements.diagramCreatorSubjectFilter?.value || '').toLowerCase(),
+            anatomyType: normalizeSheetText(elements.diagramCreatorAnatomyTypeFilter?.value || '').toLowerCase(),
+            organSystem: normalizeSheetText(elements.diagramCreatorOrganSystemFilter?.value || '').toLowerCase(),
+            location: normalizeSheetText(elements.diagramCreatorLocationFilter?.value || '').toLowerCase(),
+            organ: normalizeSheetText(elements.diagramCreatorOrganFilter?.value || '').toLowerCase(),
+            muscle: normalizeSheetText(elements.diagramCreatorMuscleFilter?.value || '').toLowerCase(),
+            tags: normalizeSheetText(elements.diagramCreatorTagsFilter?.value || '').toLowerCase()
+        };
+    }
+
+    function includesDiagramCreatorFilter(value = '', query = '') {
+        if (!query) return true;
+        const text = normalizeSheetText(value).toLowerCase();
+        return query.split(/\s+/).filter(Boolean).every(term => text.includes(term));
+    }
+
+    function filterDiagramCreatorSavedImages(entries = []) {
+        const filters = getDiagramCreatorFiltersFromDom();
+        return (Array.isArray(entries) ? entries : [])
+            .map(normalizeStudioSavedImageEntry)
+            .filter(Boolean)
+            .filter(entry => {
+                const metadata = normalizeDiagramMetadata(entry.metadata || {});
+                if (filters.searchQuery && !includesDiagramCreatorFilter(getStudioSavedImageSearchText(entry), filters.searchQuery)) return false;
+                if (!includesDiagramCreatorFilter(metadata.diagramName, filters.diagramName)) return false;
+                if (!includesDiagramCreatorFilter(metadata.subjectName, filters.subjectName)) return false;
+                if (filters.anatomyType && metadata.anatomyType !== filters.anatomyType) return false;
+                if (filters.organSystem && metadata.organSystem !== filters.organSystem) return false;
+                if (!includesDiagramCreatorFilter(metadata.location, filters.location)) return false;
+                if (!includesDiagramCreatorFilter(metadata.organ, filters.organ)) return false;
+                if (!includesDiagramCreatorFilter(metadata.muscle, filters.muscle)) return false;
+                if (!includesDiagramCreatorFilter(metadata.tags, filters.tags)) return false;
+                return true;
+            });
+    }
+
+    function renderDiagramCreatorSavedImages() {
+        if (!elements.diagramCreatorImageGrid) return;
+        const allEntries = getStudioSavedImageLibraryForPicker();
+        const entries = filterDiagramCreatorSavedImages(allEntries);
+        if (elements.diagramCreatorSearchCount) {
+            elements.diagramCreatorSearchCount.textContent = `${entries.length} of ${allEntries.length} saved image${allEntries.length === 1 ? '' : 's'}`;
+        }
+        if (!allEntries.length) {
+            elements.diagramCreatorImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images are available yet. Choose New Image to create the first diagram.</div>';
+            return;
+        }
+        if (!entries.length) {
+            elements.diagramCreatorImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images match those search filters.</div>';
+            return;
+        }
+        elements.diagramCreatorImageGrid.innerHTML = entries.map(entry => {
+            const metadata = normalizeDiagramMetadata(entry.metadata || {});
+            const title = metadata.diagramName || metadata.subjectName || entry.fileName;
+            const summary = [metadata.subjectName, metadata.anatomyType, metadata.organSystem, metadata.location].filter(Boolean).join(' · ');
+            const labelCount = normalizeDiagramLabels(entry.labels || []).length;
+            return `
+                <article class="studio-diagram-library-card">
+                  <button type="button" class="studio-diagram-library-preview" data-diagram-creator-edit="${escapeHtml(entry.id)}" aria-label="Edit ${escapeHtml(title)}">
+                    <img class="studio-diagram-library-thumb" data-diagram-creator-thumb="${escapeHtml(entry.imageValue)}" alt="${escapeHtml(title)}">
+                    <span class="studio-diagram-library-card-body">
+                      <span class="studio-diagram-library-name">${escapeHtml(title)}</span>
+                      ${summary ? `<span class="studio-diagram-library-meta">${escapeHtml(summary)}</span>` : ''}
+                      <span class="studio-diagram-library-label-count">${labelCount} label${labelCount === 1 ? '' : 's'}</span>
+                    </span>
+                  </button>
+                  <div class="studio-diagram-library-card-actions">
+                    <button type="button" class="auth-action-btn auth-primary-btn studio-diagram-library-edit" data-diagram-creator-edit="${escapeHtml(entry.id)}">Edit</button>
+                    <button type="button" class="studio-diagram-library-delete" data-diagram-creator-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>
+                  </div>
+                </article>
+            `;
+        }).join('');
+        elements.diagramCreatorImageGrid.querySelectorAll('[data-diagram-creator-thumb]').forEach(img => {
+            setImageElementSourceWithMediaResolution(img, img.dataset.diagramCreatorThumb || '');
+        });
+    }
+
+    function clearDiagramCreatorSavedImageFilters() {
+        [
+            elements.diagramCreatorSearchInput,
+            elements.diagramCreatorDiagramNameFilter,
+            elements.diagramCreatorSubjectFilter,
+            elements.diagramCreatorLocationFilter,
+            elements.diagramCreatorOrganFilter,
+            elements.diagramCreatorMuscleFilter,
+            elements.diagramCreatorTagsFilter
+        ].forEach(input => {
+            if (input) input.value = '';
+        });
+        if (elements.diagramCreatorAnatomyTypeFilter) elements.diagramCreatorAnatomyTypeFilter.value = '';
+        if (elements.diagramCreatorOrganSystemFilter) elements.diagramCreatorOrganSystemFilter.value = '';
+        const library = getDiagramCreatorLibraryState();
+        library.searchQuery = '';
+        library.filters = { diagramName: '', subjectName: '', anatomyType: '', organSystem: '', location: '', organ: '', muscle: '', tags: '' };
+        renderDiagramCreatorSavedImages();
+    }
+
+    async function openSavedImageInDiagramCreator(entryId = '') {
+        const safeId = normalizeSheetText(entryId);
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === safeId);
+        if (!entry) {
+            setCreatorStatus('That saved image could not be found.', 'error');
+            renderDiagramCreatorSavedImages();
+            return;
+        }
+        setDiagramCreatorLibraryView('saved');
+        await openStudioImageEditor({
+            kind: 'standalone-diagram',
+            sourceValue: getStudioSavedImageApplyValue(entry, true),
+            sourceLabel: entry.imageLabel || `Saved: ${entry.fileName}`,
+            labels: normalizeDiagramLabels(entry.labels || []),
+            drawStrokes: cloneImageEditorDrawStrokes(entry.drawStrokes || []),
+            metadata: normalizeDiagramMetadata(entry.metadata || {}),
+            savedImageEntryId: entry.id,
+            savedImageOriginalEntry: entry
         });
     }
 
@@ -5724,15 +5949,18 @@ MODIFICATION RULES FOR THIS APP
         if (target.kind === 'standalone-diagram') {
             const sourceLabel = normalizeSheetText(target.sourceLabel || state.auth.diagramCreatorSourceLabel || 'diagram-image.png');
             const defaultName = getSavedImageFileNameFromLabel(sourceLabel, 'diagram-image.png').replace(/\.[^.]+$/, '');
+            const metadata = normalizeDiagramMetadata({ diagramName: defaultName, ...(target.metadata || {}) });
+            const editingSavedImage = !!normalizeSheetText(target.savedImageEntryId || '');
             return {
-                title: 'Diagram Creator',
+                title: editingSavedImage ? 'Edit Saved Image' : 'Diagram Creator',
+                subtitle: editingSavedImage ? `Editing Saved Image: ${metadata.diagramName || metadata.subjectName || defaultName}` : '',
                 sourceValue: target.sourceValue || state.auth.diagramCreatorSourceDataUrl || '',
                 sourceLabel,
                 fallbackLabel: 'Saved diagram image.',
                 labelsEnabled: true,
                 labels: normalizeDiagramLabels(target.labels || []),
                 drawStrokes: cloneImageEditorDrawStrokes(target.drawStrokes || []),
-                metadata: normalizeDiagramMetadata({ diagramName: defaultName, ...(target.metadata || {}) })
+                metadata
             };
         }
         if (target.kind === 'option') {
@@ -7093,10 +7321,14 @@ MODIFICATION RULES FOR THIS APP
         }
         if (elements.studioImageEditorSendSavedBtn) {
             const isSavedDiagramTarget = isImageEditorSavedDiagramTarget(editor);
+            const isUpdatingSavedImage = isImageEditorStandaloneDiagramTarget(editor) && !!normalizeSheetText(editor?.target?.savedImageEntryId || '');
             elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isSavedDiagramTarget);
             elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas;
+            elements.studioImageEditorSendSavedBtn.textContent = isUpdatingSavedImage ? 'Update Saved Image' : 'Send to Saved Images';
             elements.studioImageEditorSendSavedBtn.title = isSavedDiagramTarget
-                ? 'Save this edited image, labels, connector lines, draw strokes, and diagram details to Saved Images'
+                ? (isUpdatingSavedImage
+                    ? 'Replace this Saved Image with the current image, labels, descriptions, connector lines, draw strokes, and diagram details'
+                    : 'Save this edited image, labels, connector lines, draw strokes, and diagram details to Saved Images')
                 : 'Saved Images are available for flashcard and standalone diagrams';
         }
         if (elements.studioImageEditorAttachAllFrontBtn) {
@@ -7729,8 +7961,8 @@ MODIFICATION RULES FOR THIS APP
         refreshImageEditorLabelUi();
         if (elements.studioImageEditorTitle) elements.studioImageEditorTitle.textContent = info.title || 'Image Editor';
         if (elements.studioImageEditorSubtitle) {
-            elements.studioImageEditorSubtitle.textContent = '';
-            elements.studioImageEditorSubtitle.hidden = true;
+            elements.studioImageEditorSubtitle.textContent = normalizeSheetText(info.subtitle || '');
+            elements.studioImageEditorSubtitle.hidden = !normalizeSheetText(info.subtitle || '');
         }
         if (elements.studioImageEditorOverlay) {
             elements.studioImageEditorOverlay.classList.remove('hidden');
@@ -7865,14 +8097,20 @@ MODIFICATION RULES FOR THIS APP
         const drawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || editor.drawStrokes || []);
         const metadata = normalizeDiagramMetadata(options.metadata || editor.metadata || getImageEditorMetadataFromFields());
         const fileName = getImageEditorSavedImageFileName(editor);
-        setImageEditorStatus('Sending image to Saved Images...');
+        const originalEntry = normalizeStudioSavedImageEntry(
+            editor.target?.savedImageOriginalEntry
+            || getStudioSavedImageLibraryForPicker().find(item => item.id === normalizeSheetText(editor.target?.savedImageEntryId || ''))
+            || {}
+        );
+        const isReplacing = !!originalEntry;
+        setImageEditorStatus(isReplacing ? 'Updating Saved Image...' : 'Sending image to Saved Images...');
         let sharedValue = normalizedValue;
         try {
             sharedValue = await savePrivateMediaValueWithDedupCache(normalizedValue, {
                 quizId: state.auth.editingQuizId || null,
                 questionId: normalizeSheetText(editor.target?.questionId || state.auth.editingQuestionId || '') || null,
-                usageContext: `saved_image_${getImageEditorTargetSide(editor)}_editor`,
-                label: `Saved ${fileName}`,
+                usageContext: isReplacing ? 'saved_image_diagram_update' : `saved_image_${getImageEditorTargetSide(editor)}_editor`,
+                label: `${isReplacing ? 'Updated' : 'Saved'} ${fileName}`,
                 mediaSaveCache: state.auth.studioSavedImageMediaSaveCache instanceof Map
                     ? state.auth.studioSavedImageMediaSaveCache
                     : (state.auth.studioSavedImageMediaSaveCache = new Map())
@@ -7881,8 +8119,8 @@ MODIFICATION RULES FOR THIS APP
             console.warn('Could not upload saved image snapshot; keeping local saved image copy instead:', error);
             sharedValue = normalizedValue;
         }
-        const entry = upsertStudioSavedImageLibraryEntry({
-            id: createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}::${JSON.stringify(metadata)}`),
+        const nextEntry = {
+            id: isReplacing ? getStudioSavedImageSyncKey(originalEntry) : createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}::${JSON.stringify(metadata)}`),
             fileName,
             imageValue: sharedValue,
             imageOnlyValue: sharedValue,
@@ -7892,8 +8130,12 @@ MODIFICATION RULES FOR THIS APP
             imageOnlyLabel: `Saved: ${fileName}`,
             labels,
             drawStrokes,
-            metadata
-        });
+            metadata,
+            createdAt: originalEntry?.createdAt
+        };
+        const entry = isReplacing
+            ? replaceStudioSavedImageLibraryEntry(originalEntry, nextEntry)
+            : upsertStudioSavedImageLibraryEntry(nextEntry);
         if (entry && state.auth.client && state.auth.user?.id) {
             const syncKey = getStudioSavedImageSyncKey(entry);
             const remoteResult = await upsertStudioSavedImageRemoteEntry(entry, { syncKey });
@@ -7903,7 +8145,7 @@ MODIFICATION RULES FOR THIS APP
                 saveStudioSavedImagePendingUpsertKeys(pendingKeys);
             }
         }
-        return { entry, value: sharedValue };
+        return { entry, value: sharedValue, replaced: isReplacing };
     }
 
     async function saveStudioImageEditorImage(options = {}) {
@@ -7951,7 +8193,14 @@ MODIFICATION RULES FOR THIS APP
                 state.auth.diagramCreatorSourceDataUrl = '';
                 state.auth.diagramCreatorSourceLabel = '';
                 if (elements.diagramCreatorFileInput) elements.diagramCreatorFileInput.value = '';
-                setCreatorStatus('Diagram, labels, connector lines, draw strokes, and search details sent to Saved Images.', 'success');
+                if (savedResult?.replaced) {
+                    setDiagramCreatorLibraryView('saved');
+                    renderDiagramCreatorSavedImages();
+                    setCreatorStatus('Saved Image updated. Existing flashcards were not changed.', 'success');
+                } else {
+                    renderDiagramCreatorSavedImages();
+                    setCreatorStatus('Diagram, labels, connector lines, draw strokes, and search details sent to Saved Images.', 'success');
+                }
             } else if (options.sendToSavedImages && isFlashcardTarget) {
                 setCreatorStatus('Image, labels, connector lines, draw strokes, and diagram details sent to Saved Images. Save Changes to keep this card update.', 'success');
             }
@@ -14732,6 +14981,10 @@ MODIFICATION RULES FOR THIS APP
         if (nextSection === 'review-mode') {
             await syncStudioSavedImagesFromSupabase({ force: true, reason: 'open-review-mode' });
             renderReviewModeLibrary();
+        } else if (nextSection === 'diagram-creator') {
+            await syncStudioSavedImagesFromSupabase({ force: true, reason: 'open-diagram-creator' });
+            setDiagramCreatorLibraryView(getDiagramCreatorLibraryState().view);
+            if (getReviewModeState().overlayOpen) closeReviewModeImage();
         } else if (getReviewModeState().overlayOpen) {
             closeReviewModeImage();
         }
@@ -27008,6 +27261,61 @@ elements.quizStudioSectionButtons.forEach(button => {
         });
     });
 });
+
+
+if (elements.diagramCreatorNewViewBtn) {
+    elements.diagramCreatorNewViewBtn.addEventListener('click', () => setDiagramCreatorLibraryView('new'));
+}
+if (elements.diagramCreatorSavedViewBtn) {
+    elements.diagramCreatorSavedViewBtn.addEventListener('click', async () => {
+        setDiagramCreatorLibraryView('saved');
+        await syncStudioSavedImagesFromSupabase({ force: true, reason: 'diagram-creator-saved-view' });
+        renderDiagramCreatorSavedImages();
+    });
+}
+const diagramCreatorFilterElements = [
+    elements.diagramCreatorSearchInput,
+    elements.diagramCreatorDiagramNameFilter,
+    elements.diagramCreatorSubjectFilter,
+    elements.diagramCreatorAnatomyTypeFilter,
+    elements.diagramCreatorOrganSystemFilter,
+    elements.diagramCreatorLocationFilter,
+    elements.diagramCreatorOrganFilter,
+    elements.diagramCreatorMuscleFilter,
+    elements.diagramCreatorTagsFilter
+].filter(Boolean);
+diagramCreatorFilterElements.forEach(control => {
+    const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
+    control.addEventListener(eventName, renderDiagramCreatorSavedImages);
+});
+if (elements.diagramCreatorClearFiltersBtn) {
+    elements.diagramCreatorClearFiltersBtn.addEventListener('click', clearDiagramCreatorSavedImageFilters);
+}
+if (elements.diagramCreatorImageGrid) {
+    elements.diagramCreatorImageGrid.addEventListener('click', event => {
+        const deleteButton = event.target.closest('[data-diagram-creator-delete]');
+        if (deleteButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            const entryId = normalizeSheetText(deleteButton.dataset.diagramCreatorDelete || '');
+            if (removeStudioSavedImageEntryById(entryId)) {
+                setCreatorStatus('Saved image removed. Existing flashcards were not changed.', 'success');
+            } else {
+                setCreatorStatus('That saved image could not be found.', 'error');
+            }
+            renderDiagramCreatorSavedImages();
+            if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
+            return;
+        }
+        const editButton = event.target.closest('[data-diagram-creator-edit]');
+        if (!editButton) return;
+        openSavedImageInDiagramCreator(editButton.dataset.diagramCreatorEdit || '').catch(error => {
+            console.error(error);
+            setCreatorStatus('Could not open that Saved Image for editing.', 'error');
+        });
+    });
+}
+
 
 const reviewModeFilterElements = [
     elements.reviewModeSearchInput,

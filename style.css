@@ -11577,3 +11577,142 @@ body.review-mode-image-open {
     height: 18px;
   }
 }
+
+
+/* Phase 22MQ — Diagram Creator new/saved views and editable Saved Image library. */
+.studio-diagram-creator-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 15px 0 12px;
+}
+
+.studio-diagram-creator-view-tabs .auth-action-btn.active {
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.22);
+}
+
+.studio-diagram-creator-view {
+  min-width: 0;
+}
+
+.studio-diagram-library-filter-panel {
+  margin-top: 0;
+}
+
+.studio-diagram-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 13px;
+}
+
+.studio-diagram-library-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.studio-diagram-library-preview {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-diagram-library-preview:hover,
+.studio-diagram-library-preview:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+
+.studio-diagram-library-thumb {
+  display: block;
+  width: 100%;
+  height: 170px;
+  object-fit: contain;
+  background: rgba(10, 8, 28, 0.72);
+}
+
+.studio-diagram-library-card-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px 9px;
+}
+
+.studio-diagram-library-name {
+  overflow: hidden;
+  color: #fff;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-diagram-library-meta,
+.studio-diagram-library-label-count {
+  color: rgba(239, 235, 255, 0.68);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-transform: capitalize;
+}
+
+.studio-diagram-library-label-count {
+  margin-top: auto;
+  padding-top: 4px;
+  color: rgba(250, 204, 21, 0.82);
+  font-weight: 800;
+}
+
+.studio-diagram-library-card-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.studio-diagram-library-edit {
+  min-height: 38px;
+}
+
+.studio-diagram-library-delete {
+  display: grid;
+  min-width: 42px;
+  min-height: 38px;
+  place-items: center;
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  border-radius: 11px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.28);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.studio-diagram-library-delete:hover,
+.studio-diagram-library-delete:focus-visible {
+  border-color: rgba(248, 113, 113, 0.8);
+  background: rgba(153, 27, 27, 0.55);
+  outline: none;
+}
+
+@media (max-width: 680px) {
+  .studio-diagram-library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 10px;
+  }
+
+  .studio-diagram-library-thumb {
+    height: 145px;
+  }
+}
