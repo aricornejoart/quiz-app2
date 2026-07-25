@@ -277,6 +277,21 @@ MODIFICATION RULES FOR THIS APP
             studioFlashcardDefinitionImageMetadata: {},
             diagramCreatorSourceDataUrl: '',
             diagramCreatorSourceLabel: '',
+            diagramCreatorFileMode: 'single',
+            multiAngleCreator: {
+                open: false,
+                angles: [],
+                activeIndex: 0,
+                canvas: { width: 1100, height: 1500, background: '#000000' },
+                metadata: {},
+                editingEntryId: '',
+                originalEntry: null,
+                listOpen: false,
+                guidesVisible: true,
+                settingAnchor: false,
+                pointerDrag: null,
+                saving: false
+            },
             diagramCreatorLibrary: {
                 view: 'new',
                 searchQuery: '',
@@ -347,6 +362,7 @@ MODIFICATION RULES FOR THIS APP
             },
             reviewMode: {
                 activeEntryId: '',
+                activeAngleIndex: 0,
                 overlayOpen: false,
                 optionsOpen: false,
                 showAllNames: false,
@@ -355,8 +371,11 @@ MODIFICATION RULES FOR THIS APP
                 showConnectors: true,
                 labelScale: 1,
                 revealedLabels: new Set(),
+                revealedLabelsByAngle: {},
                 temporaryLabelPositions: {},
+                temporaryLabelPositionsByAngle: {},
                 miniQuizMode: 'normal',
+                miniQuizScope: 'current',
                 randomizeMiniQuiz: false,
                 miniQuiz: null
             },
@@ -469,6 +488,37 @@ MODIFICATION RULES FOR THIS APP
         studioProgressPanel: document.getElementById('studioProgressPanel'),
         diagramCreatorFileInput: document.getElementById('diagramCreatorFileInput'),
         diagramCreatorChooseBtn: document.getElementById('diagramCreatorChooseBtn'),
+        diagramCreatorChooseMultiBtn: document.getElementById('diagramCreatorChooseMultiBtn'),
+        multiAngleCreatorPanel: document.getElementById('multiAngleCreatorPanel'),
+        multiAngleCancelBtn: document.getElementById('multiAngleCancelBtn'),
+        multiAngleCanvasWrap: document.getElementById('multiAngleCanvasWrap'),
+        multiAngleCanvas: document.getElementById('multiAngleCanvas'),
+        multiAnglePrevBtn: document.getElementById('multiAnglePrevBtn'),
+        multiAngleNextBtn: document.getElementById('multiAngleNextBtn'),
+        multiAngleIndicator: document.getElementById('multiAngleIndicator'),
+        multiAngleCanvasWidth: document.getElementById('multiAngleCanvasWidth'),
+        multiAngleCanvasHeight: document.getElementById('multiAngleCanvasHeight'),
+        multiAngleApplyDimensionsBtn: document.getElementById('multiAngleApplyDimensionsBtn'),
+        multiAngleNameInput: document.getElementById('multiAngleNameInput'),
+        multiAngleScaleInput: document.getElementById('multiAngleScaleInput'),
+        multiAngleScaleValue: document.getElementById('multiAngleScaleValue'),
+        multiAngleXInput: document.getElementById('multiAngleXInput'),
+        multiAngleXValue: document.getElementById('multiAngleXValue'),
+        multiAngleYInput: document.getElementById('multiAngleYInput'),
+        multiAngleYValue: document.getElementById('multiAngleYValue'),
+        multiAngleFitBtn: document.getElementById('multiAngleFitBtn'),
+        multiAngleCenterBtn: document.getElementById('multiAngleCenterBtn'),
+        multiAngleMatchSizeBtn: document.getElementById('multiAngleMatchSizeBtn'),
+        multiAngleGuidesToggle: document.getElementById('multiAngleGuidesToggle'),
+        multiAngleAnchorToggle: document.getElementById('multiAngleAnchorToggle'),
+        multiAngleSetAnchorBtn: document.getElementById('multiAngleSetAnchorBtn'),
+        multiAngleAnchorHelp: document.getElementById('multiAngleAnchorHelp'),
+        multiAngleEditAngleBtn: document.getElementById('multiAngleEditAngleBtn'),
+        multiAngleAddImagesBtn: document.getElementById('multiAngleAddImagesBtn'),
+        multiAngleToggleListBtn: document.getElementById('multiAngleToggleListBtn'),
+        multiAngleListDrawer: document.getElementById('multiAngleListDrawer'),
+        multiAngleList: document.getElementById('multiAngleList'),
+        multiAngleSaveSetBtn: document.getElementById('multiAngleSaveSetBtn'),
         diagramCreatorNewViewBtn: document.getElementById('diagramCreatorNewViewBtn'),
         diagramCreatorSavedViewBtn: document.getElementById('diagramCreatorSavedViewBtn'),
         diagramCreatorNewView: document.getElementById('diagramCreatorNewView'),
@@ -503,17 +553,25 @@ MODIFICATION RULES FOR THIS APP
         reviewModeOptionsPanel: document.getElementById('reviewModeOptionsPanel'),
         reviewModeActiveTitle: document.getElementById('reviewModeActiveTitle'),
         reviewModeImageViewport: document.getElementById('reviewModeImageViewport'),
+        reviewModeAngleNavigation: document.getElementById('reviewModeAngleNavigation'),
+        reviewModePrevAngleBtn: document.getElementById('reviewModePrevAngleBtn'),
+        reviewModeNextAngleBtn: document.getElementById('reviewModeNextAngleBtn'),
+        reviewModeAngleIndicator: document.getElementById('reviewModeAngleIndicator'),
         reviewModeImageStage: document.getElementById('reviewModeImageStage'),
         reviewModeImage: document.getElementById('reviewModeImage'),
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
         reviewModeConnectorLayer: document.getElementById('reviewModeConnectorLayer'),
         reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
+        reviewModeShowAngleControlsToggle: document.getElementById('reviewModeShowAngleControlsToggle'),
         reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
         reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
         reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
         reviewModeShowAllDrawingsToggle: document.getElementById('reviewModeShowAllDrawingsToggle'),
+        reviewModeMiniQuizScope: document.getElementById('reviewModeMiniQuizScope'),
+        reviewModeMiniScopeCurrent: document.getElementById('reviewModeMiniScopeCurrent'),
+        reviewModeMiniScopeAll: document.getElementById('reviewModeMiniScopeAll'),
         reviewModeMiniRandomizeToggle: document.getElementById('reviewModeMiniRandomizeToggle'),
         reviewModeMiniProgressToggle: document.getElementById('reviewModeMiniProgressToggle'),
         reviewModeMiniRetentionToggle: document.getElementById('reviewModeMiniRetentionToggle'),
@@ -2546,6 +2604,101 @@ MODIFICATION RULES FOR THIS APP
         return Object.values(normalizeDiagramMetadata(metadata)).some(Boolean);
     }
 
+
+    // ================= PHASE 22MT MULTI-ANGLE DIAGRAM MODEL =================
+    const MULTI_ANGLE_DEFAULT_CANVAS = Object.freeze({ width: 1100, height: 1500, background: '#000000' });
+
+    function createMultiAngleId(prefix = 'angle') {
+        return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    }
+
+    function normalizeMultiAngleCanvasConfig(value = {}) {
+        const source = value && typeof value === 'object' ? value : {};
+        return {
+            width: Math.min(3000, Math.max(300, Math.round(Number(source.width) || MULTI_ANGLE_DEFAULT_CANVAS.width))),
+            height: Math.min(3000, Math.max(300, Math.round(Number(source.height) || MULTI_ANGLE_DEFAULT_CANVAS.height))),
+            background: '#000000'
+        };
+    }
+
+    function normalizeMultiAngleFraming(value = {}) {
+        const source = value && typeof value === 'object' ? value : {};
+        return {
+            scale: Math.min(1.8, Math.max(0.35, Number(source.scale) || 1)),
+            offsetX: Math.min(0.45, Math.max(-0.45, Number(source.offsetX) || 0)),
+            offsetY: Math.min(0.45, Math.max(-0.45, Number(source.offsetY) || 0)),
+            useAnchor: source.useAnchor === true,
+            anchorX: Math.min(1, Math.max(0, Number.isFinite(Number(source.anchorX)) ? Number(source.anchorX) : 0.5)),
+            anchorY: Math.min(1, Math.max(0, Number.isFinite(Number(source.anchorY)) ? Number(source.anchorY) : 0.5))
+        };
+    }
+
+    function normalizeMultiAngleBounds(value = {}, naturalWidth = 1, naturalHeight = 1) {
+        const width = Math.max(1, Number(naturalWidth) || 1);
+        const height = Math.max(1, Number(naturalHeight) || 1);
+        const source = value && typeof value === 'object' ? value : {};
+        const x = Math.min(width - 1, Math.max(0, Number(source.x) || 0));
+        const y = Math.min(height - 1, Math.max(0, Number(source.y) || 0));
+        return {
+            x,
+            y,
+            width: Math.min(width - x, Math.max(1, Number(source.width) || width)),
+            height: Math.min(height - y, Math.max(1, Number(source.height) || height))
+        };
+    }
+
+    function normalizeStudioSavedImageAngle(angle = {}, index = 0, fallback = {}) {
+        const source = angle && typeof angle === 'object' ? angle : {};
+        const imageValue = normalizeSheetText(source.imageValue || source.value || source.normalizedValue || source.editedValue || source.mediaValue || fallback.imageValue || '');
+        if (!imageValue) return null;
+        const sourceValue = normalizeSheetText(source.sourceValue || source.imageOnlyValue || source.originalValue || source.sourceMediaValue || imageValue);
+        const fileName = normalizeSheetText(source.fileName || getSavedImageFileNameFromLabel(source.imageLabel || source.label || '', `angle-${index + 1}.png`)) || `angle-${index + 1}.png`;
+        return {
+            id: normalizeSheetText(source.id) || createMultiAngleId('angle'),
+            name: normalizeSheetText(source.name || source.angleName || `Angle ${index + 1}`).slice(0, 80) || `Angle ${index + 1}`,
+            fileName,
+            imageValue,
+            imageOnlyValue: sourceValue,
+            sourceValue,
+            mediaValue: normalizeSheetText(source.mediaValue || (isSupabaseMediaReference(imageValue) ? imageValue : '')),
+            imageOnlyMediaValue: normalizeSheetText(source.imageOnlyMediaValue || source.sourceMediaValue || (isSupabaseMediaReference(sourceValue) ? sourceValue : '')),
+            sourceMediaValue: normalizeSheetText(source.sourceMediaValue || source.imageOnlyMediaValue || (isSupabaseMediaReference(sourceValue) ? sourceValue : '')),
+            labels: normalizeDiagramLabels(source.labels || []),
+            drawStrokes: cloneImageEditorDrawStrokes(source.drawStrokes || source.strokes || []),
+            framing: normalizeMultiAngleFraming(source.framing || {}),
+            naturalWidth: Math.max(1, Number(source.naturalWidth) || 1),
+            naturalHeight: Math.max(1, Number(source.naturalHeight) || 1),
+            bounds: normalizeMultiAngleBounds(source.bounds || {}, Number(source.naturalWidth) || 1, Number(source.naturalHeight) || 1)
+        };
+    }
+
+    function getStudioSavedImageAngles(entry = {}) {
+        const normalized = entry && entry.__multiAngleNormalized ? entry : normalizeStudioSavedImageEntry(entry);
+        if (!normalized) return [];
+        if (Array.isArray(normalized.angles) && normalized.angles.length) return normalized.angles.map((angle, index) => normalizeStudioSavedImageAngle(angle, index, normalized)).filter(Boolean);
+        const fallback = normalizeStudioSavedImageAngle({
+            id: 'angle_1',
+            name: 'Angle 1',
+            fileName: normalized.fileName,
+            imageValue: normalized.imageValue,
+            sourceValue: normalized.imageOnlyValue,
+            mediaValue: normalized.mediaValue,
+            sourceMediaValue: normalized.imageOnlyMediaValue,
+            labels: normalized.labels,
+            drawStrokes: normalized.drawStrokes
+        }, 0, normalized);
+        return fallback ? [fallback] : [];
+    }
+
+    function isMultiAngleSavedImageEntry(entry = {}) {
+        const normalized = normalizeStudioSavedImageEntry(entry);
+        return !!(normalized && Array.isArray(normalized.angles) && normalized.angles.length > 1);
+    }
+
+    function getStudioSavedImageTotalLabelCount(entry = {}) {
+        return getStudioSavedImageAngles(entry).reduce((total, angle) => total + normalizeDiagramLabels(angle.labels || []).length, 0);
+    }
+
     const FLASHCARD_SIDE_META_COMMENT_PREFIX = 'STUDY_BUNNY_FLASHCARD_META:';
 
     function parseStoredFlashcardSideContent(rawHtml = '') {
@@ -3811,27 +3964,50 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function normalizeStudioSavedImageEntry(entry = {}) {
-        const imageValue = normalizeSheetText(entry.imageValue || entry.value || entry.dataUrl || entry.mediaValue || entry.savedMediaValue || '');
+        const rawAngles = Array.isArray(entry?.angles) ? entry.angles : [];
+        const firstRawAngle = rawAngles[0] && typeof rawAngles[0] === 'object' ? rawAngles[0] : {};
+        const imageValue = normalizeSheetText(entry.imageValue || entry.value || entry.dataUrl || entry.mediaValue || entry.savedMediaValue || firstRawAngle.imageValue || firstRawAngle.value || firstRawAngle.normalizedValue || firstRawAngle.mediaValue || '');
         if (!imageValue) return null;
-        const fileName = normalizeSheetText(entry.fileName || getSavedImageFileNameFromLabel(entry.imageLabel || entry.label || '', 'saved-image.png')) || 'saved-image.png';
-        const imageOnlyValue = normalizeSheetText(entry.imageOnlyValue || entry.sourceValue || entry.imageOnlyMediaValue || entry.sourceMediaValue || imageValue);
-        const mediaValue = normalizeSheetText(entry.mediaValue || entry.savedMediaValue || (isSupabaseMediaReference(imageValue) ? imageValue : ''));
-        const imageOnlyMediaValue = normalizeSheetText(entry.imageOnlyMediaValue || entry.sourceMediaValue || (isSupabaseMediaReference(imageOnlyValue) ? imageOnlyValue : mediaValue));
-        return {
-            id: normalizeSheetText(entry.id) || createSavedImageId(),
+        const fileName = normalizeSheetText(entry.fileName || firstRawAngle.fileName || getSavedImageFileNameFromLabel(entry.imageLabel || entry.label || '', 'saved-image.png')) || 'saved-image.png';
+        const imageOnlyValue = normalizeSheetText(entry.imageOnlyValue || entry.sourceValue || entry.imageOnlyMediaValue || entry.sourceMediaValue || firstRawAngle.sourceValue || firstRawAngle.imageOnlyValue || imageValue);
+        const mediaValue = normalizeSheetText(entry.mediaValue || entry.savedMediaValue || firstRawAngle.mediaValue || (isSupabaseMediaReference(imageValue) ? imageValue : ''));
+        const imageOnlyMediaValue = normalizeSheetText(entry.imageOnlyMediaValue || entry.sourceMediaValue || firstRawAngle.sourceMediaValue || firstRawAngle.imageOnlyMediaValue || (isSupabaseMediaReference(imageOnlyValue) ? imageOnlyValue : mediaValue));
+        const fallback = { imageValue, imageOnlyValue, mediaValue, imageOnlyMediaValue, fileName };
+        const normalizedAngles = rawAngles.map((angle, index) => normalizeStudioSavedImageAngle(angle, index, fallback)).filter(Boolean);
+        const firstAngle = normalizedAngles[0] || normalizeStudioSavedImageAngle({
+            id: 'angle_1',
+            name: 'Angle 1',
             fileName,
             imageValue,
-            imageOnlyValue,
+            sourceValue: imageOnlyValue,
             mediaValue,
-            imageOnlyMediaValue,
+            sourceMediaValue: imageOnlyMediaValue,
+            labels: entry.labels || [],
+            drawStrokes: entry.drawStrokes || entry.strokes || []
+        }, 0, fallback);
+        const isMultiAngle = normalizedAngles.length > 1 || entry.isMultiAngle === true;
+        const result = {
+            id: normalizeSheetText(entry.id) || createSavedImageId(),
+            fileName: firstAngle?.fileName || fileName,
+            imageValue: firstAngle?.imageValue || imageValue,
+            imageOnlyValue: firstAngle?.sourceValue || imageOnlyValue,
+            mediaValue: firstAngle?.mediaValue || mediaValue,
+            imageOnlyMediaValue: firstAngle?.sourceMediaValue || imageOnlyMediaValue,
             imageLabel: normalizeSheetText(entry.imageLabel || entry.label || `Saved: ${fileName}`) || `Saved: ${fileName}`,
             imageOnlyLabel: normalizeSheetText(entry.imageOnlyLabel || entry.sourceLabel || `Selected: ${fileName}`) || `Selected: ${fileName}`,
-            labels: normalizeDiagramLabels(entry.labels || []),
-            drawStrokes: cloneImageEditorDrawStrokes(entry.drawStrokes || entry.strokes || []),
+            labels: normalizeDiagramLabels(firstAngle?.labels || entry.labels || []),
+            drawStrokes: cloneImageEditorDrawStrokes(firstAngle?.drawStrokes || entry.drawStrokes || entry.strokes || []),
             metadata: normalizeDiagramMetadata(entry.metadata || entry.diagramMetadata || {}),
             createdAt: normalizeSheetText(entry.createdAt) || new Date().toISOString(),
             updatedAt: normalizeSheetText(entry.updatedAt) || new Date().toISOString()
         };
+        Object.defineProperty(result, '__multiAngleNormalized', { value: true, enumerable: false, configurable: true });
+        if (isMultiAngle) {
+            result.isMultiAngle = true;
+            result.canvas = normalizeMultiAngleCanvasConfig(entry.canvas || entry.canvasConfig || {});
+            result.angles = (normalizedAngles.length ? normalizedAngles : [firstAngle]).filter(Boolean);
+        }
+        return result;
     }
 
     function getStudioSavedImageSyncUserId() {
@@ -4050,6 +4226,18 @@ MODIFICATION RULES FOR THIS APP
     function getStudioSavedImageSignature(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return '';
+        if (isMultiAngleSavedImageEntry(normalized)) {
+            const angleSignature = getStudioSavedImageAngles(normalized).map(angle => ({
+                id: angle.id,
+                name: angle.name,
+                media: normalizeSheetText(angle.mediaValue || angle.imageValue),
+                source: normalizeSheetText(angle.sourceMediaValue || angle.sourceValue),
+                labels: normalizeDiagramLabels(angle.labels || []),
+                drawStrokes: cloneImageEditorDrawStrokes(angle.drawStrokes || []),
+                framing: normalizeMultiAngleFraming(angle.framing || {})
+            }));
+            return `multi-angle::${JSON.stringify(normalizeMultiAngleCanvasConfig(normalized.canvas || {}))}::${JSON.stringify(angleSignature)}::${JSON.stringify(normalizeDiagramMetadata(normalized.metadata || {}))}`;
+        }
         const mediaKey = normalizeSheetText(normalized.mediaValue || normalized.imageValue);
         return `${mediaKey}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}::${JSON.stringify(cloneImageEditorDrawStrokes(normalized.drawStrokes || []))}::${JSON.stringify(normalizeDiagramMetadata(normalized.metadata || {}))}`;
     }
@@ -4057,6 +4245,13 @@ MODIFICATION RULES FOR THIS APP
     function getStudioSavedImagePreMetadataSignature(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return '';
+        if (isMultiAngleSavedImageEntry(normalized)) {
+            return `multi-angle-pre::${JSON.stringify(getStudioSavedImageAngles(normalized).map(angle => ({
+                media: normalizeSheetText(angle.mediaValue || angle.imageValue),
+                labels: normalizeDiagramLabels(angle.labels || []),
+                drawStrokes: cloneImageEditorDrawStrokes(angle.drawStrokes || [])
+            })))}`;
+        }
         const mediaKey = normalizeSheetText(normalized.mediaValue || normalized.imageValue);
         return `${mediaKey}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}::${JSON.stringify(cloneImageEditorDrawStrokes(normalized.drawStrokes || []))}`;
     }
@@ -4064,6 +4259,9 @@ MODIFICATION RULES FOR THIS APP
     function getStudioSavedImageLegacySignature(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return '';
+        if (isMultiAngleSavedImageEntry(normalized)) {
+            return `multi-angle-legacy::${JSON.stringify(getStudioSavedImageAngles(normalized).map(angle => normalizeSheetText(angle.mediaValue || angle.imageValue)))}`;
+        }
         const mediaKey = normalizeSheetText(normalized.mediaValue || normalized.imageValue);
         return `${mediaKey}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}`;
     }
@@ -4172,6 +4370,40 @@ MODIFICATION RULES FOR THIS APP
             }
             return result;
         };
+        if (isMultiAngleSavedImageEntry(normalized)) {
+            const preparedAngles = [];
+            for (const [index, angle] of getStudioSavedImageAngles(normalized).entries()) {
+                const imageValue = await saveValue(angle.imageValue || angle.mediaValue, `angle_${index + 1}_normalized`);
+                const sourceInput = normalizeSheetText(angle.sourceValue || angle.imageOnlyValue || angle.sourceMediaValue || angle.imageValue);
+                const sourceValue = sourceInput === normalizeSheetText(angle.imageValue)
+                    ? imageValue
+                    : await saveValue(sourceInput, `angle_${index + 1}_source`);
+                preparedAngles.push(normalizeStudioSavedImageAngle({
+                    ...angle,
+                    imageValue,
+                    imageOnlyValue: sourceValue || imageValue,
+                    sourceValue: sourceValue || imageValue,
+                    mediaValue: isSupabaseMediaReference(imageValue) ? imageValue : angle.mediaValue,
+                    imageOnlyMediaValue: isSupabaseMediaReference(sourceValue || imageValue) ? (sourceValue || imageValue) : angle.imageOnlyMediaValue,
+                    sourceMediaValue: isSupabaseMediaReference(sourceValue || imageValue) ? (sourceValue || imageValue) : angle.sourceMediaValue
+                }, index, normalized));
+            }
+            const first = preparedAngles[0];
+            return normalizeStudioSavedImageEntry({
+                ...normalized,
+                id: syncKey,
+                imageValue: first.imageValue,
+                imageOnlyValue: first.sourceValue,
+                mediaValue: first.mediaValue,
+                imageOnlyMediaValue: first.sourceMediaValue,
+                labels: first.labels,
+                drawStrokes: first.drawStrokes,
+                angles: preparedAngles,
+                isMultiAngle: true,
+                canvas: normalizeMultiAngleCanvasConfig(normalized.canvas || {}),
+                updatedAt: new Date().toISOString()
+            });
+        }
         const imageValue = await saveValue(normalized.imageValue || normalized.mediaValue, 'edited');
         const originalSource = normalizeSheetText(normalized.imageOnlyValue || normalized.imageOnlyMediaValue || normalized.imageValue);
         const imageOnlyValue = originalSource === normalizeSheetText(normalized.imageValue)
@@ -4963,10 +5195,9 @@ MODIFICATION RULES FOR THIS APP
     function getStudioSavedImageSearchText(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return '';
-        const labelText = normalizeDiagramLabels(normalized.labels || [])
-            .map(item => normalizeSheetText(item.label))
-            .filter(Boolean)
-            .join(' ');
+        const angles = getStudioSavedImageAngles(normalized);
+        const labelText = angles.flatMap(angle => normalizeDiagramLabels(angle.labels || []).flatMap(item => [normalizeSheetText(item.label), normalizeSheetText(item.description)])).filter(Boolean).join(' ');
+        const angleNames = angles.map(angle => angle.name).filter(Boolean).join(' ');
         return [
             normalized.fileName,
             normalized.imageLabel,
@@ -4979,6 +5210,7 @@ MODIFICATION RULES FOR THIS APP
             normalized.metadata?.organ,
             normalized.metadata?.muscle,
             normalized.metadata?.tags,
+            angleNames,
             labelText
         ].map(value => normalizeSheetText(value).toLowerCase()).filter(Boolean).join(' ');
     }
@@ -5100,7 +5332,9 @@ MODIFICATION RULES FOR THIS APP
             const metadata = normalizeDiagramMetadata(entry.metadata || {});
             const title = metadata.diagramName || metadata.subjectName || entry.fileName;
             const summary = [metadata.subjectName, metadata.anatomyType, metadata.organSystem, metadata.location].filter(Boolean).join(' · ');
-            const labelCount = normalizeDiagramLabels(entry.labels || []).length;
+            const angles = getStudioSavedImageAngles(entry);
+            const labelCount = getStudioSavedImageTotalLabelCount(entry);
+            const countText = `${angles.length > 1 ? `${angles.length} angles · ` : ''}${labelCount} label${labelCount === 1 ? '' : 's'}`;
             return `
                 <article class="studio-diagram-library-card">
                   <button type="button" class="studio-diagram-library-preview" data-diagram-creator-edit="${escapeHtml(entry.id)}" aria-label="Edit ${escapeHtml(title)}">
@@ -5108,7 +5342,7 @@ MODIFICATION RULES FOR THIS APP
                     <span class="studio-diagram-library-card-body">
                       <span class="studio-diagram-library-name">${escapeHtml(title)}</span>
                       ${summary ? `<span class="studio-diagram-library-meta">${escapeHtml(summary)}</span>` : ''}
-                      <span class="studio-diagram-library-label-count">${labelCount} label${labelCount === 1 ? '' : 's'}</span>
+                      <span class="studio-diagram-library-label-count">${escapeHtml(countText)}</span>
                     </span>
                   </button>
                   <div class="studio-diagram-library-card-actions">
@@ -5143,12 +5377,477 @@ MODIFICATION RULES FOR THIS APP
         renderDiagramCreatorSavedImages();
     }
 
+
+    // ================= PHASE 22MT MULTI-ANGLE CREATOR =================
+    function getMultiAngleCreatorState() {
+        if (!state.auth.multiAngleCreator || typeof state.auth.multiAngleCreator !== 'object') state.auth.multiAngleCreator = {};
+        const draft = state.auth.multiAngleCreator;
+        draft.angles = Array.isArray(draft.angles) ? draft.angles : [];
+        draft.activeIndex = Math.max(0, Math.min(draft.angles.length - 1, Math.floor(Number(draft.activeIndex) || 0)));
+        draft.canvas = normalizeMultiAngleCanvasConfig(draft.canvas || {});
+        draft.metadata = normalizeDiagramMetadata(draft.metadata || {});
+        draft.open = draft.open === true;
+        draft.listOpen = draft.listOpen === true;
+        draft.guidesVisible = draft.guidesVisible !== false;
+        draft.settingAnchor = draft.settingAnchor === true;
+        draft.saving = draft.saving === true;
+        return draft;
+    }
+
+    function cleanupMultiAngleCreatorRuntime() {
+        const draft = getMultiAngleCreatorState();
+        draft.angles.forEach(angle => {
+            if (angle.runtimeObjectUrl && /^blob:/i.test(angle.runtimeObjectUrl)) URL.revokeObjectURL(angle.runtimeObjectUrl);
+            if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
+        });
+    }
+
+    function resetMultiAngleCreatorState(options = {}) {
+        cleanupMultiAngleCreatorRuntime();
+        state.auth.multiAngleCreator = {
+            open: false,
+            angles: [],
+            activeIndex: 0,
+            canvas: { ...MULTI_ANGLE_DEFAULT_CANVAS },
+            metadata: {},
+            editingEntryId: '',
+            originalEntry: null,
+            listOpen: false,
+            guidesVisible: true,
+            settingAnchor: false,
+            pointerDrag: null,
+            saving: false
+        };
+        elements.multiAngleCreatorPanel?.classList.add('hidden');
+        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'true');
+        if (!options.keepFileInput && elements.diagramCreatorFileInput) elements.diagramCreatorFileInput.value = '';
+    }
+
+    async function loadMultiAngleRuntimeImage(angle, useEdited = false) {
+        if (!angle) return null;
+        const imageKey = useEdited ? 'runtimeEditedImage' : 'runtimeImage';
+        if (angle[imageKey]) return angle[imageKey];
+        const source = normalizeSheetText(useEdited ? angle.editedValue : angle.sourceValue);
+        if (!source) return null;
+        const objectUrl = await getCanvasBlobUrlFromSource(source);
+        const objectKey = useEdited ? 'runtimeEditedObjectUrl' : 'runtimeObjectUrl';
+        angle[objectKey] = objectUrl;
+        angle[imageKey] = await loadImageElement(objectUrl);
+        return angle[imageKey];
+    }
+
+    function detectMultiAngleVisibleBounds(image) {
+        const naturalWidth = Math.max(1, image?.naturalWidth || image?.width || 1);
+        const naturalHeight = Math.max(1, image?.naturalHeight || image?.height || 1);
+        const maxDetectionSide = 1500;
+        const ratio = Math.min(1, maxDetectionSide / Math.max(naturalWidth, naturalHeight));
+        const width = Math.max(1, Math.round(naturalWidth * ratio));
+        const height = Math.max(1, Math.round(naturalHeight * ratio));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(image, 0, 0, width, height);
+        let pixels;
+        try {
+            pixels = ctx.getImageData(0, 0, width, height).data;
+        } catch (error) {
+            return { x: 0, y: 0, width: naturalWidth, height: naturalHeight };
+        }
+        let minX = width;
+        let minY = height;
+        let maxX = -1;
+        let maxY = -1;
+        for (let y = 0; y < height; y += 1) {
+            for (let x = 0; x < width; x += 1) {
+                if (pixels[((y * width + x) * 4) + 3] <= 8) continue;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (maxX < minX || maxY < minY) return { x: 0, y: 0, width: naturalWidth, height: naturalHeight };
+        return normalizeMultiAngleBounds({
+            x: minX / ratio,
+            y: minY / ratio,
+            width: (maxX - minX + 1) / ratio,
+            height: (maxY - minY + 1) / ratio
+        }, naturalWidth, naturalHeight);
+    }
+
+    async function createMultiAngleDraftAngle(sourceValue, fileName = '', index = 0, existing = {}) {
+        const angle = {
+            id: normalizeSheetText(existing.id) || createMultiAngleId('angle'),
+            name: normalizeSheetText(existing.name || `Angle ${index + 1}`) || `Angle ${index + 1}`,
+            fileName: normalizeSheetText(fileName || existing.fileName || `angle-${index + 1}.png`) || `angle-${index + 1}.png`,
+            sourceValue: normalizeSheetText(sourceValue || existing.sourceValue || existing.imageOnlyValue || existing.imageValue),
+            editedValue: normalizeSheetText(existing.editedValue || existing.imageValue || ''),
+            labels: normalizeDiagramLabels(existing.labels || []),
+            drawStrokes: cloneImageEditorDrawStrokes(existing.drawStrokes || []),
+            framing: normalizeMultiAngleFraming(existing.framing || {})
+        };
+        angle.runtimeImage = await loadMultiAngleRuntimeImage(angle, false);
+        angle.naturalWidth = Math.max(1, angle.runtimeImage?.naturalWidth || Number(existing.naturalWidth) || 1);
+        angle.naturalHeight = Math.max(1, angle.runtimeImage?.naturalHeight || Number(existing.naturalHeight) || 1);
+        angle.bounds = existing.bounds
+            ? normalizeMultiAngleBounds(existing.bounds, angle.naturalWidth, angle.naturalHeight)
+            : detectMultiAngleVisibleBounds(angle.runtimeImage);
+        if (!Number.isFinite(Number(existing.framing?.anchorX))) angle.framing.anchorX = (angle.bounds.x + (angle.bounds.width / 2)) / angle.naturalWidth;
+        if (!Number.isFinite(Number(existing.framing?.anchorY))) angle.framing.anchorY = (angle.bounds.y + (angle.bounds.height / 2)) / angle.naturalHeight;
+        if (angle.editedValue && angle.editedValue !== angle.sourceValue) {
+            try { await loadMultiAngleRuntimeImage(angle, true); } catch (error) { angle.editedValue = ''; }
+        }
+        return angle;
+    }
+
+    function clearMultiAngleFlattenedEdit(angle, reason = '') {
+        if (!angle?.editedValue) return;
+        angle.editedValue = '';
+        angle.runtimeEditedImage = null;
+        if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
+        angle.runtimeEditedObjectUrl = '';
+        if (reason) setCreatorStatus(reason, 'success');
+    }
+
+    function getActiveMultiAngleDraftAngle() {
+        const draft = getMultiAngleCreatorState();
+        return draft.angles[draft.activeIndex] || null;
+    }
+
+    function drawMultiAngleGuides(ctx, canvas, angle) {
+        const draft = getMultiAngleCreatorState();
+        if (!draft.guidesVisible) return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.58)';
+        ctx.lineWidth = Math.max(1, canvas.width / 700);
+        ctx.setLineDash([12, 10]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.moveTo(0, canvas.height / 2);
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const safeX = canvas.width * 0.06;
+        const safeY = canvas.height * 0.06;
+        ctx.strokeRect(safeX, safeY, canvas.width - (safeX * 2), canvas.height - (safeY * 2));
+        if (angle?.framing?.useAnchor) {
+            ctx.strokeStyle = 'rgba(250,204,21,0.95)';
+            ctx.lineWidth = Math.max(2, canvas.width / 500);
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, Math.max(10, canvas.width / 60), 0, Math.PI * 2);
+            ctx.moveTo((canvas.width / 2) - 28, canvas.height / 2);
+            ctx.lineTo((canvas.width / 2) + 28, canvas.height / 2);
+            ctx.moveTo(canvas.width / 2, (canvas.height / 2) - 28);
+            ctx.lineTo(canvas.width / 2, (canvas.height / 2) + 28);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    function paintMultiAngleAngleToCanvas(angle, canvas, options = {}) {
+        if (!angle || !canvas) return false;
+        const draft = getMultiAngleCreatorState();
+        const config = normalizeMultiAngleCanvasConfig(options.canvas || draft.canvas || {});
+        if (canvas.width !== config.width) canvas.width = config.width;
+        if (canvas.height !== config.height) canvas.height = config.height;
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const editedImage = angle.editedValue ? angle.runtimeEditedImage : null;
+        if (editedImage) {
+            ctx.drawImage(editedImage, 0, 0, canvas.width, canvas.height);
+        } else if (angle.runtimeImage) {
+            const bounds = normalizeMultiAngleBounds(angle.bounds || {}, angle.naturalWidth, angle.naturalHeight);
+            const framing = normalizeMultiAngleFraming(angle.framing || {});
+            const baseScale = Math.min((canvas.width * 0.85) / bounds.width, (canvas.height * 0.85) / bounds.height);
+            const scale = baseScale * framing.scale;
+            const pivotX = framing.useAnchor ? framing.anchorX * angle.naturalWidth : bounds.x + (bounds.width / 2);
+            const pivotY = framing.useAnchor ? framing.anchorY * angle.naturalHeight : bounds.y + (bounds.height / 2);
+            const destinationX = (canvas.width / 2) + (framing.offsetX * canvas.width);
+            const destinationY = (canvas.height / 2) + (framing.offsetY * canvas.height);
+            ctx.drawImage(angle.runtimeImage, destinationX - (pivotX * scale), destinationY - (pivotY * scale), angle.naturalWidth * scale, angle.naturalHeight * scale);
+        }
+        ctx.restore();
+        if (options.guides !== false) drawMultiAngleGuides(ctx, canvas, angle);
+        return true;
+    }
+
+    function getMultiAngleRenderedDataUrl(angle) {
+        const draft = getMultiAngleCreatorState();
+        const canvas = document.createElement('canvas');
+        paintMultiAngleAngleToCanvas(angle, canvas, { canvas: draft.canvas, guides: false });
+        return canvas.toDataURL('image/png');
+    }
+
+    function syncMultiAngleCreatorControls() {
+        const draft = getMultiAngleCreatorState();
+        const angle = getActiveMultiAngleDraftAngle();
+        elements.multiAngleCreatorPanel?.classList.toggle('hidden', !draft.open);
+        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', draft.open ? 'false' : 'true');
+        if (!draft.open || !angle) return;
+        const framing = normalizeMultiAngleFraming(angle.framing || {});
+        if (elements.multiAngleIndicator) elements.multiAngleIndicator.textContent = `${angle.name || `Angle ${draft.activeIndex + 1}`} · ${draft.activeIndex + 1} of ${draft.angles.length}`;
+        if (elements.multiAngleCanvasWidth) elements.multiAngleCanvasWidth.value = String(draft.canvas.width);
+        if (elements.multiAngleCanvasHeight) elements.multiAngleCanvasHeight.value = String(draft.canvas.height);
+        if (elements.multiAngleNameInput) elements.multiAngleNameInput.value = angle.name || `Angle ${draft.activeIndex + 1}`;
+        if (elements.multiAngleScaleInput) elements.multiAngleScaleInput.value = String(Math.round(framing.scale * 100));
+        if (elements.multiAngleScaleValue) elements.multiAngleScaleValue.textContent = `${Math.round(framing.scale * 100)}%`;
+        if (elements.multiAngleXInput) elements.multiAngleXInput.value = String(Math.round(framing.offsetX * 100));
+        if (elements.multiAngleXValue) elements.multiAngleXValue.textContent = `${Math.round(framing.offsetX * 100)}%`;
+        if (elements.multiAngleYInput) elements.multiAngleYInput.value = String(Math.round(framing.offsetY * 100));
+        if (elements.multiAngleYValue) elements.multiAngleYValue.textContent = `${Math.round(framing.offsetY * 100)}%`;
+        if (elements.multiAngleGuidesToggle) elements.multiAngleGuidesToggle.checked = draft.guidesVisible;
+        if (elements.multiAngleAnchorToggle) elements.multiAngleAnchorToggle.checked = framing.useAnchor;
+        if (elements.multiAngleSetAnchorBtn) {
+            elements.multiAngleSetAnchorBtn.disabled = !framing.useAnchor;
+            elements.multiAngleSetAnchorBtn.textContent = draft.settingAnchor ? 'Click Image to Place Anchor' : 'Set Anchor on Image';
+        }
+        if (elements.multiAngleCanvas) {
+            elements.multiAngleCanvas.classList.toggle('is-setting-anchor', draft.settingAnchor);
+            paintMultiAngleAngleToCanvas(angle, elements.multiAngleCanvas);
+        }
+        if (elements.multiAnglePrevBtn) elements.multiAnglePrevBtn.disabled = draft.angles.length < 2;
+        if (elements.multiAngleNextBtn) elements.multiAngleNextBtn.disabled = draft.angles.length < 2;
+        if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.disabled = draft.saving || !draft.angles.length;
+        if (elements.multiAngleToggleListBtn) {
+            elements.multiAngleToggleListBtn.textContent = draft.listOpen ? 'Hide Angles' : 'Show Angles';
+            elements.multiAngleToggleListBtn.setAttribute('aria-expanded', draft.listOpen ? 'true' : 'false');
+        }
+        elements.multiAngleListDrawer?.classList.toggle('hidden', !draft.listOpen);
+        elements.multiAngleListDrawer?.setAttribute('aria-hidden', draft.listOpen ? 'false' : 'true');
+        if (draft.listOpen) renderMultiAngleCreatorList();
+    }
+
+    function renderMultiAngleCreatorList() {
+        const draft = getMultiAngleCreatorState();
+        if (!elements.multiAngleList) return;
+        elements.multiAngleList.innerHTML = draft.angles.map((angle, index) => `
+            <div class="multi-angle-list-row${index === draft.activeIndex ? ' is-active' : ''}" data-multi-angle-row="${escapeHtml(angle.id)}">
+              <img class="multi-angle-list-thumb" data-multi-angle-thumb="${escapeHtml(angle.sourceValue)}" alt="${escapeHtml(angle.name || `Angle ${index + 1}`)}">
+              <div class="multi-angle-list-name">${escapeHtml(angle.name || `Angle ${index + 1}`)}</div>
+              <div class="multi-angle-list-actions">
+                <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="open" data-angle-index="${index}">Open</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="up" data-angle-index="${index}" aria-label="Move angle up">↑</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="down" data-angle-index="${index}" aria-label="Move angle down">↓</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="delete" data-angle-index="${index}" aria-label="Delete angle">🗑</button>
+              </div>
+            </div>
+        `).join('');
+        elements.multiAngleList.querySelectorAll('[data-multi-angle-thumb]').forEach(img => setImageElementSourceWithMediaResolution(img, img.dataset.multiAngleThumb || ''));
+    }
+
+    function setActiveMultiAngleIndex(nextIndex) {
+        const draft = getMultiAngleCreatorState();
+        if (!draft.angles.length) return;
+        draft.activeIndex = (Math.floor(Number(nextIndex) || 0) + draft.angles.length) % draft.angles.length;
+        draft.settingAnchor = false;
+        syncMultiAngleCreatorControls();
+    }
+
+    async function openMultiAngleCreatorFromFiles(files = [], options = {}) {
+        const list = Array.from(files || []).filter(file => file && /^image\//i.test(file.type || 'image/'));
+        if (!list.length) return;
+        const append = options.append === true && getMultiAngleCreatorState().open;
+        if (!append) resetMultiAngleCreatorState({ keepFileInput: true });
+        const draft = getMultiAngleCreatorState();
+        draft.open = true;
+        elements.multiAngleCreatorPanel?.classList.remove('hidden');
+        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'false');
+        setCreatorStatus(`Preparing ${list.length} angle image${list.length === 1 ? '' : 's'}...`, 'success');
+        for (const file of list) {
+            const dataUrl = await readFileAsDataUrl(file);
+            const angle = await createMultiAngleDraftAngle(dataUrl, file.name || `angle-${draft.angles.length + 1}.png`, draft.angles.length);
+            draft.angles.push(angle);
+        }
+        if (!append) draft.activeIndex = 0;
+        if (!draft.metadata.diagramName && draft.angles[0]) {
+            draft.metadata.diagramName = getSavedImageFileNameFromLabel(draft.angles[0].fileName, 'Multi-Angle Diagram').replace(/\.[^.]+$/, '').slice(0, 120);
+        }
+        syncMultiAngleCreatorControls();
+        elements.multiAngleCreatorPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setCreatorStatus(`${draft.angles.length} angles prepared on a ${draft.canvas.width} × ${draft.canvas.height} black canvas.`, 'success');
+    }
+
+    async function openMultiAngleSavedDiagram(entry = {}) {
+        const normalized = normalizeStudioSavedImageEntry(entry);
+        if (!normalized || !isMultiAngleSavedImageEntry(normalized)) return false;
+        resetMultiAngleCreatorState({ keepFileInput: true });
+        const draft = getMultiAngleCreatorState();
+        draft.open = true;
+        draft.canvas = normalizeMultiAngleCanvasConfig(normalized.canvas || {});
+        draft.metadata = normalizeDiagramMetadata(normalized.metadata || {});
+        draft.editingEntryId = normalized.id;
+        draft.originalEntry = normalized;
+        elements.multiAngleCreatorPanel?.classList.remove('hidden');
+        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'false');
+        setDiagramCreatorLibraryView('new');
+        setCreatorStatus('Loading multi-angle diagram...', 'success');
+        for (const [index, savedAngle] of getStudioSavedImageAngles(normalized).entries()) {
+            const sourceValue = normalizeSheetText(savedAngle.sourceValue || savedAngle.imageOnlyValue || savedAngle.imageValue);
+            const angle = await createMultiAngleDraftAngle(sourceValue, savedAngle.fileName, index, {
+                ...savedAngle,
+                editedValue: savedAngle.imageValue
+            });
+            draft.angles.push(angle);
+        }
+        draft.activeIndex = 0;
+        syncMultiAngleCreatorControls();
+        elements.multiAngleCreatorPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setCreatorStatus(`Opened ${draft.angles.length}-angle diagram for editing.`, 'success');
+        return true;
+    }
+
+    async function editActiveMultiAngleAngle() {
+        const draft = getMultiAngleCreatorState();
+        const angle = getActiveMultiAngleDraftAngle();
+        if (!angle) return;
+        const sourceValue = getMultiAngleRenderedDataUrl(angle);
+        await openStudioImageEditor({
+            kind: 'standalone-diagram',
+            multiAngleDraft: true,
+            multiAngleAngleId: angle.id,
+            sourceValue,
+            sourceLabel: `Angle ${draft.activeIndex + 1}: ${angle.name || angle.fileName}`,
+            labels: angle.labels,
+            drawStrokes: angle.drawStrokes,
+            metadata: draft.metadata
+        });
+    }
+
+    async function updateMultiAngleDraftFromImageEditor(imageValue = '', labels = [], drawStrokes = [], metadata = {}) {
+        const draft = getMultiAngleCreatorState();
+        const editor = state.auth.imageEditor;
+        const angleId = normalizeSheetText(editor?.target?.multiAngleAngleId || '');
+        const angle = draft.angles.find(item => item.id === angleId);
+        if (!angle) return false;
+        angle.editedValue = normalizeSheetText(imageValue);
+        angle.labels = normalizeDiagramLabels(labels || []);
+        angle.drawStrokes = cloneImageEditorDrawStrokes(drawStrokes || []);
+        draft.metadata = normalizeDiagramMetadata(metadata || {});
+        angle.runtimeEditedImage = null;
+        if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
+        angle.runtimeEditedObjectUrl = '';
+        await loadMultiAngleRuntimeImage(angle, true);
+        return true;
+    }
+
+    function getMultiAngleSaveFileName(draft = getMultiAngleCreatorState()) {
+        const name = normalizeSheetText(draft.metadata?.diagramName || draft.angles[0]?.fileName || 'multi-angle-diagram');
+        const safe = name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 90) || 'multi-angle-diagram';
+        return `${safe}.png`;
+    }
+
+    async function saveMultiAngleDraftToSavedImages() {
+        const draft = getMultiAngleCreatorState();
+        if (draft.saving || !draft.angles.length) return;
+        draft.saving = true;
+        syncMultiAngleCreatorControls();
+        setCreatorStatus(`Saving ${draft.angles.length} angles...`, 'success');
+        try {
+            const cache = state.auth.studioSavedImageMediaSaveCache instanceof Map
+                ? state.auth.studioSavedImageMediaSaveCache
+                : (state.auth.studioSavedImageMediaSaveCache = new Map());
+            const savedAngles = [];
+            for (const [index, angle] of draft.angles.entries()) {
+                setCreatorStatus(`Saving angle ${index + 1} of ${draft.angles.length}...`, 'success');
+                const normalizedDataUrl = getMultiAngleRenderedDataUrl(angle);
+                let savedImage = normalizedDataUrl;
+                let savedSource = angle.sourceValue;
+                try {
+                    savedImage = await savePrivateMediaValueWithDedupCache(normalizedDataUrl, {
+                        quizId: null,
+                        questionId: null,
+                        usageContext: `saved_image_multi_angle_${index + 1}_normalized`,
+                        label: `Saved ${angle.name || `Angle ${index + 1}`}`,
+                        mediaSaveCache: cache
+                    }) || normalizedDataUrl;
+                    savedSource = await savePrivateMediaValueWithDedupCache(angle.sourceValue, {
+                        quizId: null,
+                        questionId: null,
+                        usageContext: `saved_image_multi_angle_${index + 1}_source`,
+                        label: `Source ${angle.name || `Angle ${index + 1}`}`,
+                        mediaSaveCache: cache
+                    }) || angle.sourceValue;
+                } catch (error) {
+                    console.warn('Could not upload one multi-angle image; retaining local image data:', error);
+                }
+                savedAngles.push(normalizeStudioSavedImageAngle({
+                    id: angle.id,
+                    name: angle.name,
+                    fileName: angle.fileName,
+                    imageValue: savedImage,
+                    sourceValue: savedSource,
+                    imageOnlyValue: savedSource,
+                    mediaValue: isSupabaseMediaReference(savedImage) ? savedImage : '',
+                    sourceMediaValue: isSupabaseMediaReference(savedSource) ? savedSource : '',
+                    imageOnlyMediaValue: isSupabaseMediaReference(savedSource) ? savedSource : '',
+                    labels: angle.labels,
+                    drawStrokes: angle.drawStrokes,
+                    framing: angle.framing,
+                    naturalWidth: angle.naturalWidth,
+                    naturalHeight: angle.naturalHeight,
+                    bounds: angle.bounds
+                }, index));
+            }
+            const first = savedAngles[0];
+            const originalEntry = normalizeStudioSavedImageEntry(draft.originalEntry || {});
+            const fileName = getMultiAngleSaveFileName(draft);
+            const nextEntry = {
+                id: originalEntry ? getStudioSavedImageSyncKey(originalEntry) : createStableSavedImageId(`multi-angle::${Date.now()}::${first.imageValue}::${savedAngles.length}`),
+                fileName,
+                imageValue: first.imageValue,
+                imageOnlyValue: first.sourceValue,
+                mediaValue: first.mediaValue,
+                imageOnlyMediaValue: first.sourceMediaValue,
+                imageLabel: `Saved: ${fileName}`,
+                imageOnlyLabel: `Saved source: ${fileName}`,
+                labels: first.labels,
+                drawStrokes: first.drawStrokes,
+                metadata: normalizeDiagramMetadata(draft.metadata || {}),
+                isMultiAngle: true,
+                canvas: normalizeMultiAngleCanvasConfig(draft.canvas || {}),
+                angles: savedAngles,
+                createdAt: originalEntry?.createdAt
+            };
+            const savedEntry = originalEntry
+                ? replaceStudioSavedImageLibraryEntry(originalEntry, nextEntry)
+                : upsertStudioSavedImageLibraryEntry(nextEntry);
+            if (savedEntry && state.auth.client && state.auth.user?.id) {
+                const syncKey = getStudioSavedImageSyncKey(savedEntry);
+                const remoteResult = await upsertStudioSavedImageRemoteEntry(savedEntry, { syncKey });
+                if (remoteResult.ok) {
+                    const pendingKeys = getStudioSavedImagePendingUpsertKeys();
+                    pendingKeys.delete(syncKey);
+                    saveStudioSavedImagePendingUpsertKeys(pendingKeys);
+                }
+            }
+            resetMultiAngleCreatorState();
+            renderDiagramCreatorSavedImages();
+            if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
+            setDiagramCreatorLibraryView('saved');
+            setCreatorStatus(`${savedAngles.length}-angle diagram saved as one Saved Image.`, 'success');
+        } catch (error) {
+            console.error(error);
+            draft.saving = false;
+            syncMultiAngleCreatorControls();
+            setCreatorStatus('Could not save the multi-angle diagram. Review the images and try again.', 'error');
+        }
+    }
+
     async function openSavedImageInDiagramCreator(entryId = '') {
         const safeId = normalizeSheetText(entryId);
         const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === safeId);
         if (!entry) {
             setCreatorStatus('That saved image could not be found.', 'error');
             renderDiagramCreatorSavedImages();
+            return;
+        }
+        if (isMultiAngleSavedImageEntry(entry)) {
+            await openMultiAngleSavedDiagram(entry);
             return;
         }
         setDiagramCreatorLibraryView('saved');
@@ -5182,7 +5881,17 @@ MODIFICATION RULES FOR THIS APP
         mini.active = mini.active === true;
         mini.complete = mini.complete === true;
         mini.mode = normalizeReviewModeMiniQuizMode(mini.mode || fallbackMode);
-        mini.queue = normalizeIndexArray(mini.queue);
+        mini.scope = mini.scope === 'all' ? 'all' : 'current';
+        mini.targets = (Array.isArray(mini.targets) ? mini.targets : []).map((target, targetIndex) => {
+            const source = target && typeof target === 'object' && !Array.isArray(target) ? target : {};
+            return {
+                id: normalizeSheetText(source.id) || `target_${targetIndex}`,
+                angleId: normalizeSheetText(source.angleId),
+                angleIndex: Math.max(0, Math.floor(Number(source.angleIndex) || 0)),
+                labelIndex: Math.max(0, Math.floor(Number(source.labelIndex) || 0))
+            };
+        });
+        mini.queue = normalizeIndexArray(mini.queue).filter(index => index < mini.targets.length);
         mini.position = Math.max(0, Math.floor(Number(mini.position) || 0));
         mini.roundMissed = normalizeIndexArray(mini.roundMissed);
         mini.knownLabels = normalizeIndexArray(mini.knownLabels);
@@ -5203,9 +5912,12 @@ MODIFICATION RULES FOR THIS APP
         }
         const review = state.auth.reviewMode;
         if (!(review.revealedLabels instanceof Set)) review.revealedLabels = new Set();
+        if (!review.revealedLabelsByAngle || typeof review.revealedLabelsByAngle !== 'object' || Array.isArray(review.revealedLabelsByAngle)) review.revealedLabelsByAngle = {};
         review.activeEntryId = normalizeSheetText(review.activeEntryId || '');
+        review.activeAngleIndex = Math.max(0, Math.floor(Number(review.activeAngleIndex) || 0));
         review.overlayOpen = review.overlayOpen === true;
         review.optionsOpen = review.optionsOpen === true;
+        review.showAngleControls = review.showAngleControls !== false;
         review.showAllNames = review.showAllNames === true;
         review.showDrawData = review.showDrawData !== false;
         review.showAllDrawings = review.showAllDrawings === true;
@@ -5213,9 +5925,11 @@ MODIFICATION RULES FOR THIS APP
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
         review.includeLabelDescriptions = review.includeLabelDescriptions === true;
         review.randomizeMiniQuiz = review.randomizeMiniQuiz === true;
+        review.miniQuizScope = review.miniQuizScope === 'all' ? 'all' : 'current';
         review.miniQuizMode = normalizeReviewModeMiniQuizMode(review.miniQuizMode);
         review.miniQuiz = normalizeReviewModeMiniQuizState(review.miniQuiz, review.miniQuizMode);
         if (!review.temporaryLabelPositions || typeof review.temporaryLabelPositions !== 'object' || Array.isArray(review.temporaryLabelPositions)) review.temporaryLabelPositions = {};
+        if (!review.temporaryLabelPositionsByAngle || typeof review.temporaryLabelPositionsByAngle !== 'object' || Array.isArray(review.temporaryLabelPositionsByAngle)) review.temporaryLabelPositionsByAngle = {};
         review.suppressLabelClickUntil = Math.max(0, Number(review.suppressLabelClickUntil) || 0);
         review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1));
         return review;
@@ -5277,7 +5991,9 @@ MODIFICATION RULES FOR THIS APP
             const metadata = normalizeDiagramMetadata(entry.metadata || {});
             const title = metadata.diagramName || metadata.subjectName || entry.fileName;
             const summary = [metadata.subjectName, metadata.anatomyType, metadata.organSystem, metadata.location].filter(Boolean).join(' · ');
-            const labelCount = normalizeDiagramLabels(entry.labels || []).length;
+            const angles = getStudioSavedImageAngles(entry);
+            const labelCount = getStudioSavedImageTotalLabelCount(entry);
+            const countText = `${angles.length > 1 ? `${angles.length} angles · ` : ''}${labelCount} label${labelCount === 1 ? '' : 's'}`;
             return `
                 <article class="studio-review-image-card">
                   <button type="button" class="studio-review-image-open" data-review-image-id="${escapeHtml(entry.id)}" aria-label="Review ${escapeHtml(title)}">
@@ -5285,7 +6001,7 @@ MODIFICATION RULES FOR THIS APP
                     <span class="studio-review-image-card-body">
                       <span class="studio-review-image-name">${escapeHtml(title)}</span>
                       ${summary ? `<span class="studio-review-image-meta">${escapeHtml(summary)}</span>` : ''}
-                      <span class="studio-review-image-label-count">${labelCount} label${labelCount === 1 ? '' : 's'}</span>
+                      <span class="studio-review-image-label-count">${escapeHtml(countText)}</span>
                     </span>
                   </button>
                   <button type="button" class="studio-review-image-delete" data-review-image-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>
@@ -5300,6 +6016,174 @@ MODIFICATION RULES FOR THIS APP
     function getActiveReviewModeEntry() {
         const review = getReviewModeState();
         return getStudioSavedImageLibraryForPicker().find(entry => entry.id === review.activeEntryId) || null;
+    }
+
+
+    function getActiveReviewModeAngle(entry = getActiveReviewModeEntry()) {
+        const review = getReviewModeState();
+        const angles = getStudioSavedImageAngles(entry || {});
+        if (!angles.length) return null;
+        review.activeAngleIndex = Math.min(angles.length - 1, Math.max(0, review.activeAngleIndex));
+        return angles[review.activeAngleIndex] || angles[0];
+    }
+
+    function getReviewModeActiveAngleKey(entry = getActiveReviewModeEntry()) {
+        const angle = getActiveReviewModeAngle(entry);
+        return normalizeSheetText(angle?.id || `angle_${getReviewModeState().activeAngleIndex}`);
+    }
+
+    function storeReviewModeAngleUiState() {
+        const review = getReviewModeState();
+        const key = getReviewModeActiveAngleKey();
+        if (!key) return;
+        review.revealedLabelsByAngle[key] = new Set(review.revealedLabels);
+        review.temporaryLabelPositionsByAngle[key] = { ...(review.temporaryLabelPositions || {}) };
+    }
+
+    function restoreReviewModeAngleUiState() {
+        const review = getReviewModeState();
+        const key = getReviewModeActiveAngleKey();
+        const revealed = review.revealedLabelsByAngle[key];
+        review.revealedLabels = revealed instanceof Set ? new Set(revealed) : new Set(Array.isArray(revealed) ? revealed : []);
+        review.temporaryLabelPositions = { ...(review.temporaryLabelPositionsByAngle[key] || {}) };
+    }
+
+    function syncReviewModeAngleNavigation() {
+        const review = getReviewModeState();
+        const entry = getActiveReviewModeEntry();
+        const angles = getStudioSavedImageAngles(entry || {});
+        const angle = getActiveReviewModeAngle(entry);
+        const hasMultipleAngles = angles.length > 1;
+        const show = hasMultipleAngles && review.showAngleControls;
+        elements.reviewModeAngleNavigation?.classList.toggle('hidden', !show);
+        elements.reviewModeAngleNavigation?.setAttribute('aria-hidden', show ? 'false' : 'true');
+        if (elements.reviewModeAngleIndicator) elements.reviewModeAngleIndicator.textContent = hasMultipleAngles ? `${review.activeAngleIndex + 1} / ${angles.length} · ${angle?.name || `Angle ${review.activeAngleIndex + 1}`}` : '';
+        if (elements.reviewModePrevAngleBtn) elements.reviewModePrevAngleBtn.disabled = !show || review.miniQuiz.active;
+        if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.disabled = !show || review.miniQuiz.active;
+    }
+
+    // Phase 22MV: retain preloaded angle images and protect rapid angle changes from stale image callbacks.
+    const reviewModeAnglePreloadCache = new Map();
+    let reviewModeAngleLoadToken = 0;
+    let reviewModeAngleTransitionTimer = null;
+
+    function setReviewModeAngleTransition(active) {
+        if (reviewModeAngleTransitionTimer) {
+            window.clearTimeout(reviewModeAngleTransitionTimer);
+            reviewModeAngleTransitionTimer = null;
+        }
+        elements.reviewModeImageStage?.classList.toggle('is-angle-switching', !!active);
+        if (active) {
+            reviewModeAngleTransitionTimer = window.setTimeout(() => {
+                elements.reviewModeImageStage?.classList.remove('is-angle-switching');
+                reviewModeAngleTransitionTimer = null;
+            }, 700);
+        }
+    }
+
+    function resetReviewModeAngleLoading({ clearCache = false } = {}) {
+        reviewModeAngleLoadToken += 1;
+        setReviewModeAngleTransition(false);
+        elements.reviewModeImageStage?.classList.remove('is-angle-dragging');
+        if (clearCache) reviewModeAnglePreloadCache.clear();
+    }
+
+    function preloadReviewModeAngleSource(sourceValue = '') {
+        const normalizedSource = normalizeSheetText(sourceValue);
+        if (!normalizedSource) return Promise.resolve(false);
+        const cached = reviewModeAnglePreloadCache.get(normalizedSource);
+        if (cached?.status === 'loaded') return Promise.resolve(true);
+        if (cached?.promise) return cached.promise;
+
+        const image = new Image();
+        image.decoding = 'async';
+        const record = { image, status: 'loading', promise: null };
+        record.promise = new Promise(resolve => {
+            setImageElementSourceWithMediaResolution(image, normalizedSource, {
+                onLoad: () => {
+                    record.status = 'loaded';
+                    resolve(true);
+                },
+                onError: () => {
+                    record.status = 'error';
+                    reviewModeAnglePreloadCache.delete(normalizedSource);
+                    resolve(false);
+                }
+            });
+        });
+        reviewModeAnglePreloadCache.set(normalizedSource, record);
+        return record.promise;
+    }
+
+    function preloadReviewModeAdjacentAngles() {
+        const entry = getActiveReviewModeEntry();
+        const angles = getStudioSavedImageAngles(entry || {});
+        if (angles.length < 2) return;
+        const review = getReviewModeState();
+        [review.activeAngleIndex + 1, review.activeAngleIndex - 1].forEach(index => {
+            const normalizedIndex = (index + angles.length) % angles.length;
+            preloadReviewModeAngleSource(angles[normalizedIndex]?.imageValue || '');
+        });
+    }
+
+    function applyReviewModeAngleImage(angle, loadToken, { animate = false } = {}) {
+        if (!angle || !elements.reviewModeImage || loadToken !== reviewModeAngleLoadToken) return;
+        setImageElementSourceWithMediaResolution(elements.reviewModeImage, angle.imageValue, {
+            onLoad: () => {
+                if (loadToken !== reviewModeAngleLoadToken) return;
+                syncReviewModeImageStage();
+                renderReviewModeLabels();
+                syncReviewModeAngleNavigation();
+                preloadReviewModeAdjacentAngles();
+                requestAnimationFrame(() => {
+                    syncReviewModeImageStage();
+                    if (animate) requestAnimationFrame(() => setReviewModeAngleTransition(false));
+                });
+            },
+            onError: () => {
+                if (loadToken !== reviewModeAngleLoadToken) return;
+                setReviewModeAngleTransition(false);
+                if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = 'This angle could not be loaded.';
+            }
+        });
+    }
+
+    function loadReviewModeActiveAngle({ animate = false } = {}) {
+        const entry = getActiveReviewModeEntry();
+        const angle = getActiveReviewModeAngle(entry);
+        if (!entry || !angle || !elements.reviewModeImage) return;
+        const loadToken = ++reviewModeAngleLoadToken;
+        const metadata = normalizeDiagramMetadata(entry.metadata || {});
+        const title = metadata.diagramName || metadata.subjectName || entry.fileName;
+        if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = getStudioSavedImageAngles(entry).length > 1 ? `${title} — ${angle.name}` : title;
+        syncReviewModeAngleNavigation();
+
+        if (!animate) {
+            applyReviewModeAngleImage(angle, loadToken, { animate: false });
+            return;
+        }
+
+        setReviewModeAngleTransition(true);
+        preloadReviewModeAngleSource(angle.imageValue).then(loaded => {
+            if (loadToken !== reviewModeAngleLoadToken) return;
+            if (!loaded) {
+                setReviewModeAngleTransition(false);
+                if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = 'This angle could not be loaded.';
+                return;
+            }
+            applyReviewModeAngleImage(angle, loadToken, { animate: true });
+        });
+    }
+
+    function changeReviewModeAngle(direction = 1) {
+        const review = getReviewModeState();
+        if (!review.overlayOpen || review.miniQuiz.active) return;
+        const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+        if (angles.length < 2) return;
+        storeReviewModeAngleUiState();
+        review.activeAngleIndex = (review.activeAngleIndex + (direction < 0 ? -1 : 1) + angles.length) % angles.length;
+        restoreReviewModeAngleUiState();
+        loadReviewModeActiveAngle({ animate: true });
     }
 
     function setReviewModeOptionsOpen(open) {
@@ -5347,6 +6231,69 @@ MODIFICATION RULES FOR THIS APP
         return Number.isInteger(mini.queue[mini.position]) ? mini.queue[mini.position] : -1;
     }
 
+    // Phase 22MW: each quiz target identifies both its angle and local label index.
+    function getReviewModeMiniQuizActiveTarget(review = getReviewModeState()) {
+        const targetIndex = getReviewModeMiniQuizActiveIndex(review);
+        if (targetIndex < 0) return null;
+        const target = review.miniQuiz.targets[targetIndex];
+        return target && typeof target === 'object' ? { ...target, targetIndex } : null;
+    }
+
+    function getReviewModeMiniQuizActiveLabelIndex(review = getReviewModeState()) {
+        const target = getReviewModeMiniQuizActiveTarget(review);
+        return target && target.angleIndex === review.activeAngleIndex ? target.labelIndex : -1;
+    }
+
+    function buildReviewModeMiniQuizTargets(entry, scope = 'current', activeAngleIndex = 0) {
+        const angles = getStudioSavedImageAngles(entry || {});
+        const normalizedScope = scope === 'all' && angles.length > 1 ? 'all' : 'current';
+        const angleIndexes = normalizedScope === 'all'
+            ? angles.map((_, index) => index)
+            : [Math.min(Math.max(0, activeAngleIndex), Math.max(0, angles.length - 1))];
+        return angleIndexes.flatMap(angleIndex => {
+            const angle = angles[angleIndex];
+            return normalizeDiagramLabels(angle?.labels || []).map((_, labelIndex) => ({
+                id: `${normalizeSheetText(angle?.id || `angle_${angleIndex}`)}::label_${labelIndex}`,
+                angleId: normalizeSheetText(angle?.id || `angle_${angleIndex}`),
+                angleIndex,
+                labelIndex
+            }));
+        });
+    }
+
+    function syncReviewModeMiniQuizTarget({ animate = true } = {}) {
+        const review = getReviewModeState();
+        const target = getReviewModeMiniQuizActiveTarget(review);
+        if (!review.miniQuiz.active || review.miniQuiz.complete) {
+            renderReviewModeLabels();
+            syncReviewModeControls();
+            return;
+        }
+        if (!target) {
+            finishReviewModeMiniQuiz();
+            return;
+        }
+        const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+        const targetAngleIndex = Math.min(Math.max(0, target.angleIndex), Math.max(0, angles.length - 1));
+        if (targetAngleIndex !== review.activeAngleIndex) {
+            storeReviewModeAngleUiState();
+            review.activeAngleIndex = targetAngleIndex;
+            restoreReviewModeAngleUiState();
+            if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
+            if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
+            if (elements.reviewModeDrawCanvas) {
+                const ctx = elements.reviewModeDrawCanvas.getContext('2d');
+                ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
+            }
+            syncReviewModeControls();
+            loadReviewModeActiveAngle({ animate });
+            return;
+        }
+        renderReviewModeLabels();
+        syncReviewModeControls();
+        syncReviewModeAngleNavigation();
+    }
+
     function syncReviewModeMiniQuizUi() {
         const review = getReviewModeState();
         const mini = review.miniQuiz;
@@ -5369,19 +6316,26 @@ MODIFICATION RULES FOR THIS APP
         syncReviewModeControls();
     }
 
-    function startReviewModeMiniQuiz() {
+    function startReviewModeMiniQuiz({ scope = '' } = {}) {
         const review = getReviewModeState();
-        const labels = normalizeDiagramLabels(getActiveReviewModeEntry()?.labels || []);
-        if (!labels.length) {
-            setCreatorStatus('This saved image does not have any labels to quiz.', 'error');
+        const entry = getActiveReviewModeEntry();
+        const angles = getStudioSavedImageAngles(entry || {});
+        const requestedScope = scope === 'all' || scope === 'current' ? scope : review.miniQuizScope;
+        const quizScope = requestedScope === 'all' && angles.length > 1 ? 'all' : 'current';
+        const targets = buildReviewModeMiniQuizTargets(entry, quizScope, review.activeAngleIndex);
+        if (!targets.length) {
+            setCreatorStatus(quizScope === 'all' ? 'This diagram does not have any labels to quiz.' : 'This angle does not have any labels to quiz.', 'error');
             return;
         }
-        const indexes = labels.map((_, index) => index);
+        const indexes = targets.map((_, index) => index);
         const quizQueue = review.randomizeMiniQuiz ? shuffleReviewModeMiniQuizIndexes(indexes) : indexes;
+        review.miniQuizScope = quizScope;
         review.miniQuiz = normalizeReviewModeMiniQuizState({
             active: true,
             complete: false,
             mode: review.miniQuizMode,
+            scope: quizScope,
+            targets,
             queue: quizQueue,
             position: 0,
             roundMissed: [],
@@ -5397,13 +6351,13 @@ MODIFICATION RULES FOR THIS APP
         }, review.miniQuizMode);
         review.revealedLabels = new Set();
         setReviewModeOptionsOpen(false);
-        renderReviewModeLabels();
-        syncReviewModeControls();
+        syncReviewModeMiniQuizTarget({ animate: quizScope === 'all' });
     }
 
     function endReviewModeMiniQuiz({ render = true } = {}) {
         const review = getReviewModeState();
-        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode }, review.miniQuizMode);
+        review.miniQuizScope = 'current';
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
         if (render) {
             renderReviewModeLabels();
             syncReviewModeControls();
@@ -5411,7 +6365,8 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function restartReviewModeMiniQuiz() {
-        startReviewModeMiniQuiz();
+        const review = getReviewModeState();
+        startReviewModeMiniQuiz({ scope: review.miniQuiz.scope });
     }
 
     function revealReviewModeMiniQuizAnswer() {
@@ -5524,8 +6479,7 @@ MODIFICATION RULES FOR THIS APP
         }
 
         mini.answerRevealed = false;
-        renderReviewModeLabels();
-        syncReviewModeControls();
+        syncReviewModeMiniQuizTarget({ animate: mini.scope === 'all' });
     }
 
     function setReviewModeMiniQuizMode(mode, enabled) {
@@ -5538,14 +6492,14 @@ MODIFICATION RULES FOR THIS APP
 
     function getReviewModeVisibleLabelIndexes(entry = null) {
         const review = getReviewModeState();
-        const labels = normalizeDiagramLabels(entry?.labels || []);
+        const labels = normalizeDiagramLabels(getActiveReviewModeAngle(entry || getActiveReviewModeEntry())?.labels || []);
         if (review.showAllNames) return new Set(labels.map((_, index) => index));
         return new Set(Array.from(review.revealedLabels).filter(index => Number.isInteger(index) && index >= 0 && index < labels.length));
     }
 
     function getReviewModeVisibleNameIndexes(entry = null) {
         const review = getReviewModeState();
-        const labels = normalizeDiagramLabels(entry?.labels || []);
+        const labels = normalizeDiagramLabels(getActiveReviewModeAngle(entry || getActiveReviewModeEntry())?.labels || []);
         if (review.showAllNames) return new Set(labels.map((_, index) => index));
         if (review.disableLabelNamesOnClick) return new Set();
         return getReviewModeVisibleLabelIndexes(entry);
@@ -5553,7 +6507,8 @@ MODIFICATION RULES FOR THIS APP
 
     function getReviewModeDisplayLabels(entry = null) {
         const review = getReviewModeState();
-        return normalizeDiagramLabels(entry?.labels || []).map((label, index) => {
+        const angle = getActiveReviewModeAngle(entry || getActiveReviewModeEntry());
+        return normalizeDiagramLabels(angle?.labels || []).map((label, index) => {
             const override = review.temporaryLabelPositions?.[index];
             if (!override || !Number.isFinite(Number(override.x)) || !Number.isFinite(Number(override.y))) return label;
             return { ...label, x: Math.min(100, Math.max(0, Number(override.x))), y: Math.min(100, Math.max(0, Number(override.y))) };
@@ -5564,7 +6519,7 @@ MODIFICATION RULES FOR THIS APP
         const review = getReviewModeState();
         let labels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
         if (review.miniQuiz.active) {
-            const activeIndex = getReviewModeMiniQuizActiveIndex(review);
+            const activeIndex = getReviewModeMiniQuizActiveLabelIndex(review);
             labels = review.miniQuiz.complete
                 ? labels.map(label => ({ ...label, connector: null }))
                 : labels.map((label, index) => index === activeIndex ? label : ({ ...label, connector: null }));
@@ -5619,6 +6574,7 @@ MODIFICATION RULES FOR THIS APP
 
     function renderReviewModeDrawData() {
         const entry = getActiveReviewModeEntry();
+        const angle = getActiveReviewModeAngle(entry);
         const canvas = elements.reviewModeDrawCanvas;
         const img = elements.reviewModeImage;
         if (!canvas || !img) return;
@@ -5629,19 +6585,19 @@ MODIFICATION RULES FOR THIS APP
         if (canvas.height !== height) canvas.height = height;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const review = getReviewModeState();
-        if (!entry || !review.showDrawData) return;
-        const labels = normalizeDiagramLabels(entry.labels || []);
+        if (!angle || !review.showDrawData) return;
+        const labels = normalizeDiagramLabels(angle.labels || []);
         let visibleIndexes;
         if (review.showAllDrawings) {
             visibleIndexes = new Set(labels.map((_, index) => index));
         } else if (review.miniQuiz.active) {
-            const activeIndex = getReviewModeMiniQuizActiveIndex(review);
+            const activeIndex = getReviewModeMiniQuizActiveLabelIndex(review);
             visibleIndexes = new Set(review.miniQuiz.answerRevealed && activeIndex >= 0 ? [activeIndex] : []);
         } else {
             visibleIndexes = getReviewModeVisibleLabelIndexes(entry);
         }
         if (!visibleIndexes.size) return;
-        cloneImageEditorDrawStrokes(entry.drawStrokes || [])
+        cloneImageEditorDrawStrokes(angle.drawStrokes || [])
             .filter(stroke => visibleIndexes.has(Math.max(0, Number(stroke.labelIndex) || 0)))
             .forEach(stroke => renderImageEditorStroke(ctx, { ...stroke, visible: true }));
     }
@@ -5662,7 +6618,7 @@ MODIFICATION RULES FOR THIS APP
                 syncReviewModeMiniQuizUi();
                 return;
             }
-            const index = getReviewModeMiniQuizActiveIndex(review);
+            const index = getReviewModeMiniQuizActiveLabelIndex(review);
             const item = labels[index];
             if (!item) {
                 finishReviewModeMiniQuiz();
@@ -5726,6 +6682,23 @@ MODIFICATION RULES FOR THIS APP
     function syncReviewModeControls() {
         const review = getReviewModeState();
         const miniActive = review.miniQuiz.active;
+        const hasMultipleAngles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {}).length > 1;
+        if (elements.reviewModeMiniQuizScope) {
+            elements.reviewModeMiniQuizScope.classList.toggle('hidden', !hasMultipleAngles);
+            elements.reviewModeMiniQuizScope.setAttribute('aria-hidden', hasMultipleAngles ? 'false' : 'true');
+        }
+        if (elements.reviewModeMiniScopeCurrent) {
+            elements.reviewModeMiniScopeCurrent.checked = !hasMultipleAngles || review.miniQuizScope !== 'all';
+            elements.reviewModeMiniScopeCurrent.disabled = miniActive;
+        }
+        if (elements.reviewModeMiniScopeAll) {
+            elements.reviewModeMiniScopeAll.checked = hasMultipleAngles && review.miniQuizScope === 'all';
+            elements.reviewModeMiniScopeAll.disabled = !hasMultipleAngles || miniActive;
+        }
+        if (elements.reviewModeShowAngleControlsToggle) {
+            elements.reviewModeShowAngleControlsToggle.checked = hasMultipleAngles && review.showAngleControls;
+            elements.reviewModeShowAngleControlsToggle.disabled = !hasMultipleAngles;
+        }
         if (elements.reviewModeShowAllNamesToggle) {
             elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
             elements.reviewModeShowAllNamesToggle.disabled = miniActive;
@@ -5742,16 +6715,7 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeMiniRandomizeToggle.checked = review.randomizeMiniQuiz;
             elements.reviewModeMiniRandomizeToggle.disabled = miniActive;
         }
-        if (elements.reviewModeMiniRandomizeToggle) {
-    elements.reviewModeMiniRandomizeToggle.addEventListener('change', () => {
-        const review = getReviewModeState();
-        if (review.miniQuiz.active) return;
-        review.randomizeMiniQuiz = elements.reviewModeMiniRandomizeToggle.checked;
-        syncReviewModeControls();
-    });
-}
-
-if (elements.reviewModeMiniProgressToggle) {
+        if (elements.reviewModeMiniProgressToggle) {
             elements.reviewModeMiniProgressToggle.checked = review.miniQuizMode === 'progress';
             elements.reviewModeMiniProgressToggle.disabled = miniActive;
         }
@@ -5772,6 +6736,7 @@ if (elements.reviewModeMiniProgressToggle) {
         if (elements.reviewModeLabelSizeUpBtn) elements.reviewModeLabelSizeUpBtn.disabled = review.labelScale >= 1.8;
         setReviewModeOptionsOpen(review.optionsOpen);
         syncReviewModeMiniQuizUi();
+        syncReviewModeAngleNavigation();
     }
 
     function openReviewModeImage(entryId = '') {
@@ -5779,8 +6744,10 @@ if (elements.reviewModeMiniProgressToggle) {
         if (!entry || !elements.reviewModeOverlay || !elements.reviewModeImage) return;
         const review = getReviewModeState();
         review.activeEntryId = entry.id;
+        review.activeAngleIndex = 0;
         review.overlayOpen = true;
         review.optionsOpen = false;
+        review.showAngleControls = true;
         review.showAllNames = false;
         review.showDrawData = true;
         review.showAllDrawings = false;
@@ -5788,17 +6755,19 @@ if (elements.reviewModeMiniProgressToggle) {
         review.disableLabelNamesOnClick = false;
         review.includeLabelDescriptions = false;
         review.randomizeMiniQuiz = false;
+        review.miniQuizScope = 'current';
         review.miniQuizMode = 'normal';
-        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal' }, 'normal');
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal', scope: 'current', targets: [] }, 'normal');
         review.labelScale = 1;
         review.revealedLabels = new Set();
+        review.revealedLabelsByAngle = {};
         review.temporaryLabelPositions = {};
+        review.temporaryLabelPositionsByAngle = {};
         review.suppressLabelClickUntil = 0;
+        resetReviewModeAngleLoading({ clearCache: true });
         elements.reviewModeOverlay.classList.remove('hidden');
         elements.reviewModeOverlay.setAttribute('aria-hidden', 'false');
         document.body.classList.add('review-mode-image-open');
-        const metadata = normalizeDiagramMetadata(entry.metadata || {});
-        if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = metadata.diagramName || metadata.subjectName || entry.fileName;
         if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
         if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         if (elements.reviewModeDrawCanvas) {
@@ -5806,32 +6775,31 @@ if (elements.reviewModeMiniProgressToggle) {
             ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
         }
         syncReviewModeControls();
-        setImageElementSourceWithMediaResolution(elements.reviewModeImage, entry.imageValue, {
-            onLoad: () => {
-                syncReviewModeImageStage();
-                renderReviewModeLabels();
-                requestAnimationFrame(syncReviewModeImageStage);
-            },
-            onError: () => {
-                if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = 'This saved image could not be loaded.';
-            }
-        });
+        syncReviewModeAngleNavigation();
+        loadReviewModeActiveAngle();
         syncBodyScrollLock();
     }
 
     function closeReviewModeImage() {
         const review = getReviewModeState();
         review.activeEntryId = '';
+        review.activeAngleIndex = 0;
         review.overlayOpen = false;
         review.optionsOpen = false;
         review.revealedLabels = new Set();
+        review.revealedLabelsByAngle = {};
         review.temporaryLabelPositions = {};
+        review.temporaryLabelPositionsByAngle = {};
         review.suppressLabelClickUntil = 0;
-        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode }, review.miniQuizMode);
+        review.miniQuizScope = 'current';
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
         reviewModeLabelDrag = null;
+        resetReviewModeAngleLoading({ clearCache: true });
         if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         elements.reviewModeOverlay?.classList.add('hidden');
         elements.reviewModeOverlay?.setAttribute('aria-hidden', 'true');
+        elements.reviewModeAngleNavigation?.classList.add('hidden');
+        elements.reviewModeAngleNavigation?.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('review-mode-image-open');
         if (elements.reviewModeImage) {
             elements.reviewModeImage.onload = null;
@@ -7688,14 +8656,17 @@ if (elements.reviewModeMiniProgressToggle) {
         }
         if (elements.studioImageEditorSendSavedBtn) {
             const isSavedDiagramTarget = isImageEditorSavedDiagramTarget(editor);
+            const isMultiAngleDraftTarget = isImageEditorStandaloneDiagramTarget(editor) && editor?.target?.multiAngleDraft === true;
             const isUpdatingSavedImage = isImageEditorStandaloneDiagramTarget(editor) && !!normalizeSheetText(editor?.target?.savedImageEntryId || '');
             elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isSavedDiagramTarget);
             elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas;
-            elements.studioImageEditorSendSavedBtn.textContent = isUpdatingSavedImage ? 'Update Saved Image' : 'Send to Saved Images';
+            elements.studioImageEditorSendSavedBtn.textContent = isMultiAngleDraftTarget ? 'Save Angle' : (isUpdatingSavedImage ? 'Update Saved Image' : 'Send to Saved Images');
             elements.studioImageEditorSendSavedBtn.title = isSavedDiagramTarget
-                ? (isUpdatingSavedImage
-                    ? 'Replace this Saved Image with the current image, labels, descriptions, connector lines, draw strokes, and diagram details'
-                    : 'Save this edited image, labels, connector lines, draw strokes, and diagram details to Saved Images')
+                ? (isMultiAngleDraftTarget
+                    ? 'Save this angle image, labels, descriptions, connector lines, draw strokes, and shared diagram details back to the multi-angle set'
+                    : (isUpdatingSavedImage
+                        ? 'Replace this Saved Image with the current image, labels, descriptions, connector lines, draw strokes, and diagram details'
+                        : 'Save this edited image, labels, connector lines, draw strokes, and diagram details to Saved Images'))
                 : 'Saved Images are available for flashcard and standalone diagrams';
         }
         if (elements.studioImageEditorAttachAllFrontBtn) {
@@ -8520,6 +9491,7 @@ if (elements.reviewModeMiniProgressToggle) {
         const targetKind = editor?.target?.kind || '';
         const isFlashcardTarget = ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(targetKind);
         const isStandaloneDiagram = targetKind === 'standalone-diagram';
+        const isMultiAngleDraftTarget = isStandaloneDiagram && editor?.target?.multiAngleDraft === true;
         const isLayeredDiagramTarget = isFlashcardTarget || isStandaloneDiagram;
         const attachToAllFront = !!options.attachToAllFront && isImageEditorFlashcardFrontTarget(editor);
         const outputCanvas = isLayeredDiagramTarget ? editor?.baseCanvas : getImageEditorCompositedCanvas();
@@ -8531,6 +9503,13 @@ if (elements.reviewModeMiniProgressToggle) {
             const imageMetadata = isLayeredDiagramTarget ? normalizeDiagramMetadata(editor.metadata || getImageEditorMetadataFromFields()) : {};
             let applyValue = editedDataUrl;
             let savedResult = null;
+            if (isMultiAngleDraftTarget) {
+                const updated = await updateMultiAngleDraftFromImageEditor(editedDataUrl, imageLabels, imageDrawStrokes, imageMetadata);
+                closeStudioImageEditor();
+                syncMultiAngleCreatorControls();
+                setCreatorStatus(updated ? 'Angle image, labels, descriptions, connector lines, and drawings saved to the multi-angle set.' : 'Could not update that angle.', updated ? 'success' : 'error');
+                return;
+            }
             if ((options.sendToSavedImages || attachToAllFront) && isLayeredDiagramTarget) {
                 savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, drawStrokes: imageDrawStrokes, metadata: imageMetadata });
                 applyValue = normalizeSheetText(savedResult?.value || editedDataUrl);
@@ -15512,19 +16491,41 @@ if (elements.reviewModeMiniProgressToggle) {
             });
         }
 
-        if (elements.diagramCreatorChooseBtn && elements.diagramCreatorFileInput) {
+        if (elements.diagramCreatorChooseBtn && elements.diagramCreatorFileInput && !elements.diagramCreatorFileInput.dataset.bound22mt) {
+    elements.diagramCreatorFileInput.dataset.bound22mt = 'true';
     elements.diagramCreatorChooseBtn.addEventListener('click', () => {
         if (!state.auth.user?.id) {
             setCreatorStatus('Sign in before using Diagram Creator.', 'error');
             return;
         }
+        state.auth.diagramCreatorFileMode = 'single';
+        elements.diagramCreatorFileInput.value = '';
+        elements.diagramCreatorFileInput.click();
+    });
+    elements.diagramCreatorChooseMultiBtn?.addEventListener('click', () => {
+        if (!state.auth.user?.id) {
+            setCreatorStatus('Sign in before using Diagram Creator.', 'error');
+            return;
+        }
+        state.auth.diagramCreatorFileMode = 'multi-new';
+        elements.diagramCreatorFileInput.value = '';
+        elements.diagramCreatorFileInput.click();
+    });
+    elements.multiAngleAddImagesBtn?.addEventListener('click', () => {
+        state.auth.diagramCreatorFileMode = 'multi-add';
         elements.diagramCreatorFileInput.value = '';
         elements.diagramCreatorFileInput.click();
     });
     elements.diagramCreatorFileInput.addEventListener('change', async () => {
-        const file = elements.diagramCreatorFileInput.files?.[0];
-        if (!file) return;
+        const files = Array.from(elements.diagramCreatorFileInput.files || []);
+        if (!files.length) return;
         try {
+            const mode = normalizeSheetText(state.auth.diagramCreatorFileMode || 'single');
+            if (mode === 'multi-new' || mode === 'multi-add' || files.length > 1) {
+                await openMultiAngleCreatorFromFiles(files, { append: mode === 'multi-add' });
+                return;
+            }
+            const file = files[0];
             const dataUrl = await readFileAsDataUrl(file);
             state.auth.diagramCreatorSourceDataUrl = dataUrl;
             state.auth.diagramCreatorSourceLabel = `Selected: ${file.name || 'diagram-image.png'}`;
@@ -15535,7 +16536,7 @@ if (elements.reviewModeMiniProgressToggle) {
             });
         } catch (error) {
             console.error(error);
-            setCreatorStatus('Could not open that image in Diagram Creator.', 'error');
+            setCreatorStatus('Could not open those images in Diagram Creator.', 'error');
         }
     });
 }
@@ -27684,6 +28685,240 @@ if (elements.diagramCreatorImageGrid) {
 }
 
 
+
+// Phase 22MT: multi-angle setup controls.
+if (elements.multiAnglePrevBtn) elements.multiAnglePrevBtn.addEventListener('click', () => setActiveMultiAngleIndex(getMultiAngleCreatorState().activeIndex - 1));
+if (elements.multiAngleNextBtn) elements.multiAngleNextBtn.addEventListener('click', () => setActiveMultiAngleIndex(getMultiAngleCreatorState().activeIndex + 1));
+if (elements.multiAngleCancelBtn) elements.multiAngleCancelBtn.addEventListener('click', () => {
+    resetMultiAngleCreatorState();
+    setCreatorStatus('Multi-angle set canceled. No Saved Images were changed.', 'success');
+});
+if (elements.multiAngleApplyDimensionsBtn) elements.multiAngleApplyDimensionsBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState();
+    draft.canvas = normalizeMultiAngleCanvasConfig({ width: elements.multiAngleCanvasWidth?.value, height: elements.multiAngleCanvasHeight?.value });
+    draft.angles.forEach(angle => clearMultiAngleFlattenedEdit(angle));
+    syncMultiAngleCreatorControls();
+    setCreatorStatus(`Canvas changed to ${draft.canvas.width} × ${draft.canvas.height}. Flattened angle edits were reset so framing stays accurate.`, 'success');
+});
+if (elements.multiAngleNameInput) elements.multiAngleNameInput.addEventListener('input', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle) return;
+    angle.name = normalizeSheetText(elements.multiAngleNameInput.value).slice(0, 80) || `Angle ${getMultiAngleCreatorState().activeIndex + 1}`;
+    if (elements.multiAngleIndicator) elements.multiAngleIndicator.textContent = `${angle.name} · ${getMultiAngleCreatorState().activeIndex + 1} of ${getMultiAngleCreatorState().angles.length}`;
+    if (getMultiAngleCreatorState().listOpen) renderMultiAngleCreatorList();
+});
+const updateMultiAngleFraming = (key, value, label) => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle) return;
+    clearMultiAngleFlattenedEdit(angle);
+    angle.framing = normalizeMultiAngleFraming({ ...angle.framing, [key]: value });
+    if (label) label.textContent = `${Math.round((key === 'scale' ? angle.framing[key] : angle.framing[key]) * 100)}%`;
+    syncMultiAngleCreatorControls();
+};
+if (elements.multiAngleScaleInput) elements.multiAngleScaleInput.addEventListener('input', () => updateMultiAngleFraming('scale', Number(elements.multiAngleScaleInput.value) / 100, elements.multiAngleScaleValue));
+if (elements.multiAngleXInput) elements.multiAngleXInput.addEventListener('input', () => updateMultiAngleFraming('offsetX', Number(elements.multiAngleXInput.value) / 100, elements.multiAngleXValue));
+if (elements.multiAngleYInput) elements.multiAngleYInput.addEventListener('input', () => updateMultiAngleFraming('offsetY', Number(elements.multiAngleYInput.value) / 100, elements.multiAngleYValue));
+if (elements.multiAngleFitBtn) elements.multiAngleFitBtn.addEventListener('click', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle) return;
+    clearMultiAngleFlattenedEdit(angle);
+    angle.framing = normalizeMultiAngleFraming({ ...angle.framing, scale: 1 });
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleCenterBtn) elements.multiAngleCenterBtn.addEventListener('click', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle) return;
+    clearMultiAngleFlattenedEdit(angle);
+    angle.framing = normalizeMultiAngleFraming({ ...angle.framing, offsetX: 0, offsetY: 0 });
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleMatchSizeBtn) elements.multiAngleMatchSizeBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState();
+    const active = getActiveMultiAngleDraftAngle();
+    if (!active) return;
+    draft.angles.forEach(angle => {
+        clearMultiAngleFlattenedEdit(angle);
+        angle.framing = normalizeMultiAngleFraming({ ...angle.framing, scale: active.framing.scale });
+    });
+    syncMultiAngleCreatorControls();
+    setCreatorStatus('Matched the active subject-size adjustment across all angles.', 'success');
+});
+if (elements.multiAngleGuidesToggle) elements.multiAngleGuidesToggle.addEventListener('change', () => {
+    getMultiAngleCreatorState().guidesVisible = elements.multiAngleGuidesToggle.checked;
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleAnchorToggle) elements.multiAngleAnchorToggle.addEventListener('change', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle) return;
+    clearMultiAngleFlattenedEdit(angle);
+    angle.framing = normalizeMultiAngleFraming({ ...angle.framing, useAnchor: elements.multiAngleAnchorToggle.checked });
+    getMultiAngleCreatorState().settingAnchor = false;
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleSetAnchorBtn) elements.multiAngleSetAnchorBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState();
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle?.framing?.useAnchor) return;
+    draft.settingAnchor = !draft.settingAnchor;
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleEditAngleBtn) elements.multiAngleEditAngleBtn.addEventListener('click', () => editActiveMultiAngleAngle().catch(error => {
+    console.error(error);
+    setCreatorStatus('Could not open this angle in the image editor.', 'error');
+}));
+if (elements.multiAngleToggleListBtn) elements.multiAngleToggleListBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState();
+    draft.listOpen = !draft.listOpen;
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.addEventListener('click', () => saveMultiAngleDraftToSavedImages());
+if (elements.multiAngleList) elements.multiAngleList.addEventListener('click', event => {
+    const button = event.target.closest('[data-multi-angle-action]');
+    if (!button) return;
+    const draft = getMultiAngleCreatorState();
+    const index = Number(button.dataset.angleIndex);
+    if (!Number.isInteger(index) || !draft.angles[index]) return;
+    const action = button.dataset.multiAngleAction;
+    if (action === 'open') setActiveMultiAngleIndex(index);
+    if (action === 'up' && index > 0) {
+        [draft.angles[index - 1], draft.angles[index]] = [draft.angles[index], draft.angles[index - 1]];
+        draft.activeIndex = index - 1;
+        syncMultiAngleCreatorControls();
+    }
+    if (action === 'down' && index < draft.angles.length - 1) {
+        [draft.angles[index + 1], draft.angles[index]] = [draft.angles[index], draft.angles[index + 1]];
+        draft.activeIndex = index + 1;
+        syncMultiAngleCreatorControls();
+    }
+    if (action === 'delete') {
+        const targetAngle = draft.angles[index];
+        const targetLabelCount = normalizeDiagramLabels(targetAngle?.labels || []).length;
+        const targetDrawingCount = cloneImageEditorDrawStrokes(targetAngle?.drawStrokes || []).length;
+        if ((targetLabelCount || targetDrawingCount) && !window.confirm(`Delete ${targetAngle?.name || `Angle ${index + 1}`} and its ${targetLabelCount} label${targetLabelCount === 1 ? '' : 's'}${targetDrawingCount ? ` plus ${targetDrawingCount} drawing stroke${targetDrawingCount === 1 ? '' : 's'}` : ''}?`)) return;
+        const removed = draft.angles.splice(index, 1)[0];
+        if (removed?.runtimeObjectUrl && /^blob:/i.test(removed.runtimeObjectUrl)) URL.revokeObjectURL(removed.runtimeObjectUrl);
+        if (removed?.runtimeEditedObjectUrl && /^blob:/i.test(removed.runtimeEditedObjectUrl)) URL.revokeObjectURL(removed.runtimeEditedObjectUrl);
+        draft.activeIndex = Math.max(0, Math.min(draft.activeIndex, draft.angles.length - 1));
+        if (!draft.angles.length) resetMultiAngleCreatorState();
+        else syncMultiAngleCreatorControls();
+    }
+});
+if (elements.multiAngleCanvas) {
+    elements.multiAngleCanvas.addEventListener('pointerdown', event => {
+        const draft = getMultiAngleCreatorState();
+        const angle = getActiveMultiAngleDraftAngle();
+        if (!angle) return;
+        const rect = elements.multiAngleCanvas.getBoundingClientRect();
+        if (draft.settingAnchor && angle.framing.useAnchor) {
+            const canvasX = ((event.clientX - rect.left) / Math.max(1, rect.width)) * draft.canvas.width;
+            const canvasY = ((event.clientY - rect.top) / Math.max(1, rect.height)) * draft.canvas.height;
+            const bounds = normalizeMultiAngleBounds(angle.bounds || {}, angle.naturalWidth, angle.naturalHeight);
+            const baseScale = Math.min((draft.canvas.width * 0.85) / bounds.width, (draft.canvas.height * 0.85) / bounds.height);
+            const scale = baseScale * angle.framing.scale;
+            const pivotX = angle.framing.useAnchor ? angle.framing.anchorX * angle.naturalWidth : bounds.x + (bounds.width / 2);
+            const pivotY = angle.framing.useAnchor ? angle.framing.anchorY * angle.naturalHeight : bounds.y + (bounds.height / 2);
+            const destinationX = (draft.canvas.width / 2) + (angle.framing.offsetX * draft.canvas.width);
+            const destinationY = (draft.canvas.height / 2) + (angle.framing.offsetY * draft.canvas.height);
+            const sourceX = pivotX + ((canvasX - destinationX) / scale);
+            const sourceY = pivotY + ((canvasY - destinationY) / scale);
+            clearMultiAngleFlattenedEdit(angle);
+            angle.framing = normalizeMultiAngleFraming({ ...angle.framing, anchorX: sourceX / angle.naturalWidth, anchorY: sourceY / angle.naturalHeight, offsetX: 0, offsetY: 0 });
+            draft.settingAnchor = false;
+            syncMultiAngleCreatorControls();
+            return;
+        }
+        draft.pointerDrag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, offsetX: angle.framing.offsetX, offsetY: angle.framing.offsetY };
+        elements.multiAngleCanvas.setPointerCapture?.(event.pointerId);
+        elements.multiAngleCanvas.classList.add('is-dragging');
+    });
+    elements.multiAngleCanvas.addEventListener('pointermove', event => {
+        const draft = getMultiAngleCreatorState();
+        const drag = draft.pointerDrag;
+        const angle = getActiveMultiAngleDraftAngle();
+        if (!drag || drag.pointerId !== event.pointerId || !angle) return;
+        const rect = elements.multiAngleCanvas.getBoundingClientRect();
+        clearMultiAngleFlattenedEdit(angle);
+        angle.framing = normalizeMultiAngleFraming({ ...angle.framing, offsetX: drag.offsetX + ((event.clientX - drag.startX) / Math.max(1, rect.width)), offsetY: drag.offsetY + ((event.clientY - drag.startY) / Math.max(1, rect.height)) });
+        syncMultiAngleCreatorControls();
+    });
+    const endMultiAngleDrag = event => {
+        const draft = getMultiAngleCreatorState();
+        if (!draft.pointerDrag || (event && draft.pointerDrag.pointerId !== event.pointerId)) return;
+        draft.pointerDrag = null;
+        elements.multiAngleCanvas.classList.remove('is-dragging');
+    };
+    elements.multiAngleCanvas.addEventListener('pointerup', endMultiAngleDrag);
+    elements.multiAngleCanvas.addEventListener('pointercancel', endMultiAngleDrag);
+}
+
+// Phase 22MV: polished Review Mode angle navigation with guarded swipe/drag gestures.
+if (elements.reviewModePrevAngleBtn) elements.reviewModePrevAngleBtn.addEventListener('click', () => changeReviewModeAngle(-1));
+if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.addEventListener('click', () => changeReviewModeAngle(1));
+let reviewModeAngleSwipe = null;
+
+function finishReviewModeAngleSwipe(event, { cancelled = false } = {}) {
+    if (!reviewModeAngleSwipe || (event?.pointerId != null && reviewModeAngleSwipe.pointerId !== event.pointerId)) return;
+    const swipe = reviewModeAngleSwipe;
+    reviewModeAngleSwipe = null;
+    elements.reviewModeImageStage?.classList.remove('is-angle-dragging');
+    if (event?.pointerId != null && elements.reviewModeImageViewport?.hasPointerCapture?.(event.pointerId)) {
+        try {
+            elements.reviewModeImageViewport.releasePointerCapture(event.pointerId);
+        } catch (error) {
+            // The browser may already have released the pointer during cancellation.
+        }
+    }
+    if (cancelled || !event) return;
+
+    const dx = event.clientX - swipe.x;
+    const dy = event.clientY - swipe.y;
+    const elapsed = Math.max(1, performance.now() - swipe.startedAt);
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    const viewportWidth = Math.max(1, elements.reviewModeImageViewport?.clientWidth || 1);
+    const distanceThreshold = Math.min(96, Math.max(56, viewportWidth * 0.075));
+    const isQuickFlick = elapsed <= 320 && absX >= 36 && (absX / elapsed) >= 0.18;
+    const isHorizontal = absX >= absY * 1.3;
+    if (!isHorizontal || (absX < distanceThreshold && !isQuickFlick)) return;
+    changeReviewModeAngle(dx < 0 ? 1 : -1);
+}
+
+if (elements.reviewModeImageViewport) {
+    elements.reviewModeImageViewport.addEventListener('pointerdown', event => {
+        if (event.button != null && event.button !== 0) return;
+        if (event.target.closest('.review-mode-label-marker, .review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel')) return;
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || getStudioSavedImageAngles(getActiveReviewModeEntry() || {}).length < 2) return;
+        reviewModeAngleSwipe = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            startedAt: performance.now(),
+            horizontalIntent: false
+        };
+        try {
+            elements.reviewModeImageViewport.setPointerCapture?.(event.pointerId);
+        } catch (error) {
+            // Synthetic or already-ended pointers cannot be captured; swipe detection still works.
+        }
+    });
+    elements.reviewModeImageViewport.addEventListener('pointermove', event => {
+        if (!reviewModeAngleSwipe || reviewModeAngleSwipe.pointerId !== event.pointerId) return;
+        const dx = event.clientX - reviewModeAngleSwipe.x;
+        const dy = event.clientY - reviewModeAngleSwipe.y;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+        if (!reviewModeAngleSwipe.horizontalIntent && absX >= 16 && absX >= absY * 1.25) {
+            reviewModeAngleSwipe.horizontalIntent = true;
+            elements.reviewModeImageStage?.classList.add('is-angle-dragging');
+        }
+        if (reviewModeAngleSwipe.horizontalIntent && event.cancelable) event.preventDefault();
+    }, { passive: false });
+    elements.reviewModeImageViewport.addEventListener('pointerup', event => finishReviewModeAngleSwipe(event));
+    elements.reviewModeImageViewport.addEventListener('pointercancel', event => finishReviewModeAngleSwipe(event, { cancelled: true }));
+    elements.reviewModeImageViewport.addEventListener('lostpointercapture', event => finishReviewModeAngleSwipe(event, { cancelled: true }));
+}
+
 const reviewModeFilterElements = [
     elements.reviewModeSearchInput,
     elements.reviewModeDiagramNameFilter,
@@ -27733,6 +28968,15 @@ if (elements.reviewModeOptionsBtn) {
     elements.reviewModeOptionsBtn.addEventListener('click', () => {
         const review = getReviewModeState();
         setReviewModeOptionsOpen(!review.optionsOpen);
+    });
+}
+
+if (elements.reviewModeShowAngleControlsToggle) {
+    elements.reviewModeShowAngleControlsToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.showAngleControls = elements.reviewModeShowAngleControlsToggle.checked;
+        syncReviewModeAngleNavigation();
+        syncReviewModeControls();
     });
 }
 
@@ -27788,6 +29032,33 @@ if (elements.reviewModeShowConnectorsToggle) {
         const review = getReviewModeState();
         review.showConnectors = elements.reviewModeShowConnectorsToggle.checked;
         renderReviewModeConnectors();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniScopeCurrent) {
+    elements.reviewModeMiniScopeCurrent.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || !elements.reviewModeMiniScopeCurrent.checked) return;
+        review.miniQuizScope = 'current';
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniScopeAll) {
+    elements.reviewModeMiniScopeAll.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || !elements.reviewModeMiniScopeAll.checked) return;
+        review.miniQuizScope = 'all';
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniRandomizeToggle) {
+    elements.reviewModeMiniRandomizeToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active) return;
+        review.randomizeMiniQuiz = elements.reviewModeMiniRandomizeToggle.checked;
         syncReviewModeControls();
     });
 }
@@ -27861,7 +29132,7 @@ if (elements.reviewModeLabelLayer) {
         if (!Number.isInteger(index) || index < 0) return;
         if (review.showAllNames) {
             review.showAllNames = false;
-            review.revealedLabels = new Set(normalizeDiagramLabels(getActiveReviewModeEntry()?.labels || []).map((_, labelIndex) => labelIndex));
+            review.revealedLabels = new Set(normalizeDiagramLabels(getActiveReviewModeAngle(getActiveReviewModeEntry())?.labels || []).map((_, labelIndex) => labelIndex));
             review.revealedLabels.delete(index);
         } else if (review.revealedLabels.has(index)) {
             review.revealedLabels.delete(index);
@@ -27881,9 +29152,19 @@ window.addEventListener('orientationchange', () => {
 });
 
 document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && getReviewModeState().overlayOpen) {
+    const review = getReviewModeState();
+    if (event.key === 'Escape' && review.overlayOpen) {
         event.preventDefault();
         closeReviewModeImage();
+        return;
+    }
+    if (!review.overlayOpen || review.miniQuiz.active || event.target?.matches?.('input, textarea, select, [contenteditable=\"true\"]')) return;
+    if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        changeReviewModeAngle(-1);
+    } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        changeReviewModeAngle(1);
     }
 });
 

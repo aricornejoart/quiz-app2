@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22ms">
+  <link rel="stylesheet" href="style.css?v=22mw">
 </head>
 <body>
 
@@ -705,11 +705,85 @@ MODIFICATION RULES FOR THIS APP
 
                   <div id="diagramCreatorNewView" class="studio-diagram-creator-view" role="tabpanel">
                     <div class="creator-note">The standalone creator uses the same dependable editor as flashcard images. Crop, blur, arrows, and lines stay flattened; labels, descriptions, drawings, and connector lines remain editable.</div>
-                    <input id="diagramCreatorFileInput" type="file" accept="image/*" class="hidden" aria-hidden="true">
+                    <input id="diagramCreatorFileInput" type="file" accept="image/*" multiple class="hidden" aria-hidden="true">
                     <div class="studio-diagram-creator-actions">
                       <button id="diagramCreatorChooseBtn" type="button" class="auth-action-btn auth-primary-btn">Choose Image</button>
+                      <button id="diagramCreatorChooseMultiBtn" type="button" class="auth-action-btn auth-secondary-btn">Choose Multi-Angle Images</button>
                     </div>
-                    <div class="studio-diagram-creator-help">New diagrams use <strong>Send to Saved Images</strong>. Editing an existing library item uses <strong>Update Saved Image</strong> and replaces that same item.</div>
+                    <div class="studio-diagram-creator-help">Choose one image for the original Diagram Creator, or choose multiple transparent images to build one standardized multi-angle diagram.</div>
+
+                    <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
+                      <div class="multi-angle-creator-heading">
+                        <div>
+                          <div class="multi-angle-creator-eyebrow">Phase 22MW</div>
+                          <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
+                          <div class="multi-angle-creator-note">Every angle uses one shared black canvas. Finish framing before adding labels for the most consistent rotation.</div>
+                        </div>
+                        <button id="multiAngleCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel Set</button>
+                      </div>
+
+                      <div class="multi-angle-creator-grid">
+                        <div class="multi-angle-canvas-column">
+                          <div class="multi-angle-canvas-toolbar">
+                            <button id="multiAnglePrevBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-label="Previous angle">‹</button>
+                            <div id="multiAngleIndicator" class="multi-angle-indicator" aria-live="polite">Angle 1 of 1</div>
+                            <button id="multiAngleNextBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-label="Next angle">›</button>
+                          </div>
+                          <div id="multiAngleCanvasWrap" class="multi-angle-canvas-wrap">
+                            <canvas id="multiAngleCanvas" class="multi-angle-canvas" width="1100" height="1500" aria-label="Multi-angle canvas preview"></canvas>
+                          </div>
+                          <div class="multi-angle-preview-help">Drag the subject to reposition it. Transparent areas are automatically rendered on black.</div>
+                        </div>
+
+                        <div class="multi-angle-controls-column">
+                          <div class="multi-angle-control-group">
+                            <div class="multi-angle-control-title">Shared canvas</div>
+                            <div class="multi-angle-dimension-row">
+                              <label><span>Width</span><input id="multiAngleCanvasWidth" type="number" min="300" max="3000" step="10" value="1100"></label>
+                              <label><span>Height</span><input id="multiAngleCanvasHeight" type="number" min="300" max="3000" step="10" value="1500"></label>
+                              <button id="multiAngleApplyDimensionsBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply</button>
+                            </div>
+                            <div class="multi-angle-background-readout"><span>Background</span><strong>Black</strong></div>
+                          </div>
+
+                          <div class="multi-angle-control-group">
+                            <div class="multi-angle-control-title">Active angle</div>
+                            <label class="multi-angle-name-field"><span>Angle name</span><input id="multiAngleNameInput" type="text" maxlength="80" placeholder="Anterior, lateral, posterior..."></label>
+                            <label><span>Subject size <strong id="multiAngleScaleValue">100%</strong></span><input id="multiAngleScaleInput" type="range" min="35" max="180" step="1" value="100"></label>
+                            <label><span>Horizontal position <strong id="multiAngleXValue">0%</strong></span><input id="multiAngleXInput" type="range" min="-45" max="45" step="1" value="0"></label>
+                            <label><span>Vertical position <strong id="multiAngleYValue">0%</strong></span><input id="multiAngleYInput" type="range" min="-45" max="45" step="1" value="0"></label>
+                            <div class="multi-angle-inline-actions">
+                              <button id="multiAngleFitBtn" type="button" class="auth-action-btn auth-secondary-btn">Fit Subject</button>
+                              <button id="multiAngleCenterBtn" type="button" class="auth-action-btn auth-secondary-btn">Center</button>
+                              <button id="multiAngleMatchSizeBtn" type="button" class="auth-action-btn auth-secondary-btn">Match Size to All</button>
+                            </div>
+                          </div>
+
+                          <div class="multi-angle-control-group">
+                            <div class="multi-angle-control-title">Alignment options</div>
+                            <label class="multi-angle-check-row"><input id="multiAngleGuidesToggle" type="checkbox" checked><span>Show alignment guides</span></label>
+                            <label class="multi-angle-check-row"><input id="multiAngleAnchorToggle" type="checkbox"><span>Use shared rotation anchor</span></label>
+                            <button id="multiAngleSetAnchorBtn" type="button" class="auth-action-btn auth-secondary-btn" disabled>Set Anchor on Image</button>
+                            <div id="multiAngleAnchorHelp" class="multi-angle-anchor-help">Optional: place the same anatomical point at the center of each angle.</div>
+                          </div>
+
+                          <div class="multi-angle-control-group multi-angle-workflow-actions">
+                            <button id="multiAngleEditAngleBtn" type="button" class="auth-action-btn auth-primary-btn">Edit Labels + Drawings</button>
+                            <button id="multiAngleAddImagesBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Images</button>
+                            <button id="multiAngleToggleListBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-expanded="false">Show Angles</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div id="multiAngleListDrawer" class="multi-angle-list-drawer hidden" aria-hidden="true">
+                        <div class="multi-angle-list-heading">Reorder, rename, open, or remove angles</div>
+                        <div id="multiAngleList" class="multi-angle-list"></div>
+                      </div>
+
+                      <div class="multi-angle-save-row">
+                        <button id="multiAngleSaveSetBtn" type="button" class="auth-action-btn auth-primary-btn">Send Multi-Angle Diagram to Saved Images</button>
+                      </div>
+                    </section>
                   </div>
 
                   <div id="diagramCreatorSavedView" class="studio-diagram-creator-view hidden" role="tabpanel" aria-hidden="true">
@@ -1633,10 +1707,22 @@ MODIFICATION RULES FOR THIS APP
     <div class="review-mode-toolbar" aria-label="Review image controls">
       <button id="reviewModeCloseBtn" class="review-mode-toolbar-btn review-mode-close-btn" type="button" aria-label="Exit reviewed image">✕</button>
       <button id="reviewModeOptionsBtn" class="review-mode-toolbar-btn review-mode-options-btn" type="button" aria-expanded="false" aria-controls="reviewModeOptionsPanel">Show Options</button>
+      <div id="reviewModeAngleNavigation" class="review-mode-angle-navigation hidden" aria-hidden="true">
+        <button id="reviewModePrevAngleBtn" type="button" class="review-mode-angle-btn" aria-label="Previous angle">‹</button>
+        <div id="reviewModeAngleIndicator" class="review-mode-angle-indicator" aria-live="polite"></div>
+        <button id="reviewModeNextAngleBtn" type="button" class="review-mode-angle-btn" aria-label="Next angle">›</button>
+      </div>
     </div>
     <div id="reviewModeOptionsPanel" class="review-mode-options-panel hidden" aria-hidden="true">
       <div class="review-mode-options-title">Review Options</div>
       <div id="reviewModeActiveTitle" class="review-mode-active-title"></div>
+      <label class="review-mode-switch-row">
+        <span>Show angle controls</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowAngleControlsToggle" type="checkbox" role="switch" aria-label="Show angle arrows and angle name" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
       <label class="review-mode-switch-row">
         <span>Show all label names</span>
         <span class="review-mode-toggle-control">
@@ -1688,6 +1774,17 @@ MODIFICATION RULES FOR THIS APP
         </div>
       </div>
       <div class="review-mode-options-help">Click a number to toggle its associated drawing. Drag labels to rearrange them temporarily; connector anchors stay fixed. Label descriptions appear with revealed names when enabled.</div>
+      <fieldset id="reviewModeMiniQuizScope" class="review-mode-mini-quiz-scope hidden" aria-hidden="true">
+        <legend>Quiz scope</legend>
+        <label>
+          <input id="reviewModeMiniScopeCurrent" type="radio" name="reviewModeMiniQuizScopeChoice" value="current" checked>
+          <span>Current angle</span>
+        </label>
+        <label>
+          <input id="reviewModeMiniScopeAll" type="radio" name="reviewModeMiniQuizScopeChoice" value="all">
+          <span>All angles</span>
+        </label>
+      </fieldset>
       <label class="review-mode-switch-row review-mode-mini-setting-row">
         <span>Randomize labels</span>
         <span class="review-mode-toggle-control">
@@ -1855,6 +1952,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22ms"></script>
+  <script src="script.js?v=22mw"></script>
 </body>
 </html>
