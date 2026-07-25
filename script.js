@@ -370,6 +370,9 @@ MODIFICATION RULES FOR THIS APP
                 showAllDrawings: false,
                 showConnectors: true,
                 labelScale: 1,
+                zoomScale: 1,
+                zoomX: 0,
+                zoomY: 0,
                 revealedLabels: new Set(),
                 revealedLabelsByAngle: {},
                 temporaryLabelPositions: {},
@@ -557,6 +560,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModePrevAngleBtn: document.getElementById('reviewModePrevAngleBtn'),
         reviewModeNextAngleBtn: document.getElementById('reviewModeNextAngleBtn'),
         reviewModeAngleIndicator: document.getElementById('reviewModeAngleIndicator'),
+        reviewModeResetZoomBtn: document.getElementById('reviewModeResetZoomBtn'),
         reviewModeImageStage: document.getElementById('reviewModeImageStage'),
         reviewModeImage: document.getElementById('reviewModeImage'),
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
@@ -6062,6 +6066,91 @@ MODIFICATION RULES FOR THIS APP
         if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.disabled = !show || review.miniQuiz.active;
     }
 
+    // Phase 22MX: image-specific iPad pinch zoom and pan for the complete Review Mode stage.
+    const REVIEW_MODE_MIN_ZOOM = 1;
+    const REVIEW_MODE_MAX_ZOOM = 5;
+    let reviewModeZoomResetTimer = null;
+
+    function normalizeReviewModeZoomValue(value, fallback = 0) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    }
+
+    function clampReviewModeZoomPan(scale, x, y) {
+        const viewport = elements.reviewModeImageViewport;
+        const stage = elements.reviewModeImageStage;
+        const normalizedScale = Math.min(REVIEW_MODE_MAX_ZOOM, Math.max(REVIEW_MODE_MIN_ZOOM, normalizeReviewModeZoomValue(scale, 1)));
+        if (!viewport || !stage || normalizedScale <= REVIEW_MODE_MIN_ZOOM + 0.001) {
+            return { scale: REVIEW_MODE_MIN_ZOOM, x: 0, y: 0 };
+        }
+        const availableWidth = Math.max(1, viewport.clientWidth - 16);
+        const availableHeight = Math.max(1, viewport.clientHeight - 16);
+        const maxX = Math.max(0, ((stage.offsetWidth * normalizedScale) - availableWidth) / 2);
+        const maxY = Math.max(0, ((stage.offsetHeight * normalizedScale) - availableHeight) / 2);
+        return {
+            scale: normalizedScale,
+            x: Math.min(maxX, Math.max(-maxX, normalizeReviewModeZoomValue(x, 0))),
+            y: Math.min(maxY, Math.max(-maxY, normalizeReviewModeZoomValue(y, 0)))
+        };
+    }
+
+    function syncReviewModeZoomUi() {
+        const review = getReviewModeState();
+        const isZoomed = review.zoomScale > REVIEW_MODE_MIN_ZOOM + 0.01 || Math.abs(review.zoomX) > 0.5 || Math.abs(review.zoomY) > 0.5;
+        elements.reviewModeImageViewport?.classList.toggle('is-zoomed', isZoomed);
+        elements.reviewModeResetZoomBtn?.classList.toggle('hidden', !isZoomed);
+        elements.reviewModeResetZoomBtn?.setAttribute('aria-hidden', isZoomed ? 'false' : 'true');
+    }
+
+    function applyReviewModeZoomTransform({ animate = false } = {}) {
+        const review = getReviewModeState();
+        const stage = elements.reviewModeImageStage;
+        if (!stage) return;
+        const next = clampReviewModeZoomPan(review.zoomScale, review.zoomX, review.zoomY);
+        review.zoomScale = next.scale;
+        review.zoomX = next.x;
+        review.zoomY = next.y;
+        if (reviewModeZoomResetTimer) {
+            window.clearTimeout(reviewModeZoomResetTimer);
+            reviewModeZoomResetTimer = null;
+        }
+        stage.classList.toggle('is-zoom-resetting', !!animate);
+        stage.style.transform = `translate3d(${next.x}px, ${next.y}px, 0) scale(${next.scale})`;
+        if (animate) {
+            reviewModeZoomResetTimer = window.setTimeout(() => {
+                stage.classList.remove('is-zoom-resetting');
+                reviewModeZoomResetTimer = null;
+            }, 190);
+        }
+        syncReviewModeZoomUi();
+    }
+
+    function resetReviewModeZoom({ animate = false } = {}) {
+        const review = getReviewModeState();
+        review.zoomScale = REVIEW_MODE_MIN_ZOOM;
+        review.zoomX = 0;
+        review.zoomY = 0;
+        elements.reviewModeImageViewport?.classList.remove('is-panning');
+        applyReviewModeZoomTransform({ animate });
+    }
+
+    function zoomReviewModeAtPoint(nextScale, clientX, clientY) {
+        const review = getReviewModeState();
+        const viewport = elements.reviewModeImageViewport;
+        if (!viewport) return;
+        const rect = viewport.getBoundingClientRect();
+        const centerX = rect.left + (rect.width / 2);
+        const centerY = rect.top + (rect.height / 2);
+        const currentScale = Math.max(REVIEW_MODE_MIN_ZOOM, normalizeReviewModeZoomValue(review.zoomScale, 1));
+        const localX = (clientX - centerX - review.zoomX) / currentScale;
+        const localY = (clientY - centerY - review.zoomY) / currentScale;
+        const clampedScale = Math.min(REVIEW_MODE_MAX_ZOOM, Math.max(REVIEW_MODE_MIN_ZOOM, nextScale));
+        review.zoomScale = clampedScale;
+        review.zoomX = clientX - centerX - (localX * clampedScale);
+        review.zoomY = clientY - centerY - (localY * clampedScale);
+        applyReviewModeZoomTransform();
+    }
+
     // Phase 22MV: retain preloaded angle images and protect rapid angle changes from stale image callbacks.
     const reviewModeAnglePreloadCache = new Map();
     let reviewModeAngleLoadToken = 0;
@@ -6183,6 +6272,7 @@ MODIFICATION RULES FOR THIS APP
         storeReviewModeAngleUiState();
         review.activeAngleIndex = (review.activeAngleIndex + (direction < 0 ? -1 : 1) + angles.length) % angles.length;
         restoreReviewModeAngleUiState();
+        resetReviewModeZoom();
         loadReviewModeActiveAngle({ animate: true });
     }
 
@@ -6279,6 +6369,7 @@ MODIFICATION RULES FOR THIS APP
             storeReviewModeAngleUiState();
             review.activeAngleIndex = targetAngleIndex;
             restoreReviewModeAngleUiState();
+            resetReviewModeZoom();
             if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
             if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
             if (elements.reviewModeDrawCanvas) {
@@ -6675,6 +6766,7 @@ MODIFICATION RULES FOR THIS APP
         const scale = Math.min(widthLimit / img.naturalWidth, heightLimit / img.naturalHeight);
         stage.style.width = `${Math.max(1, img.naturalWidth * scale)}px`;
         stage.style.height = `${Math.max(1, img.naturalHeight * scale)}px`;
+        applyReviewModeZoomTransform();
         renderReviewModeDrawData();
         renderReviewModeConnectors();
     }
@@ -6759,6 +6851,9 @@ MODIFICATION RULES FOR THIS APP
         review.miniQuizMode = 'normal';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal', scope: 'current', targets: [] }, 'normal');
         review.labelScale = 1;
+        review.zoomScale = 1;
+        review.zoomX = 0;
+        review.zoomY = 0;
         review.revealedLabels = new Set();
         review.revealedLabelsByAngle = {};
         review.temporaryLabelPositions = {};
@@ -6776,6 +6871,7 @@ MODIFICATION RULES FOR THIS APP
         }
         syncReviewModeControls();
         syncReviewModeAngleNavigation();
+        resetReviewModeZoom();
         loadReviewModeActiveAngle();
         syncBodyScrollLock();
     }
@@ -6795,6 +6891,7 @@ MODIFICATION RULES FOR THIS APP
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
         reviewModeLabelDrag = null;
         resetReviewModeAngleLoading({ clearCache: true });
+        resetReviewModeZoom();
         if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         elements.reviewModeOverlay?.classList.add('hidden');
         elements.reviewModeOverlay?.setAttribute('aria-hidden', 'true');
@@ -28851,22 +28948,88 @@ if (elements.multiAngleCanvas) {
     elements.multiAngleCanvas.addEventListener('pointercancel', endMultiAngleDrag);
 }
 
-// Phase 22MV: polished Review Mode angle navigation with guarded swipe/drag gestures.
+// Phase 22MX: coordinated Review Mode pinch zoom, zoomed panning, and normal-size angle swipes.
 if (elements.reviewModePrevAngleBtn) elements.reviewModePrevAngleBtn.addEventListener('click', () => changeReviewModeAngle(-1));
 if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.addEventListener('click', () => changeReviewModeAngle(1));
+if (elements.reviewModeResetZoomBtn) elements.reviewModeResetZoomBtn.addEventListener('click', () => resetReviewModeZoom({ animate: true }));
+
+const reviewModeGesturePointers = new Map();
 let reviewModeAngleSwipe = null;
+let reviewModePanGesture = null;
+let reviewModePinchGesture = null;
+
+function getReviewModeTouchPointers() {
+    return Array.from(reviewModeGesturePointers.values()).filter(pointer => pointer.pointerType === 'touch');
+}
+
+function getReviewModePointerDistance(first, second) {
+    return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function getReviewModePointerMidpoint(first, second) {
+    return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+}
+
+function cancelReviewModeLabelDragForGesture() {
+    const drag = reviewModeLabelDrag;
+    if (!drag) return;
+    drag.marker?.classList.remove('is-dragging');
+    try { drag.marker?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
+    reviewModeLabelDrag = null;
+    const review = getReviewModeState();
+    review.suppressLabelClickUntil = Date.now() + 500;
+}
+
+function cancelReviewModeAngleSwipe() {
+    reviewModeAngleSwipe = null;
+    elements.reviewModeImageStage?.classList.remove('is-angle-dragging');
+}
+
+function beginReviewModePinch() {
+    const touches = getReviewModeTouchPointers();
+    if (touches.length < 2 || !elements.reviewModeImageViewport) return false;
+    const first = touches[0];
+    const second = touches[1];
+    const distance = Math.max(1, getReviewModePointerDistance(first, second));
+    const midpoint = getReviewModePointerMidpoint(first, second);
+    const review = getReviewModeState();
+    const rect = elements.reviewModeImageViewport.getBoundingClientRect();
+    const centerX = rect.left + (rect.width / 2);
+    const centerY = rect.top + (rect.height / 2);
+    const scale = Math.max(REVIEW_MODE_MIN_ZOOM, review.zoomScale || 1);
+    cancelReviewModeAngleSwipe();
+    cancelReviewModeLabelDragForGesture();
+    reviewModePanGesture = null;
+    elements.reviewModeImageViewport.classList.remove('is-panning');
+    reviewModePinchGesture = {
+        pointerIds: [first.pointerId, second.pointerId],
+        startDistance: distance,
+        startScale: scale,
+        localX: (midpoint.x - centerX - review.zoomX) / scale,
+        localY: (midpoint.y - centerY - review.zoomY) / scale
+    };
+    [first, second].forEach(pointer => {
+        try { elements.reviewModeImageViewport.setPointerCapture?.(pointer.pointerId); } catch (_) {}
+    });
+    return true;
+}
+
+function beginReviewModePan(pointer) {
+    const review = getReviewModeState();
+    if (!pointer || review.zoomScale <= REVIEW_MODE_MIN_ZOOM + 0.01) return false;
+    cancelReviewModeAngleSwipe();
+    reviewModePanGesture = { pointerId: pointer.pointerId, startClientX: pointer.x, startClientY: pointer.y, startX: review.zoomX, startY: review.zoomY };
+    elements.reviewModeImageViewport?.classList.add('is-panning');
+    try { elements.reviewModeImageViewport?.setPointerCapture?.(pointer.pointerId); } catch (_) {}
+    return true;
+}
 
 function finishReviewModeAngleSwipe(event, { cancelled = false } = {}) {
     if (!reviewModeAngleSwipe || (event?.pointerId != null && reviewModeAngleSwipe.pointerId !== event.pointerId)) return;
     const swipe = reviewModeAngleSwipe;
-    reviewModeAngleSwipe = null;
-    elements.reviewModeImageStage?.classList.remove('is-angle-dragging');
+    cancelReviewModeAngleSwipe();
     if (event?.pointerId != null && elements.reviewModeImageViewport?.hasPointerCapture?.(event.pointerId)) {
-        try {
-            elements.reviewModeImageViewport.releasePointerCapture(event.pointerId);
-        } catch (error) {
-            // The browser may already have released the pointer during cancellation.
-        }
+        try { elements.reviewModeImageViewport.releasePointerCapture(event.pointerId); } catch (_) {}
     }
     if (cancelled || !event) return;
 
@@ -28883,10 +29046,67 @@ function finishReviewModeAngleSwipe(event, { cancelled = false } = {}) {
     changeReviewModeAngle(dx < 0 ? 1 : -1);
 }
 
+function endReviewModeGesturePointer(event, { cancelled = false } = {}) {
+    const pointerId = event?.pointerId;
+    if (pointerId == null) return;
+    const wasPinching = !!reviewModePinchGesture;
+    reviewModeGesturePointers.delete(pointerId);
+
+    if (wasPinching) {
+        if (event.cancelable) event.preventDefault();
+        event.stopPropagation();
+        const remainingTouches = getReviewModeTouchPointers();
+        if (remainingTouches.length >= 2) {
+            beginReviewModePinch();
+        } else {
+            reviewModePinchGesture = null;
+            if (!cancelled && remainingTouches.length === 1 && getReviewModeState().zoomScale > REVIEW_MODE_MIN_ZOOM + 0.01) {
+                beginReviewModePan(remainingTouches[0]);
+            } else {
+                reviewModePanGesture = null;
+                elements.reviewModeImageViewport?.classList.remove('is-panning');
+            }
+        }
+        return;
+    }
+
+    if (reviewModePanGesture?.pointerId === pointerId) {
+        reviewModePanGesture = null;
+        elements.reviewModeImageViewport?.classList.remove('is-panning');
+        if (event.cancelable) event.preventDefault();
+        return;
+    }
+
+    if (reviewModeAngleSwipe?.pointerId === pointerId) {
+        finishReviewModeAngleSwipe(event, { cancelled });
+    }
+}
+
 if (elements.reviewModeImageViewport) {
     elements.reviewModeImageViewport.addEventListener('pointerdown', event => {
         if (event.button != null && event.button !== 0) return;
-        if (event.target.closest('.review-mode-label-marker, .review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel')) return;
+        if (event.target.closest('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar')) return;
+        const pointer = { pointerId: event.pointerId, pointerType: event.pointerType || 'mouse', x: event.clientX, y: event.clientY };
+        reviewModeGesturePointers.set(event.pointerId, pointer);
+
+        if (pointer.pointerType === 'touch' && getReviewModeTouchPointers().length >= 2) {
+            if (beginReviewModePinch()) {
+                if (event.cancelable) event.preventDefault();
+                event.stopPropagation();
+            }
+            return;
+        }
+
+        const startedOnLabel = !!event.target.closest('.review-mode-label-marker');
+        if (getReviewModeState().zoomScale > REVIEW_MODE_MIN_ZOOM + 0.01 && !startedOnLabel) {
+            if (beginReviewModePan(pointer)) {
+                if (event.cancelable) event.preventDefault();
+                event.stopPropagation();
+            }
+            return;
+        }
+
+        if (startedOnLabel) return;
         const review = getReviewModeState();
         if (review.miniQuiz.active || getStudioSavedImageAngles(getActiveReviewModeEntry() || {}).length < 2) return;
         reviewModeAngleSwipe = {
@@ -28896,13 +29116,46 @@ if (elements.reviewModeImageViewport) {
             startedAt: performance.now(),
             horizontalIntent: false
         };
-        try {
-            elements.reviewModeImageViewport.setPointerCapture?.(event.pointerId);
-        } catch (error) {
-            // Synthetic or already-ended pointers cannot be captured; swipe detection still works.
-        }
-    });
+        try { elements.reviewModeImageViewport.setPointerCapture?.(event.pointerId); } catch (_) {}
+    }, { capture: true, passive: false });
+
     elements.reviewModeImageViewport.addEventListener('pointermove', event => {
+        const pointer = reviewModeGesturePointers.get(event.pointerId);
+        if (pointer) {
+            pointer.x = event.clientX;
+            pointer.y = event.clientY;
+        }
+
+        if (reviewModePinchGesture) {
+            const first = reviewModeGesturePointers.get(reviewModePinchGesture.pointerIds[0]);
+            const second = reviewModeGesturePointers.get(reviewModePinchGesture.pointerIds[1]);
+            if (!first || !second) return;
+            const distance = Math.max(1, getReviewModePointerDistance(first, second));
+            const midpoint = getReviewModePointerMidpoint(first, second);
+            const viewportRect = elements.reviewModeImageViewport.getBoundingClientRect();
+            const centerX = viewportRect.left + (viewportRect.width / 2);
+            const centerY = viewportRect.top + (viewportRect.height / 2);
+            const review = getReviewModeState();
+            const scale = Math.min(REVIEW_MODE_MAX_ZOOM, Math.max(REVIEW_MODE_MIN_ZOOM, reviewModePinchGesture.startScale * (distance / reviewModePinchGesture.startDistance)));
+            review.zoomScale = scale;
+            review.zoomX = midpoint.x - centerX - (reviewModePinchGesture.localX * scale);
+            review.zoomY = midpoint.y - centerY - (reviewModePinchGesture.localY * scale);
+            applyReviewModeZoomTransform();
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if (reviewModePanGesture?.pointerId === event.pointerId) {
+            const review = getReviewModeState();
+            review.zoomX = reviewModePanGesture.startX + (event.clientX - reviewModePanGesture.startClientX);
+            review.zoomY = reviewModePanGesture.startY + (event.clientY - reviewModePanGesture.startClientY);
+            applyReviewModeZoomTransform();
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
         if (!reviewModeAngleSwipe || reviewModeAngleSwipe.pointerId !== event.pointerId) return;
         const dx = event.clientX - reviewModeAngleSwipe.x;
         const dy = event.clientY - reviewModeAngleSwipe.y;
@@ -28913,11 +29166,32 @@ if (elements.reviewModeImageViewport) {
             elements.reviewModeImageStage?.classList.add('is-angle-dragging');
         }
         if (reviewModeAngleSwipe.horizontalIntent && event.cancelable) event.preventDefault();
+    }, { capture: true, passive: false });
+
+    elements.reviewModeImageViewport.addEventListener('pointerup', event => endReviewModeGesturePointer(event), { capture: true, passive: false });
+    elements.reviewModeImageViewport.addEventListener('pointercancel', event => endReviewModeGesturePointer(event, { cancelled: true }), { capture: true, passive: false });
+
+    elements.reviewModeImageViewport.addEventListener('dblclick', event => {
+        if (getReviewModeState().zoomScale <= REVIEW_MODE_MIN_ZOOM + 0.01) return;
+        event.preventDefault();
+        resetReviewModeZoom({ animate: true });
+    });
+
+    elements.reviewModeImageViewport.addEventListener('wheel', event => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        const review = getReviewModeState();
+        const factor = Math.exp(-event.deltaY * 0.01);
+        zoomReviewModeAtPoint(review.zoomScale * factor, event.clientX, event.clientY);
     }, { passive: false });
-    elements.reviewModeImageViewport.addEventListener('pointerup', event => finishReviewModeAngleSwipe(event));
-    elements.reviewModeImageViewport.addEventListener('pointercancel', event => finishReviewModeAngleSwipe(event, { cancelled: true }));
-    elements.reviewModeImageViewport.addEventListener('lostpointercapture', event => finishReviewModeAngleSwipe(event, { cancelled: true }));
 }
+
+window.addEventListener('resize', () => {
+    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => {
+        syncReviewModeImageStage();
+        applyReviewModeZoomTransform();
+    });
+});
 
 const reviewModeFilterElements = [
     elements.reviewModeSearchInput,

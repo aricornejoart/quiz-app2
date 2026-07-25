@@ -10908,7 +10908,10 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   overflow: hidden;
   padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
   box-sizing: border-box;
-  touch-action: pan-y pinch-zoom;
+  touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .review-mode-image-stage {
@@ -10916,6 +10919,20 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   max-width: 100%;
   max-height: 100%;
   flex: 0 0 auto;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.review-mode-image-stage.is-zoom-resetting {
+  transition: transform 160ms ease;
+}
+
+.review-mode-image-viewport.is-zoomed {
+  cursor: grab;
+}
+
+.review-mode-image-viewport.is-panning {
+  cursor: grabbing;
 }
 
 /* Phase 22MV — keep the current frame visible while the next angle finishes loading. */
@@ -10947,7 +10964,8 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   .review-mode-image,
   .review-mode-draw-canvas,
   .review-mode-connector-layer,
-  .review-mode-label-layer {
+  .review-mode-label-layer,
+  .review-mode-image-stage.is-zoom-resetting {
     transition: none;
   }
 }
