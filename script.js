@@ -280,6 +280,7 @@ MODIFICATION RULES FOR THIS APP
             diagramCreatorFileMode: 'single',
             multiAngleCreator: {
                 open: false,
+                setupVisible: false,
                 angles: [],
                 activeIndex: 0,
                 canvas: { width: 1100, height: 1500, background: '#000000' },
@@ -290,7 +291,8 @@ MODIFICATION RULES FOR THIS APP
                 guidesVisible: true,
                 settingAnchor: false,
                 pointerDrag: null,
-                saving: false
+                saving: false,
+                editorSwitching: false
             },
             diagramCreatorLibrary: {
                 view: 'new',
@@ -500,6 +502,8 @@ MODIFICATION RULES FOR THIS APP
         multiAngleNextBtn: document.getElementById('multiAngleNextBtn'),
         multiAngleIndicator: document.getElementById('multiAngleIndicator'),
         multiAngleCanvasWidth: document.getElementById('multiAngleCanvasWidth'),
+        multiAngleBackgroundInput: document.getElementById('multiAngleBackgroundInput'),
+        multiAngleBackgroundValue: document.getElementById('multiAngleBackgroundValue'),
         multiAngleCanvasHeight: document.getElementById('multiAngleCanvasHeight'),
         multiAngleApplyDimensionsBtn: document.getElementById('multiAngleApplyDimensionsBtn'),
         multiAngleNameInput: document.getElementById('multiAngleNameInput'),
@@ -737,6 +741,15 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorCanvas: document.getElementById('studioImageEditorCanvas'),
         studioImageEditorCloseBtn: document.getElementById('studioImageEditorCloseBtn'),
         studioImageEditorCancelBtn: document.getElementById('studioImageEditorCancelBtn'),
+        studioImageEditorMultiAngleNavigator: document.getElementById('studioImageEditorMultiAngleNavigator'),
+        studioImageEditorPrevAngleBtn: document.getElementById('studioImageEditorPrevAngleBtn'),
+        studioImageEditorAngleSelect: document.getElementById('studioImageEditorAngleSelect'),
+        studioImageEditorNextAngleBtn: document.getElementById('studioImageEditorNextAngleBtn'),
+        studioImageEditorMultiAngleBackground: document.getElementById('studioImageEditorMultiAngleBackground'),
+        studioImageEditorMultiAngleBackgroundInput: document.getElementById('studioImageEditorMultiAngleBackgroundInput'),
+        studioImageEditorMultiAngleBackgroundValue: document.getElementById('studioImageEditorMultiAngleBackgroundValue'),
+        studioImageEditorCanvasSetupBtn: document.getElementById('studioImageEditorCanvasSetupBtn'),
+        studioImageEditorSaveDiagramBtn: document.getElementById('studioImageEditorSaveDiagramBtn'),
         studioImageEditorSaveBtn: document.getElementById('studioImageEditorSaveBtn'),
         studioImageEditorSendSavedBtn: document.getElementById('studioImageEditorSendSavedBtn'),
         studioImageEditorAttachAllFrontBtn: document.getElementById('studioImageEditorAttachAllFrontBtn'),
@@ -2616,12 +2629,17 @@ MODIFICATION RULES FOR THIS APP
         return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     }
 
+    function normalizeMultiAngleBackgroundColor(value = '#000000') {
+        const color = normalizeSheetText(value).toLowerCase();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : MULTI_ANGLE_DEFAULT_CANVAS.background;
+    }
+
     function normalizeMultiAngleCanvasConfig(value = {}) {
         const source = value && typeof value === 'object' ? value : {};
         return {
             width: Math.min(3000, Math.max(300, Math.round(Number(source.width) || MULTI_ANGLE_DEFAULT_CANVAS.width))),
             height: Math.min(3000, Math.max(300, Math.round(Number(source.height) || MULTI_ANGLE_DEFAULT_CANVAS.height))),
-            background: '#000000'
+            background: normalizeMultiAngleBackgroundColor(source.background || source.backgroundColor || MULTI_ANGLE_DEFAULT_CANVAS.background)
         };
     }
 
@@ -5382,7 +5400,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
-    // ================= PHASE 22MT MULTI-ANGLE CREATOR =================
+    // ================= PHASE 22MZ MULTI-ANGLE CREATOR =================
     function getMultiAngleCreatorState() {
         if (!state.auth.multiAngleCreator || typeof state.auth.multiAngleCreator !== 'object') state.auth.multiAngleCreator = {};
         const draft = state.auth.multiAngleCreator;
@@ -5391,10 +5409,12 @@ MODIFICATION RULES FOR THIS APP
         draft.canvas = normalizeMultiAngleCanvasConfig(draft.canvas || {});
         draft.metadata = normalizeDiagramMetadata(draft.metadata || {});
         draft.open = draft.open === true;
+        draft.setupVisible = draft.setupVisible === true;
         draft.listOpen = draft.listOpen === true;
         draft.guidesVisible = draft.guidesVisible !== false;
         draft.settingAnchor = draft.settingAnchor === true;
         draft.saving = draft.saving === true;
+        draft.editorSwitching = draft.editorSwitching === true;
         return draft;
     }
 
@@ -5410,6 +5430,7 @@ MODIFICATION RULES FOR THIS APP
         cleanupMultiAngleCreatorRuntime();
         state.auth.multiAngleCreator = {
             open: false,
+            setupVisible: false,
             angles: [],
             activeIndex: 0,
             canvas: { ...MULTI_ANGLE_DEFAULT_CANVAS },
@@ -5420,7 +5441,8 @@ MODIFICATION RULES FOR THIS APP
             guidesVisible: true,
             settingAnchor: false,
             pointerDrag: null,
-            saving: false
+            saving: false,
+            editorSwitching: false
         };
         elements.multiAngleCreatorPanel?.classList.add('hidden');
         elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'true');
@@ -5559,7 +5581,7 @@ MODIFICATION RULES FOR THIS APP
         if (canvas.height !== config.height) canvas.height = config.height;
         const ctx = canvas.getContext('2d');
         ctx.save();
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = config.background;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         const editedImage = angle.editedValue ? angle.runtimeEditedImage : null;
         if (editedImage) {
@@ -5590,13 +5612,16 @@ MODIFICATION RULES FOR THIS APP
     function syncMultiAngleCreatorControls() {
         const draft = getMultiAngleCreatorState();
         const angle = getActiveMultiAngleDraftAngle();
-        elements.multiAngleCreatorPanel?.classList.toggle('hidden', !draft.open);
-        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', draft.open ? 'false' : 'true');
+        const setupVisible = draft.open && draft.setupVisible;
+        elements.multiAngleCreatorPanel?.classList.toggle('hidden', !setupVisible);
+        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', setupVisible ? 'false' : 'true');
         if (!draft.open || !angle) return;
         const framing = normalizeMultiAngleFraming(angle.framing || {});
         if (elements.multiAngleIndicator) elements.multiAngleIndicator.textContent = `${angle.name || `Angle ${draft.activeIndex + 1}`} · ${draft.activeIndex + 1} of ${draft.angles.length}`;
         if (elements.multiAngleCanvasWidth) elements.multiAngleCanvasWidth.value = String(draft.canvas.width);
         if (elements.multiAngleCanvasHeight) elements.multiAngleCanvasHeight.value = String(draft.canvas.height);
+        if (elements.multiAngleBackgroundInput) elements.multiAngleBackgroundInput.value = draft.canvas.background;
+        if (elements.multiAngleBackgroundValue) elements.multiAngleBackgroundValue.textContent = draft.canvas.background.toUpperCase();
         if (elements.multiAngleNameInput) elements.multiAngleNameInput.value = angle.name || `Angle ${draft.activeIndex + 1}`;
         if (elements.multiAngleScaleInput) elements.multiAngleScaleInput.value = String(Math.round(framing.scale * 100));
         if (elements.multiAngleScaleValue) elements.multiAngleScaleValue.textContent = `${Math.round(framing.scale * 100)}%`;
@@ -5659,6 +5684,7 @@ MODIFICATION RULES FOR THIS APP
         if (!append) resetMultiAngleCreatorState({ keepFileInput: true });
         const draft = getMultiAngleCreatorState();
         draft.open = true;
+        draft.setupVisible = true;
         elements.multiAngleCreatorPanel?.classList.remove('hidden');
         elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'false');
         setCreatorStatus(`Preparing ${list.length} angle image${list.length === 1 ? '' : 's'}...`, 'success');
@@ -5673,21 +5699,20 @@ MODIFICATION RULES FOR THIS APP
         }
         syncMultiAngleCreatorControls();
         elements.multiAngleCreatorPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setCreatorStatus(`${draft.angles.length} angles prepared on a ${draft.canvas.width} × ${draft.canvas.height} black canvas.`, 'success');
+        setCreatorStatus(`${draft.angles.length} angles prepared on a ${draft.canvas.width} × ${draft.canvas.height} shared canvas.`, 'success');
     }
 
-    async function openMultiAngleSavedDiagram(entry = {}) {
+    async function loadMultiAngleSavedDiagramDraft(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
-        if (!normalized || !isMultiAngleSavedImageEntry(normalized)) return false;
+        if (!normalized || !isMultiAngleSavedImageEntry(normalized)) return null;
         resetMultiAngleCreatorState({ keepFileInput: true });
         const draft = getMultiAngleCreatorState();
         draft.open = true;
+        draft.setupVisible = false;
         draft.canvas = normalizeMultiAngleCanvasConfig(normalized.canvas || {});
         draft.metadata = normalizeDiagramMetadata(normalized.metadata || {});
         draft.editingEntryId = normalized.id;
         draft.originalEntry = normalized;
-        elements.multiAngleCreatorPanel?.classList.remove('hidden');
-        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'false');
         setDiagramCreatorLibraryView('new');
         setCreatorStatus('Loading multi-angle diagram...', 'success');
         for (const [index, savedAngle] of getStudioSavedImageAngles(normalized).entries()) {
@@ -5700,26 +5725,218 @@ MODIFICATION RULES FOR THIS APP
         }
         draft.activeIndex = 0;
         syncMultiAngleCreatorControls();
-        elements.multiAngleCreatorPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setCreatorStatus(`Opened ${draft.angles.length}-angle diagram for editing.`, 'success');
+        return draft;
+    }
+
+    function showMultiAngleCanvasSetup(options = {}) {
+        const draft = getMultiAngleCreatorState();
+        if (!draft.open || !draft.angles.length) return false;
+        draft.setupVisible = true;
+        elements.multiAngleCreatorPanel?.classList.remove('hidden');
+        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'false');
+        setDiagramCreatorLibraryView('new');
+        syncMultiAngleCreatorControls();
+        if (options.scroll !== false) elements.multiAngleCreatorPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (options.message !== false) setCreatorStatus(options.message || `Opened ${draft.angles.length}-angle Canvas Setup.`, 'success');
         return true;
+    }
+
+    function hideMultiAngleCanvasSetup() {
+        const draft = getMultiAngleCreatorState();
+        draft.setupVisible = false;
+        elements.multiAngleCreatorPanel?.classList.add('hidden');
+        elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'true');
+    }
+
+    async function openMultiAngleSavedDiagram(entry = {}, options = {}) {
+        const draft = await loadMultiAngleSavedDiagramDraft(entry);
+        if (!draft) return false;
+        const openEditorFirst = options.openEditorFirst !== false;
+        if (openEditorFirst) {
+            hideMultiAngleCanvasSetup();
+            await openMultiAngleAngleInImageEditor(draft.activeIndex, { saveCurrent: false });
+            setCreatorStatus(`Opened ${draft.angles.length}-angle diagram directly in Edit Image.`, 'success');
+        } else {
+            showMultiAngleCanvasSetup({ message: `Opened ${draft.angles.length}-angle diagram for Canvas Setup.` });
+        }
+        return true;
+    }
+
+    function getMultiAngleEditorTarget(angle, index, draft = getMultiAngleCreatorState()) {
+        return {
+            kind: 'standalone-diagram',
+            multiAngleDraft: true,
+            multiAngleAngleId: angle.id,
+            sourceValue: getMultiAngleRenderedDataUrl(angle),
+            sourceLabel: `Angle ${index + 1}: ${angle.name || angle.fileName}`,
+            labels: angle.labels,
+            drawStrokes: angle.drawStrokes,
+            metadata: draft.metadata
+        };
+    }
+
+    async function persistCurrentMultiAngleEditorState(options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || editor?.target?.multiAngleDraft !== true) return false;
+        const draft = getMultiAngleCreatorState();
+        const angleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
+        const angle = draft.angles.find(item => item.id === angleId);
+        if (!angle) return false;
+        angle.labels = normalizeDiagramLabels(editor.labels || []);
+        angle.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []);
+        draft.metadata = normalizeDiagramMetadata(editor.metadata || getImageEditorMetadataFromFields());
+        if (options.includeImage !== false && editor.baseCanvas) {
+            const imageValue = editor.baseCanvas.toDataURL('image/png');
+            angle.editedValue = normalizeSheetText(imageValue);
+            angle.runtimeEditedImage = null;
+            if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
+            angle.runtimeEditedObjectUrl = '';
+            await loadMultiAngleRuntimeImage(angle, true);
+        }
+        return true;
+    }
+
+    async function openMultiAngleAngleInImageEditor(index, options = {}) {
+        const draft = getMultiAngleCreatorState();
+        if (!draft.angles.length || draft.editorSwitching) return false;
+        const nextIndex = (Math.floor(Number(index) || 0) + draft.angles.length) % draft.angles.length;
+        const currentEditor = state.auth.imageEditor;
+        const editorPreferences = currentEditor?.open && currentEditor?.target?.multiAngleDraft === true
+            ? {
+                mode: currentEditor.mode,
+                showLabelPanel: currentEditor.showLabelPanel === true,
+                metadataPanelOpen: currentEditor.metadataPanelOpen === true,
+                labelInfoPanelOpen: currentEditor.labelInfoPanelOpen === true,
+                drawTool: currentEditor.drawTool
+            }
+            : null;
+        draft.editorSwitching = true;
+        refreshImageEditorMultiAngleUi();
+        try {
+            if (options.saveCurrent === true) await persistCurrentMultiAngleEditorState({ includeImage: true });
+            draft.activeIndex = nextIndex;
+            draft.settingAnchor = false;
+            const angle = draft.angles[nextIndex];
+            await openStudioImageEditor(getMultiAngleEditorTarget(angle, nextIndex, draft));
+            const nextEditor = state.auth.imageEditor;
+            if (editorPreferences && nextEditor?.open) {
+                nextEditor.showLabelPanel = editorPreferences.showLabelPanel;
+                nextEditor.metadataPanelOpen = editorPreferences.metadataPanelOpen;
+                nextEditor.labelInfoPanelOpen = editorPreferences.labelInfoPanelOpen;
+                nextEditor.drawTool = normalizeSheetText(editorPreferences.drawTool) || 'paintbrush';
+                elements.studioImageEditorDrawToolButtons?.forEach(button => button.classList.toggle('active', normalizeSheetText(button.dataset.imageEditorDrawTool) === nextEditor.drawTool));
+                setImageEditorMode(editorPreferences.mode || 'crop');
+                refreshImageEditorMetadataUi();
+                refreshImageEditorLabelInfoUi();
+            }
+            setImageEditorStatus(options.saveCurrent === true ? `Saved the previous angle and opened ${angle.name || `Angle ${nextIndex + 1}`}.` : '');
+            return true;
+        } finally {
+            draft.editorSwitching = false;
+            refreshImageEditorLabelUi();
+            syncMultiAngleCreatorControls();
+        }
+    }
+
+    async function switchMultiAngleImageEditorAngle(directionOrIndex, options = {}) {
+        const draft = getMultiAngleCreatorState();
+        if (!draft.angles.length) return false;
+        const explicitIndex = options.explicitIndex === true;
+        const nextIndex = explicitIndex
+            ? Math.max(0, Math.min(draft.angles.length - 1, Math.floor(Number(directionOrIndex) || 0)))
+            : (draft.activeIndex + (Number(directionOrIndex) < 0 ? -1 : 1) + draft.angles.length) % draft.angles.length;
+        if (nextIndex === draft.activeIndex && draft.angles.length > 1) return false;
+        return openMultiAngleAngleInImageEditor(nextIndex, { saveCurrent: true });
     }
 
     async function editActiveMultiAngleAngle() {
         const draft = getMultiAngleCreatorState();
-        const angle = getActiveMultiAngleDraftAngle();
-        if (!angle) return;
-        const sourceValue = getMultiAngleRenderedDataUrl(angle);
-        await openStudioImageEditor({
-            kind: 'standalone-diagram',
-            multiAngleDraft: true,
-            multiAngleAngleId: angle.id,
-            sourceValue,
-            sourceLabel: `Angle ${draft.activeIndex + 1}: ${angle.name || angle.fileName}`,
-            labels: angle.labels,
-            drawStrokes: angle.drawStrokes,
-            metadata: draft.metadata
-        });
+        if (!draft.angles.length) return;
+        hideMultiAngleCanvasSetup();
+        await openMultiAngleAngleInImageEditor(draft.activeIndex, { saveCurrent: false });
+    }
+
+    async function openMultiAngleCanvasSetupFromEditor(options = {}) {
+        const editor = state.auth.imageEditor;
+        const draft = getMultiAngleCreatorState();
+        if (!draft.open || !draft.angles.length || draft.editorSwitching) return false;
+        draft.editorSwitching = true;
+        refreshImageEditorMultiAngleUi();
+        try {
+            if (editor?.open && editor?.target?.multiAngleDraft === true && options.alreadyPersisted !== true) {
+                await persistCurrentMultiAngleEditorState({ includeImage: true });
+            }
+            closeStudioImageEditor();
+            showMultiAngleCanvasSetup({
+                message: options.message || 'Current angle saved to the draft. Canvas Setup opened.'
+            });
+            return true;
+        } finally {
+            draft.editorSwitching = false;
+            syncMultiAngleCreatorControls();
+        }
+    }
+
+    async function saveMultiAngleDiagramFromEditor() {
+        const editor = state.auth.imageEditor;
+        const draft = getMultiAngleCreatorState();
+        if (!editor?.open || editor?.target?.multiAngleDraft !== true || draft.saving) return false;
+        await persistCurrentMultiAngleEditorState({ includeImage: true });
+        const savedEntry = await saveMultiAngleDraftToSavedImages();
+        if (!savedEntry) {
+            setImageEditorStatus('Could not save the diagram. The editor remains open.');
+            return false;
+        }
+        closeStudioImageEditor();
+        setDiagramCreatorLibraryView('saved');
+        renderDiagramCreatorSavedImages();
+        return true;
+    }
+
+    function handleStudioImageEditorCloseRequest() {
+        const editor = state.auth.imageEditor;
+        if (editor?.open && editor?.target?.multiAngleDraft === true) {
+            openMultiAngleCanvasSetupFromEditor().catch(error => {
+                console.error(error);
+                setImageEditorStatus('Could not open Canvas Setup.');
+            });
+            return;
+        }
+        closeStudioImageEditor();
+    }
+
+    async function changeMultiAngleSharedBackground(nextValue, options = {}) {
+        const draft = getMultiAngleCreatorState();
+        const nextColor = normalizeMultiAngleBackgroundColor(nextValue);
+        const previousColor = draft.canvas.background;
+        if (nextColor === previousColor) {
+            syncMultiAngleCreatorControls();
+            refreshImageEditorMultiAngleUi();
+            return true;
+        }
+        const activeEditor = state.auth.imageEditor;
+        const currentEditorHasImageEdits = !!(activeEditor?.open && activeEditor?.target?.multiAngleDraft === true && (activeEditor.history?.length || activeEditor.draftShape));
+        const hasFlattenedEdits = currentEditorHasImageEdits || draft.angles.some(angle => !!normalizeSheetText(angle.editedValue));
+        if (hasFlattenedEdits && options.skipConfirm !== true) {
+            const approved = window.confirm('Changing the shared background regenerates every angle from its original source image. Image-level crop, blur, arrow, and line edits may reset. Labels, descriptions, connectors, and drawings will remain. Continue?');
+            if (!approved) {
+                syncMultiAngleCreatorControls();
+                refreshImageEditorMultiAngleUi();
+                return false;
+            }
+        }
+        if (state.auth.imageEditor?.open && state.auth.imageEditor?.target?.multiAngleDraft === true) {
+            await persistCurrentMultiAngleEditorState({ includeImage: false });
+        }
+        draft.canvas = normalizeMultiAngleCanvasConfig({ ...draft.canvas, background: nextColor });
+        draft.angles.forEach(angle => clearMultiAngleFlattenedEdit(angle));
+        syncMultiAngleCreatorControls();
+        if (state.auth.imageEditor?.open && state.auth.imageEditor?.target?.multiAngleDraft === true) {
+            await openMultiAngleAngleInImageEditor(draft.activeIndex, { saveCurrent: false });
+            setImageEditorStatus(`Shared background changed to ${nextColor.toUpperCase()}.`);
+        }
+        setCreatorStatus(`Shared multi-angle background changed to ${nextColor.toUpperCase()}.`, 'success');
+        return true;
     }
 
     async function updateMultiAngleDraftFromImageEditor(imageValue = '', labels = [], drawStrokes = [], metadata = {}) {
@@ -5745,7 +5962,7 @@ MODIFICATION RULES FOR THIS APP
         return `${safe}.png`;
     }
 
-    async function saveMultiAngleDraftToSavedImages() {
+    async function saveMultiAngleDraftToSavedImages(options = {}) {
         const draft = getMultiAngleCreatorState();
         if (draft.saving || !draft.angles.length) return;
         draft.saving = true;
@@ -5829,16 +6046,27 @@ MODIFICATION RULES FOR THIS APP
                     saveStudioSavedImagePendingUpsertKeys(pendingKeys);
                 }
             }
-            resetMultiAngleCreatorState();
             renderDiagramCreatorSavedImages();
             if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
+            if (options.keepDraftOpen === true) {
+                draft.originalEntry = normalizeStudioSavedImageEntry(savedEntry || nextEntry);
+                draft.editingEntryId = normalizeSheetText(savedEntry?.id || nextEntry.id);
+                draft.saving = false;
+                syncMultiAngleCreatorControls();
+                refreshImageEditorLabelUi();
+                setCreatorStatus(`${savedAngles.length}-angle diagram saved. You can keep editing.`, 'success');
+                return savedEntry;
+            }
+            resetMultiAngleCreatorState();
             setDiagramCreatorLibraryView('saved');
             setCreatorStatus(`${savedAngles.length}-angle diagram saved as one Saved Image.`, 'success');
+            return savedEntry;
         } catch (error) {
             console.error(error);
             draft.saving = false;
             syncMultiAngleCreatorControls();
             setCreatorStatus('Could not save the multi-angle diagram. Review the images and try again.', 'error');
+            return null;
         }
     }
 
@@ -7080,6 +7308,15 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorCanvas = document.getElementById('studioImageEditorCanvas');
         elements.studioImageEditorCloseBtn = document.getElementById('studioImageEditorCloseBtn');
         elements.studioImageEditorCancelBtn = document.getElementById('studioImageEditorCancelBtn');
+        elements.studioImageEditorMultiAngleNavigator = document.getElementById('studioImageEditorMultiAngleNavigator');
+        elements.studioImageEditorPrevAngleBtn = document.getElementById('studioImageEditorPrevAngleBtn');
+        elements.studioImageEditorAngleSelect = document.getElementById('studioImageEditorAngleSelect');
+        elements.studioImageEditorNextAngleBtn = document.getElementById('studioImageEditorNextAngleBtn');
+        elements.studioImageEditorMultiAngleBackground = document.getElementById('studioImageEditorMultiAngleBackground');
+        elements.studioImageEditorMultiAngleBackgroundInput = document.getElementById('studioImageEditorMultiAngleBackgroundInput');
+        elements.studioImageEditorMultiAngleBackgroundValue = document.getElementById('studioImageEditorMultiAngleBackgroundValue');
+        elements.studioImageEditorCanvasSetupBtn = document.getElementById('studioImageEditorCanvasSetupBtn');
+        elements.studioImageEditorSaveDiagramBtn = document.getElementById('studioImageEditorSaveDiagramBtn');
         elements.studioImageEditorSaveBtn = document.getElementById('studioImageEditorSaveBtn');
         elements.studioImageEditorSendSavedBtn = document.getElementById('studioImageEditorSendSavedBtn');
         elements.studioImageEditorAttachAllFrontBtn = document.getElementById('studioImageEditorAttachAllFrontBtn');
@@ -7180,6 +7417,8 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-image-editor-actions">
                       <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
                       <button id="studioImageEditorLabelInfoToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorLabelInfoPanel">Show Label Information</button>
+                      <button id="studioImageEditorCanvasSetupBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Canvas Setup</button>
+                      <button id="studioImageEditorSaveDiagramBtn" type="button" class="auth-action-btn auth-primary-btn hidden">Save Diagram</button>
                       <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
                       <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
                       <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
@@ -8730,8 +8969,47 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function refreshImageEditorMultiAngleUi() {
+        const editor = state.auth.imageEditor;
+        const draft = getMultiAngleCreatorState();
+        const isMultiAngleDraftTarget = !!(editor?.open && isImageEditorStandaloneDiagramTarget(editor) && editor?.target?.multiAngleDraft === true && draft.angles.length);
+        const navigator = elements.studioImageEditorMultiAngleNavigator;
+        if (navigator) {
+            navigator.classList.toggle('hidden', !isMultiAngleDraftTarget);
+            navigator.setAttribute('aria-hidden', isMultiAngleDraftTarget ? 'false' : 'true');
+        }
+        if (elements.studioImageEditorMultiAngleBackground) elements.studioImageEditorMultiAngleBackground.classList.toggle('hidden', !isMultiAngleDraftTarget);
+        if (elements.studioImageEditorCanvasSetupBtn) {
+            elements.studioImageEditorCanvasSetupBtn.classList.toggle('hidden', !isMultiAngleDraftTarget);
+            elements.studioImageEditorCanvasSetupBtn.disabled = !isMultiAngleDraftTarget || draft.editorSwitching || draft.saving;
+        }
+        if (elements.studioImageEditorSaveDiagramBtn) {
+            elements.studioImageEditorSaveDiagramBtn.classList.toggle('hidden', !isMultiAngleDraftTarget);
+            elements.studioImageEditorSaveDiagramBtn.disabled = !isMultiAngleDraftTarget || draft.editorSwitching || draft.saving || !editor?.baseCanvas;
+        }
+        if (!isMultiAngleDraftTarget) return;
+        const activeId = normalizeSheetText(editor.target.multiAngleAngleId || '');
+        const activeIndex = draft.angles.findIndex(angle => angle.id === activeId);
+        if (activeIndex >= 0) draft.activeIndex = activeIndex;
+        if (elements.studioImageEditorAngleSelect) {
+            const currentValue = String(draft.activeIndex);
+            const nextMarkup = draft.angles.map((angle, index) => `<option value="${index}">${escapeHtml(`${index + 1} of ${draft.angles.length} — ${angle.name || `Angle ${index + 1}`}`)}</option>`).join('');
+            if (elements.studioImageEditorAngleSelect.innerHTML !== nextMarkup) elements.studioImageEditorAngleSelect.innerHTML = nextMarkup;
+            elements.studioImageEditorAngleSelect.value = currentValue;
+            elements.studioImageEditorAngleSelect.disabled = draft.editorSwitching || draft.angles.length < 2;
+        }
+        if (elements.studioImageEditorPrevAngleBtn) elements.studioImageEditorPrevAngleBtn.disabled = draft.editorSwitching || draft.angles.length < 2;
+        if (elements.studioImageEditorNextAngleBtn) elements.studioImageEditorNextAngleBtn.disabled = draft.editorSwitching || draft.angles.length < 2;
+        if (elements.studioImageEditorMultiAngleBackgroundInput) {
+            elements.studioImageEditorMultiAngleBackgroundInput.value = draft.canvas.background;
+            elements.studioImageEditorMultiAngleBackgroundInput.disabled = draft.editorSwitching;
+        }
+        if (elements.studioImageEditorMultiAngleBackgroundValue) elements.studioImageEditorMultiAngleBackgroundValue.textContent = draft.canvas.background.toUpperCase();
+    }
+
     function refreshImageEditorLabelUi() {
         const editor = state.auth.imageEditor;
+        refreshImageEditorMultiAngleUi();
         const showLabelsButton = !!(editor?.labelsEnabled);
         if (elements.studioImageEditorLabelsBtn) {
             elements.studioImageEditorLabelsBtn.hidden = !showLabelsButton;
@@ -8756,7 +9034,7 @@ MODIFICATION RULES FOR THIS APP
             const isMultiAngleDraftTarget = isImageEditorStandaloneDiagramTarget(editor) && editor?.target?.multiAngleDraft === true;
             const isUpdatingSavedImage = isImageEditorStandaloneDiagramTarget(editor) && !!normalizeSheetText(editor?.target?.savedImageEntryId || '');
             elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isSavedDiagramTarget);
-            elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas;
+            elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas || (isMultiAngleDraftTarget && (getMultiAngleCreatorState().saving || getMultiAngleCreatorState().editorSwitching));
             elements.studioImageEditorSendSavedBtn.textContent = isMultiAngleDraftTarget ? 'Save Angle' : (isUpdatingSavedImage ? 'Update Saved Image' : 'Send to Saved Images');
             elements.studioImageEditorSendSavedBtn.title = isSavedDiagramTarget
                 ? (isMultiAngleDraftTarget
@@ -9121,10 +9399,41 @@ MODIFICATION RULES FOR THIS APP
 
     function bindStudioImageEditorEvents() {
         const overlay = elements.studioImageEditorOverlay;
-        if (!overlay || overlay.dataset.imageEditorEventsBound === 'true') return;
+        if (!overlay) return;
+        const bindMultiAngleEditorEvents = () => {
+            if (overlay.dataset.imageEditorMultiAngleEventsBound === 'true') return;
+            overlay.dataset.imageEditorMultiAngleEventsBound = 'true';
+            elements.studioImageEditorPrevAngleBtn?.addEventListener('click', () => switchMultiAngleImageEditorAngle(-1).catch(error => {
+                console.error(error);
+                setImageEditorStatus('Could not open the previous angle.');
+            }));
+            elements.studioImageEditorNextAngleBtn?.addEventListener('click', () => switchMultiAngleImageEditorAngle(1).catch(error => {
+                console.error(error);
+                setImageEditorStatus('Could not open the next angle.');
+            }));
+            elements.studioImageEditorAngleSelect?.addEventListener('change', () => switchMultiAngleImageEditorAngle(elements.studioImageEditorAngleSelect.value, { explicitIndex: true }).catch(error => {
+                console.error(error);
+                setImageEditorStatus('Could not open that angle.');
+            }));
+            elements.studioImageEditorMultiAngleBackgroundInput?.addEventListener('change', () => changeMultiAngleSharedBackground(elements.studioImageEditorMultiAngleBackgroundInput.value, { fromEditor: true }).catch(error => {
+                console.error(error);
+                setImageEditorStatus('Could not change the shared background.');
+                refreshImageEditorMultiAngleUi();
+            }));
+            elements.studioImageEditorCanvasSetupBtn?.addEventListener('click', () => openMultiAngleCanvasSetupFromEditor().catch(error => {
+                console.error(error);
+                setImageEditorStatus('Could not open Canvas Setup.');
+            }));
+            elements.studioImageEditorSaveDiagramBtn?.addEventListener('click', () => saveMultiAngleDiagramFromEditor().catch(error => {
+                console.error(error);
+                setImageEditorStatus('Could not save the diagram.');
+            }));
+        };
+        bindMultiAngleEditorEvents();
+        if (overlay.dataset.imageEditorEventsBound === 'true') return;
         overlay.dataset.imageEditorEventsBound = 'true';
-        elements.studioImageEditorCloseBtn?.addEventListener('click', closeStudioImageEditor);
-        elements.studioImageEditorCancelBtn?.addEventListener('click', closeStudioImageEditor);
+        elements.studioImageEditorCloseBtn?.addEventListener('click', handleStudioImageEditorCloseRequest);
+        elements.studioImageEditorCancelBtn?.addEventListener('click', handleStudioImageEditorCloseRequest);
         overlay.addEventListener('click', event => {
             const metadataToggle = event.target.closest?.('#studioImageEditorMetadataToggleBtn');
             if (metadataToggle) {
@@ -9140,7 +9449,7 @@ MODIFICATION RULES FOR THIS APP
                 toggleImageEditorLabelInfoPanel();
                 return;
             }
-            if (event.target === overlay) closeStudioImageEditor();
+            if (event.target === overlay) handleStudioImageEditorCloseRequest();
         });
         elements.studioImageEditorToolButtons?.forEach(button => {
             button.addEventListener('click', () => {
@@ -9602,9 +9911,14 @@ MODIFICATION RULES FOR THIS APP
             let savedResult = null;
             if (isMultiAngleDraftTarget) {
                 const updated = await updateMultiAngleDraftFromImageEditor(editedDataUrl, imageLabels, imageDrawStrokes, imageMetadata);
-                closeStudioImageEditor();
-                syncMultiAngleCreatorControls();
-                setCreatorStatus(updated ? 'Angle image, labels, descriptions, connector lines, and drawings saved to the multi-angle set.' : 'Could not update that angle.', updated ? 'success' : 'error');
+                if (updated) {
+                    await openMultiAngleCanvasSetupFromEditor({
+                        alreadyPersisted: true,
+                        message: 'Angle saved. Canvas Setup opened.'
+                    });
+                } else {
+                    setCreatorStatus('Could not update that angle.', 'error');
+                }
                 return;
             }
             if ((options.sendToSavedImages || attachToAllFront) && isLayeredDiagramTarget) {
@@ -28783,16 +29097,21 @@ if (elements.diagramCreatorImageGrid) {
 
 
 
-// Phase 22MT: multi-angle setup controls.
+// Phase 22MZ: multi-angle setup and direct editor controls.
 if (elements.multiAnglePrevBtn) elements.multiAnglePrevBtn.addEventListener('click', () => setActiveMultiAngleIndex(getMultiAngleCreatorState().activeIndex - 1));
 if (elements.multiAngleNextBtn) elements.multiAngleNextBtn.addEventListener('click', () => setActiveMultiAngleIndex(getMultiAngleCreatorState().activeIndex + 1));
 if (elements.multiAngleCancelBtn) elements.multiAngleCancelBtn.addEventListener('click', () => {
     resetMultiAngleCreatorState();
     setCreatorStatus('Multi-angle set canceled. No Saved Images were changed.', 'success');
 });
+if (elements.multiAngleBackgroundInput) elements.multiAngleBackgroundInput.addEventListener('change', () => changeMultiAngleSharedBackground(elements.multiAngleBackgroundInput.value).catch(error => {
+    console.error(error);
+    setCreatorStatus('Could not change the shared background.', 'error');
+    syncMultiAngleCreatorControls();
+}));
 if (elements.multiAngleApplyDimensionsBtn) elements.multiAngleApplyDimensionsBtn.addEventListener('click', () => {
     const draft = getMultiAngleCreatorState();
-    draft.canvas = normalizeMultiAngleCanvasConfig({ width: elements.multiAngleCanvasWidth?.value, height: elements.multiAngleCanvasHeight?.value });
+    draft.canvas = normalizeMultiAngleCanvasConfig({ ...draft.canvas, width: elements.multiAngleCanvasWidth?.value, height: elements.multiAngleCanvasHeight?.value });
     draft.angles.forEach(angle => clearMultiAngleFlattenedEdit(angle));
     syncMultiAngleCreatorControls();
     setCreatorStatus(`Canvas changed to ${draft.canvas.width} × ${draft.canvas.height}. Flattened angle edits were reset so framing stays accurate.`, 'success');
@@ -31092,16 +31411,16 @@ elements.flashcardRichCommandChoices.forEach(button => {
 
 
 if (elements.studioImageEditorCloseBtn) {
-    elements.studioImageEditorCloseBtn.addEventListener('click', closeStudioImageEditor);
+    elements.studioImageEditorCloseBtn.addEventListener('click', handleStudioImageEditorCloseRequest);
 }
 
 if (elements.studioImageEditorCancelBtn) {
-    elements.studioImageEditorCancelBtn.addEventListener('click', closeStudioImageEditor);
+    elements.studioImageEditorCancelBtn.addEventListener('click', handleStudioImageEditorCloseRequest);
 }
 
 if (elements.studioImageEditorOverlay) {
     elements.studioImageEditorOverlay.addEventListener('click', event => {
-        if (event.target === elements.studioImageEditorOverlay) closeStudioImageEditor();
+        if (event.target === elements.studioImageEditorOverlay) handleStudioImageEditorCloseRequest();
     });
 }
 

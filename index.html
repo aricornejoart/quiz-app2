@@ -715,9 +715,9 @@ MODIFICATION RULES FOR THIS APP
                     <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
                       <div class="multi-angle-creator-heading">
                         <div>
-                          <div class="multi-angle-creator-eyebrow">Phase 22MX</div>
+                          <div class="multi-angle-creator-eyebrow">Phase 22MZ1</div>
                           <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
-                          <div class="multi-angle-creator-note">Every angle uses one shared black canvas. Finish framing before adding labels for the most consistent rotation.</div>
+                          <div class="multi-angle-creator-note">Every angle uses one shared canvas and background color. Finish framing before adding labels for the most consistent rotation.</div>
                         </div>
                         <button id="multiAngleCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel Set</button>
                       </div>
@@ -732,7 +732,7 @@ MODIFICATION RULES FOR THIS APP
                           <div id="multiAngleCanvasWrap" class="multi-angle-canvas-wrap">
                             <canvas id="multiAngleCanvas" class="multi-angle-canvas" width="1100" height="1500" aria-label="Multi-angle canvas preview"></canvas>
                           </div>
-                          <div class="multi-angle-preview-help">Drag the subject to reposition it. Transparent areas are automatically rendered on black.</div>
+                          <div class="multi-angle-preview-help">Drag the subject to reposition it. Transparent areas are rendered on the shared background color.</div>
                         </div>
 
                         <div class="multi-angle-controls-column">
@@ -743,7 +743,7 @@ MODIFICATION RULES FOR THIS APP
                               <label><span>Height</span><input id="multiAngleCanvasHeight" type="number" min="300" max="3000" step="10" value="1500"></label>
                               <button id="multiAngleApplyDimensionsBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply</button>
                             </div>
-                            <div class="multi-angle-background-readout"><span>Background</span><strong>Black</strong></div>
+                            <label class="multi-angle-background-control"><span>Background</span><input id="multiAngleBackgroundInput" type="color" value="#000000" aria-label="Shared multi-angle background color"><strong id="multiAngleBackgroundValue">#000000</strong></label>
                           </div>
 
                           <div class="multi-angle-control-group">
@@ -1945,6 +1945,14 @@ MODIFICATION RULES FOR THIS APP
         <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
         <button id="studioImageEditorMetadataToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorMetadataPanel">Show Details</button>
         <button id="studioImageEditorLabelInfoToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorLabelInfoPanel">Show Label Information</button>
+        <div id="studioImageEditorMultiAngleNavigator" class="studio-image-editor-angle-navigator hidden" aria-label="Multi-angle image navigator" aria-hidden="true">
+          <button id="studioImageEditorPrevAngleBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-label="Save and open previous angle">‹</button>
+          <select id="studioImageEditorAngleSelect" aria-label="Save current angle and open another angle"></select>
+          <button id="studioImageEditorNextAngleBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-label="Save and open next angle">›</button>
+        </div>
+        <label id="studioImageEditorMultiAngleBackground" class="studio-image-editor-angle-background hidden"><span>Background</span><input id="studioImageEditorMultiAngleBackgroundInput" type="color" value="#000000" aria-label="Shared multi-angle background color"><strong id="studioImageEditorMultiAngleBackgroundValue">#000000</strong></label>
+        <button id="studioImageEditorCanvasSetupBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Canvas Setup</button>
+        <button id="studioImageEditorSaveDiagramBtn" type="button" class="auth-action-btn auth-primary-btn hidden">Save Diagram</button>
         <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
         <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
         <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
@@ -1953,6 +1961,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22mx"></script>
+  <script src="script.js?v=22mz1"></script>
 </body>
 </html>

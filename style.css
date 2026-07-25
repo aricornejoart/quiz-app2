@@ -12157,3 +12157,134 @@ body.review-mode-image-open {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* Phase 22MY — quick angle switching and shared background controls in Diagram Creator. */
+.multi-angle-background-control,
+.studio-image-editor-angle-background {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
+  padding: 5px 8px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.multi-angle-background-control {
+  width: 100%;
+  justify-content: space-between;
+  margin-top: 10px;
+  color: #0f172a;
+  background: #f8fafc;
+  border-color: #dbe3ee;
+}
+
+.multi-angle-background-control input[type="color"],
+.studio-image-editor-angle-background input[type="color"] {
+  width: 30px;
+  height: 25px;
+  flex: 0 0 30px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.multi-angle-background-control strong,
+.studio-image-editor-angle-background strong {
+  min-width: 62px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.studio-image-editor-angle-navigator {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.studio-image-editor-angle-navigator.hidden,
+.studio-image-editor-angle-background.hidden,
+#studioImageEditorCanvasSetupBtn.hidden,
+#studioImageEditorSaveDiagramBtn.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-angle-navigator .auth-action-btn {
+  min-width: 34px;
+  padding-inline: 8px;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+#studioImageEditorAngleSelect {
+  width: min(230px, 24vw);
+  min-width: 138px;
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
+  padding: 5px 28px 5px 9px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+#studioImageEditorAngleSelect option {
+  color: #111827;
+  background: #fff;
+}
+
+.studio-image-editor-angle-background {
+  min-height: 34px;
+}
+
+@media (max-width: 920px) {
+  .studio-image-editor-actions {
+    justify-content: flex-start;
+  }
+  #studioImageEditorAngleSelect {
+    width: min(210px, 42vw);
+  }
+}
+
+@media (max-width: 620px) {
+  .studio-image-editor-angle-navigator {
+    order: 20;
+    flex: 1 1 100%;
+  }
+  #studioImageEditorAngleSelect {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .studio-image-editor-angle-background {
+    order: 21;
+  }
+}
+
+/* Phase 22MZ: direct Saved Image editing actions. */
+#studioImageEditorCanvasSetupBtn,
+#studioImageEditorSaveDiagramBtn {
+  white-space: nowrap;
+}
+
+#studioImageEditorSaveDiagramBtn:not(.hidden) {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+}
+
+@media (max-width: 620px) {
+  #studioImageEditorCanvasSetupBtn,
+  #studioImageEditorSaveDiagramBtn {
+    order: 22;
+  }
+}
+
