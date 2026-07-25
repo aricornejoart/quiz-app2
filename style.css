@@ -11716,3 +11716,192 @@ body.review-mode-image-open {
     height: 145px;
   }
 }
+
+/* Phase 22MR — low-profile Review Mode mini quiz. */
+.review-mode-options-panel {
+  max-height: calc(100dvh - max(72px, env(safe-area-inset-top)) - 20px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.review-mode-toggle-control input[type="checkbox"]:disabled {
+  cursor: default;
+}
+
+.review-mode-toggle-control input[type="checkbox"]:disabled + .review-mode-toggle-track {
+  opacity: 0.42;
+}
+
+.review-mode-mini-setting-row:first-of-type {
+  margin-top: 8px;
+}
+
+.review-mode-take-mini-quiz-btn {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 11px;
+  border: 1px solid rgba(250, 204, 21, 0.72);
+  border-radius: 11px;
+  padding: 8px 12px;
+  color: #171230;
+  background: #facc15;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.review-mode-take-mini-quiz-btn:disabled {
+  opacity: 0.56;
+  cursor: default;
+}
+
+.review-mode-mini-quiz-controls {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.review-mode-mini-quiz-controls.hidden {
+  display: none !important;
+}
+
+.review-mode-mini-quiz-controls button {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  padding: 5px 9px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(20, 17, 43, 0.78);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.26);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 900;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.review-mode-mini-quiz-controls button:hover,
+.review-mode-mini-quiz-controls button:focus-visible {
+  border-color: rgba(250, 204, 21, 0.72);
+  outline: none;
+}
+
+.review-mode-mini-quiz-complete {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: rgba(8, 7, 20, 0.26);
+  pointer-events: none;
+}
+
+.review-mode-mini-quiz-complete.hidden {
+  display: none !important;
+}
+
+.review-mode-mini-quiz-complete > div {
+  border: 1px solid rgba(250, 204, 21, 0.7);
+  border-radius: 15px;
+  padding: 14px 20px;
+  color: #fff;
+  background: rgba(24, 20, 52, 0.9);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.36);
+  font-size: clamp(1rem, 2.4vw, 1.35rem);
+  font-weight: 950;
+  text-align: center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.review-mode-mini-label-wrap {
+  position: absolute;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6px * var(--review-label-scale));
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.review-mode-mini-label-wrap .review-mode-label-marker {
+  position: relative;
+  inset: auto;
+  transform: none;
+  cursor: pointer;
+}
+
+.review-mode-mini-label-marker.is-mini-glowing {
+  animation: review-mode-mini-label-glow 1.15s ease-in-out infinite alternate;
+}
+
+@keyframes review-mode-mini-label-glow {
+  from {
+    border-color: rgba(250, 204, 21, 0.92);
+    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.18), 0 5px 16px rgba(0, 0, 0, 0.34);
+  }
+  to {
+    border-color: #fff4a8;
+    box-shadow: 0 0 0 5px rgba(250, 204, 21, 0.34), 0 0 22px rgba(250, 204, 21, 0.44), 0 5px 16px rgba(0, 0, 0, 0.34);
+  }
+}
+
+.review-mode-mini-answer {
+  width: calc(30px * var(--review-label-scale));
+  height: calc(30px * var(--review-label-scale));
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  padding: 0;
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.34);
+  font: inherit;
+  font-size: calc(0.84rem * var(--review-label-scale));
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.review-mode-mini-dont-know {
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.92);
+}
+
+.review-mode-mini-know {
+  color: #dcfce7;
+  background: rgba(21, 128, 61, 0.92);
+}
+
+.review-mode-mini-answer:hover,
+.review-mode-mini-answer:focus-visible {
+  transform: scale(1.06);
+  outline: 3px solid rgba(255, 255, 255, 0.25);
+  outline-offset: 1px;
+}
+
+@media (max-width: 620px) {
+  .review-mode-mini-quiz-controls {
+    gap: 4px;
+  }
+
+  .review-mode-mini-quiz-controls button {
+    min-height: 30px;
+    padding: 4px 7px;
+    font-size: 0.64rem;
+  }
+
+  .review-mode-mini-label-wrap {
+    gap: calc(4px * var(--review-label-scale));
+  }
+}

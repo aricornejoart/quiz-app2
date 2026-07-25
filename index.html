@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22mq">
+  <link rel="stylesheet" href="style.css?v=22ms">
 </head>
 <body>
 
@@ -1672,6 +1672,13 @@ MODIFICATION RULES FOR THIS APP
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
+      <label class="review-mode-switch-row">
+        <span>Show all label drawings</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowAllDrawingsToggle" type="checkbox" role="switch" aria-label="Show drawings for all labels">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
       <div class="review-mode-size-row">
         <span>Label size</span>
         <div class="review-mode-size-controls">
@@ -1681,6 +1688,49 @@ MODIFICATION RULES FOR THIS APP
         </div>
       </div>
       <div class="review-mode-options-help">Click a number to toggle its associated drawing. Drag labels to rearrange them temporarily; connector anchors stay fixed. Label descriptions appear with revealed names when enabled.</div>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Randomize labels</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniRandomizeToggle" type="checkbox" role="switch" aria-label="Randomize label order for the mini quiz">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Progress Mode</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniProgressToggle" type="checkbox" role="switch" aria-label="Use Progress Mode for the mini quiz">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Retention</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniRetentionToggle" type="checkbox" role="switch" aria-label="Use Retention mode for the mini quiz">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Mastery Check</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniMasteryCheckToggle" type="checkbox" role="switch" aria-label="Use Mastery Check mode for the mini quiz">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Mastery</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniMasteryToggle" type="checkbox" role="switch" aria-label="Use Mastery mode for the mini quiz">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <button id="reviewModeTakeMiniQuizBtn" class="review-mode-take-mini-quiz-btn" type="button">Take Mini Quiz</button>
+    </div>
+    <div id="reviewModeMiniQuizControls" class="review-mode-mini-quiz-controls hidden" aria-hidden="true">
+      <button id="reviewModeMiniQuizRestartBtn" type="button">Restart Quiz</button>
+      <button id="reviewModeMiniQuizEndBtn" type="button">End Quiz</button>
+    </div>
+    <div id="reviewModeMiniQuizComplete" class="review-mode-mini-quiz-complete hidden" aria-hidden="true">
+      <div>Mini Quiz Complete</div>
     </div>
     <div id="reviewModeImageViewport" class="review-mode-image-viewport">
       <div id="reviewModeImageStage" class="review-mode-image-stage">
@@ -1805,6 +1855,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22mq"></script>
+  <script src="script.js?v=22ms"></script>
 </body>
 </html>

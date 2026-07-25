@@ -351,10 +351,14 @@ MODIFICATION RULES FOR THIS APP
                 optionsOpen: false,
                 showAllNames: false,
                 showDrawData: true,
+                showAllDrawings: false,
                 showConnectors: true,
                 labelScale: 1,
                 revealedLabels: new Set(),
-                temporaryLabelPositions: {}
+                temporaryLabelPositions: {},
+                miniQuizMode: 'normal',
+                randomizeMiniQuiz: false,
+                miniQuiz: null
             },
             studioSavedImageMemoryLibrary: [],
             studioSavedImageSync: {
@@ -509,6 +513,17 @@ MODIFICATION RULES FOR THIS APP
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
         reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
         reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
+        reviewModeShowAllDrawingsToggle: document.getElementById('reviewModeShowAllDrawingsToggle'),
+        reviewModeMiniRandomizeToggle: document.getElementById('reviewModeMiniRandomizeToggle'),
+        reviewModeMiniProgressToggle: document.getElementById('reviewModeMiniProgressToggle'),
+        reviewModeMiniRetentionToggle: document.getElementById('reviewModeMiniRetentionToggle'),
+        reviewModeMiniMasteryCheckToggle: document.getElementById('reviewModeMiniMasteryCheckToggle'),
+        reviewModeMiniMasteryToggle: document.getElementById('reviewModeMiniMasteryToggle'),
+        reviewModeTakeMiniQuizBtn: document.getElementById('reviewModeTakeMiniQuizBtn'),
+        reviewModeMiniQuizControls: document.getElementById('reviewModeMiniQuizControls'),
+        reviewModeMiniQuizRestartBtn: document.getElementById('reviewModeMiniQuizRestartBtn'),
+        reviewModeMiniQuizEndBtn: document.getElementById('reviewModeMiniQuizEndBtn'),
+        reviewModeMiniQuizComplete: document.getElementById('reviewModeMiniQuizComplete'),
         reviewModeLabelSizeDownBtn: document.getElementById('reviewModeLabelSizeDownBtn'),
         reviewModeLabelSizeUpBtn: document.getElementById('reviewModeLabelSizeUpBtn'),
         reviewModeLabelSizeValue: document.getElementById('reviewModeLabelSizeValue'),
@@ -5154,6 +5169,34 @@ MODIFICATION RULES FOR THIS APP
     // images, flattened edits, labels, or editable draw strokes are stored.
     let reviewModeLabelDrag = null;
 
+    function normalizeReviewModeMiniQuizMode(value = 'normal') {
+        const mode = normalizeSheetText(value).toLowerCase();
+        return ['progress', 'retention', 'mastery', 'mastery-check'].includes(mode) ? mode : 'normal';
+    }
+
+    function normalizeReviewModeMiniQuizState(value = null, fallbackMode = 'normal') {
+        const mini = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const normalizeIndexArray = input => Array.from(new Set((Array.isArray(input) ? input : [])
+            .map(item => Number(item))
+            .filter(item => Number.isInteger(item) && item >= 0)));
+        mini.active = mini.active === true;
+        mini.complete = mini.complete === true;
+        mini.mode = normalizeReviewModeMiniQuizMode(mini.mode || fallbackMode);
+        mini.queue = normalizeIndexArray(mini.queue);
+        mini.position = Math.max(0, Math.floor(Number(mini.position) || 0));
+        mini.roundMissed = normalizeIndexArray(mini.roundMissed);
+        mini.knownLabels = normalizeIndexArray(mini.knownLabels);
+        mini.reviewLabels = normalizeIndexArray(mini.reviewLabels);
+        mini.retentionKnown = normalizeIndexArray(mini.retentionKnown);
+        mini.segment = normalizeIndexArray(mini.segment);
+        mini.mastered = normalizeIndexArray(mini.mastered);
+        mini.checkpointQueue = normalizeIndexArray(mini.checkpointQueue);
+        mini.checkpointPosition = Math.max(0, Math.floor(Number(mini.checkpointPosition) || 0));
+        mini.phase = mini.phase === 'checkpoint' ? 'checkpoint' : 'main';
+        mini.answerRevealed = mini.answerRevealed === true;
+        return mini;
+    }
+
     function getReviewModeState() {
         if (!state.auth.reviewMode || typeof state.auth.reviewMode !== 'object') {
             state.auth.reviewMode = {};
@@ -5165,9 +5208,13 @@ MODIFICATION RULES FOR THIS APP
         review.optionsOpen = review.optionsOpen === true;
         review.showAllNames = review.showAllNames === true;
         review.showDrawData = review.showDrawData !== false;
+        review.showAllDrawings = review.showAllDrawings === true;
         review.showConnectors = review.showConnectors !== false;
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
         review.includeLabelDescriptions = review.includeLabelDescriptions === true;
+        review.randomizeMiniQuiz = review.randomizeMiniQuiz === true;
+        review.miniQuizMode = normalizeReviewModeMiniQuizMode(review.miniQuizMode);
+        review.miniQuiz = normalizeReviewModeMiniQuizState(review.miniQuiz, review.miniQuizMode);
         if (!review.temporaryLabelPositions || typeof review.temporaryLabelPositions !== 'object' || Array.isArray(review.temporaryLabelPositions)) review.temporaryLabelPositions = {};
         review.suppressLabelClickUntil = Math.max(0, Number(review.suppressLabelClickUntil) || 0);
         review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1));
@@ -5266,6 +5313,229 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
+    function shuffleReviewModeMiniQuizIndexes(indexes = []) {
+        const source = Array.isArray(indexes) ? indexes.slice() : [];
+        const shuffled = source.slice();
+        for (let index = shuffled.length - 1; index > 0; index -= 1) {
+            const swapIndex = Math.floor(Math.random() * (index + 1));
+            [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+        }
+        if (shuffled.length > 1 && shuffled.every((value, index) => value === source[index])) {
+            [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
+        }
+        return shuffled;
+    }
+
+    function addReviewModeMiniQuizIndex(list, index) {
+        if (!Array.isArray(list) || !Number.isInteger(index) || index < 0) return;
+        if (!list.includes(index)) list.push(index);
+    }
+
+    function removeReviewModeMiniQuizIndex(list, index) {
+        if (!Array.isArray(list)) return;
+        const position = list.indexOf(index);
+        if (position >= 0) list.splice(position, 1);
+    }
+
+    function getReviewModeMiniQuizActiveIndex(review = getReviewModeState()) {
+        const mini = review.miniQuiz;
+        if (!mini.active || mini.complete) return -1;
+        if (mini.mode === 'mastery') return Number.isInteger(mini.queue[0]) ? mini.queue[0] : -1;
+        if (mini.mode === 'mastery-check' && mini.phase === 'checkpoint') {
+            return Number.isInteger(mini.checkpointQueue[mini.checkpointPosition]) ? mini.checkpointQueue[mini.checkpointPosition] : -1;
+        }
+        return Number.isInteger(mini.queue[mini.position]) ? mini.queue[mini.position] : -1;
+    }
+
+    function syncReviewModeMiniQuizUi() {
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        const showControls = mini.active;
+        elements.reviewModeMiniQuizControls?.classList.toggle('hidden', !showControls);
+        elements.reviewModeMiniQuizControls?.setAttribute('aria-hidden', showControls ? 'false' : 'true');
+        elements.reviewModeMiniQuizComplete?.classList.toggle('hidden', !(mini.active && mini.complete));
+        elements.reviewModeMiniQuizComplete?.setAttribute('aria-hidden', mini.active && mini.complete ? 'false' : 'true');
+        if (elements.reviewModeTakeMiniQuizBtn) {
+            elements.reviewModeTakeMiniQuizBtn.disabled = mini.active;
+            elements.reviewModeTakeMiniQuizBtn.textContent = mini.active ? 'Mini Quiz Active' : 'Take Mini Quiz';
+        }
+    }
+
+    function finishReviewModeMiniQuiz() {
+        const review = getReviewModeState();
+        review.miniQuiz.complete = true;
+        review.miniQuiz.answerRevealed = false;
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    }
+
+    function startReviewModeMiniQuiz() {
+        const review = getReviewModeState();
+        const labels = normalizeDiagramLabels(getActiveReviewModeEntry()?.labels || []);
+        if (!labels.length) {
+            setCreatorStatus('This saved image does not have any labels to quiz.', 'error');
+            return;
+        }
+        const indexes = labels.map((_, index) => index);
+        const quizQueue = review.randomizeMiniQuiz ? shuffleReviewModeMiniQuizIndexes(indexes) : indexes;
+        review.miniQuiz = normalizeReviewModeMiniQuizState({
+            active: true,
+            complete: false,
+            mode: review.miniQuizMode,
+            queue: quizQueue,
+            position: 0,
+            roundMissed: [],
+            knownLabels: [],
+            reviewLabels: [],
+            retentionKnown: [],
+            segment: [],
+            mastered: [],
+            checkpointQueue: [],
+            checkpointPosition: 0,
+            phase: 'main',
+            answerRevealed: false
+        }, review.miniQuizMode);
+        review.revealedLabels = new Set();
+        setReviewModeOptionsOpen(false);
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    }
+
+    function endReviewModeMiniQuiz({ render = true } = {}) {
+        const review = getReviewModeState();
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode }, review.miniQuizMode);
+        if (render) {
+            renderReviewModeLabels();
+            syncReviewModeControls();
+        }
+    }
+
+    function restartReviewModeMiniQuiz() {
+        startReviewModeMiniQuiz();
+    }
+
+    function revealReviewModeMiniQuizAnswer() {
+        const review = getReviewModeState();
+        if (!review.miniQuiz.active || review.miniQuiz.complete) return;
+        review.miniQuiz.answerRevealed = true;
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    }
+
+    function advanceReviewModeMiniQuiz(answerKnown) {
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        const activeIndex = getReviewModeMiniQuizActiveIndex(review);
+        if (!mini.active || mini.complete || !mini.answerRevealed || activeIndex < 0) return;
+
+        if (answerKnown) {
+            addReviewModeMiniQuizIndex(mini.knownLabels, activeIndex);
+            removeReviewModeMiniQuizIndex(mini.reviewLabels, activeIndex);
+        } else {
+            addReviewModeMiniQuizIndex(mini.reviewLabels, activeIndex);
+            removeReviewModeMiniQuizIndex(mini.knownLabels, activeIndex);
+        }
+
+        if (mini.mode === 'progress') {
+            if (!answerKnown) addReviewModeMiniQuizIndex(mini.roundMissed, activeIndex);
+            mini.position += 1;
+            if (mini.position >= mini.queue.length) {
+                if (mini.roundMissed.length) {
+                    mini.queue = review.randomizeMiniQuiz
+                        ? shuffleReviewModeMiniQuizIndexes(mini.roundMissed)
+                        : mini.roundMissed.slice();
+                    mini.roundMissed = [];
+                    mini.position = 0;
+                } else {
+                    finishReviewModeMiniQuiz();
+                    return;
+                }
+            }
+        } else if (mini.mode === 'mastery') {
+            mini.queue.shift();
+            if (!answerKnown) mini.queue.push(activeIndex);
+            if (!mini.queue.length) {
+                finishReviewModeMiniQuiz();
+                return;
+            }
+        } else if (mini.mode === 'retention') {
+            if (answerKnown) {
+                addReviewModeMiniQuizIndex(mini.retentionKnown, activeIndex);
+                if (mini.position < mini.queue.length - 1) {
+                    mini.position += 1;
+                } else if (mini.retentionKnown.length >= mini.queue.length) {
+                    finishReviewModeMiniQuiz();
+                    return;
+                } else {
+                    const firstUnsolved = mini.queue.findIndex(index => !mini.retentionKnown.includes(index));
+                    mini.position = firstUnsolved >= 0 ? firstUnsolved : 0;
+                }
+            } else {
+                removeReviewModeMiniQuizIndex(mini.retentionKnown, activeIndex);
+                mini.position = Math.max(0, mini.position - 3);
+            }
+        } else if (mini.mode === 'mastery-check') {
+            if (mini.phase === 'checkpoint') {
+                if (answerKnown) addReviewModeMiniQuizIndex(mini.mastered, activeIndex);
+                else removeReviewModeMiniQuizIndex(mini.mastered, activeIndex);
+                mini.checkpointPosition += 1;
+                if (mini.checkpointPosition >= mini.checkpointQueue.length) {
+                    mini.queue = mini.queue.filter(index => !mini.mastered.includes(index));
+                    mini.segment = [];
+                    mini.checkpointQueue = [];
+                    mini.checkpointPosition = 0;
+                    mini.phase = 'main';
+                    mini.position = 0;
+                    if (!mini.queue.length) {
+                        finishReviewModeMiniQuiz();
+                        return;
+                    }
+                }
+            } else {
+                if (answerKnown) {
+                    addReviewModeMiniQuizIndex(mini.segment, activeIndex);
+                    mini.position += 1;
+                } else {
+                    removeReviewModeMiniQuizIndex(mini.segment, activeIndex);
+                    mini.position = Math.max(0, mini.position - 3);
+                }
+                if (mini.segment.length >= 10 || mini.position >= mini.queue.length) {
+                    if (mini.segment.length) {
+                        mini.phase = 'checkpoint';
+                        const checkpointItems = mini.segment.slice(0, 10);
+                        mini.checkpointQueue = review.randomizeMiniQuiz
+                            ? shuffleReviewModeMiniQuizIndexes(checkpointItems)
+                            : checkpointItems;
+                        mini.checkpointPosition = 0;
+                    } else if (!mini.queue.length) {
+                        finishReviewModeMiniQuiz();
+                        return;
+                    } else {
+                        mini.position = 0;
+                    }
+                }
+            }
+        } else {
+            mini.position += 1;
+            if (mini.position >= mini.queue.length) {
+                finishReviewModeMiniQuiz();
+                return;
+            }
+        }
+
+        mini.answerRevealed = false;
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    }
+
+    function setReviewModeMiniQuizMode(mode, enabled) {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active) return;
+        const normalizedMode = normalizeReviewModeMiniQuizMode(mode);
+        review.miniQuizMode = enabled ? normalizedMode : 'normal';
+        syncReviewModeControls();
+    }
+
     function getReviewModeVisibleLabelIndexes(entry = null) {
         const review = getReviewModeState();
         const labels = normalizeDiagramLabels(entry?.labels || []);
@@ -5292,7 +5562,14 @@ MODIFICATION RULES FOR THIS APP
 
     function renderReviewModeConnectors() {
         const review = getReviewModeState();
-        renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, getReviewModeDisplayLabels(getActiveReviewModeEntry()), elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors);
+        let labels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
+        if (review.miniQuiz.active) {
+            const activeIndex = getReviewModeMiniQuizActiveIndex(review);
+            labels = review.miniQuiz.complete
+                ? labels.map(label => ({ ...label, connector: null }))
+                : labels.map((label, index) => index === activeIndex ? label : ({ ...label, connector: null }));
+        }
+        renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, labels, elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors);
     }
 
     function setReviewModeTemporaryLabelPosition(index, x, y) {
@@ -5301,6 +5578,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function beginReviewModeLabelDrag(event, marker) {
+        if (getReviewModeState().miniQuiz.active) return;
         if (!marker || (event.button !== undefined && event.button !== 0)) return;
         const index = Number(marker.dataset.reviewLabelIndex);
         const rect = elements.reviewModeImageStage?.getBoundingClientRect?.();
@@ -5352,7 +5630,16 @@ MODIFICATION RULES FOR THIS APP
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const review = getReviewModeState();
         if (!entry || !review.showDrawData) return;
-        const visibleIndexes = getReviewModeVisibleLabelIndexes(entry);
+        const labels = normalizeDiagramLabels(entry.labels || []);
+        let visibleIndexes;
+        if (review.showAllDrawings) {
+            visibleIndexes = new Set(labels.map((_, index) => index));
+        } else if (review.miniQuiz.active) {
+            const activeIndex = getReviewModeMiniQuizActiveIndex(review);
+            visibleIndexes = new Set(review.miniQuiz.answerRevealed && activeIndex >= 0 ? [activeIndex] : []);
+        } else {
+            visibleIndexes = getReviewModeVisibleLabelIndexes(entry);
+        }
         if (!visibleIndexes.size) return;
         cloneImageEditorDrawStrokes(entry.drawStrokes || [])
             .filter(stroke => visibleIndexes.has(Math.max(0, Number(stroke.labelIndex) || 0)))
@@ -5365,9 +5652,45 @@ MODIFICATION RULES FOR THIS APP
         if (!layer) return;
         const review = getReviewModeState();
         const labels = getReviewModeDisplayLabels(entry);
+        layer.style.setProperty('--review-label-scale', String(review.labelScale));
+
+        if (review.miniQuiz.active) {
+            if (review.miniQuiz.complete) {
+                layer.innerHTML = '';
+                renderReviewModeDrawData();
+                renderReviewModeConnectors();
+                syncReviewModeMiniQuizUi();
+                return;
+            }
+            const index = getReviewModeMiniQuizActiveIndex(review);
+            const item = labels[index];
+            if (!item) {
+                finishReviewModeMiniQuiz();
+                return;
+            }
+            const isRevealed = review.miniQuiz.answerRevealed;
+            const description = normalizeSheetText(item.description || '');
+            const showDescription = !!(isRevealed && review.includeLabelDescriptions && description);
+            const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : String(index + 1);
+            const descriptionHtml = showDescription
+                ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
+                : '';
+            layer.innerHTML = `
+                <div class="review-mode-mini-label-wrap${isRevealed ? ' is-revealed' : ''}" style="left:${item.x}%; top:${item.y}%;">
+                  ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this label">✕</button>' : ''}
+                  <button type="button" class="review-mode-label-marker review-mode-mini-label-marker${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know label ' : 'Reveal label '}${index + 1}">
+                    <span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}
+                  </button>
+                  ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this label">✓</button>' : ''}
+                </div>`;
+            renderReviewModeDrawData();
+            renderReviewModeConnectors();
+            syncReviewModeMiniQuizUi();
+            return;
+        }
+
         const selectedLabels = getReviewModeVisibleLabelIndexes(entry);
         const visibleNames = getReviewModeVisibleNameIndexes(entry);
-        layer.style.setProperty('--review-label-scale', String(review.labelScale));
         layer.innerHTML = labels.map((item, index) => {
             const isSelected = selectedLabels.has(index);
             const isNameVisible = visibleNames.has(index);
@@ -5383,6 +5706,7 @@ MODIFICATION RULES FOR THIS APP
         }).join('');
         renderReviewModeDrawData();
         renderReviewModeConnectors();
+        syncReviewModeMiniQuizUi();
     }
 
     function syncReviewModeImageStage() {
@@ -5401,15 +5725,53 @@ MODIFICATION RULES FOR THIS APP
 
     function syncReviewModeControls() {
         const review = getReviewModeState();
-        if (elements.reviewModeShowAllNamesToggle) elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
+        const miniActive = review.miniQuiz.active;
+        if (elements.reviewModeShowAllNamesToggle) {
+            elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
+            elements.reviewModeShowAllNamesToggle.disabled = miniActive;
+        }
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
-        if (elements.reviewModeDisableNamesOnClickToggle) elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
+        if (elements.reviewModeShowAllDrawingsToggle) elements.reviewModeShowAllDrawingsToggle.checked = review.showAllDrawings;
+        if (elements.reviewModeDisableNamesOnClickToggle) {
+            elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
+            elements.reviewModeDisableNamesOnClickToggle.disabled = miniActive;
+        }
         if (elements.reviewModeIncludeDescriptionsToggle) elements.reviewModeIncludeDescriptionsToggle.checked = review.includeLabelDescriptions;
         if (elements.reviewModeShowConnectorsToggle) elements.reviewModeShowConnectorsToggle.checked = review.showConnectors;
+        if (elements.reviewModeMiniRandomizeToggle) {
+            elements.reviewModeMiniRandomizeToggle.checked = review.randomizeMiniQuiz;
+            elements.reviewModeMiniRandomizeToggle.disabled = miniActive;
+        }
+        if (elements.reviewModeMiniRandomizeToggle) {
+    elements.reviewModeMiniRandomizeToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active) return;
+        review.randomizeMiniQuiz = elements.reviewModeMiniRandomizeToggle.checked;
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniProgressToggle) {
+            elements.reviewModeMiniProgressToggle.checked = review.miniQuizMode === 'progress';
+            elements.reviewModeMiniProgressToggle.disabled = miniActive;
+        }
+        if (elements.reviewModeMiniRetentionToggle) {
+            elements.reviewModeMiniRetentionToggle.checked = review.miniQuizMode === 'retention';
+            elements.reviewModeMiniRetentionToggle.disabled = miniActive;
+        }
+        if (elements.reviewModeMiniMasteryCheckToggle) {
+            elements.reviewModeMiniMasteryCheckToggle.checked = review.miniQuizMode === 'mastery-check';
+            elements.reviewModeMiniMasteryCheckToggle.disabled = miniActive;
+        }
+        if (elements.reviewModeMiniMasteryToggle) {
+            elements.reviewModeMiniMasteryToggle.checked = review.miniQuizMode === 'mastery';
+            elements.reviewModeMiniMasteryToggle.disabled = miniActive;
+        }
         if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelScale * 100)}%`;
         if (elements.reviewModeLabelSizeDownBtn) elements.reviewModeLabelSizeDownBtn.disabled = review.labelScale <= 0.65;
         if (elements.reviewModeLabelSizeUpBtn) elements.reviewModeLabelSizeUpBtn.disabled = review.labelScale >= 1.8;
         setReviewModeOptionsOpen(review.optionsOpen);
+        syncReviewModeMiniQuizUi();
     }
 
     function openReviewModeImage(entryId = '') {
@@ -5421,9 +5783,13 @@ MODIFICATION RULES FOR THIS APP
         review.optionsOpen = false;
         review.showAllNames = false;
         review.showDrawData = true;
+        review.showAllDrawings = false;
         review.showConnectors = true;
         review.disableLabelNamesOnClick = false;
         review.includeLabelDescriptions = false;
+        review.randomizeMiniQuiz = false;
+        review.miniQuizMode = 'normal';
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal' }, 'normal');
         review.labelScale = 1;
         review.revealedLabels = new Set();
         review.temporaryLabelPositions = {};
@@ -5461,6 +5827,7 @@ MODIFICATION RULES FOR THIS APP
         review.revealedLabels = new Set();
         review.temporaryLabelPositions = {};
         review.suppressLabelClickUntil = 0;
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode }, review.miniQuizMode);
         reviewModeLabelDrag = null;
         if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         elements.reviewModeOverlay?.classList.add('hidden');
@@ -27382,6 +27749,17 @@ if (elements.reviewModeShowDrawDataToggle) {
     elements.reviewModeShowDrawDataToggle.addEventListener('change', () => {
         const review = getReviewModeState();
         review.showDrawData = elements.reviewModeShowDrawDataToggle.checked;
+        if (!review.showDrawData) review.showAllDrawings = false;
+        renderReviewModeDrawData();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeShowAllDrawingsToggle) {
+    elements.reviewModeShowAllDrawingsToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.showAllDrawings = elements.reviewModeShowAllDrawingsToggle.checked;
+        if (review.showAllDrawings) review.showDrawData = true;
         renderReviewModeDrawData();
         syncReviewModeControls();
     });
@@ -27414,6 +27792,34 @@ if (elements.reviewModeShowConnectorsToggle) {
     });
 }
 
+if (elements.reviewModeMiniProgressToggle) {
+    elements.reviewModeMiniProgressToggle.addEventListener('change', () => setReviewModeMiniQuizMode('progress', elements.reviewModeMiniProgressToggle.checked));
+}
+
+if (elements.reviewModeMiniRetentionToggle) {
+    elements.reviewModeMiniRetentionToggle.addEventListener('change', () => setReviewModeMiniQuizMode('retention', elements.reviewModeMiniRetentionToggle.checked));
+}
+
+if (elements.reviewModeMiniMasteryCheckToggle) {
+    elements.reviewModeMiniMasteryCheckToggle.addEventListener('change', () => setReviewModeMiniQuizMode('mastery-check', elements.reviewModeMiniMasteryCheckToggle.checked));
+}
+
+if (elements.reviewModeMiniMasteryToggle) {
+    elements.reviewModeMiniMasteryToggle.addEventListener('change', () => setReviewModeMiniQuizMode('mastery', elements.reviewModeMiniMasteryToggle.checked));
+}
+
+if (elements.reviewModeTakeMiniQuizBtn) {
+    elements.reviewModeTakeMiniQuizBtn.addEventListener('click', startReviewModeMiniQuiz);
+}
+
+if (elements.reviewModeMiniQuizRestartBtn) {
+    elements.reviewModeMiniQuizRestartBtn.addEventListener('click', restartReviewModeMiniQuiz);
+}
+
+if (elements.reviewModeMiniQuizEndBtn) {
+    elements.reviewModeMiniQuizEndBtn.addEventListener('click', () => endReviewModeMiniQuiz());
+}
+
 if (elements.reviewModeLabelSizeDownBtn) {
     elements.reviewModeLabelSizeDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
 }
@@ -27431,9 +27837,21 @@ if (elements.reviewModeLabelLayer) {
     elements.reviewModeLabelLayer.addEventListener('pointerup', endReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('pointercancel', endReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('click', event => {
+        const review = getReviewModeState();
+        const miniAnswer = event.target.closest('[data-review-mini-answer]');
+        if (miniAnswer && review.miniQuiz.active && !review.miniQuiz.complete) {
+            event.preventDefault();
+            event.stopPropagation();
+            advanceReviewModeMiniQuiz(miniAnswer.dataset.reviewMiniAnswer === 'know');
+            return;
+        }
         const marker = event.target.closest('[data-review-label-index]');
         if (!marker) return;
-        const review = getReviewModeState();
+        if (review.miniQuiz.active) {
+            event.preventDefault();
+            if (!review.miniQuiz.complete && !review.miniQuiz.answerRevealed) revealReviewModeMiniQuizAnswer();
+            return;
+        }
         if (Date.now() < review.suppressLabelClickUntil) {
             review.suppressLabelClickUntil = 0;
             event.preventDefault();
