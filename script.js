@@ -15724,6 +15724,16 @@ MODIFICATION RULES FOR THIS APP
         const focusModeActive = !buildUpEditActive && !buildUpFocusActive && !!focusQuestionId;
         const focusNewDraftActive = focusModeActive && focusQuestionId === STUDIO_FOCUS_NEW_QUESTION_ID;
         const starredOnlyFilter = !buildUpEditActive && !buildUpFocusActive && !!state.auth.studioQuestionStarredOnly;
+        const hasUnsavedPositionRows = displayRows.some(questionRow => questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID || isStudioLocalFlashcardId(questionRow.id));
+        const positionReorderBlockedReason = buildUpEditActive
+            ? 'Finish Build Up string editing before moving a question by number.'
+            : ((focusModeActive || buildUpFocusActive)
+                ? 'Show all questions before moving a question by number.'
+                : ((starredOnlyFilter || query)
+                    ? 'Clear question filters before moving a question by number.'
+                    : (hasUnsavedPositionRows ? 'Save or discard new cards before moving a card by number.' : '')));
+        const directPositionReorderAvailable = !positionReorderBlockedReason;
+        const totalPositionCount = Math.max(1, state.auth.studioQuizQuestions.length);
         let filteredQuestions = displayRows;
 
         if (buildUpEditActive) {
@@ -15789,8 +15799,34 @@ MODIFICATION RULES FOR THIS APP
             const isActive = questionRow.id === state.auth.editingQuestionId || (isPendingRow && !state.auth.editingQuestionId && editingType === 'flashcard');
             const isInsertTarget = questionRow.id === state.auth.pendingInsertAfterQuestionId;
             const questionType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
-            const chipLabel = getStudioQuestionChipLabel(questionType, index);
             const navigationName = getStudioQuestionNavigationName(questionType, index);
+            const positionNumber = index + 1;
+            const positionControlDisabled = isUnsavedFlashcardRow || !directPositionReorderAvailable;
+            const positionControlTitle = positionControlDisabled
+                ? (isUnsavedFlashcardRow ? 'Save this new card before moving it by number.' : positionReorderBlockedReason)
+                : `Enter a new position from 1 to ${totalPositionCount}, then press Go.`;
+            const positionInputHtml = `<input
+                type="number"
+                class="studio-question-position-input"
+                value="${positionNumber}"
+                min="1"
+                max="${totalPositionCount}"
+                step="1"
+                inputmode="numeric"
+                data-studio-question-position-id="${escapeHtml(questionRow.id)}"
+                data-studio-current-position="${positionNumber}"
+                aria-label="Move ${escapeHtml(navigationName)} to another position"
+                title="${escapeHtml(positionControlTitle)}"
+                ${positionControlDisabled ? 'disabled' : ''}
+            >`;
+            const positionGoControlHtml = `<button
+                type="button"
+                class="studio-question-position-go-btn"
+                data-studio-position-go-question-id="${escapeHtml(questionRow.id)}"
+                title="${escapeHtml(positionControlTitle)}"
+                aria-label="Move ${escapeHtml(navigationName)} to the entered position"
+                disabled
+            >Go</button>`;
             const previewLabel = getStudioQuestionPreviewLabel(questionRow, index).replace(/^(Q|H|C)\d+:\s*/, '').replace(/^Card \d+:\s*/, '');
             const isSharedDiagramSource = !!sharedDiagramSourceQuestionId && questionRow.id === sharedDiagramSourceQuestionId;
             const sharedDiagramSourceBadge = isSharedDiagramSource ? '<span class="studio-question-shared-source-badge">Shared source</span>' : '';
@@ -15837,7 +15873,7 @@ MODIFICATION RULES FOR THIS APP
                 `;
                 itemContent = `
                     <div class="studio-question-content-stack">
-                      <div class="studio-question-focus-row studio-flashcard-focus-row">${focusControlHtml}${buildUpControlHtml}${flashcardQuickImageControlsHtml}</div>
+                      <div class="studio-question-focus-row studio-flashcard-focus-row">${positionGoControlHtml}${focusControlHtml}${buildUpControlHtml}${flashcardQuickImageControlsHtml}</div>
                       <div class="studio-flashcard-inline-fields">
                         <label class="studio-flashcard-inline-field">
                           <span>Term</span>
@@ -15853,7 +15889,7 @@ MODIFICATION RULES FOR THIS APP
             } else {
                 itemContent = `
                     <div class="studio-question-content-stack">
-                      <div class="studio-question-focus-row">${focusControlHtml}${buildUpControlHtml}</div>
+                      <div class="studio-question-focus-row">${positionGoControlHtml}${focusControlHtml}${buildUpControlHtml}</div>
                       <button
                         type="button"
                         class="studio-question-list-main"
@@ -15887,7 +15923,7 @@ MODIFICATION RULES FOR THIS APP
                   >
                     ${starBadgeHtml}
                     <div class="studio-question-row-controls" aria-label="${escapeHtml(navigationName)} controls">
-                      <span class="studio-question-chip">${escapeHtml(chipLabel)}</span>
+                      ${positionInputHtml}
                       <button
                         type="button"
                         class="studio-question-row-handle"
@@ -16452,6 +16488,102 @@ MODIFICATION RULES FOR THIS APP
         }
 
         setStudioDirtyState(true);
+    }
+
+    function getStudioDirectPositionReorderBlockReason() {
+        if (normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '')) {
+            return 'Finish Build Up string editing before moving a question by number.';
+        }
+        if (normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '') || normalizeSheetText(state.auth.studioFocusedQuestionId || '')) {
+            return 'Show all questions before moving a question by number.';
+        }
+        if (state.auth.studioQuestionStarredOnly || normalizeSheetText(state.auth.studioQuestionSearchQuery || '')) {
+            return 'Clear question filters before moving a question by number.';
+        }
+        if (state.auth.studioPendingNewQuestionRow || state.auth.studioQuizQuestions.some(question => isStudioLocalFlashcardId(question?.id))) {
+            return 'Save or discard new cards before moving a card by number.';
+        }
+        return '';
+    }
+
+    function syncStudioQuestionPositionGoButton(positionInput) {
+        if (!positionInput) return;
+        const row = positionInput.closest('[data-studio-row-question-id]');
+        const goButton = row?.querySelector('[data-studio-position-go-question-id]');
+        if (!goButton) return;
+
+        const rawValue = String(positionInput.value || '').trim();
+        const isWholeNumber = /^-?\d+$/.test(rawValue);
+        const currentPosition = Number(positionInput.dataset.studioCurrentPosition || 0);
+        const enteredPosition = isWholeNumber ? Number(rawValue) : NaN;
+        const canMove = !positionInput.disabled && isWholeNumber && Number.isSafeInteger(enteredPosition) && enteredPosition !== currentPosition;
+        goButton.disabled = !canMove;
+        positionInput.setAttribute('aria-invalid', rawValue && !isWholeNumber ? 'true' : 'false');
+    }
+
+    function revealStudioQuestionAfterPositionMove(questionId) {
+        requestAnimationFrame(() => {
+            const row = Array.from(elements.studioQuestionList?.querySelectorAll('[data-studio-row-question-id]') || [])
+                .find(node => normalizeSheetText(node.dataset.studioRowQuestionId || '') === questionId);
+            if (!row) return;
+            row.classList.add('position-moved');
+            row.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            window.setTimeout(() => row.classList.remove('position-moved'), 1400);
+        });
+    }
+
+    async function moveStudioQuestionToPosition(questionId, rawPosition) {
+        if (!state.auth.client || !state.auth.editingQuizId || !questionId) {
+            throw new Error('Open a saved quiz before moving questions.');
+        }
+
+        const blockedReason = getStudioDirectPositionReorderBlockReason();
+        if (blockedReason) throw new Error(blockedReason);
+
+        const normalizedRawPosition = String(rawPosition ?? '').trim();
+        if (!/^-?\d+$/.test(normalizedRawPosition)) {
+            throw new Error('Enter a whole-number position before pressing Go.');
+        }
+
+        const requestedPosition = Number(normalizedRawPosition);
+        if (!Number.isSafeInteger(requestedPosition)) {
+            throw new Error('Enter a valid whole-number position before pressing Go.');
+        }
+
+        if (state.auth.studioHasUnsavedChanges) {
+            cacheCurrentStudioQuestionDraft();
+        }
+
+        const orderedQuestionIds = state.auth.studioQuizQuestions
+            .map(question => normalizeSheetText(question?.id || ''))
+            .filter(Boolean);
+        const currentIndex = orderedQuestionIds.indexOf(questionId);
+        if (currentIndex === -1 || !orderedQuestionIds.length) {
+            throw new Error('That question is no longer available to move.');
+        }
+
+        const targetPosition = Math.min(orderedQuestionIds.length, Math.max(1, requestedPosition));
+        const questionRow = state.auth.studioQuizQuestions[currentIndex] || null;
+        const itemName = normalizeSheetText(questionRow?.question_type || '') === 'flashcard' ? 'Card' : 'Question';
+
+        if (targetPosition === currentIndex + 1) {
+            renderStudioQuestionList();
+            setCreatorStatus(`${itemName} is already at position ${targetPosition}.`, 'success');
+            revealStudioQuestionAfterPositionMove(questionId);
+            return targetPosition;
+        }
+
+        orderedQuestionIds.splice(currentIndex, 1);
+        orderedQuestionIds.splice(targetPosition - 1, 0, questionId);
+
+        await reorderStudioQuizQuestionIds(orderedQuestionIds);
+        await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
+        renderStudioQuestionList();
+        revealStudioQuestionAfterPositionMove(questionId);
+
+        const clampedMessage = requestedPosition === targetPosition ? '' : ` The closest available position was ${targetPosition}.`;
+        setCreatorStatus(`${itemName} moved to position ${targetPosition}.${clampedMessage}`, 'success');
+        return targetPosition;
     }
 
     async function reorderStudioQuestionBeforeTarget(draggedQuestionId, targetQuestionId) {
@@ -30599,6 +30731,26 @@ if (elements.studioQuestionList) {
             return;
         }
 
+        const positionGoButton = e.target.closest('[data-studio-position-go-question-id]');
+        if (positionGoButton && !positionGoButton.disabled) {
+            e.preventDefault();
+            const row = positionGoButton.closest('[data-studio-row-question-id]');
+            const positionInput = row?.querySelector('[data-studio-question-position-id]');
+            const questionId = normalizeSheetText(positionGoButton.dataset.studioPositionGoQuestionId || '');
+            if (!questionId || !positionInput) return;
+
+            positionGoButton.disabled = true;
+            positionInput.disabled = true;
+            try {
+                await moveStudioQuestionToPosition(questionId, positionInput.value);
+            } catch (err) {
+                console.error(err);
+                setCreatorStatus(err.message || 'Could not move the question.', 'error');
+                renderStudioQuestionList();
+            }
+            return;
+        }
+
         const focusButton = e.target.closest('[data-studio-focus-question-id]');
         if (focusButton) {
             const questionId = normalizeSheetText(focusButton.dataset.studioFocusQuestionId || '');
@@ -30758,6 +30910,13 @@ if (elements.studioQuestionList) {
     });
 
     elements.studioQuestionList.addEventListener('focusin', e => {
+        const positionInput = e.target.closest('[data-studio-question-position-id]');
+        if (positionInput) {
+            positionInput.select?.();
+            syncStudioQuestionPositionGoButton(positionInput);
+            return;
+        }
+
         const termField = e.target.closest('[data-studio-flashcard-term-id], [data-studio-pending-flashcard-term]');
         const definitionField = e.target.closest('[data-studio-flashcard-definition-id], [data-studio-pending-flashcard-definition]');
         const targetField = termField || definitionField;
@@ -30788,6 +30947,12 @@ if (elements.studioQuestionList) {
     });
 
     elements.studioQuestionList.addEventListener('input', e => {
+        const positionInput = e.target.closest('[data-studio-question-position-id]');
+        if (positionInput) {
+            syncStudioQuestionPositionGoButton(positionInput);
+            return;
+        }
+
         const termField = e.target.closest('[data-studio-flashcard-term-id]');
         if (termField) {
             autosizeStudioFlashcardInlineTextarea(termField);
@@ -30828,6 +30993,26 @@ if (elements.studioQuestionList) {
                 }
                 setStudioDirtyState(true);
             }
+        }
+    });
+
+    elements.studioQuestionList.addEventListener('keydown', e => {
+        const positionInput = e.target.closest('[data-studio-question-position-id]');
+        if (!positionInput) return;
+
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const row = positionInput.closest('[data-studio-row-question-id]');
+            const goButton = row?.querySelector('[data-studio-position-go-question-id]');
+            if (goButton && !goButton.disabled) goButton.click();
+            return;
+        }
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            positionInput.value = positionInput.dataset.studioCurrentPosition || positionInput.value;
+            syncStudioQuestionPositionGoButton(positionInput);
+            positionInput.blur();
         }
     });
 
