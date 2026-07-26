@@ -5854,6 +5854,53 @@ body.studio-question-dragging {
   align-self: flex-start;
 }
 
+.progress-result-star-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+}
+
+.progress-result-star-heading {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.progress-result-star-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.progress-result-star-btn {
+  min-height: 38px;
+}
+
+.progress-result-star-status {
+  min-height: 18px;
+  color: var(--color-text-soft);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.progress-result-star-status.error {
+  color: var(--color-danger, #b42318);
+}
+
+@media (max-width: 640px) {
+  .progress-result-star-button-row {
+    flex-direction: column;
+  }
+
+  .progress-result-star-btn {
+    width: 100%;
+  }
+}
+
 body.fullscreen-mode .progress-mode-summary {
   max-width: var(--content-width-fullscreen);
 }

@@ -201,6 +201,8 @@ MODIFICATION RULES FOR THIS APP
         normalFinished: false,
         progressRetryActive: false,
         progressWrongQuestionMap: new Map(),
+        progressRoundOutcomeMap: new Map(),
+        progressStarActionInFlight: false,
         questionAnswered: false,
         multipleAnswerSelection: new Set(),
 
@@ -22013,11 +22015,167 @@ function recordProgressModeOutcome(question, isCorrect) {
     const key = getProgressQuestionKey(question);
     if (!key) return;
 
+    state.progressRoundOutcomeMap.set(key, {
+        question,
+        isCorrect: !!isCorrect
+    });
+
     if (isCorrect) {
         state.progressWrongQuestionMap.delete(key);
     } else {
         state.progressWrongQuestionMap.set(key, question);
     }
+}
+
+function getProgressRoundQuestionsByOutcome(isCorrect) {
+    return Array.from(state.progressRoundOutcomeMap.values())
+        .filter(result => !!result && result.isCorrect === !!isCorrect && result.question)
+        .map(result => result.question);
+}
+
+function getUniqueStarEligibleQuestions(questionGroups = []) {
+    const uniqueQuestions = new Map();
+    questionGroups.flat().forEach(question => {
+        const sourceQuestionId = normalizeSheetText(question?.sourceQuestionId);
+        if (!sourceQuestionId || uniqueQuestions.has(sourceQuestionId)) return;
+        uniqueQuestions.set(sourceQuestionId, question);
+    });
+    return Array.from(uniqueQuestions.values());
+}
+
+function getActiveProgressQuizQuestionsForStarReset() {
+    return getUniqueStarEligibleQuestions([
+        Array.isArray(state.sourceQuestions) ? state.sourceQuestions : [],
+        Array.isArray(state.questions) ? state.questions : [],
+        Array.isArray(state.questionQueue) ? state.questionQueue : []
+    ]);
+}
+
+async function persistProgressResultStarState(questions = [], isStarred = true) {
+    const targets = getUniqueStarEligibleQuestions([questions]);
+    if (!state.auth.client || !state.auth.user?.id) {
+        throw new Error('Sign in to change starred questions.');
+    }
+    if (!targets.length) return 0;
+
+    const rows = targets.map(question => ({
+        user_id: state.auth.user.id,
+        question_id: normalizeSheetText(question.sourceQuestionId),
+        is_starred: !!isStarred
+    }));
+
+    const { error } = await state.auth.client
+        .from('user_question_state')
+        .upsert(rows, { onConflict: 'user_id,question_id' });
+    if (error) throw error;
+
+    targets.forEach(question => {
+        applyQuestionStarStateAcrossDeck(question.sourceQuestionId, isStarred);
+    });
+    syncQuestionStarButton();
+    updateProgress();
+    return targets.length;
+}
+
+function renderProgressResultStarActions(summary) {
+    if (!summary) return;
+
+    const correctQuestions = getProgressRoundQuestionsByOutcome(true);
+    const incorrectQuestions = getProgressRoundQuestionsByOutcome(false);
+    const resetQuestions = getActiveProgressQuizQuestionsForStarReset();
+    const canPersistStars = !!(state.auth.client && state.auth.user?.id);
+
+    const actions = document.createElement('div');
+    actions.className = 'progress-result-star-actions';
+
+    const heading = document.createElement('div');
+    heading.className = 'progress-result-star-heading';
+    heading.innerText = 'Questions from this attempt';
+    actions.appendChild(heading);
+
+    const buttonRow = document.createElement('div');
+    buttonRow.className = 'progress-result-star-button-row';
+
+    const createActionButton = (label, count, className, handler) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `auth-action-btn progress-result-star-btn ${className}`;
+        button.innerText = `${label} (${count})`;
+        button.disabled = !canPersistStars || count === 0 || state.progressStarActionInFlight;
+        button.addEventListener('click', handler);
+        buttonRow.appendChild(button);
+        return button;
+    };
+
+    const status = document.createElement('div');
+    status.className = 'progress-result-star-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.innerText = canPersistStars ? '' : 'Sign in to change starred questions.';
+
+    const runAction = async (button, action) => {
+        if (state.progressStarActionInFlight) return;
+        state.progressStarActionInFlight = true;
+        buttonRow.querySelectorAll('button').forEach(item => { item.disabled = true; });
+        const retryButton = summary.querySelector('.progress-mode-retry-btn');
+        if (retryButton) retryButton.disabled = true;
+        status.classList.remove('error');
+        status.innerText = 'Saving starred questions...';
+        try {
+            const result = await action();
+            status.innerText = result.message;
+            button.innerText = result.buttonLabel || button.innerText;
+        } catch (error) {
+            console.error('Could not update Progress result stars:', error);
+            status.classList.add('error');
+            status.innerText = error?.message || 'Could not update starred questions.';
+        } finally {
+            state.progressStarActionInFlight = false;
+            correctButton.disabled = !canPersistStars || correctQuestions.length === 0;
+            incorrectButton.disabled = !canPersistStars || incorrectQuestions.length === 0;
+            resetButton.disabled = !canPersistStars || !resetQuestions.some(question => !!question.isStarred);
+            if (retryButton) retryButton.disabled = false;
+        }
+    };
+
+    const correctButton = createActionButton('★ Star all correct', correctQuestions.length, 'star-correct', event => {
+        runAction(event.currentTarget, async () => {
+            const count = await persistProgressResultStarState(correctQuestions, true);
+            return {
+                message: `${count} correct ${count === 1 ? 'question' : 'questions'} starred.`,
+                buttonLabel: `✓ Starred correct (${correctQuestions.length})`
+            };
+        });
+    });
+
+    const incorrectButton = createActionButton('★ Star all incorrect', incorrectQuestions.length, 'star-incorrect', event => {
+        runAction(event.currentTarget, async () => {
+            const count = await persistProgressResultStarState(incorrectQuestions, true);
+            return {
+                message: `${count} incorrect ${count === 1 ? 'question' : 'questions'} starred.`,
+                buttonLabel: `✓ Starred incorrect (${incorrectQuestions.length})`
+            };
+        });
+    });
+
+    const resetButton = createActionButton('☆ Reset all starred', 0, 'reset-starred', event => {
+        event.currentTarget.innerText = '☆ Reset all starred';
+        runAction(event.currentTarget, async () => {
+            const count = await persistProgressResultStarState(resetQuestions, false);
+            correctButton.innerText = `★ Star all correct (${correctQuestions.length})`;
+            incorrectButton.innerText = `★ Star all incorrect (${incorrectQuestions.length})`;
+            return {
+                message: `Starred questions reset for this quiz.`,
+                buttonLabel: '✓ Starred reset'
+            };
+        });
+    });
+    resetButton.innerText = '☆ Reset all starred';
+    resetButton.disabled = !canPersistStars || !resetQuestions.some(question => !!question.isStarred);
+
+    actions.appendChild(buttonRow);
+    actions.appendChild(status);
+    summary.appendChild(actions);
 }
 
 function getProgressMissedQuestions() {
@@ -22041,6 +22199,8 @@ function startProgressModeRetry() {
         : missedQuestions;
 
     state.progressRetryActive = true;
+    state.progressRoundOutcomeMap = new Map();
+    state.progressStarActionInFlight = false;
     state.questionQueue = buildStudyQuestionQueue(retryQuestions, { shuffle: false });
     state.currentIndex = 0;
     state.normalFinished = false;
@@ -25274,6 +25434,7 @@ function renderProgressModeFinishState() {
             : '100% complete. You finished this Progress Mode session.';
     }
     summary.appendChild(message);
+    renderProgressResultStarActions(summary);
 
     if (missedCount > 0) {
         const retryBtn = document.createElement('button');
@@ -28592,6 +28753,8 @@ function resetModeState() {
 
     state.progressRetryActive = false;
     state.progressWrongQuestionMap = new Map();
+    state.progressRoundOutcomeMap = new Map();
+    state.progressStarActionInFlight = false;
 
     state.normalFinished = false;
     state.questionAnswered = false;
