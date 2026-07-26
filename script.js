@@ -384,6 +384,7 @@ MODIFICATION RULES FOR THIS APP
                 miniQuizMode: 'normal',
                 miniQuizScope: 'current',
                 randomizeMiniQuiz: false,
+                allowDuplicateMiniQuiz: false,
                 miniQuiz: null
             },
             studioSavedImageMemoryLibrary: [],
@@ -583,6 +584,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeMiniScopeCurrent: document.getElementById('reviewModeMiniScopeCurrent'),
         reviewModeMiniScopeAll: document.getElementById('reviewModeMiniScopeAll'),
         reviewModeMiniRandomizeToggle: document.getElementById('reviewModeMiniRandomizeToggle'),
+        reviewModeMiniAllowDuplicatesToggle: document.getElementById('reviewModeMiniAllowDuplicatesToggle'),
         reviewModeMiniProgressToggle: document.getElementById('reviewModeMiniProgressToggle'),
         reviewModeMiniRetentionToggle: document.getElementById('reviewModeMiniRetentionToggle'),
         reviewModeMiniMasteryCheckToggle: document.getElementById('reviewModeMiniMasteryCheckToggle'),
@@ -6159,6 +6161,7 @@ MODIFICATION RULES FOR THIS APP
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
         review.includeLabelDescriptions = review.includeLabelDescriptions === true;
         review.randomizeMiniQuiz = review.randomizeMiniQuiz === true;
+        review.allowDuplicateMiniQuiz = review.allowDuplicateMiniQuiz === true;
         review.miniQuizScope = review.miniQuizScope === 'all' ? 'all' : 'current';
         review.miniQuizMode = normalizeReviewModeMiniQuizMode(review.miniQuizMode);
         review.miniQuiz = normalizeReviewModeMiniQuizState(review.miniQuiz, review.miniQuizMode);
@@ -6564,20 +6567,41 @@ MODIFICATION RULES FOR THIS APP
         return target && target.angleIndex === review.activeAngleIndex ? target.labelIndex : -1;
     }
 
-    function buildReviewModeMiniQuizTargets(entry, scope = 'current', activeAngleIndex = 0) {
+    // Phase 22NB: collapse matching label names to one randomly selected target unless duplicates are explicitly allowed.
+    function normalizeReviewModeMiniQuizLabelKey(labelName = '') {
+        return normalizeSheetText(labelName).replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+    }
+
+    function buildReviewModeMiniQuizTargets(entry, scope = 'current', activeAngleIndex = 0, allowDuplicates = false) {
         const angles = getStudioSavedImageAngles(entry || {});
         const normalizedScope = scope === 'all' && angles.length > 1 ? 'all' : 'current';
         const angleIndexes = normalizedScope === 'all'
             ? angles.map((_, index) => index)
             : [Math.min(Math.max(0, activeAngleIndex), Math.max(0, angles.length - 1))];
-        return angleIndexes.flatMap(angleIndex => {
+        const targets = angleIndexes.flatMap(angleIndex => {
             const angle = angles[angleIndex];
-            return normalizeDiagramLabels(angle?.labels || []).map((_, labelIndex) => ({
+            return normalizeDiagramLabels(angle?.labels || []).map((label, labelIndex) => ({
                 id: `${normalizeSheetText(angle?.id || `angle_${angleIndex}`)}::label_${labelIndex}`,
                 angleId: normalizeSheetText(angle?.id || `angle_${angleIndex}`),
                 angleIndex,
-                labelIndex
+                labelIndex,
+                duplicateKey: normalizeReviewModeMiniQuizLabelKey(label.label)
             }));
+        });
+        if (allowDuplicates) {
+            return targets.map(({ duplicateKey, ...target }) => target);
+        }
+
+        const targetGroups = new Map();
+        targets.forEach(target => {
+            const groupKey = target.duplicateKey || target.id;
+            if (!targetGroups.has(groupKey)) targetGroups.set(groupKey, []);
+            targetGroups.get(groupKey).push(target);
+        });
+        return Array.from(targetGroups.values()).map(group => {
+            const selected = group[Math.floor(Math.random() * group.length)] || group[0];
+            const { duplicateKey, ...target } = selected;
+            return target;
         });
     }
 
@@ -6643,7 +6667,7 @@ MODIFICATION RULES FOR THIS APP
         const angles = getStudioSavedImageAngles(entry || {});
         const requestedScope = scope === 'all' || scope === 'current' ? scope : review.miniQuizScope;
         const quizScope = requestedScope === 'all' && angles.length > 1 ? 'all' : 'current';
-        const targets = buildReviewModeMiniQuizTargets(entry, quizScope, review.activeAngleIndex);
+        const targets = buildReviewModeMiniQuizTargets(entry, quizScope, review.activeAngleIndex, review.allowDuplicateMiniQuiz);
         if (!targets.length) {
             setCreatorStatus(quizScope === 'all' ? 'This diagram does not have any labels to quiz.' : 'This angle does not have any labels to quiz.', 'error');
             return;
@@ -7037,6 +7061,10 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeMiniRandomizeToggle.checked = review.randomizeMiniQuiz;
             elements.reviewModeMiniRandomizeToggle.disabled = miniActive;
         }
+        if (elements.reviewModeMiniAllowDuplicatesToggle) {
+            elements.reviewModeMiniAllowDuplicatesToggle.checked = review.allowDuplicateMiniQuiz;
+            elements.reviewModeMiniAllowDuplicatesToggle.disabled = miniActive;
+        }
         if (elements.reviewModeMiniProgressToggle) {
             elements.reviewModeMiniProgressToggle.checked = review.miniQuizMode === 'progress';
             elements.reviewModeMiniProgressToggle.disabled = miniActive;
@@ -7077,6 +7105,7 @@ MODIFICATION RULES FOR THIS APP
         review.disableLabelNamesOnClick = false;
         review.includeLabelDescriptions = false;
         review.randomizeMiniQuiz = false;
+        review.allowDuplicateMiniQuiz = false;
         review.miniQuizScope = 'current';
         review.miniQuizMode = 'normal';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal', scope: 'current', targets: [] }, 'normal');
@@ -29826,6 +29855,15 @@ if (elements.reviewModeMiniRandomizeToggle) {
         const review = getReviewModeState();
         if (review.miniQuiz.active) return;
         review.randomizeMiniQuiz = elements.reviewModeMiniRandomizeToggle.checked;
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniAllowDuplicatesToggle) {
+    elements.reviewModeMiniAllowDuplicatesToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active) return;
+        review.allowDuplicateMiniQuiz = elements.reviewModeMiniAllowDuplicatesToggle.checked;
         syncReviewModeControls();
     });
 }
