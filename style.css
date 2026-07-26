@@ -12335,3 +12335,29 @@ body.review-mode-image-open {
   }
 }
 
+
+/* Phase 22NC: keep Manage Quizzes controls on one row in iPad portrait. */
+@media screen and (min-width: 700px) and (max-width: 1024px) and (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-controls {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-inline-input,
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-inline-select {
+    flex: 0 0 clamp(128px, 16.5vw, 150px);
+    width: clamp(128px, 16.5vw, 150px);
+    min-width: 0;
+    max-width: clamp(128px, 16.5vw, 150px);
+  }
+
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-controls > .auth-action-btn {
+    flex: 0 0 auto;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-quiz-actions-menu-wrap {
+    flex: 0 0 auto;
+  }
+}
