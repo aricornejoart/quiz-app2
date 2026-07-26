@@ -5784,7 +5784,7 @@ MODIFICATION RULES FOR THIS APP
         if (!angle) return false;
         angle.labels = normalizeDiagramLabels(editor.labels || []);
         angle.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []);
-        draft.metadata = normalizeDiagramMetadata(editor.metadata || getImageEditorMetadataFromFields());
+        draft.metadata = captureImageEditorMetadata();
         if (options.includeImage !== false && editor.baseCanvas) {
             const imageValue = editor.baseCanvas.toDataURL('image/png');
             angle.editedValue = normalizeSheetText(imageValue);
@@ -7497,6 +7497,15 @@ MODIFICATION RULES FOR THIS APP
             muscle: elements.studioImageEditorMuscle?.value,
             tags: elements.studioImageEditorTags?.value
         });
+    }
+
+    function captureImageEditorMetadata() {
+        const editor = state.auth.imageEditor;
+        const metadata = editor?.metadataEnabled
+            ? getImageEditorMetadataFromFields()
+            : normalizeDiagramMetadata(editor?.metadata || {});
+        if (editor) editor.metadata = metadata;
+        return metadata;
     }
 
     function refreshImageEditorMetadataUi() {
@@ -9839,7 +9848,9 @@ MODIFICATION RULES FOR THIS APP
         if (!editor?.open || !normalizedValue || !isImageEditorSavedDiagramTarget(editor)) return null;
         const labels = normalizeDiagramLabels(options.labels || editor.labels || []);
         const drawStrokes = cloneImageEditorDrawStrokes(options.drawStrokes || editor.drawStrokes || []);
-        const metadata = normalizeDiagramMetadata(options.metadata || editor.metadata || getImageEditorMetadataFromFields());
+        const metadata = options.metadata !== undefined
+            ? normalizeDiagramMetadata(options.metadata || {})
+            : captureImageEditorMetadata();
         const fileName = getImageEditorSavedImageFileName(editor);
         const originalEntry = normalizeStudioSavedImageEntry(
             editor.target?.savedImageOriginalEntry
@@ -9906,7 +9917,7 @@ MODIFICATION RULES FOR THIS APP
             const editedDataUrl = outputCanvas.toDataURL('image/png');
             const imageLabels = normalizeDiagramLabels(editor?.labels || []);
             const imageDrawStrokes = isLayeredDiagramTarget ? cloneImageEditorDrawStrokes(editor.drawStrokes || []) : [];
-            const imageMetadata = isLayeredDiagramTarget ? normalizeDiagramMetadata(editor.metadata || getImageEditorMetadataFromFields()) : {};
+            const imageMetadata = isLayeredDiagramTarget ? captureImageEditorMetadata() : {};
             let applyValue = editedDataUrl;
             let savedResult = null;
             if (isMultiAngleDraftTarget) {
