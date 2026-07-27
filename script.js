@@ -184,6 +184,7 @@ MODIFICATION RULES FOR THIS APP
         retentionSolvedIds: new Set(),
 
         pendingMasteryAdvance: false,
+        masteryDisplayedRemainingCount: null,
 
         masteryCheckPendingJump: false,
         masteryCheckPendingAdvance: false,
@@ -204,6 +205,7 @@ MODIFICATION RULES FOR THIS APP
         progressRoundOutcomeMap: new Map(),
         progressStarActionInFlight: false,
         questionAnswered: false,
+        displayedQuestion: null,
         multipleAnswerSelection: new Set(),
 
         pendingLearningResource: null,
@@ -22366,6 +22368,7 @@ function startProgressModeRetry() {
     state.currentIndex = 0;
     state.normalFinished = false;
     state.questionAnswered = false;
+    state.displayedQuestion = null;
     state.multipleAnswerSelection = new Set();
     state.flashcardFlipped = false;
     clearProgressModeFinishUI();
@@ -23991,11 +23994,17 @@ function getFilteredSourceQuestions() {
     return [...sourceQuestions];
 }
 
+// Phase 22ND1: Mastery mutates the queue before the answered screen advances.
+// Keep star actions anchored to the question that is still visibly rendered.
+function getDisplayedStudyQuestion() {
+    return state.displayedQuestion || state.questionQueue[state.currentIndex] || null;
+}
+
 function syncQuestionStarButton() {
     const button = elements.questionStarBtn;
     if (!button) return;
 
-    const currentQuestion = state.questionQueue[state.currentIndex] || null;
+    const currentQuestion = getDisplayedStudyQuestion();
     const canStar = canPersistQuestionStarState(currentQuestion) && !state.auth.starringInFlight && !isQuizFinished();
 
     if (!currentQuestion || !canPersistQuestionStarState(currentQuestion) || isQuizFinished()) {
@@ -24288,6 +24297,7 @@ function resetQuizSelector() {
 
 function renderSelectionPrompt(message = 'Choose a folder and a quiz.') {
     clearQuestionUI();
+    state.displayedQuestion = null;
     state.currentQuestionType = '';
     updateViewportClasses();
 
@@ -25397,8 +25407,43 @@ function applyQuestionStarStateAcrossDeck(sourceQuestionId, isStarred) {
     }
 }
 
+// Phase 22ND2: Excluding a manually starred Mastery question must preserve
+// Mastery's live queue order. Rebuilding from sourceQuestions resets the queue
+// and sends the user back to the beginning.
+function removeExcludedStarredQuestionFromMasterySession(question) {
+    if (!isRetryMode() || !isExcludeStarredEnabled()) return false;
+
+    const key = getAutoStarQuestionKey(question);
+    if (!key) return false;
+
+    const previousIndex = state.currentIndex;
+    const queuedIndex = state.questionQueue.findIndex(item => getAutoStarQuestionKey(item) === key);
+
+    state.questionQueue = state.questionQueue.filter(item => getAutoStarQuestionKey(item) !== key);
+    state.questions = state.questions.filter(item => getAutoStarQuestionKey(item) !== key);
+    state.autoStar.excludedQuestionKeys.delete(key);
+    resetPendingStudyAdvanceFlags();
+
+    if (!state.questionQueue.length) {
+        state.currentIndex = 0;
+        state.emptyQuizMessage = state.sourceQuestions.length
+            ? 'All questions in this deck are currently starred and excluded.'
+            : 'This quiz has no questions.';
+    } else {
+        const adjustedIndex = queuedIndex >= 0 && queuedIndex < previousIndex
+            ? previousIndex - 1
+            : previousIndex;
+        state.currentIndex = Math.max(0, Math.min(adjustedIndex, state.questionQueue.length - 1));
+        state.emptyQuizMessage = '';
+    }
+
+    updateSettingsAvailability();
+    showQuestion();
+    return true;
+}
+
 async function toggleCurrentQuestionStarState() {
-    const currentQuestion = state.questionQueue[state.currentIndex];
+    const currentQuestion = getDisplayedStudyQuestion();
     if (!canPersistQuestionStarState(currentQuestion) || state.auth.starringInFlight) {
         return;
     }
@@ -25412,7 +25457,10 @@ async function toggleCurrentQuestionStarState() {
         applyQuestionStarStateAcrossDeck(currentQuestion.sourceQuestionId, nextStarred);
 
         if (nextStarred && isExcludeStarredEnabled()) {
-            applyFilteredQuestionsToSession({ resetSession: false });
+            const masteryQueueHandled = removeExcludedStarredQuestionFromMasterySession(currentQuestion);
+            if (!masteryQueueHandled) {
+                applyFilteredQuestionsToSession({ resetSession: false });
+            }
         } else {
             syncQuestionStarButton();
             updateProgress();
@@ -25508,7 +25556,12 @@ function updateProgress() {
         completed = total - remaining;
         percent = total > 0 ? (completed / total) * 100 : 0;
     } else if (isRetryMode()) {
-        remaining = state.questionQueue.length;
+        const holdVisibleQuestionCount = state.questionAnswered
+            && state.pendingMasteryAdvance
+            && Number.isInteger(state.masteryDisplayedRemainingCount);
+        remaining = holdVisibleQuestionCount
+            ? state.masteryDisplayedRemainingCount
+            : state.questionQueue.length;
         completed = total - remaining;
         percent = total > 0 ? (completed / total) * 100 : 0;
     } else if (isMasteryCheckMode()) {
@@ -25612,6 +25665,8 @@ function renderProgressModeFinishState() {
 // ================= SHOW QUESTION =================
 function showQuestion() {
     if (!state.questions.length) {
+        state.displayedQuestion = null;
+        state.masteryDisplayedRemainingCount = null;
         renderSelectionPrompt(state.emptyQuizMessage || 'Choose a folder and a quiz.');
         return;
     }
@@ -25626,6 +25681,8 @@ function showQuestion() {
     }
 
     if (isQuizFinished()) {
+        state.displayedQuestion = null;
+        state.masteryDisplayedRemainingCount = null;
         stopStudyTimer({ clearDisplay: false });
         if (isProgressMode()) {
             renderProgressModeFinishState();
@@ -25651,6 +25708,10 @@ function showQuestion() {
     if (state.currentIndex >= state.questionQueue.length) state.currentIndex = state.questionQueue.length - 1;
 
     const q = state.questionQueue[state.currentIndex];
+    state.displayedQuestion = q;
+    // Phase 22ND3: Mastery mutates its live queue as soon as an answer is graded.
+    // Hold the visible remaining count until Next actually renders another question.
+    state.masteryDisplayedRemainingCount = isRetryMode() ? state.questionQueue.length : null;
     state.currentQuestionType = q.type || '';
     state.currentQuestionHasImage = !!q.image;
     const shouldDelayOptions = isOptionDelayEnabledForQuestion(q);
@@ -28910,6 +28971,7 @@ function resetModeState() {
     state.retentionSolvedIds = new Set();
 
     state.pendingMasteryAdvance = false;
+    state.masteryDisplayedRemainingCount = null;
     resetMasteryCheckState();
 
     state.progressRetryActive = false;
