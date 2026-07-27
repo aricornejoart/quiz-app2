@@ -3595,6 +3595,83 @@ input {
   pointer-events: none;
 }
 
+.mastery-check-threshold-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.mastery-check-threshold-label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.mastery-check-threshold-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.mastery-check-threshold-choice {
+  position: relative;
+  display: block;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.mastery-check-threshold-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mastery-check-threshold-choice span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #6258a5;
+  border-radius: 10px;
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  font-size: 13px;
+  font-weight: 800;
+  box-sizing: border-box;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
+}
+
+.mastery-check-threshold-choice:hover span {
+  border-color: #8f82ff;
+  background: var(--color-bg-control-hover);
+}
+
+.mastery-check-threshold-choice input:focus-visible + span {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.24);
+}
+
+.mastery-check-threshold-choice input:checked + span {
+  border-color: #9b8fff;
+  background: rgba(124, 108, 255, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(197, 190, 255, 0.24);
+}
+
+.mastery-check-threshold-choice:active span {
+  transform: scale(0.98);
+}
+
+.mastery-check-threshold-options.is-locked {
+  opacity: 0.62;
+}
+
+.mastery-check-threshold-choice input:disabled + span {
+  cursor: default;
+}
+
 .toggle-switch {
   position: relative;
   display: inline-flex;

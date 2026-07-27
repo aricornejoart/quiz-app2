@@ -30,7 +30,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=22nd3">
+  <link rel="stylesheet" href="style.css?v=22ne">
 </head>
 <body>
 
@@ -265,7 +265,7 @@ MODIFICATION RULES FOR THIS APP
                   >?</button>
                 </div>
                 <div id="masteryCheckModeHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Wrong answers send you back 3. Every 10 correctly completed new questions trigger a review check of those 10, and passed review questions are removed for the rest of the session.
+                  Wrong answers send you back 3. Choose whether 3, 5, or 10 correctly completed new questions trigger each review check. Passed review questions are removed for the rest of the session.
                 </div>
                 <label class="toggle-switch" for="masteryCheckMode" aria-label="Mastery Check toggle">
                   <input type="checkbox" id="masteryCheckMode">
@@ -273,6 +273,23 @@ MODIFICATION RULES FOR THIS APP
                     <span class="toggle-thumb"></span>
                   </span>
                 </label>
+                <div id="masteryCheckThresholdOptions" class="mastery-check-threshold-options hidden" role="radiogroup" aria-label="Correct answers before review">
+                  <span class="mastery-check-threshold-label">Correct before review</span>
+                  <div class="mastery-check-threshold-buttons">
+                    <label class="mastery-check-threshold-choice">
+                      <input type="radio" name="masteryCheckThreshold" value="3">
+                      <span>3</span>
+                    </label>
+                    <label class="mastery-check-threshold-choice">
+                      <input type="radio" name="masteryCheckThreshold" value="5">
+                      <span>5</span>
+                    </label>
+                    <label class="mastery-check-threshold-choice">
+                      <input type="radio" name="masteryCheckThreshold" value="10" checked>
+                      <span>10</span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <div class="setting-card" id="progressModeSetting">
@@ -1968,6 +1985,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22nd3"></script>
+  <script src="script.js?v=22ne"></script>
 </body>
 </html>

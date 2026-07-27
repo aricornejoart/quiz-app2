@@ -21338,6 +21338,34 @@ function isMasteryCheckMode() {
     return document.getElementById('masteryCheckMode').checked;
 }
 
+function getMasteryCheckThreshold() {
+    // Keep official Mastery Check challenges on the original 10-question standard.
+    if (isActiveQuizChallenge()) return 10;
+    const selected = Number(document.querySelector('input[name="masteryCheckThreshold"]:checked')?.value || 10);
+    return [3, 5, 10].includes(selected) ? selected : 10;
+}
+
+function syncMasteryCheckThresholdControls() {
+    const options = document.getElementById('masteryCheckThresholdOptions');
+    const inputs = Array.from(document.querySelectorAll('input[name="masteryCheckThreshold"]'));
+    const active = isMasteryCheckMode();
+    const challengeLocked = isActiveQuizChallenge();
+
+    if (challengeLocked) {
+        const defaultInput = inputs.find(input => input.value === '10');
+        if (defaultInput) defaultInput.checked = true;
+    }
+
+    if (options) {
+        options.classList.toggle('hidden', !active);
+        options.classList.toggle('is-locked', challengeLocked);
+    }
+
+    inputs.forEach(input => {
+        input.disabled = !active || challengeLocked;
+    });
+}
+
 function isProgressMode() {
     return document.getElementById('progressMode')?.checked || false;
 }
@@ -22730,6 +22758,8 @@ function updateExclusiveModeAvailability() {
         const card = document.getElementById(settingId);
         if (card) card.classList.toggle('challenge-locked-setting', challengeLocked);
     });
+
+    syncMasteryCheckThresholdControls();
 }
 
 function updateRapidLearningResourcesCompatibility() {
@@ -26595,7 +26625,7 @@ function handleCorrectAnswer() {
 
         addMasteryCheckSegmentQuestionsWithTether(q);
 
-        const atCheckpointBoundary = state.masteryCheckSegmentQuestions.length >= 10;
+        const atCheckpointBoundary = state.masteryCheckSegmentQuestions.length >= getMasteryCheckThreshold();
         const atEndOfRemainingPool = state.currentIndex >= state.questionQueue.length - 1;
         const canStartCheckpointWithoutSplittingString = isAtEndOfTetherBuildUpRun(state.questionQueue, state.currentIndex);
 
@@ -29052,6 +29082,14 @@ document.getElementById('masteryCheckMode').onchange = e => {
     updateSettingsAvailability();
     restartQuiz();
 };
+
+document.querySelectorAll('input[name="masteryCheckThreshold"]').forEach(input => {
+    input.addEventListener('change', () => {
+        if (!input.checked || input.disabled) return;
+        restartQuiz();
+        updateSettingsAvailability();
+    });
+});
 
 document.getElementById('progressMode').onchange = e => {
     if (e.target.checked) {
