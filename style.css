@@ -12564,3 +12564,26 @@ body.review-mode-image-open {
     padding-inline: 9px;
   }
 }
+
+
+/* Phase 22NF — visible and safe multi-angle image deletion. */
+.multi-angle-delete-angle-btn,
+.multi-angle-list-delete-btn {
+  border-color: rgba(220, 38, 38, 0.38);
+  color: #b91c1c;
+}
+
+.multi-angle-delete-angle-btn:hover:not(:disabled),
+.multi-angle-delete-angle-btn:focus-visible:not(:disabled),
+.multi-angle-list-delete-btn:hover:not(:disabled),
+.multi-angle-list-delete-btn:focus-visible:not(:disabled) {
+  border-color: rgba(220, 38, 38, 0.72);
+  background: rgba(254, 226, 226, 0.9);
+  color: #991b1b;
+}
+
+.multi-angle-delete-angle-btn:disabled,
+.multi-angle-list-delete-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}

@@ -373,7 +373,6 @@ MODIFICATION RULES FOR THIS APP
                 optionsOpen: false,
                 showAllNames: false,
                 showDrawData: true,
-                showAllDrawings: false,
                 showConnectors: true,
                 labelScale: 1,
                 zoomScale: 1,
@@ -527,6 +526,7 @@ MODIFICATION RULES FOR THIS APP
         multiAngleAnchorHelp: document.getElementById('multiAngleAnchorHelp'),
         multiAngleEditAngleBtn: document.getElementById('multiAngleEditAngleBtn'),
         multiAngleAddImagesBtn: document.getElementById('multiAngleAddImagesBtn'),
+        multiAngleDeleteAngleBtn: document.getElementById('multiAngleDeleteAngleBtn'),
         multiAngleToggleListBtn: document.getElementById('multiAngleToggleListBtn'),
         multiAngleListDrawer: document.getElementById('multiAngleListDrawer'),
         multiAngleList: document.getElementById('multiAngleList'),
@@ -581,7 +581,6 @@ MODIFICATION RULES FOR THIS APP
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
         reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
         reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
-        reviewModeShowAllDrawingsToggle: document.getElementById('reviewModeShowAllDrawingsToggle'),
         reviewModeMiniQuizScope: document.getElementById('reviewModeMiniQuizScope'),
         reviewModeMiniScopeCurrent: document.getElementById('reviewModeMiniScopeCurrent'),
         reviewModeMiniScopeAll: document.getElementById('reviewModeMiniScopeAll'),
@@ -5548,6 +5547,57 @@ MODIFICATION RULES FOR THIS APP
         return draft.angles[draft.activeIndex] || null;
     }
 
+
+    function releaseMultiAngleDraftAngleRuntime(angle) {
+        if (!angle) return;
+        if (angle.runtimeObjectUrl && /^blob:/i.test(angle.runtimeObjectUrl)) URL.revokeObjectURL(angle.runtimeObjectUrl);
+        if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
+        angle.runtimeImage = null;
+        angle.runtimeEditedImage = null;
+        angle.runtimeObjectUrl = '';
+        angle.runtimeEditedObjectUrl = '';
+    }
+
+    function deleteMultiAngleDraftAngle(index, options = {}) {
+        const draft = getMultiAngleCreatorState();
+        const targetIndex = Math.floor(Number(index));
+        const targetAngle = draft.angles[targetIndex];
+        if (!targetAngle) return false;
+        if (draft.angles.length <= 1) {
+            setCreatorStatus('A multi-angle diagram must contain at least one image. Replace the final image instead.', 'error');
+            syncMultiAngleCreatorControls();
+            return false;
+        }
+        const targetName = normalizeSheetText(targetAngle.name || `Angle ${targetIndex + 1}`) || `Angle ${targetIndex + 1}`;
+        const targetLabelCount = normalizeDiagramLabels(targetAngle.labels || []).length;
+        const targetDrawingCount = cloneImageEditorDrawStrokes(targetAngle.drawStrokes || []).length;
+        if (options.skipConfirm !== true) {
+            const detailParts = [];
+            if (targetLabelCount) detailParts.push(`${targetLabelCount} label${targetLabelCount === 1 ? '' : 's'}`);
+            if (targetDrawingCount) detailParts.push(`${targetDrawingCount} drawing stroke${targetDrawingCount === 1 ? '' : 's'}`);
+            const detail = detailParts.length ? ` It also removes ${detailParts.join(' and ')} from this angle.` : '';
+            const approved = window.confirm(`Delete “${targetName}”?${detail}
+
+The deletion becomes permanent when you save the diagram.`);
+            if (!approved) return false;
+        }
+        const previousActiveIndex = draft.activeIndex;
+        const removed = draft.angles.splice(targetIndex, 1)[0];
+        releaseMultiAngleDraftAngleRuntime(removed);
+        if (targetIndex < previousActiveIndex) {
+            draft.activeIndex = previousActiveIndex - 1;
+        } else if (targetIndex === previousActiveIndex) {
+            draft.activeIndex = Math.min(targetIndex, draft.angles.length - 1);
+        } else {
+            draft.activeIndex = previousActiveIndex;
+        }
+        draft.activeIndex = Math.max(0, Math.min(draft.activeIndex, draft.angles.length - 1));
+        draft.settingAnchor = false;
+        syncMultiAngleCreatorControls();
+        setCreatorStatus(`${targetName} removed from this diagram. Save the diagram to make the deletion permanent.`, 'success');
+        return true;
+    }
+
     function drawMultiAngleGuides(ctx, canvas, angle) {
         const draft = getMultiAngleCreatorState();
         if (!draft.guidesVisible) return;
@@ -5647,6 +5697,12 @@ MODIFICATION RULES FOR THIS APP
         }
         if (elements.multiAnglePrevBtn) elements.multiAnglePrevBtn.disabled = draft.angles.length < 2;
         if (elements.multiAngleNextBtn) elements.multiAngleNextBtn.disabled = draft.angles.length < 2;
+        if (elements.multiAngleDeleteAngleBtn) {
+            elements.multiAngleDeleteAngleBtn.disabled = draft.saving || draft.angles.length <= 1;
+            elements.multiAngleDeleteAngleBtn.title = draft.angles.length <= 1
+                ? 'A multi-angle diagram must contain at least one image.'
+                : `Delete ${angle.name || `Angle ${draft.activeIndex + 1}`}`;
+        }
         if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.disabled = draft.saving || !draft.angles.length;
         if (elements.multiAngleToggleListBtn) {
             elements.multiAngleToggleListBtn.textContent = draft.listOpen ? 'Hide Angles' : 'Show Angles';
@@ -5668,7 +5724,7 @@ MODIFICATION RULES FOR THIS APP
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="open" data-angle-index="${index}">Open</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="up" data-angle-index="${index}" aria-label="Move angle up">↑</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="down" data-angle-index="${index}" aria-label="Move angle down">↓</button>
-                <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="delete" data-angle-index="${index}" aria-label="Delete angle">🗑</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn multi-angle-list-delete-btn" data-multi-angle-action="delete" data-angle-index="${index}" aria-label="Delete ${escapeHtml(angle.name || `Angle ${index + 1}`)}" title="${draft.angles.length <= 1 ? 'A multi-angle diagram must contain at least one image.' : `Delete ${escapeHtml(angle.name || `Angle ${index + 1}`)}`}"${draft.angles.length <= 1 ? ' disabled' : ''}>🗑</button>
               </div>
             </div>
         `).join('');
@@ -6158,7 +6214,6 @@ MODIFICATION RULES FOR THIS APP
         review.showAngleControls = review.showAngleControls !== false;
         review.showAllNames = review.showAllNames === true;
         review.showDrawData = review.showDrawData !== false;
-        review.showAllDrawings = review.showAllDrawings === true;
         review.showConnectors = review.showConnectors !== false;
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
         review.includeLabelDescriptions = review.includeLabelDescriptions === true;
@@ -6935,13 +6990,15 @@ MODIFICATION RULES FOR THIS APP
         if (!angle || !review.showDrawData) return;
         const labels = normalizeDiagramLabels(angle.labels || []);
         let visibleIndexes;
-        if (review.showAllDrawings) {
-            visibleIndexes = new Set(labels.map((_, index) => index));
-        } else if (review.miniQuiz.active) {
+        if (review.miniQuiz.active) {
             const activeIndex = getReviewModeMiniQuizActiveLabelIndex(review);
-            visibleIndexes = new Set(review.miniQuiz.answerRevealed && activeIndex >= 0 ? [activeIndex] : []);
+            // Mini Quiz reveals only the active target's drawing, but keeps it visible
+            // both before and after the label answer is revealed.
+            visibleIndexes = new Set(activeIndex >= 0 ? [activeIndex] : []);
         } else {
-            visibleIndexes = getReviewModeVisibleLabelIndexes(entry);
+            // In normal Review Mode, Show label drawings is the master switch:
+            // every label drawing stays visible regardless of label click state.
+            visibleIndexes = new Set(labels.map((_, index) => index));
         }
         if (!visibleIndexes.size) return;
         cloneImageEditorDrawStrokes(angle.drawStrokes || [])
@@ -7052,7 +7109,6 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeShowAllNamesToggle.disabled = miniActive;
         }
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
-        if (elements.reviewModeShowAllDrawingsToggle) elements.reviewModeShowAllDrawingsToggle.checked = review.showAllDrawings;
         if (elements.reviewModeDisableNamesOnClickToggle) {
             elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
             elements.reviewModeDisableNamesOnClickToggle.disabled = miniActive;
@@ -7102,7 +7158,6 @@ MODIFICATION RULES FOR THIS APP
         review.showAngleControls = true;
         review.showAllNames = false;
         review.showDrawData = true;
-        review.showAllDrawings = false;
         review.showConnectors = true;
         review.disableLabelNamesOnClick = false;
         review.includeLabelDescriptions = false;
@@ -29617,6 +29672,10 @@ if (elements.multiAngleEditAngleBtn) elements.multiAngleEditAngleBtn.addEventLis
     console.error(error);
     setCreatorStatus('Could not open this angle in the image editor.', 'error');
 }));
+if (elements.multiAngleDeleteAngleBtn) elements.multiAngleDeleteAngleBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState();
+    deleteMultiAngleDraftAngle(draft.activeIndex);
+});
 if (elements.multiAngleToggleListBtn) elements.multiAngleToggleListBtn.addEventListener('click', () => {
     const draft = getMultiAngleCreatorState();
     draft.listOpen = !draft.listOpen;
@@ -29641,18 +29700,7 @@ if (elements.multiAngleList) elements.multiAngleList.addEventListener('click', e
         draft.activeIndex = index + 1;
         syncMultiAngleCreatorControls();
     }
-    if (action === 'delete') {
-        const targetAngle = draft.angles[index];
-        const targetLabelCount = normalizeDiagramLabels(targetAngle?.labels || []).length;
-        const targetDrawingCount = cloneImageEditorDrawStrokes(targetAngle?.drawStrokes || []).length;
-        if ((targetLabelCount || targetDrawingCount) && !window.confirm(`Delete ${targetAngle?.name || `Angle ${index + 1}`} and its ${targetLabelCount} label${targetLabelCount === 1 ? '' : 's'}${targetDrawingCount ? ` plus ${targetDrawingCount} drawing stroke${targetDrawingCount === 1 ? '' : 's'}` : ''}?`)) return;
-        const removed = draft.angles.splice(index, 1)[0];
-        if (removed?.runtimeObjectUrl && /^blob:/i.test(removed.runtimeObjectUrl)) URL.revokeObjectURL(removed.runtimeObjectUrl);
-        if (removed?.runtimeEditedObjectUrl && /^blob:/i.test(removed.runtimeEditedObjectUrl)) URL.revokeObjectURL(removed.runtimeEditedObjectUrl);
-        draft.activeIndex = Math.max(0, Math.min(draft.activeIndex, draft.angles.length - 1));
-        if (!draft.angles.length) resetMultiAngleCreatorState();
-        else syncMultiAngleCreatorControls();
-    }
+    if (action === 'delete') deleteMultiAngleDraftAngle(index);
 });
 if (elements.multiAngleCanvas) {
     elements.multiAngleCanvas.addEventListener('pointerdown', event => {
@@ -30021,17 +30069,6 @@ if (elements.reviewModeShowDrawDataToggle) {
     elements.reviewModeShowDrawDataToggle.addEventListener('change', () => {
         const review = getReviewModeState();
         review.showDrawData = elements.reviewModeShowDrawDataToggle.checked;
-        if (!review.showDrawData) review.showAllDrawings = false;
-        renderReviewModeDrawData();
-        syncReviewModeControls();
-    });
-}
-
-if (elements.reviewModeShowAllDrawingsToggle) {
-    elements.reviewModeShowAllDrawingsToggle.addEventListener('change', () => {
-        const review = getReviewModeState();
-        review.showAllDrawings = elements.reviewModeShowAllDrawingsToggle.checked;
-        if (review.showAllDrawings) review.showDrawData = true;
         renderReviewModeDrawData();
         syncReviewModeControls();
     });
