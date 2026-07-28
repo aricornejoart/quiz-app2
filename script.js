@@ -119,6 +119,9 @@ MODIFICATION RULES FOR THIS APP
     const STUDIO_LOCAL_FLASHCARD_PREFIX = '__local_flashcard__';
     const STUDIO_FOCUS_NEW_QUESTION_ID = '__studio_focus_new_question__';
     const IMAGE_EDITOR_MAX_DIMENSION = 1800;
+    const IMAGE_EDITOR_DRAW_BACKUP_PREFIX = 'studyBunnyImageEditorDrawBackupV1:';
+    const IMAGE_EDITOR_DRAW_AUTOSAVE_DELAY_MS = 220;
+    const IMAGE_EDITOR_DRAW_BACKUP_MAX_BYTES = 1_750_000;
 
     const state = {
         questions: [],
@@ -418,6 +421,12 @@ MODIFICATION RULES FOR THIS APP
                 activeDrawLabelIndex: null,
                 activeDrawStroke: null,
                 drawStrokes: [],
+                drawSaveTimerId: null,
+                drawSaveStatusTimerId: null,
+                drawSavePromise: null,
+                drawSaveDirty: false,
+                drawSaveRetryCount: 0,
+                recoveredDrawingBackup: false,
                 labels: [],
                 labelsEnabled: false,
                 metadata: {},
@@ -5840,6 +5849,7 @@ The deletion becomes permanent when you save the diagram.`);
     async function persistCurrentMultiAngleEditorState(options = {}) {
         const editor = state.auth.imageEditor;
         if (!editor?.open || editor?.target?.multiAngleDraft !== true) return false;
+        await flushImageEditorDrawingCommit({ silent: true });
         const draft = getMultiAngleCreatorState();
         const angleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
         const angle = draft.angles.find(item => item.id === angleId);
@@ -6109,6 +6119,7 @@ The deletion becomes permanent when you save the diagram.`);
                 }
             }
             renderDiagramCreatorSavedImages();
+            clearMultiAngleDrawingBackups(draft);
             if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
             if (options.keepDraftOpen === true) {
                 draft.originalEntry = normalizeStudioSavedImageEntry(savedEntry || nextEntry);
@@ -6445,6 +6456,46 @@ The deletion becomes permanent when you save the diagram.`);
     const reviewModeAnglePreloadCache = new Map();
     let reviewModeAngleLoadToken = 0;
     let reviewModeAngleTransitionTimer = null;
+    // Phase 22NF2.2: overlays may render only after the matching angle image has
+    // completed loading. This prevents stale labels/connectors from crossing angles.
+    let reviewModePendingAngleIdentity = '';
+    let reviewModeCommittedAngleIdentity = '';
+
+    function getReviewModeAngleRenderIdentity(entry = getActiveReviewModeEntry(), angle = getActiveReviewModeAngle(entry), angleIndex = getReviewModeState().activeAngleIndex) {
+        if (!entry || !angle) return '';
+        return `${normalizeSheetText(entry.id)}::${Math.max(0, Math.floor(Number(angleIndex) || 0))}::${normalizeSheetText(angle.imageValue)}`;
+    }
+
+    function clearReviewModeOverlayLayers() {
+        if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
+        if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
+        if (elements.reviewModeDrawCanvas) {
+            const ctx = elements.reviewModeDrawCanvas.getContext('2d');
+            ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
+        }
+    }
+
+    function invalidateReviewModeAngleOverlayCommit({ clear = true } = {}) {
+        reviewModePendingAngleIdentity = '';
+        reviewModeCommittedAngleIdentity = '';
+        if (clear) clearReviewModeOverlayLayers();
+    }
+
+    function isReviewModeActiveAngleOverlayReady() {
+        const entry = getActiveReviewModeEntry();
+        const angle = getActiveReviewModeAngle(entry);
+        const identity = getReviewModeAngleRenderIdentity(entry, angle, getReviewModeState().activeAngleIndex);
+        const source = normalizeSheetText(angle?.imageValue || '');
+        const image = elements.reviewModeImage;
+        return !!(
+            identity
+            && identity === reviewModeCommittedAngleIdentity
+            && image?.complete
+            && image.naturalWidth
+            && image.naturalHeight
+            && normalizeSheetText(image.dataset.mediaPreviewSource || '') === source
+        );
+    }
 
     function setReviewModeAngleTransition(active) {
         if (reviewModeAngleTransitionTimer) {
@@ -6462,6 +6513,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function resetReviewModeAngleLoading({ clearCache = false } = {}) {
         reviewModeAngleLoadToken += 1;
+        invalidateReviewModeAngleOverlayCommit();
         setReviewModeAngleTransition(false);
         elements.reviewModeImageStage?.classList.remove('is-angle-dragging');
         if (clearCache) reviewModeAnglePreloadCache.clear();
@@ -6510,17 +6562,25 @@ The deletion becomes permanent when you save the diagram.`);
         setImageElementSourceWithMediaResolution(elements.reviewModeImage, angle.imageValue, {
             onLoad: () => {
                 if (loadToken !== reviewModeAngleLoadToken) return;
+                const activeEntry = getActiveReviewModeEntry();
+                const activeAngle = getActiveReviewModeAngle(activeEntry);
+                const activeIdentity = getReviewModeAngleRenderIdentity(activeEntry, activeAngle, getReviewModeState().activeAngleIndex);
+                if (!activeIdentity || activeIdentity !== reviewModePendingAngleIdentity) return;
+                reviewModeCommittedAngleIdentity = activeIdentity;
+                reviewModePendingAngleIdentity = '';
                 syncReviewModeImageStage();
                 renderReviewModeLabels();
                 syncReviewModeAngleNavigation();
                 preloadReviewModeAdjacentAngles();
                 requestAnimationFrame(() => {
+                    if (loadToken !== reviewModeAngleLoadToken || !isReviewModeActiveAngleOverlayReady()) return;
                     syncReviewModeImageStage();
                     if (animate) requestAnimationFrame(() => setReviewModeAngleTransition(false));
                 });
             },
             onError: () => {
                 if (loadToken !== reviewModeAngleLoadToken) return;
+                invalidateReviewModeAngleOverlayCommit();
                 setReviewModeAngleTransition(false);
                 if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = 'This angle could not be loaded.';
             }
@@ -6532,6 +6592,9 @@ The deletion becomes permanent when you save the diagram.`);
         const angle = getActiveReviewModeAngle(entry);
         if (!entry || !angle || !elements.reviewModeImage) return;
         const loadToken = ++reviewModeAngleLoadToken;
+        reviewModeCommittedAngleIdentity = '';
+        reviewModePendingAngleIdentity = getReviewModeAngleRenderIdentity(entry, angle, getReviewModeState().activeAngleIndex);
+        clearReviewModeOverlayLayers();
         const metadata = normalizeDiagramMetadata(entry.metadata || {});
         const title = metadata.diagramName || metadata.subjectName || entry.fileName;
         if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = getStudioSavedImageAngles(entry).length > 1 ? `${title} — ${angle.name}` : title;
@@ -6546,6 +6609,7 @@ The deletion becomes permanent when you save the diagram.`);
         preloadReviewModeAngleSource(angle.imageValue).then(loaded => {
             if (loadToken !== reviewModeAngleLoadToken) return;
             if (!loaded) {
+                invalidateReviewModeAngleOverlayCommit();
                 setReviewModeAngleTransition(false);
                 if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = 'This angle could not be loaded.';
                 return;
@@ -6681,12 +6745,7 @@ The deletion becomes permanent when you save the diagram.`);
             review.activeAngleIndex = targetAngleIndex;
             restoreReviewModeAngleUiState();
             resetReviewModeZoom();
-            if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
-            if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
-            if (elements.reviewModeDrawCanvas) {
-                const ctx = elements.reviewModeDrawCanvas.getContext('2d');
-                ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
-            }
+            clearReviewModeOverlayLayers();
             syncReviewModeControls();
             loadReviewModeActiveAngle({ animate });
             return;
@@ -6919,6 +6978,10 @@ The deletion becomes permanent when you save the diagram.`);
 
     function renderReviewModeConnectors() {
         const review = getReviewModeState();
+        if (!isReviewModeActiveAngleOverlayReady()) {
+            if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
+            return;
+        }
         let labels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
         if (review.miniQuiz.active) {
             const activeIndex = getReviewModeMiniQuizActiveLabelIndex(review);
@@ -6987,7 +7050,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (canvas.height !== height) canvas.height = height;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const review = getReviewModeState();
-        if (!angle || !review.showDrawData) return;
+        if (!isReviewModeActiveAngleOverlayReady() || !angle || !review.showDrawData) return;
         const labels = normalizeDiagramLabels(angle.labels || []);
         let visibleIndexes;
         if (review.miniQuiz.active) {
@@ -7011,8 +7074,15 @@ The deletion becomes permanent when you save the diagram.`);
         const layer = elements.reviewModeLabelLayer;
         if (!layer) return;
         const review = getReviewModeState();
-        const labels = getReviewModeDisplayLabels(entry);
         layer.style.setProperty('--review-label-scale', String(review.labelScale));
+        if (!isReviewModeActiveAngleOverlayReady()) {
+            layer.innerHTML = '';
+            renderReviewModeDrawData();
+            renderReviewModeConnectors();
+            syncReviewModeMiniQuizUi();
+            return;
+        }
+        const labels = getReviewModeDisplayLabels(entry);
 
         if (review.miniQuiz.active) {
             if (review.miniQuiz.complete) {
@@ -7179,12 +7249,7 @@ The deletion becomes permanent when you save the diagram.`);
         elements.reviewModeOverlay.classList.remove('hidden');
         elements.reviewModeOverlay.setAttribute('aria-hidden', 'false');
         document.body.classList.add('review-mode-image-open');
-        if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
-        if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
-        if (elements.reviewModeDrawCanvas) {
-            const ctx = elements.reviewModeDrawCanvas.getContext('2d');
-            ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
-        }
+        clearReviewModeOverlayLayers();
         syncReviewModeControls();
         syncReviewModeAngleNavigation();
         resetReviewModeZoom();
@@ -7208,7 +7273,7 @@ The deletion becomes permanent when you save the diagram.`);
         reviewModeLabelDrag = null;
         resetReviewModeAngleLoading({ clearCache: true });
         resetReviewModeZoom();
-        if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
+        clearReviewModeOverlayLayers();
         elements.reviewModeOverlay?.classList.add('hidden');
         elements.reviewModeOverlay?.setAttribute('aria-hidden', 'true');
         elements.reviewModeAngleNavigation?.classList.add('hidden');
@@ -7853,6 +7918,12 @@ The deletion becomes permanent when you save the diagram.`);
             activeDrawLabelIndex: null,
             activeDrawStroke: null,
             drawStrokes: [],
+            drawSaveTimerId: null,
+            drawSaveStatusTimerId: null,
+            drawSavePromise: null,
+            drawSaveDirty: false,
+            drawSaveRetryCount: 0,
+            recoveredDrawingBackup: false,
             labels: [],
             labelsEnabled: false,
             metadata: {},
@@ -7873,11 +7944,15 @@ The deletion becomes permanent when you save the diagram.`);
     function getImageEditorCanvasPoint(event) {
         const canvas = elements.studioImageEditorCanvas;
         if (!canvas) return null;
+        const source = event?.changedTouches?.[0] || event?.touches?.[0] || event;
+        const clientX = Number(source?.clientX);
+        const clientY = Number(source?.clientY);
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
         const rect = canvas.getBoundingClientRect();
         if (!rect.width || !rect.height) return null;
         return {
-            x: Math.max(0, Math.min(canvas.width, ((event.clientX - rect.left) / rect.width) * canvas.width)),
-            y: Math.max(0, Math.min(canvas.height, ((event.clientY - rect.top) / rect.height) * canvas.height))
+            x: Math.max(0, Math.min(canvas.width, ((clientX - rect.left) / rect.width) * canvas.width)),
+            y: Math.max(0, Math.min(canvas.height, ((clientY - rect.top) / rect.height) * canvas.height))
         };
     }
 
@@ -7937,6 +8012,7 @@ The deletion becomes permanent when you save the diagram.`);
     function toggleImageEditorDrawTool(value) {
         const editor = state.auth.imageEditor;
         if (!editor) return;
+        finishImageEditorActiveStroke(null, { silent: true });
         const nextTool = normalizeImageEditorDrawTool(value);
         const isSameActiveTool = isImageEditorLabelDrawActive()
             && normalizeImageEditorDrawTool(editor.drawTool) === nextTool;
@@ -8342,6 +8418,264 @@ The deletion becomes permanent when you save the diagram.`);
                 y: Number(point?.y) || 0
             }))
         })).filter(stroke => stroke.points.length);
+    }
+
+    function getImageEditorDrawingBackupKey(editor = state.auth.imageEditor) {
+        const target = editor?.target || {};
+        const kind = normalizeSheetText(target.kind || 'image');
+        if (!editor?.labelsEnabled || !kind) return '';
+        const userId = normalizeSheetText(state.auth.user?.id || 'guest') || 'guest';
+        let identity = '';
+        if (target.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            identity = `multi-angle:${normalizeSheetText(draft.editingEntryId || draft.originalEntry?.id || 'draft') || 'draft'}:${normalizeSheetText(target.multiAngleAngleId || 'angle') || 'angle'}`;
+        } else if (kind === 'standalone-diagram') {
+            identity = `saved-diagram:${normalizeSheetText(target.savedImageEntryId || editor.sourceLabel || 'new-diagram') || 'new-diagram'}`;
+        } else if (kind === 'flashcard-list') {
+            identity = `flashcard-list:${normalizeSheetText(state.auth.editingQuizId || 'quiz')}:${normalizeSheetText(target.questionId || 'question')}:${target.side === 'definition' ? 'definition' : 'term'}`;
+        } else if (kind === 'flashcard-term' || kind === 'flashcard-definition') {
+            identity = `${kind}:${normalizeSheetText(state.auth.editingQuizId || 'quiz')}`;
+        } else {
+            identity = `${kind}:${normalizeSheetText(target.questionId || editor.sourceLabel || 'image') || 'image'}`;
+        }
+        return `${IMAGE_EDITOR_DRAW_BACKUP_PREFIX}${encodeURIComponent(userId)}:${encodeURIComponent(identity)}`;
+    }
+
+    function clearImageEditorDrawingSaveTimers(editor = state.auth.imageEditor) {
+        if (!editor) return;
+        if (editor.drawSaveTimerId) window.clearTimeout(editor.drawSaveTimerId);
+        if (editor.drawSaveStatusTimerId) window.clearTimeout(editor.drawSaveStatusTimerId);
+        editor.drawSaveTimerId = null;
+        editor.drawSaveStatusTimerId = null;
+    }
+
+    function setImageEditorDrawingSaveStatus(message = '', options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || options.silent === true) return;
+        if (editor.drawSaveStatusTimerId) window.clearTimeout(editor.drawSaveStatusTimerId);
+        setImageEditorStatus(message);
+        if (!message || options.persist === true) return;
+        const expected = message;
+        editor.drawSaveStatusTimerId = window.setTimeout(() => {
+            const current = state.auth.imageEditor;
+            if (!current?.open || current !== editor) return;
+            if (elements.studioImageEditorStatus?.textContent === expected) setImageEditorStatus('');
+            current.drawSaveStatusTimerId = null;
+        }, Math.max(700, Number(options.clearAfterMs) || 1400));
+    }
+
+    function writeImageEditorDrawingBackup(editor = state.auth.imageEditor) {
+        const key = getImageEditorDrawingBackupKey(editor);
+        if (!key || !editor?.open) return false;
+        try {
+            const payload = {
+                version: 1,
+                updatedAt: Date.now(),
+                labels: normalizeImageEditorLabels(editor.labels || []),
+                drawStrokes: cloneImageEditorDrawStrokes(editor.drawStrokes || []),
+                metadata: normalizeDiagramMetadata(editor.metadata || {})
+            };
+            const json = JSON.stringify(payload);
+            if (json.length > IMAGE_EDITOR_DRAW_BACKUP_MAX_BYTES) {
+                console.warn('Image editor drawing backup skipped because it is too large for reliable local storage.');
+                return false;
+            }
+            window.localStorage?.setItem(key, json);
+            return true;
+        } catch (error) {
+            console.warn('Could not write the image editor drawing recovery backup:', error);
+            return false;
+        }
+    }
+
+    function clearImageEditorDrawingBackup(editor = state.auth.imageEditor) {
+        const key = getImageEditorDrawingBackupKey(editor);
+        if (!key) return;
+        try {
+            window.localStorage?.removeItem(key);
+        } catch (error) {
+            console.warn('Could not clear the image editor drawing recovery backup:', error);
+        }
+    }
+
+    function clearMultiAngleDrawingBackups(draft = getMultiAngleCreatorState()) {
+        const editor = state.auth.imageEditor;
+        const originalTarget = editor?.target;
+        (draft.angles || []).forEach(angle => {
+            const temporaryEditor = {
+                ...(editor || {}),
+                open: true,
+                labelsEnabled: true,
+                target: {
+                    kind: 'standalone-diagram',
+                    multiAngleDraft: true,
+                    multiAngleAngleId: angle.id
+                }
+            };
+            clearImageEditorDrawingBackup(temporaryEditor);
+        });
+        if (editor && originalTarget) editor.target = originalTarget;
+    }
+
+    function restoreImageEditorDrawingBackup(editor = state.auth.imageEditor) {
+        const key = getImageEditorDrawingBackupKey(editor);
+        if (!key || !editor?.open) return false;
+        try {
+            const raw = window.localStorage?.getItem(key);
+            if (!raw) return false;
+            const parsed = JSON.parse(raw);
+            if (Number(parsed?.version) !== 1 || !Array.isArray(parsed?.drawStrokes)) return false;
+            editor.labels = normalizeImageEditorLabels(parsed.labels || editor.labels || []);
+            editor.drawStrokes = cloneImageEditorDrawStrokes(parsed.drawStrokes || []);
+            if (editor.metadataEnabled) editor.metadata = normalizeDiagramMetadata(parsed.metadata || editor.metadata || {});
+            editor.recoveredDrawingBackup = true;
+            return true;
+        } catch (error) {
+            console.warn('Could not restore the image editor drawing recovery backup:', error);
+            return false;
+        }
+    }
+
+    async function persistImageEditorDrawingState(options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !editor.labelsEnabled) return true;
+        const shouldPersist = editor.drawSaveDirty || options.force === true;
+        if (!shouldPersist) return true;
+        editor.drawSaveDirty = false;
+        const localBackupSaved = writeImageEditorDrawingBackup(editor);
+        let draftSaved = false;
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            const angleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
+            const angle = draft.angles.find(item => item.id === angleId);
+            if (angle) {
+                angle.labels = normalizeDiagramLabels(editor.labels || []);
+                angle.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []);
+                draft.metadata = captureImageEditorMetadata();
+                draftSaved = true;
+            }
+        }
+        if (localBackupSaved || draftSaved) {
+            editor.drawSaveRetryCount = 0;
+            setImageEditorDrawingSaveStatus(draftSaved ? 'Drawing saved to angle draft.' : 'Drawing secured until you save.', options);
+            return true;
+        }
+        editor.drawSaveDirty = true;
+        editor.drawSaveRetryCount = Math.min(3, (Number(editor.drawSaveRetryCount) || 0) + 1);
+        setImageEditorDrawingSaveStatus(editor.drawSaveRetryCount < 3 ? 'Drawing backup failed—retrying…' : 'Drawing is still open. Press Save Diagram before leaving.', { ...options, persist: editor.drawSaveRetryCount >= 3 });
+        if (editor.drawSaveRetryCount < 3) scheduleImageEditorDrawingCommit({ delayMs: 1200, silent: options.silent });
+        return false;
+    }
+
+    function scheduleImageEditorDrawingCommit(options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !editor.labelsEnabled) return;
+        editor.drawSaveDirty = true;
+        if (editor.drawSaveTimerId) window.clearTimeout(editor.drawSaveTimerId);
+        setImageEditorDrawingSaveStatus('Saving drawing…', { silent: options.silent, persist: true });
+        editor.drawSaveTimerId = window.setTimeout(() => {
+            const current = state.auth.imageEditor;
+            if (!current?.open || current !== editor) return;
+            current.drawSaveTimerId = null;
+            const promise = persistImageEditorDrawingState({ silent: options.silent });
+            current.drawSavePromise = promise;
+            promise.finally(() => {
+                if (state.auth.imageEditor === current) current.drawSavePromise = null;
+            });
+        }, Math.max(0, Number(options.delayMs) || IMAGE_EDITOR_DRAW_AUTOSAVE_DELAY_MS));
+    }
+
+    async function flushImageEditorDrawingCommit(options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !editor.labelsEnabled) return true;
+        finishImageEditorActiveStroke(options.event || null, { schedule: false, silent: true });
+        if (editor.drawSaveTimerId) window.clearTimeout(editor.drawSaveTimerId);
+        editor.drawSaveTimerId = null;
+        if (editor.drawSavePromise) {
+            try { await editor.drawSavePromise; } catch (error) { console.warn('Drawing autosave promise failed:', error); }
+        }
+        if (!editor.drawSaveDirty && options.force !== true) return true;
+        const promise = persistImageEditorDrawingState({ force: options.force === true, silent: options.silent === true });
+        editor.drawSavePromise = promise;
+        try {
+            return await promise;
+        } finally {
+            if (state.auth.imageEditor === editor) editor.drawSavePromise = null;
+        }
+    }
+
+    function finishImageEditorActiveStroke(event = null, options = {}) {
+        const editor = state.auth.imageEditor;
+        const stroke = editor?.activeDrawStroke;
+        if (!editor?.open || !stroke) return false;
+        const canUseFinalPoint = !!event && !['pointercancel', 'touchcancel', 'lostpointercapture'].includes(normalizeSheetText(event.type));
+        const finalPoint = canUseFinalPoint ? getImageEditorCanvasPoint(event) : null;
+        const points = Array.isArray(stroke.points) ? stroke.points : (stroke.points = []);
+        const previousPoint = points[points.length - 1];
+        if (finalPoint && (!previousPoint || Math.hypot(finalPoint.x - previousPoint.x, finalPoint.y - previousPoint.y) >= 0.5)) points.push(finalPoint);
+        editor.activeDrawStroke = null;
+        editor.isDrawing = false;
+        editor.dragStart = null;
+        editor.draggingLabelIndex = null;
+        releaseImageEditorPointer(event);
+        editor.drawSaveDirty = true;
+        if (options.schedule !== false) scheduleImageEditorDrawingCommit({ silent: options.silent });
+        renderImageEditorCanvas();
+        return true;
+    }
+
+    function handleImageEditorGlobalPointerEnd(event) {
+        if (!state.auth.imageEditor?.activeDrawStroke) return;
+        finishImageEditorActiveStroke(event?.type === 'lostpointercapture' ? null : event);
+    }
+
+    function handleImageEditorTouchEndFallback(event) {
+        if (!state.auth.imageEditor?.activeDrawStroke) return;
+        event.preventDefault?.();
+        finishImageEditorActiveStroke(event);
+    }
+
+    function handleImageEditorLifecycleInterruption() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !editor.labelsEnabled) return;
+        if (editor.activeDrawStroke) finishImageEditorActiveStroke(null, { schedule: false, silent: true });
+        if (!editor.drawSaveDirty) return;
+        if (editor.drawSaveTimerId) window.clearTimeout(editor.drawSaveTimerId);
+        editor.drawSaveTimerId = null;
+        writeImageEditorDrawingBackup(editor);
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            const angle = draft.angles.find(item => item.id === normalizeSheetText(editor.target.multiAngleAngleId || ''));
+            if (angle) {
+                angle.labels = normalizeDiagramLabels(editor.labels || []);
+                angle.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []);
+                draft.metadata = captureImageEditorMetadata();
+            }
+        }
+    }
+
+    function captureImageEditorPointer(event) {
+        if (event?.pointerId === undefined) return false;
+        try {
+            elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+            return true;
+        } catch (error) {
+            // Continue drawing even if iPad Safari declines pointer capture. Window-level
+            // pointerup/pointercancel listeners still finalize and secure the stroke.
+            return false;
+        }
+    }
+
+    function releaseImageEditorPointer(event) {
+        if (event?.pointerId === undefined) return false;
+        try {
+            if (elements.studioImageEditorCanvas?.hasPointerCapture?.(event.pointerId)) {
+                elements.studioImageEditorCanvas.releasePointerCapture(event.pointerId);
+            }
+            return true;
+        } catch (error) {
+            return false;
+        }
     }
 
     function setImageEditorDrawStrokesVisibilityForLabel(index, visible) {
@@ -9437,11 +9771,14 @@ The deletion becomes permanent when you save the diagram.`);
     async function resetImageEditorImage() {
         const editor = state.auth.imageEditor;
         if (!editor?.originalDataUrl) return;
+        finishImageEditorActiveStroke(null, { schedule: false, silent: true });
         const image = await loadImageElement(editor.originalDataUrl);
         editor.history = [];
         editor.drawStrokes = [];
         editor.activeDrawStroke = null;
         editor.activeDrawLabelIndex = null;
+        editor.drawSaveDirty = true;
+        scheduleImageEditorDrawingCommit();
         paintImageIntoBaseCanvas(image);
         refreshImageEditorLabelUi();
         setImageEditorStatus('');
@@ -9450,6 +9787,7 @@ The deletion becomes permanent when you save the diagram.`);
     function setImageEditorMode(mode) {
         const editor = state.auth.imageEditor;
         if (!editor) return;
+        finishImageEditorActiveStroke(null, { silent: true });
         const requestedMode = mode || 'crop';
         if (requestedMode === 'labels' && !editor.labelsEnabled) return;
         const canToggleOff = ['blur-rect', 'blur-oval', 'arrow', 'line'].includes(requestedMode);
@@ -9713,7 +10051,7 @@ The deletion becomes permanent when you save the diagram.`);
                 }
                 editor.hoveredLabelIndex = null;
                 editor.draggingLabelIndex = null;
-                editor.activeDrawStroke = null;
+                finishImageEditorActiveStroke(null, { silent: true });
                 refreshImageEditorLabelUi();
                 renderImageEditorCanvas();
                 setImageEditorStatus(!isSameLabel ? 'Draw on the image for this label.' : '');
@@ -9731,6 +10069,9 @@ The deletion becomes permanent when you save the diagram.`);
             elements.studioImageEditorCanvas.addEventListener('pointermove', handleImageEditorPointerMove);
             elements.studioImageEditorCanvas.addEventListener('pointerup', handleImageEditorPointerUp);
             elements.studioImageEditorCanvas.addEventListener('pointercancel', handleImageEditorPointerUp);
+            elements.studioImageEditorCanvas.addEventListener('lostpointercapture', handleImageEditorGlobalPointerEnd);
+            elements.studioImageEditorCanvas.addEventListener('touchend', handleImageEditorTouchEndFallback, { passive: false });
+            elements.studioImageEditorCanvas.addEventListener('touchcancel', handleImageEditorTouchEndFallback, { passive: false });
     elements.studioImageEditorCanvas.addEventListener('pointerleave', handleImageEditorPointerLeave);
             elements.studioImageEditorCanvas.addEventListener('pointerleave', handleImageEditorPointerLeave);
         }
@@ -9792,6 +10133,7 @@ The deletion becomes permanent when you save the diagram.`);
         closeImageEditorSliderPopovers();
         editor.labelsEnabled = !!info.labelsEnabled;
         editor.labels = normalizeImageEditorLabels(info.labels || []);
+        const recoveredDrawingBackup = restoreImageEditorDrawingBackup(editor);
         editor.labelInfoEnabled = !!(editor.labelsEnabled && isImageEditorNumberedLabelTarget(editor));
         editor.labelInfoPanelOpen = false;
         editor.drawVisibilityByLabel = {};
@@ -9822,7 +10164,7 @@ The deletion becomes permanent when you save the diagram.`);
             }
             refreshImageEditorLabelUi();
             setImageEditorMode('crop');
-            setImageEditorStatus('');
+            setImageEditorStatus(recoveredDrawingBackup ? 'Recovered an unsaved drawing from this device.' : '');
         } catch (error) {
             console.error(error);
             closeStudioImageEditor();
@@ -9831,6 +10173,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function closeStudioImageEditor() {
+        clearImageEditorDrawingSaveTimers(state.auth.imageEditor);
         closeImageEditorSliderPopovers();
         if (elements.studioImageEditorOverlay) {
             elements.studioImageEditorOverlay.classList.add('hidden');
@@ -9993,6 +10336,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     async function saveStudioImageEditorImage(options = {}) {
         const editor = state.auth.imageEditor;
+        await flushImageEditorDrawingCommit({ silent: true });
         const targetKind = editor?.target?.kind || '';
         const isFlashcardTarget = ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(targetKind);
         const isStandaloneDiagram = targetKind === 'standalone-diagram';
@@ -10038,6 +10382,7 @@ The deletion becomes permanent when you save the diagram.`);
                     savedImageSignature: savedEntry ? getStudioSavedImageSignature(savedEntry) : ''
                 });
             }
+            clearImageEditorDrawingBackup(editor);
             closeStudioImageEditor();
             if (attachToAllFront) {
                 const countLabel = attachedCount === 1 ? '1 empty flashcard front' : `${attachedCount} empty flashcard fronts`;
@@ -10093,7 +10438,7 @@ The deletion becomes permanent when you save the diagram.`);
                 editor.dragStart = point;
                 updateImageEditorCanvasPointerState();
                 renderImageEditorCanvas();
-                elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+                captureImageEditorPointer(event);
                 return;
             }
             const activeIndex = editor.activeConnectorLabelIndex;
@@ -10122,7 +10467,7 @@ The deletion becomes permanent when you save the diagram.`);
             updateImageEditorCanvasPointerState();
             refreshImageEditorLabelUi();
             renderImageEditorCanvas();
-            elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+            captureImageEditorPointer(event);
             return;
         }
         if (editor.mode === 'labels' && editor.labelsEnabled) {
@@ -10132,7 +10477,7 @@ The deletion becomes permanent when you save the diagram.`);
                 editor.draftShape = null;
                 beginImageEditorDrawStroke(point);
                 updateImageEditorCanvasPointerState();
-                elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+                captureImageEditorPointer(event);
                 return;
             }
             const labelIndex = findImageEditorLabelIndexAtPoint(point);
@@ -10143,7 +10488,7 @@ The deletion becomes permanent when you save the diagram.`);
                 editor.dragStart = point;
                 updateImageEditorCanvasPointerState();
                 renderImageEditorCanvas();
-                elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+                captureImageEditorPointer(event);
             } else {
                 updateImageEditorCanvasPointerState();
                 renderImageEditorCanvas();
@@ -10153,7 +10498,7 @@ The deletion becomes permanent when you save the diagram.`);
         editor.isDrawing = true;
         editor.dragStart = point;
         editor.draftShape = null;
-        elements.studioImageEditorCanvas?.setPointerCapture?.(event.pointerId);
+        captureImageEditorPointer(event);
     }
 
     function handleImageEditorPointerMove(event) {
@@ -10258,7 +10603,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor?.isDrawing) return;
         event.preventDefault();
         editor.isDrawing = false;
-        elements.studioImageEditorCanvas?.releasePointerCapture?.(event.pointerId);
+        releaseImageEditorPointer(event);
         if (editor.mode === 'connector' && editor.labelsEnabled) {
             editor.draggingLabelIndex = null;
             editor.draggingConnectorAnchor = false;
@@ -10269,8 +10614,11 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         if (editor.mode === 'labels' && editor.labelsEnabled) {
+            if (editor.activeDrawStroke) {
+                finishImageEditorActiveStroke(event);
+                return;
+            }
             editor.draggingLabelIndex = null;
-            editor.activeDrawStroke = null;
             editor.dragStart = null;
             setImageEditorStatus('');
             renderImageEditorCanvas();
@@ -32083,7 +32431,7 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
         }
         editor.hoveredLabelIndex = null;
         editor.draggingLabelIndex = null;
-        editor.activeDrawStroke = null;
+        finishImageEditorActiveStroke(null, { silent: true });
         refreshImageEditorLabelUi();
         renderImageEditorCanvas();
         setImageEditorStatus(!isSameLabel ? 'Draw on the image for this label.' : '');
@@ -32102,6 +32450,9 @@ if (elements.studioImageEditorCanvas) {
     elements.studioImageEditorCanvas.addEventListener('pointermove', handleImageEditorPointerMove);
     elements.studioImageEditorCanvas.addEventListener('pointerup', handleImageEditorPointerUp);
     elements.studioImageEditorCanvas.addEventListener('pointercancel', handleImageEditorPointerUp);
+    elements.studioImageEditorCanvas.addEventListener('lostpointercapture', handleImageEditorGlobalPointerEnd);
+    elements.studioImageEditorCanvas.addEventListener('touchend', handleImageEditorTouchEndFallback, { passive: false });
+    elements.studioImageEditorCanvas.addEventListener('touchcancel', handleImageEditorTouchEndFallback, { passive: false });
 }
 
 if (elements.studioImageEditorApplyCropBtn) {
@@ -32155,6 +32506,12 @@ if (elements.studioImageEditorLabelInfoToggleBtn) {
 if (elements.studioImageEditorOverlay) {
     elements.studioImageEditorOverlay.dataset.imageEditorEventsBound = 'true';
 }
+window.addEventListener('pointerup', handleImageEditorGlobalPointerEnd, true);
+window.addEventListener('pointercancel', handleImageEditorGlobalPointerEnd, true);
+window.addEventListener('pagehide', handleImageEditorLifecycleInterruption);
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') handleImageEditorLifecycleInterruption();
+});
 
 prepareRichColorPicker(elements.createLearningResourcesColor, saveLearningResourcesSelection, closeLearningResourcesRichMenus);
 handleRichColorInput(elements.createLearningResourcesColor, color => applyLearningResourcesInlineStyle({ color }), '#e0e0ff');
