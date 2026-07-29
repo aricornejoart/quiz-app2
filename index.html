@@ -14,7 +14,7 @@ MODIFICATION RULES FOR THIS APP
   <title>Study Bunny</title>
   <meta name="theme-color" content="#1e1b2e">
 
-  <!-- Phase 22NF2.2: keep Review Mode labels, drawings, and connectors synchronized to the exact loaded angle image. -->
+  <!-- Phase 22NF2.1: preserve the app palette during first paint and recover if the main stylesheet is delayed or missed. -->
   <style id="studyBunnyCriticalTheme">
     :root { color-scheme: dark; background: #1e1b2e; }
     html, body { min-height: 100%; background: #1e1b2e; color: #e0e0ff; }
@@ -37,7 +37,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nf22" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nf23" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -50,7 +50,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=22nf22-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=22nf23-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -761,7 +761,7 @@ MODIFICATION RULES FOR THIS APP
                     <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
                       <div class="multi-angle-creator-heading">
                         <div>
-                          <div class="multi-angle-creator-eyebrow">Phase 22NF2.2</div>
+                          <div class="multi-angle-creator-eyebrow">Phase 22NF2.3</div>
                           <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
                           <div class="multi-angle-creator-note">Every angle uses one shared canvas and background color. Finish framing before adding labels for the most consistent rotation.</div>
                         </div>
@@ -2015,6 +2015,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22nf22"></script>
+  <script src="script.js?v=22nf23"></script>
 </body>
 </html>

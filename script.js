@@ -6869,7 +6869,13 @@ The deletion becomes permanent when you save the diagram.`);
             }
         } else if (mini.mode === 'mastery') {
             mini.queue.shift();
-            if (!answerKnown) mini.queue.push(activeIndex);
+            if (!answerKnown) {
+                // Phase 22NF2.3: match full Study Mode Mastery by showing a missed
+                // label again after three intervening labels (or at the end when
+                // fewer than three labels remain in the active queue).
+                const retryPosition = Math.min(3, mini.queue.length);
+                mini.queue.splice(retryPosition, 0, activeIndex);
+            }
             if (!mini.queue.length) {
                 finishReviewModeMiniQuiz();
                 return;
