@@ -374,9 +374,11 @@ MODIFICATION RULES FOR THIS APP
                 activeAngleIndex: 0,
                 overlayOpen: false,
                 optionsOpen: false,
+                showAngleControls: false,
                 showAllNames: false,
                 showDrawData: true,
                 showConnectors: true,
+                includeLabelDescriptions: true,
                 labelScale: 1,
                 zoomScale: 1,
                 zoomX: 0,
@@ -387,7 +389,7 @@ MODIFICATION RULES FOR THIS APP
                 temporaryLabelPositionsByAngle: {},
                 miniQuizMode: 'normal',
                 miniQuizScope: 'current',
-                randomizeMiniQuiz: false,
+                randomizeMiniQuiz: true,
                 allowDuplicateMiniQuiz: false,
                 miniQuiz: null
             },
@@ -6222,13 +6224,13 @@ The deletion becomes permanent when you save the diagram.`);
         review.activeAngleIndex = Math.max(0, Math.floor(Number(review.activeAngleIndex) || 0));
         review.overlayOpen = review.overlayOpen === true;
         review.optionsOpen = review.optionsOpen === true;
-        review.showAngleControls = review.showAngleControls !== false;
+        review.showAngleControls = review.showAngleControls === true;
         review.showAllNames = review.showAllNames === true;
         review.showDrawData = review.showDrawData !== false;
         review.showConnectors = review.showConnectors !== false;
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
-        review.includeLabelDescriptions = review.includeLabelDescriptions === true;
-        review.randomizeMiniQuiz = review.randomizeMiniQuiz === true;
+        review.includeLabelDescriptions = review.includeLabelDescriptions !== false;
+        review.randomizeMiniQuiz = review.randomizeMiniQuiz !== false;
         review.allowDuplicateMiniQuiz = review.allowDuplicateMiniQuiz === true;
         review.miniQuizScope = review.miniQuizScope === 'all' ? 'all' : 'current';
         review.miniQuizMode = normalizeReviewModeMiniQuizMode(review.miniQuizMode);
@@ -7003,15 +7005,45 @@ The deletion becomes permanent when you save the diagram.`);
         review.temporaryLabelPositions[index] = { x: Math.min(100, Math.max(0, Number(x) || 0)), y: Math.min(100, Math.max(0, Number(y) || 0)) };
     }
 
+    function getReviewModeLabelDragBounds(stageRect, moveTarget) {
+        const targetRect = moveTarget?.getBoundingClientRect?.();
+        if (!stageRect?.width || !stageRect?.height || !targetRect?.width || !targetRect?.height) {
+            return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+        }
+        const halfWidthPercent = Math.min(50, Math.max(0, ((targetRect.width / 2) / stageRect.width) * 100));
+        const halfHeightPercent = Math.min(50, Math.max(0, ((targetRect.height / 2) / stageRect.height) * 100));
+        return {
+            minX: halfWidthPercent,
+            maxX: Math.max(halfWidthPercent, 100 - halfWidthPercent),
+            minY: halfHeightPercent,
+            maxY: Math.max(halfHeightPercent, 100 - halfHeightPercent)
+        };
+    }
+
     function beginReviewModeLabelDrag(event, marker) {
-        if (getReviewModeState().miniQuiz.active) return;
-        if (!marker || (event.button !== undefined && event.button !== 0)) return;
+        const review = getReviewModeState();
+        if (!marker || (event.button !== undefined && event.button !== 0) || (review.miniQuiz.active && review.miniQuiz.complete)) return;
         const index = Number(marker.dataset.reviewLabelIndex);
         const rect = elements.reviewModeImageStage?.getBoundingClientRect?.();
         const label = getReviewModeDisplayLabels(getActiveReviewModeEntry())[index];
-        if (!Number.isInteger(index) || index < 0 || !label || !rect?.width || !rect?.height) return;
-        reviewModeLabelDrag = { index, pointerId: event.pointerId, marker, rect, startClientX: event.clientX, startClientY: event.clientY, startX: label.x, startY: label.y, moved: false };
+        const moveTarget = review.miniQuiz.active ? marker.closest('.review-mode-mini-label-wrap') : marker;
+        if (!Number.isInteger(index) || index < 0 || !label || !moveTarget || !rect?.width || !rect?.height) return;
+        reviewModeLabelDrag = {
+            index,
+            pointerId: event.pointerId,
+            marker,
+            moveTarget,
+            rect,
+            bounds: getReviewModeLabelDragBounds(rect, moveTarget),
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            startX: label.x,
+            startY: label.y,
+            moved: false,
+            miniQuiz: review.miniQuiz.active
+        };
         marker.classList.add('is-dragging');
+        moveTarget.classList.add('is-dragging');
         try { marker.setPointerCapture(event.pointerId); } catch (_) {}
     }
 
@@ -7023,10 +7055,14 @@ The deletion becomes permanent when you save the diagram.`);
         if (!drag.moved && Math.hypot(dx, dy) < 4) return;
         drag.moved = true;
         event.preventDefault();
-        setReviewModeTemporaryLabelPosition(drag.index, drag.startX + (dx / drag.rect.width) * 100, drag.startY + (dy / drag.rect.height) * 100);
+        const rawX = drag.startX + (dx / drag.rect.width) * 100;
+        const rawY = drag.startY + (dy / drag.rect.height) * 100;
+        const nextX = Math.min(drag.bounds.maxX, Math.max(drag.bounds.minX, rawX));
+        const nextY = Math.min(drag.bounds.maxY, Math.max(drag.bounds.minY, rawY));
+        setReviewModeTemporaryLabelPosition(drag.index, nextX, nextY);
         const next = getReviewModeState().temporaryLabelPositions[drag.index];
-        drag.marker.style.left = `${next.x}%`;
-        drag.marker.style.top = `${next.y}%`;
+        drag.moveTarget.style.left = `${next.x}%`;
+        drag.moveTarget.style.top = `${next.y}%`;
         renderReviewModeConnectors();
     }
 
@@ -7034,11 +7070,12 @@ The deletion becomes permanent when you save the diagram.`);
         const drag = reviewModeLabelDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
         drag.marker.classList.remove('is-dragging');
+        drag.moveTarget?.classList.remove('is-dragging');
         try { drag.marker.releasePointerCapture(event.pointerId); } catch (_) {}
         if (drag.moved) {
             const review = getReviewModeState();
             review.suppressLabelClickUntil = Date.now() + 700;
-            event.preventDefault();
+            if (event.cancelable) event.preventDefault();
         }
         reviewModeLabelDrag = null;
     }
@@ -7231,13 +7268,13 @@ The deletion becomes permanent when you save the diagram.`);
         review.activeAngleIndex = 0;
         review.overlayOpen = true;
         review.optionsOpen = false;
-        review.showAngleControls = true;
+        review.showAngleControls = false;
         review.showAllNames = false;
         review.showDrawData = true;
         review.showConnectors = true;
         review.disableLabelNamesOnClick = false;
-        review.includeLabelDescriptions = false;
-        review.randomizeMiniQuiz = false;
+        review.includeLabelDescriptions = true;
+        review.randomizeMiniQuiz = true;
         review.allowDuplicateMiniQuiz = false;
         review.miniQuizScope = 'current';
         review.miniQuizMode = 'normal';
@@ -30130,6 +30167,7 @@ function cancelReviewModeLabelDragForGesture() {
     const drag = reviewModeLabelDrag;
     if (!drag) return;
     drag.marker?.classList.remove('is-dragging');
+    drag.moveTarget?.classList.remove('is-dragging');
     try { drag.marker?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
     reviewModeLabelDrag = null;
     const review = getReviewModeState();
@@ -30535,6 +30573,7 @@ if (elements.reviewModeLabelLayer) {
     elements.reviewModeLabelLayer.addEventListener('pointermove', moveReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('pointerup', endReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('pointercancel', endReviewModeLabelDrag);
+    elements.reviewModeLabelLayer.addEventListener('lostpointercapture', endReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('click', event => {
         const review = getReviewModeState();
         const miniAnswer = event.target.closest('[data-review-mini-answer]');
@@ -30546,14 +30585,14 @@ if (elements.reviewModeLabelLayer) {
         }
         const marker = event.target.closest('[data-review-label-index]');
         if (!marker) return;
-        if (review.miniQuiz.active) {
-            event.preventDefault();
-            if (!review.miniQuiz.complete && !review.miniQuiz.answerRevealed) revealReviewModeMiniQuizAnswer();
-            return;
-        }
         if (Date.now() < review.suppressLabelClickUntil) {
             review.suppressLabelClickUntil = 0;
             event.preventDefault();
+            return;
+        }
+        if (review.miniQuiz.active) {
+            event.preventDefault();
+            if (!review.miniQuiz.complete && !review.miniQuiz.answerRevealed) revealReviewModeMiniQuizAnswer();
             return;
         }
         const index = Number(marker.dataset.reviewLabelIndex);

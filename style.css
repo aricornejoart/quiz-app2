@@ -12016,8 +12016,18 @@ body.review-mode-image-open {
   position: relative;
   inset: auto;
   transform: none;
-  cursor: pointer;
+  cursor: grab;
 }
+
+.review-mode-mini-label-wrap.is-dragging {
+  z-index: 12;
+  cursor: grabbing;
+}
+
+.review-mode-mini-label-wrap.is-dragging .review-mode-label-marker {
+  cursor: grabbing;
+}
+
 
 .review-mode-mini-label-marker.is-mini-glowing {
   animation: review-mode-mini-label-glow 1.15s ease-in-out infinite alternate;
