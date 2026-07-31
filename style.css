@@ -12094,6 +12094,120 @@ body.review-mode-image-open {
 }
 
 
+/* Phase 22NI — typed Mini Quiz answers, Rapid feedback, and Spell Until Correct. */
+.review-mode-mini-typed-setting.hidden {
+  display: none !important;
+}
+
+.review-mode-mini-typed-wrap {
+  max-width: min(92%, calc(430px * var(--review-label-scale)));
+}
+
+.review-mode-mini-typed-card {
+  min-width: min(78vw, calc(250px * var(--review-label-scale)));
+  max-width: min(88vw, calc(430px * var(--review-label-scale)));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(6px * var(--review-label-scale));
+  cursor: grab;
+  text-align: left;
+}
+
+.review-mode-mini-typed-card.is-dragging {
+  cursor: grabbing;
+}
+
+.review-mode-mini-typed-entry {
+  display: flex;
+  align-items: stretch;
+  gap: calc(6px * var(--review-label-scale));
+  width: 100%;
+}
+
+.review-mode-mini-typed-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: calc(8px * var(--review-label-scale));
+  padding: calc(7px * var(--review-label-scale)) calc(9px * var(--review-label-scale));
+  color: #fff;
+  background: rgba(8, 7, 20, 0.66);
+  font: inherit;
+  font-size: calc(0.86rem * var(--review-label-scale));
+  font-weight: 800;
+  outline: none;
+}
+
+.review-mode-mini-typed-input:focus {
+  border-color: rgba(250, 204, 21, 0.92);
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.2);
+}
+
+.review-mode-mini-typed-check,
+.review-mode-mini-typed-next {
+  flex: 0 0 auto;
+  border: 1px solid rgba(250, 204, 21, 0.82);
+  border-radius: calc(8px * var(--review-label-scale));
+  padding: calc(7px * var(--review-label-scale)) calc(10px * var(--review-label-scale));
+  color: #171230;
+  background: #facc15;
+  font: inherit;
+  font-size: calc(0.78rem * var(--review-label-scale));
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.review-mode-mini-typed-next {
+  align-self: flex-end;
+  min-width: calc(70px * var(--review-label-scale));
+}
+
+.review-mode-mini-typed-feedback,
+.review-mode-mini-typed-result,
+.review-mode-mini-typed-submitted,
+.review-mode-mini-typed-rapid {
+  display: block;
+  line-height: 1.3;
+}
+
+.review-mode-mini-typed-result {
+  font-size: calc(0.82rem * var(--review-label-scale));
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.review-mode-mini-typed-result.is-correct {
+  color: #bbf7d0;
+}
+
+.review-mode-mini-typed-result.is-incorrect,
+.review-mode-mini-typed-feedback.is-incorrect {
+  color: #fecaca;
+}
+
+.review-mode-mini-typed-feedback,
+.review-mode-mini-typed-submitted,
+.review-mode-mini-typed-rapid {
+  font-size: calc(0.72rem * var(--review-label-scale));
+  font-weight: 800;
+}
+
+.review-mode-mini-typed-rapid {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+@media (max-width: 620px) {
+  .review-mode-mini-typed-card {
+    min-width: min(82vw, calc(220px * var(--review-label-scale)));
+  }
+  .review-mode-mini-typed-entry {
+    gap: 4px;
+  }
+}
+
+
 /* Phase 22MU — Multi-angle organization and compact Review Mode navigation. */
 .multi-angle-creator-panel {
     margin-top: 18px;
@@ -12596,4 +12710,294 @@ body.review-mode-image-open {
 .multi-angle-list-delete-btn:disabled {
   opacity: 0.48;
   cursor: not-allowed;
+}
+
+
+/* Phase 22NH — floating Review Mode shortcut dock and next-angle Mini Quiz. */
+.review-mode-shortcut-dock {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 20px);
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 13px;
+  padding: 4px;
+  color: #fff;
+  background: rgba(20, 17, 43, 0.48);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.review-mode-shortcut-dock[data-edge="left"],
+.review-mode-shortcut-dock[data-edge="right"] {
+  flex-direction: column;
+}
+
+.review-mode-shortcut-dock[data-edge="top"],
+.review-mode-shortcut-dock[data-edge="bottom"] {
+  flex-direction: row;
+  align-items: center;
+}
+
+.review-mode-shortcut-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.review-mode-shortcut-dock[data-edge="left"] .review-mode-shortcut-actions,
+.review-mode-shortcut-dock[data-edge="right"] .review-mode-shortcut-actions {
+  flex-direction: column;
+}
+
+.review-mode-shortcut-dock[data-edge="top"] .review-mode-shortcut-actions,
+.review-mode-shortcut-dock[data-edge="bottom"] .review-mode-shortcut-actions {
+  flex-direction: row;
+  align-items: center;
+}
+
+.review-mode-shortcut-dock button {
+  min-width: 40px;
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  padding: 5px 8px;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(14, 12, 31, 0.42);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.05;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.review-mode-shortcut-dock button:hover,
+.review-mode-shortcut-dock button:focus-visible,
+.review-mode-shortcut-dock button.is-active {
+  border-color: rgba(250, 204, 21, 0.76);
+  background: rgba(76, 62, 22, 0.64);
+  outline: none;
+}
+
+.review-mode-shortcut-dock button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.review-mode-shortcut-grip {
+  display: grid;
+  min-width: 30px !important;
+  min-height: 26px !important;
+  place-items: center;
+  padding: 3px !important;
+  cursor: grab !important;
+}
+
+.review-mode-shortcut-dock.is-dragging,
+.review-mode-shortcut-dock.is-dragging .review-mode-shortcut-grip {
+  cursor: grabbing !important;
+}
+
+.review-mode-shortcut-grip-dots {
+  width: 14px;
+  height: 20px;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.9) 1.45px, transparent 1.7px);
+  background-position: 0 0;
+  background-size: 7px 7px;
+}
+
+.review-mode-shortcut-dock[data-edge="top"] .review-mode-shortcut-grip-dots,
+.review-mode-shortcut-dock[data-edge="bottom"] .review-mode-shortcut-grip-dots {
+  width: 20px;
+  height: 14px;
+}
+
+.review-mode-shortcut-show-btn {
+  min-width: 48px !important;
+}
+
+.review-mode-keyboard-shortcuts-btn {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 7px 10px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.07);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.review-mode-keyboard-shortcuts-btn:hover,
+.review-mode-keyboard-shortcuts-btn:focus-visible {
+  border-color: rgba(250, 204, 21, 0.72);
+  outline: none;
+}
+
+.review-mode-keyboard-shortcuts-panel {
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 10px;
+  padding: 9px;
+  background: rgba(8, 7, 20, 0.3);
+}
+
+.review-mode-keyboard-shortcuts-panel > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.review-mode-keyboard-shortcuts-panel kbd {
+  min-width: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 2px 5px;
+  color: #fde68a;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-weight: 950;
+  text-align: center;
+}
+
+.review-mode-mini-quiz-complete {
+  pointer-events: none;
+}
+
+.review-mode-mini-quiz-complete-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(250, 204, 21, 0.7);
+  border-radius: 15px;
+  padding: 14px 20px;
+  color: #fff;
+  background: rgba(24, 20, 52, 0.9);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.36);
+  text-align: center;
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.review-mode-mini-quiz-complete-title {
+  font-size: clamp(1rem, 2.4vw, 1.35rem);
+  font-weight: 950;
+}
+
+.review-mode-mini-quiz-next-angle-btn {
+  min-height: 38px;
+  border: 1px solid rgba(250, 204, 21, 0.8);
+  border-radius: 10px;
+  padding: 7px 12px;
+  color: #171230;
+  background: #facc15;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.review-mode-mini-quiz-next-angle-btn:hover,
+.review-mode-mini-quiz-next-angle-btn:focus-visible {
+  background: #fde047;
+  outline: 3px solid rgba(250, 204, 21, 0.28);
+  outline-offset: 2px;
+}
+
+@media (max-width: 620px) {
+  .review-mode-shortcut-dock {
+    gap: 3px;
+    border-radius: 11px;
+    padding: 3px;
+  }
+
+  .review-mode-shortcut-actions {
+    gap: 3px;
+  }
+
+  .review-mode-shortcut-dock button {
+    min-width: 36px;
+    min-height: 34px;
+    padding: 4px 6px;
+    font-size: 0.61rem;
+  }
+
+  .review-mode-shortcut-show-btn {
+    min-width: 44px !important;
+  }
+}
+
+
+/* Phase 22NJ — predictive reusable label suggestions. */
+.studio-image-editor-label-suggestion-popup {
+  position: fixed;
+  z-index: 10080;
+  max-height: 260px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+  border: 1px solid rgba(250, 204, 21, 0.48);
+  border-radius: 11px;
+  padding: 5px;
+  background: rgba(18, 12, 43, 0.98);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.studio-image-editor-label-suggestion-popup.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-label-suggestion {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #fff;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-image-editor-label-suggestion:hover,
+.studio-image-editor-label-suggestion:focus-visible,
+.studio-image-editor-label-suggestion.is-active {
+  border-color: rgba(250, 204, 21, 0.58);
+  background: rgba(250, 204, 21, 0.15);
+  outline: none;
+}
+
+@media (pointer: coarse) {
+  .studio-image-editor-label-suggestion {
+    min-height: 44px;
+    padding: 10px 11px;
+    font-size: 0.82rem;
+  }
 }

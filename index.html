@@ -37,7 +37,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22ng" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nj1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -50,7 +50,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=22ng-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=22nj1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -761,7 +761,7 @@ MODIFICATION RULES FOR THIS APP
                     <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
                       <div class="multi-angle-creator-heading">
                         <div>
-                          <div class="multi-angle-creator-eyebrow">Phase 22NG</div>
+                          <div class="multi-angle-creator-eyebrow">Phase 22NJ1</div>
                           <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
                           <div class="multi-angle-creator-note">Every angle uses one shared canvas and background color. Finish framing before adding labels for the most consistent rotation.</div>
                         </div>
@@ -1772,6 +1772,13 @@ MODIFICATION RULES FOR THIS APP
         </span>
       </label>
       <label class="review-mode-switch-row">
+        <span>Show shortcut controls</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowShortcutDockToggle" type="checkbox" role="switch" aria-label="Show floating shortcut controls" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
         <span>Show all label names</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeShowAllNamesToggle" type="checkbox" role="switch" aria-label="Show all label names">
@@ -1822,6 +1829,15 @@ MODIFICATION RULES FOR THIS APP
         </div>
       </div>
       <div class="review-mode-options-help">Drag labels to rearrange them temporarily, including during Mini Quiz; the answer buttons move with the active label. Connector anchors stay fixed. Label descriptions appear with revealed names when enabled.</div>
+      <button id="reviewModeKeyboardShortcutsBtn" class="review-mode-keyboard-shortcuts-btn" type="button" aria-expanded="false" aria-controls="reviewModeKeyboardShortcutsPanel">Keyboard Shortcuts</button>
+      <div id="reviewModeKeyboardShortcutsPanel" class="review-mode-keyboard-shortcuts-panel hidden" aria-hidden="true">
+        <div><span>Increase label size</span><kbd>+</kbd></div>
+        <div><span>Decrease label size</span><kbd>−</kbd></div>
+        <div><span>Show/hide color</span><kbd>D</kbd></div>
+        <div><span>Show/hide connector lines</span><kbd>C</kbd></div>
+        <div><span>Show/hide all</span><kbd>A</kbd></div>
+        <div><span>Show/hide shortcut controls</span><kbd>H</kbd></div>
+      </div>
       <fieldset id="reviewModeMiniQuizScope" class="review-mode-mini-quiz-scope hidden" aria-hidden="true">
         <legend>Quiz scope</legend>
         <label>
@@ -1844,6 +1860,27 @@ MODIFICATION RULES FOR THIS APP
         <span>Allow duplicate labels</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeMiniAllowDuplicatesToggle" type="checkbox" role="switch" aria-label="Allow labels with matching names to appear more than once in the mini quiz">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Require typed answers</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniTypedToggle" type="checkbox" role="switch" aria-label="Require typed answers for the mini quiz">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label id="reviewModeMiniRapidRow" class="review-mode-switch-row review-mode-mini-setting-row review-mode-mini-typed-setting hidden" aria-hidden="true">
+        <span>Rapid</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniRapidToggle" type="checkbox" role="switch" aria-label="Automatically advance after brief typed-answer feedback">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label id="reviewModeMiniSpellUntilCorrectRow" class="review-mode-switch-row review-mode-mini-setting-row review-mode-mini-typed-setting hidden" aria-hidden="true">
+        <span>Spell until correct</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniSpellUntilCorrectToggle" type="checkbox" role="switch" aria-label="Keep trying each typed answer until the spelling is correct">
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
@@ -1882,7 +1919,10 @@ MODIFICATION RULES FOR THIS APP
       <button id="reviewModeMiniQuizEndBtn" type="button">End Quiz</button>
     </div>
     <div id="reviewModeMiniQuizComplete" class="review-mode-mini-quiz-complete hidden" aria-hidden="true">
-      <div>Mini Quiz Complete</div>
+      <div class="review-mode-mini-quiz-complete-card">
+        <div class="review-mode-mini-quiz-complete-title">Mini Quiz Complete</div>
+        <button id="reviewModeMiniQuizNextAngleBtn" class="review-mode-mini-quiz-next-angle-btn hidden" type="button">Quiz Next Angle</button>
+      </div>
     </div>
     <div id="reviewModeImageViewport" class="review-mode-image-viewport">
       <div id="reviewModeImageStage" class="review-mode-image-stage">
@@ -1890,6 +1930,18 @@ MODIFICATION RULES FOR THIS APP
         <canvas id="reviewModeDrawCanvas" class="review-mode-draw-canvas" aria-hidden="true"></canvas>
         <svg id="reviewModeConnectorLayer" class="review-mode-connector-layer" aria-hidden="true" focusable="false"></svg>
         <div id="reviewModeLabelLayer" class="review-mode-label-layer" aria-label="Interactive diagram labels"></div>
+      </div>
+      <div id="reviewModeShortcutDock" class="review-mode-shortcut-dock" data-edge="right" aria-label="Review Mode shortcut controls">
+        <button id="reviewModeShortcutGrip" class="review-mode-shortcut-grip" type="button" aria-label="Move shortcut controls"><span class="review-mode-shortcut-grip-dots" aria-hidden="true"></span></button>
+        <div id="reviewModeShortcutActions" class="review-mode-shortcut-actions">
+          <button id="reviewModeShortcutHideBtn" type="button">Hide</button>
+          <button id="reviewModeShortcutLabelUpBtn" type="button" aria-label="Increase label size">+</button>
+          <button id="reviewModeShortcutLabelDownBtn" type="button" aria-label="Decrease label size">−</button>
+          <button id="reviewModeShortcutColorBtn" type="button">Color On</button>
+          <button id="reviewModeShortcutLinesBtn" type="button">Lines On</button>
+          <button id="reviewModeShortcutAllBtn" type="button" aria-pressed="false">Show All</button>
+        </div>
+        <button id="reviewModeShortcutShowBtn" class="review-mode-shortcut-show-btn hidden" type="button">Show</button>
       </div>
     </div>
   </div>
@@ -2015,6 +2067,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22ng"></script>
+  <script src="script.js?v=22nj1"></script>
 </body>
 </html>

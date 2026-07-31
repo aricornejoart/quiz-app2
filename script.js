@@ -380,6 +380,10 @@ MODIFICATION RULES FOR THIS APP
                 showConnectors: true,
                 includeLabelDescriptions: true,
                 labelScale: 1,
+                shortcutDockVisible: true,
+                shortcutDockEdge: 'right',
+                shortcutDockOffset: 0.5,
+                shortcutInfoOpen: false,
                 zoomScale: 1,
                 zoomX: 0,
                 zoomY: 0,
@@ -391,6 +395,9 @@ MODIFICATION RULES FOR THIS APP
                 miniQuizScope: 'current',
                 randomizeMiniQuiz: true,
                 allowDuplicateMiniQuiz: false,
+                typedMiniQuiz: false,
+                rapidMiniQuiz: false,
+                spellUntilCorrectMiniQuiz: false,
                 miniQuiz: null
             },
             studioSavedImageMemoryLibrary: [],
@@ -587,6 +594,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeConnectorLayer: document.getElementById('reviewModeConnectorLayer'),
         reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
         reviewModeShowAngleControlsToggle: document.getElementById('reviewModeShowAngleControlsToggle'),
+        reviewModeShowShortcutDockToggle: document.getElementById('reviewModeShowShortcutDockToggle'),
         reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
@@ -597,6 +605,11 @@ MODIFICATION RULES FOR THIS APP
         reviewModeMiniScopeAll: document.getElementById('reviewModeMiniScopeAll'),
         reviewModeMiniRandomizeToggle: document.getElementById('reviewModeMiniRandomizeToggle'),
         reviewModeMiniAllowDuplicatesToggle: document.getElementById('reviewModeMiniAllowDuplicatesToggle'),
+        reviewModeMiniTypedToggle: document.getElementById('reviewModeMiniTypedToggle'),
+        reviewModeMiniRapidRow: document.getElementById('reviewModeMiniRapidRow'),
+        reviewModeMiniRapidToggle: document.getElementById('reviewModeMiniRapidToggle'),
+        reviewModeMiniSpellUntilCorrectRow: document.getElementById('reviewModeMiniSpellUntilCorrectRow'),
+        reviewModeMiniSpellUntilCorrectToggle: document.getElementById('reviewModeMiniSpellUntilCorrectToggle'),
         reviewModeMiniProgressToggle: document.getElementById('reviewModeMiniProgressToggle'),
         reviewModeMiniRetentionToggle: document.getElementById('reviewModeMiniRetentionToggle'),
         reviewModeMiniMasteryCheckToggle: document.getElementById('reviewModeMiniMasteryCheckToggle'),
@@ -606,9 +619,22 @@ MODIFICATION RULES FOR THIS APP
         reviewModeMiniQuizRestartBtn: document.getElementById('reviewModeMiniQuizRestartBtn'),
         reviewModeMiniQuizEndBtn: document.getElementById('reviewModeMiniQuizEndBtn'),
         reviewModeMiniQuizComplete: document.getElementById('reviewModeMiniQuizComplete'),
+        reviewModeMiniQuizNextAngleBtn: document.getElementById('reviewModeMiniQuizNextAngleBtn'),
         reviewModeLabelSizeDownBtn: document.getElementById('reviewModeLabelSizeDownBtn'),
         reviewModeLabelSizeUpBtn: document.getElementById('reviewModeLabelSizeUpBtn'),
         reviewModeLabelSizeValue: document.getElementById('reviewModeLabelSizeValue'),
+        reviewModeKeyboardShortcutsBtn: document.getElementById('reviewModeKeyboardShortcutsBtn'),
+        reviewModeKeyboardShortcutsPanel: document.getElementById('reviewModeKeyboardShortcutsPanel'),
+        reviewModeShortcutDock: document.getElementById('reviewModeShortcutDock'),
+        reviewModeShortcutGrip: document.getElementById('reviewModeShortcutGrip'),
+        reviewModeShortcutActions: document.getElementById('reviewModeShortcutActions'),
+        reviewModeShortcutHideBtn: document.getElementById('reviewModeShortcutHideBtn'),
+        reviewModeShortcutShowBtn: document.getElementById('reviewModeShortcutShowBtn'),
+        reviewModeShortcutLabelUpBtn: document.getElementById('reviewModeShortcutLabelUpBtn'),
+        reviewModeShortcutLabelDownBtn: document.getElementById('reviewModeShortcutLabelDownBtn'),
+        reviewModeShortcutColorBtn: document.getElementById('reviewModeShortcutColorBtn'),
+        reviewModeShortcutLinesBtn: document.getElementById('reviewModeShortcutLinesBtn'),
+        reviewModeShortcutAllBtn: document.getElementById('reviewModeShortcutAllBtn'),
         createClassName: document.getElementById('createClassName'),
         createClassBtn: document.getElementById('createClassBtn'),
         createFolderClassSelect: document.getElementById('createFolderClassSelect'),
@@ -5852,6 +5878,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         if (!editor?.open || editor?.target?.multiAngleDraft !== true) return false;
         await flushImageEditorDrawingCommit({ silent: true });
+        synchronizeImageEditorSharedDescriptionsFromDiagram();
         const draft = getMultiAngleCreatorState();
         const angleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
         const angle = draft.angles.find(item => item.id === angleId);
@@ -6174,6 +6201,8 @@ The deletion becomes permanent when you save the diagram.`);
     // Review Mode reads the existing Saved Images library without changing how
     // images, flattened edits, labels, or editable draw strokes are stored.
     let reviewModeLabelDrag = null;
+    let reviewModeMiniQuizRapidTimerId = null;
+    const REVIEW_MODE_MINI_QUIZ_RAPID_DELAY_MS = 850;
 
     function normalizeReviewModeMiniQuizMode(value = 'normal') {
         const mode = normalizeSheetText(value).toLowerCase();
@@ -6210,6 +6239,11 @@ The deletion becomes permanent when you save the diagram.`);
         mini.checkpointPosition = Math.max(0, Math.floor(Number(mini.checkpointPosition) || 0));
         mini.phase = mini.phase === 'checkpoint' ? 'checkpoint' : 'main';
         mini.answerRevealed = mini.answerRevealed === true;
+        mini.typedValue = String(mini.typedValue || '');
+        mini.typedSubmittedAnswer = String(mini.typedSubmittedAnswer || '');
+        mini.typedResult = ['correct', 'incorrect', 'retry', 'empty'].includes(mini.typedResult) ? mini.typedResult : '';
+        mini.typedAnswerKnown = mini.typedAnswerKnown === true ? true : (mini.typedAnswerKnown === false ? false : null);
+        mini.rapidPending = mini.rapidPending === true;
         return mini;
     }
 
@@ -6232,6 +6266,9 @@ The deletion becomes permanent when you save the diagram.`);
         review.includeLabelDescriptions = review.includeLabelDescriptions !== false;
         review.randomizeMiniQuiz = review.randomizeMiniQuiz !== false;
         review.allowDuplicateMiniQuiz = review.allowDuplicateMiniQuiz === true;
+        review.typedMiniQuiz = review.typedMiniQuiz === true;
+        review.rapidMiniQuiz = review.typedMiniQuiz && review.rapidMiniQuiz === true;
+        review.spellUntilCorrectMiniQuiz = review.typedMiniQuiz && review.spellUntilCorrectMiniQuiz === true;
         review.miniQuizScope = review.miniQuizScope === 'all' ? 'all' : 'current';
         review.miniQuizMode = normalizeReviewModeMiniQuizMode(review.miniQuizMode);
         review.miniQuiz = normalizeReviewModeMiniQuizState(review.miniQuiz, review.miniQuizMode);
@@ -6239,6 +6276,11 @@ The deletion becomes permanent when you save the diagram.`);
         if (!review.temporaryLabelPositionsByAngle || typeof review.temporaryLabelPositionsByAngle !== 'object' || Array.isArray(review.temporaryLabelPositionsByAngle)) review.temporaryLabelPositionsByAngle = {};
         review.suppressLabelClickUntil = Math.max(0, Number(review.suppressLabelClickUntil) || 0);
         review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1));
+        review.shortcutDockVisible = review.shortcutDockVisible !== false;
+        review.shortcutDockEdge = ['left', 'right', 'top', 'bottom'].includes(review.shortcutDockEdge) ? review.shortcutDockEdge : 'right';
+        const shortcutDockOffset = Number(review.shortcutDockOffset);
+        review.shortcutDockOffset = Math.min(1, Math.max(0, Number.isFinite(shortcutDockOffset) ? shortcutDockOffset : 0.5));
+        review.shortcutInfoOpen = review.shortcutInfoOpen === true;
         return review;
     }
 
@@ -6367,6 +6409,185 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.reviewModeAngleIndicator) elements.reviewModeAngleIndicator.textContent = hasMultipleAngles ? `${review.activeAngleIndex + 1} / ${angles.length} · ${angle?.name || `Angle ${review.activeAngleIndex + 1}`}` : '';
         if (elements.reviewModePrevAngleBtn) elements.reviewModePrevAngleBtn.disabled = !show || review.miniQuiz.active;
         if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.disabled = !show || review.miniQuiz.active;
+    }
+
+    // Phase 22NH1: floating Review Mode shortcut dock Show All / Hide All toggle.
+    let reviewModeShortcutDockDrag = null;
+
+    function setReviewModeShortcutInfoOpen(open) {
+        const review = getReviewModeState();
+        review.shortcutInfoOpen = !!open;
+        elements.reviewModeKeyboardShortcutsPanel?.classList.toggle('hidden', !review.shortcutInfoOpen);
+        elements.reviewModeKeyboardShortcutsPanel?.setAttribute('aria-hidden', review.shortcutInfoOpen ? 'false' : 'true');
+        elements.reviewModeKeyboardShortcutsBtn?.setAttribute('aria-expanded', review.shortcutInfoOpen ? 'true' : 'false');
+    }
+
+    function applyReviewModeShortcutDockPosition() {
+        const dock = elements.reviewModeShortcutDock;
+        const viewport = elements.reviewModeImageViewport;
+        if (!dock || !viewport || !getReviewModeState().overlayOpen) return;
+        const review = getReviewModeState();
+        const margin = 10;
+        const viewportWidth = Math.max(1, viewport.clientWidth);
+        const viewportHeight = Math.max(1, viewport.clientHeight);
+        const dockWidth = Math.max(1, dock.offsetWidth);
+        const dockHeight = Math.max(1, dock.offsetHeight);
+        const availableX = Math.max(0, viewportWidth - dockWidth - (margin * 2));
+        const availableY = Math.max(0, viewportHeight - dockHeight - (margin * 2));
+        let left = margin;
+        let top = margin;
+        if (review.shortcutDockEdge === 'right') {
+            left = viewportWidth - dockWidth - margin;
+            top = margin + (availableY * review.shortcutDockOffset);
+        } else if (review.shortcutDockEdge === 'left') {
+            left = margin;
+            top = margin + (availableY * review.shortcutDockOffset);
+        } else if (review.shortcutDockEdge === 'bottom') {
+            left = margin + (availableX * review.shortcutDockOffset);
+            top = viewportHeight - dockHeight - margin;
+        } else {
+            left = margin + (availableX * review.shortcutDockOffset);
+            top = margin;
+        }
+        dock.style.left = `${Math.max(margin, Math.min(viewportWidth - dockWidth - margin, left))}px`;
+        dock.style.top = `${Math.max(margin, Math.min(viewportHeight - dockHeight - margin, top))}px`;
+    }
+
+    function isReviewModeAllInformationShown(review = getReviewModeState()) {
+        if (review.miniQuiz.active) return review.showDrawData && review.showConnectors;
+        return review.showAllNames && review.includeLabelDescriptions && review.showDrawData && review.showConnectors;
+    }
+
+    function syncReviewModeShortcutDock() {
+        const review = getReviewModeState();
+        const dock = elements.reviewModeShortcutDock;
+        if (!dock) return;
+        dock.dataset.edge = review.shortcutDockEdge;
+        dock.classList.toggle('is-collapsed', !review.shortcutDockVisible);
+        dock.setAttribute('aria-hidden', review.overlayOpen ? 'false' : 'true');
+        elements.reviewModeShortcutActions?.classList.toggle('hidden', !review.shortcutDockVisible);
+        elements.reviewModeShortcutGrip?.classList.toggle('hidden', !review.shortcutDockVisible);
+        elements.reviewModeShortcutShowBtn?.classList.toggle('hidden', review.shortcutDockVisible);
+        if (elements.reviewModeShortcutColorBtn) {
+            elements.reviewModeShortcutColorBtn.textContent = review.showDrawData ? 'Color On' : 'Color Off';
+            elements.reviewModeShortcutColorBtn.classList.toggle('is-active', review.showDrawData);
+            elements.reviewModeShortcutColorBtn.setAttribute('aria-pressed', review.showDrawData ? 'true' : 'false');
+        }
+        if (elements.reviewModeShortcutLinesBtn) {
+            elements.reviewModeShortcutLinesBtn.textContent = review.showConnectors ? 'Lines On' : 'Lines Off';
+            elements.reviewModeShortcutLinesBtn.classList.toggle('is-active', review.showConnectors);
+            elements.reviewModeShortcutLinesBtn.setAttribute('aria-pressed', review.showConnectors ? 'true' : 'false');
+        }
+        if (elements.reviewModeShortcutAllBtn) {
+            const allShown = isReviewModeAllInformationShown(review);
+            elements.reviewModeShortcutAllBtn.textContent = allShown ? 'Hide All' : 'Show All';
+            elements.reviewModeShortcutAllBtn.classList.toggle('is-active', allShown);
+            elements.reviewModeShortcutAllBtn.setAttribute('aria-pressed', allShown ? 'true' : 'false');
+        }
+        if (elements.reviewModeShortcutLabelDownBtn) elements.reviewModeShortcutLabelDownBtn.disabled = review.labelScale <= 0.65;
+        if (elements.reviewModeShortcutLabelUpBtn) elements.reviewModeShortcutLabelUpBtn.disabled = review.labelScale >= 1.8;
+        if (elements.reviewModeShowShortcutDockToggle) elements.reviewModeShowShortcutDockToggle.checked = review.shortcutDockVisible;
+        window.requestAnimationFrame(applyReviewModeShortcutDockPosition);
+    }
+
+    function setReviewModeShortcutDockVisible(visible) {
+        const review = getReviewModeState();
+        review.shortcutDockVisible = !!visible;
+        syncReviewModeShortcutDock();
+    }
+
+    function toggleReviewModeColor() {
+        const review = getReviewModeState();
+        review.showDrawData = !review.showDrawData;
+        renderReviewModeDrawData();
+        syncReviewModeControls();
+    }
+
+    function toggleReviewModeLines() {
+        const review = getReviewModeState();
+        review.showConnectors = !review.showConnectors;
+        renderReviewModeConnectors();
+        syncReviewModeControls();
+    }
+
+    function toggleReviewModeAllInformation() {
+        const review = getReviewModeState();
+        const hideAll = isReviewModeAllInformationShown(review);
+        review.showDrawData = !hideAll;
+        review.showConnectors = !hideAll;
+        if (!review.miniQuiz.active) {
+            review.showAllNames = !hideAll;
+            if (hideAll) {
+                review.revealedLabels = new Set();
+            } else {
+                review.includeLabelDescriptions = true;
+            }
+        }
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    }
+
+    function beginReviewModeShortcutDockDrag(event) {
+        if (!elements.reviewModeShortcutDock || !elements.reviewModeImageViewport || (event.button != null && event.button !== 0)) return;
+        const dockRect = elements.reviewModeShortcutDock.getBoundingClientRect();
+        const viewportRect = elements.reviewModeImageViewport.getBoundingClientRect();
+        reviewModeShortcutDockDrag = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - dockRect.left,
+            offsetY: event.clientY - dockRect.top,
+            viewportRect,
+            dockWidth: dockRect.width,
+            dockHeight: dockRect.height
+        };
+        elements.reviewModeShortcutDock.classList.add('is-dragging');
+        try { elements.reviewModeShortcutGrip?.setPointerCapture?.(event.pointerId); } catch (_) {}
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    function moveReviewModeShortcutDockDrag(event) {
+        const drag = reviewModeShortcutDockDrag;
+        const dock = elements.reviewModeShortcutDock;
+        if (!drag || !dock || event.pointerId !== drag.pointerId) return;
+        const margin = 8;
+        const left = event.clientX - drag.viewportRect.left - drag.offsetX;
+        const top = event.clientY - drag.viewportRect.top - drag.offsetY;
+        dock.style.left = `${Math.max(margin, Math.min(drag.viewportRect.width - drag.dockWidth - margin, left))}px`;
+        dock.style.top = `${Math.max(margin, Math.min(drag.viewportRect.height - drag.dockHeight - margin, top))}px`;
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    function endReviewModeShortcutDockDrag(event) {
+        const drag = reviewModeShortcutDockDrag;
+        const dock = elements.reviewModeShortcutDock;
+        if (!drag || !dock || event.pointerId !== drag.pointerId) return;
+        const review = getReviewModeState();
+        const margin = 10;
+        const left = Number.parseFloat(dock.style.left) || margin;
+        const top = Number.parseFloat(dock.style.top) || margin;
+        const centerX = left + (dock.offsetWidth / 2);
+        const centerY = top + (dock.offsetHeight / 2);
+        const distances = {
+            left: centerX,
+            right: Math.max(0, drag.viewportRect.width - centerX),
+            top: centerY,
+            bottom: Math.max(0, drag.viewportRect.height - centerY)
+        };
+        review.shortcutDockEdge = Object.entries(distances).sort((a, b) => a[1] - b[1])[0][0];
+        if (review.shortcutDockEdge === 'left' || review.shortcutDockEdge === 'right') {
+            const available = Math.max(1, drag.viewportRect.height - dock.offsetHeight - (margin * 2));
+            review.shortcutDockOffset = Math.min(1, Math.max(0, (top - margin) / available));
+        } else {
+            const available = Math.max(1, drag.viewportRect.width - dock.offsetWidth - (margin * 2));
+            review.shortcutDockOffset = Math.min(1, Math.max(0, (left - margin) / available));
+        }
+        reviewModeShortcutDockDrag = null;
+        dock.classList.remove('is-dragging');
+        try { elements.reviewModeShortcutGrip?.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        syncReviewModeShortcutDock();
+        event.preventDefault();
+        event.stopPropagation();
     }
 
     // Phase 22MX: image-specific iPad pinch zoom and pan for the complete Review Mode stage.
@@ -6728,6 +6949,107 @@ The deletion becomes permanent when you save the diagram.`);
         });
     }
 
+    function clearReviewModeMiniQuizRapidTimer() {
+        if (reviewModeMiniQuizRapidTimerId) {
+            window.clearTimeout(reviewModeMiniQuizRapidTimerId);
+            reviewModeMiniQuizRapidTimerId = null;
+        }
+        const review = getReviewModeState();
+        if (review.miniQuiz) review.miniQuiz.rapidPending = false;
+    }
+
+    function normalizeReviewModeTypedAnswer(value = '') {
+        return normalizeSheetText(value).replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+    }
+
+    function resetReviewModeMiniQuizTypedAttempt(mini = null) {
+        const target = mini || getReviewModeState().miniQuiz;
+        if (!target) return;
+        target.typedValue = '';
+        target.typedSubmittedAnswer = '';
+        target.typedResult = '';
+        target.typedAnswerKnown = null;
+        target.rapidPending = false;
+    }
+
+    function getReviewModeMiniQuizActiveLabel(review = getReviewModeState()) {
+        const target = getReviewModeMiniQuizActiveTarget(review);
+        if (!target) return null;
+        const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+        const angle = angles[target.angleIndex];
+        const label = normalizeDiagramLabels(angle?.labels || [])[target.labelIndex];
+        return label ? { ...label, target } : null;
+    }
+
+    function focusReviewModeTypedAnswerInput({ select = false } = {}) {
+        window.requestAnimationFrame(() => {
+            const input = elements.reviewModeLabelLayer?.querySelector?.('[data-review-mini-typed-input]');
+            if (!input) return;
+            try {
+                input.focus({ preventScroll: true });
+                if (select) input.select();
+            } catch (_) {}
+        });
+    }
+
+    function scheduleReviewModeMiniQuizRapidAdvance(answerKnown) {
+        clearReviewModeMiniQuizRapidTimer();
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        if (!review.rapidMiniQuiz || !mini.active || mini.complete || !mini.answerRevealed) return;
+        mini.rapidPending = true;
+        syncReviewModeMiniQuizUi();
+        reviewModeMiniQuizRapidTimerId = window.setTimeout(() => {
+            reviewModeMiniQuizRapidTimerId = null;
+            const latestReview = getReviewModeState();
+            if (!latestReview.miniQuiz.active || latestReview.miniQuiz.complete || !latestReview.miniQuiz.answerRevealed) return;
+            latestReview.miniQuiz.rapidPending = false;
+            advanceReviewModeMiniQuiz(answerKnown);
+        }, REVIEW_MODE_MINI_QUIZ_RAPID_DELAY_MS);
+    }
+
+    function submitReviewModeMiniQuizTypedAnswer() {
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        if (!review.typedMiniQuiz || !mini.active || mini.complete || mini.answerRevealed || mini.rapidPending) return;
+        const label = getReviewModeMiniQuizActiveLabel(review);
+        if (!label) return;
+        const input = elements.reviewModeLabelLayer?.querySelector?.('[data-review-mini-typed-input]');
+        const rawValue = String(input?.value ?? mini.typedValue ?? '');
+        mini.typedValue = rawValue;
+        const submitted = rawValue.replace(/\s+/g, ' ').trim();
+        if (!submitted) {
+            mini.typedResult = 'empty';
+            renderReviewModeLabels();
+            focusReviewModeTypedAnswerInput();
+            return;
+        }
+        const answerKnown = normalizeReviewModeTypedAnswer(submitted) === normalizeReviewModeTypedAnswer(label.label);
+        mini.typedSubmittedAnswer = submitted;
+        mini.typedAnswerKnown = answerKnown;
+        if (!answerKnown && review.spellUntilCorrectMiniQuiz) {
+            mini.answerRevealed = false;
+            mini.typedResult = 'retry';
+            renderReviewModeLabels();
+            syncReviewModeControls();
+            focusReviewModeTypedAnswerInput({ select: true });
+            return;
+        }
+        mini.answerRevealed = true;
+        mini.typedResult = answerKnown ? 'correct' : 'incorrect';
+        renderReviewModeLabels();
+        syncReviewModeControls();
+        if (review.rapidMiniQuiz) scheduleReviewModeMiniQuizRapidAdvance(answerKnown);
+    }
+
+    function advanceReviewModeMiniQuizTypedAnswer() {
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        if (!review.typedMiniQuiz || !mini.active || mini.complete || !mini.answerRevealed || mini.rapidPending || typeof mini.typedAnswerKnown !== 'boolean') return;
+        const answerKnown = mini.typedAnswerKnown;
+        advanceReviewModeMiniQuiz(answerKnown);
+    }
+
     function syncReviewModeMiniQuizTarget({ animate = true } = {}) {
         const review = getReviewModeState();
         const target = getReviewModeMiniQuizActiveTarget(review);
@@ -6765,6 +7087,14 @@ The deletion becomes permanent when you save the diagram.`);
         elements.reviewModeMiniQuizControls?.setAttribute('aria-hidden', showControls ? 'false' : 'true');
         elements.reviewModeMiniQuizComplete?.classList.toggle('hidden', !(mini.active && mini.complete));
         elements.reviewModeMiniQuizComplete?.setAttribute('aria-hidden', mini.active && mini.complete ? 'false' : 'true');
+        if (elements.reviewModeMiniQuizNextAngleBtn) {
+            const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+            const canQuizNextAngle = !!(mini.active && mini.complete && mini.scope === 'current' && review.activeAngleIndex < angles.length - 1);
+            const nextAngle = canQuizNextAngle ? angles[review.activeAngleIndex + 1] : null;
+            elements.reviewModeMiniQuizNextAngleBtn.classList.toggle('hidden', !canQuizNextAngle);
+            elements.reviewModeMiniQuizNextAngleBtn.disabled = !canQuizNextAngle;
+            elements.reviewModeMiniQuizNextAngleBtn.textContent = nextAngle ? `Quiz Next Angle: ${nextAngle.name || `Angle ${review.activeAngleIndex + 2}`}` : 'Quiz Next Angle';
+        }
         if (elements.reviewModeTakeMiniQuizBtn) {
             elements.reviewModeTakeMiniQuizBtn.disabled = mini.active;
             elements.reviewModeTakeMiniQuizBtn.textContent = mini.active ? 'Mini Quiz Active' : 'Take Mini Quiz';
@@ -6772,6 +7102,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function finishReviewModeMiniQuiz() {
+        clearReviewModeMiniQuizRapidTimer();
         const review = getReviewModeState();
         review.miniQuiz.complete = true;
         review.miniQuiz.answerRevealed = false;
@@ -6780,6 +7111,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function startReviewModeMiniQuiz({ scope = '' } = {}) {
+        clearReviewModeMiniQuizRapidTimer();
         const review = getReviewModeState();
         const entry = getActiveReviewModeEntry();
         const angles = getStudioSavedImageAngles(entry || {});
@@ -6810,14 +7142,41 @@ The deletion becomes permanent when you save the diagram.`);
             checkpointQueue: [],
             checkpointPosition: 0,
             phase: 'main',
-            answerRevealed: false
+            answerRevealed: false,
+            typedValue: '',
+            typedSubmittedAnswer: '',
+            typedResult: '',
+            typedAnswerKnown: null,
+            rapidPending: false
         }, review.miniQuizMode);
         review.revealedLabels = new Set();
         setReviewModeOptionsOpen(false);
         syncReviewModeMiniQuizTarget({ animate: quizScope === 'all' });
     }
 
+    function startReviewModeMiniQuizNextAngle() {
+        const review = getReviewModeState();
+        const entry = getActiveReviewModeEntry();
+        const angles = getStudioSavedImageAngles(entry || {});
+        if (!review.miniQuiz.active || !review.miniQuiz.complete || review.miniQuiz.scope !== 'current' || review.activeAngleIndex >= angles.length - 1) return;
+        const nextAngleIndex = review.activeAngleIndex + 1;
+        const nextTargets = buildReviewModeMiniQuizTargets(entry, 'current', nextAngleIndex, review.allowDuplicateMiniQuiz);
+        if (!nextTargets.length) {
+            setCreatorStatus('The next angle does not have any labels to quiz.', 'error');
+            return;
+        }
+        storeReviewModeAngleUiState();
+        review.activeAngleIndex = nextAngleIndex;
+        restoreReviewModeAngleUiState();
+        resetReviewModeZoom();
+        invalidateReviewModeAngleOverlayCommit();
+        startReviewModeMiniQuiz({ scope: 'current' });
+        syncReviewModeAngleNavigation();
+        loadReviewModeActiveAngle({ animate: true });
+    }
+
     function endReviewModeMiniQuiz({ render = true } = {}) {
+        clearReviewModeMiniQuizRapidTimer();
         const review = getReviewModeState();
         review.miniQuizScope = 'current';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
@@ -6828,6 +7187,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function restartReviewModeMiniQuiz() {
+        clearReviewModeMiniQuizRapidTimer();
         const review = getReviewModeState();
         startReviewModeMiniQuiz({ scope: review.miniQuiz.scope });
     }
@@ -6948,7 +7308,9 @@ The deletion becomes permanent when you save the diagram.`);
         }
 
         mini.answerRevealed = false;
+        resetReviewModeMiniQuizTypedAttempt(mini);
         syncReviewModeMiniQuizTarget({ animate: mini.scope === 'all' });
+        if (review.typedMiniQuiz) focusReviewModeTypedAnswerInput();
     }
 
     function setReviewModeMiniQuizMode(mode, enabled) {
@@ -7144,18 +7506,51 @@ The deletion becomes permanent when you save the diagram.`);
             const isRevealed = review.miniQuiz.answerRevealed;
             const description = normalizeSheetText(item.description || '');
             const showDescription = !!(isRevealed && review.includeLabelDescriptions && description);
-            const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : String(index + 1);
-            const descriptionHtml = showDescription
-                ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
-                : '';
-            layer.innerHTML = `
-                <div class="review-mode-mini-label-wrap${isRevealed ? ' is-revealed' : ''}" style="left:${item.x}%; top:${item.y}%;">
-                  ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this label">✕</button>' : ''}
-                  <button type="button" class="review-mode-label-marker review-mode-mini-label-marker${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know label ' : 'Reveal label '}${index + 1}">
-                    <span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}
-                  </button>
-                  ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this label">✓</button>' : ''}
-                </div>`;
+            if (review.typedMiniQuiz) {
+                const typedResult = review.miniQuiz.typedResult;
+                const inputValue = escapeHtml(review.miniQuiz.typedValue || '');
+                const descriptionHtml = showDescription
+                    ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
+                    : '';
+                let typedBody = '';
+                if (!isRevealed) {
+                    const feedback = typedResult === 'retry'
+                        ? '<span class="review-mode-mini-typed-feedback is-incorrect">Incorrect — try again.</span>'
+                        : (typedResult === 'empty' ? '<span class="review-mode-mini-typed-feedback is-incorrect">Enter an answer first.</span>' : '');
+                    typedBody = `
+                      <div class="review-mode-mini-typed-entry">
+                        <input class="review-mode-mini-typed-input" data-review-mini-typed-input type="text" value="${inputValue}" placeholder="Type answer…" autocomplete="off" autocapitalize="none" enterkeyhint="done" spellcheck="false" aria-label="Type the label name">
+                        <button type="button" class="review-mode-mini-typed-check" data-review-mini-typed-check>Check</button>
+                      </div>${feedback}`;
+                } else {
+                    const correct = typedResult === 'correct';
+                    const submittedHtml = renderMathChemTextToHtml(review.miniQuiz.typedSubmittedAnswer || '');
+                    const correctHtml = renderMathChemTextToHtml(item.label);
+                    typedBody = `
+                      <span class="review-mode-mini-typed-result ${correct ? 'is-correct' : 'is-incorrect'}">${correct ? 'Correct' : 'Incorrect'}</span>
+                      ${correct ? '' : `<span class="review-mode-mini-typed-submitted">Your answer: ${submittedHtml}</span>`}
+                      <span class="review-mode-label-name">${correct ? correctHtml : `Correct answer: ${correctHtml}`}</span>
+                      ${descriptionHtml}
+                      ${review.rapidMiniQuiz ? '<span class="review-mode-mini-typed-rapid">Moving to the next label…</span>' : '<button type="button" class="review-mode-mini-typed-next" data-review-mini-typed-next>Next</button>'}`;
+                }
+                layer.innerHTML = `
+                  <div class="review-mode-mini-label-wrap review-mode-mini-typed-wrap${isRevealed ? ' is-revealed' : ''}" style="left:${item.x}%; top:${item.y}%;">
+                    <div class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-typed-card${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-live="polite">${typedBody}</div>
+                  </div>`;
+            } else {
+                const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : String(index + 1);
+                const descriptionHtml = showDescription
+                    ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
+                    : '';
+                layer.innerHTML = `
+                    <div class="review-mode-mini-label-wrap${isRevealed ? ' is-revealed' : ''}" style="left:${item.x}%; top:${item.y}%;">
+                      ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this label">✕</button>' : ''}
+                      <button type="button" class="review-mode-label-marker review-mode-mini-label-marker${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know label ' : 'Reveal label '}${index + 1}">
+                        <span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}
+                      </button>
+                      ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this label">✓</button>' : ''}
+                    </div>`;
+            }
             renderReviewModeDrawData();
             renderReviewModeConnectors();
             syncReviewModeMiniQuizUi();
@@ -7195,6 +7590,7 @@ The deletion becomes permanent when you save the diagram.`);
         applyReviewModeZoomTransform();
         renderReviewModeDrawData();
         renderReviewModeConnectors();
+        applyReviewModeShortcutDockPosition();
     }
 
     function syncReviewModeControls() {
@@ -7217,6 +7613,7 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeShowAngleControlsToggle.checked = hasMultipleAngles && review.showAngleControls;
             elements.reviewModeShowAngleControlsToggle.disabled = !hasMultipleAngles;
         }
+        if (elements.reviewModeShowShortcutDockToggle) elements.reviewModeShowShortcutDockToggle.checked = review.shortcutDockVisible;
         if (elements.reviewModeShowAllNamesToggle) {
             elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
             elements.reviewModeShowAllNamesToggle.disabled = miniActive;
@@ -7236,25 +7633,43 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeMiniAllowDuplicatesToggle.checked = review.allowDuplicateMiniQuiz;
             elements.reviewModeMiniAllowDuplicatesToggle.disabled = miniActive;
         }
+        if (elements.reviewModeMiniTypedToggle) {
+            elements.reviewModeMiniTypedToggle.checked = review.typedMiniQuiz;
+            elements.reviewModeMiniTypedToggle.disabled = miniActive;
+        }
+        [elements.reviewModeMiniRapidRow, elements.reviewModeMiniSpellUntilCorrectRow].forEach(row => {
+            row?.classList.toggle('hidden', !review.typedMiniQuiz);
+            row?.setAttribute('aria-hidden', review.typedMiniQuiz ? 'false' : 'true');
+        });
+        if (elements.reviewModeMiniRapidToggle) {
+            elements.reviewModeMiniRapidToggle.checked = review.rapidMiniQuiz;
+            elements.reviewModeMiniRapidToggle.disabled = miniActive || !review.typedMiniQuiz;
+        }
+        if (elements.reviewModeMiniSpellUntilCorrectToggle) {
+            elements.reviewModeMiniSpellUntilCorrectToggle.checked = review.spellUntilCorrectMiniQuiz;
+            elements.reviewModeMiniSpellUntilCorrectToggle.disabled = miniActive || !review.typedMiniQuiz;
+        }
         if (elements.reviewModeMiniProgressToggle) {
             elements.reviewModeMiniProgressToggle.checked = review.miniQuizMode === 'progress';
-            elements.reviewModeMiniProgressToggle.disabled = miniActive;
+            elements.reviewModeMiniProgressToggle.disabled = miniActive || review.spellUntilCorrectMiniQuiz;
         }
         if (elements.reviewModeMiniRetentionToggle) {
             elements.reviewModeMiniRetentionToggle.checked = review.miniQuizMode === 'retention';
-            elements.reviewModeMiniRetentionToggle.disabled = miniActive;
+            elements.reviewModeMiniRetentionToggle.disabled = miniActive || review.spellUntilCorrectMiniQuiz;
         }
         if (elements.reviewModeMiniMasteryCheckToggle) {
             elements.reviewModeMiniMasteryCheckToggle.checked = review.miniQuizMode === 'mastery-check';
-            elements.reviewModeMiniMasteryCheckToggle.disabled = miniActive;
+            elements.reviewModeMiniMasteryCheckToggle.disabled = miniActive || review.spellUntilCorrectMiniQuiz;
         }
         if (elements.reviewModeMiniMasteryToggle) {
             elements.reviewModeMiniMasteryToggle.checked = review.miniQuizMode === 'mastery';
-            elements.reviewModeMiniMasteryToggle.disabled = miniActive;
+            elements.reviewModeMiniMasteryToggle.disabled = miniActive || review.spellUntilCorrectMiniQuiz;
         }
         if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelScale * 100)}%`;
         if (elements.reviewModeLabelSizeDownBtn) elements.reviewModeLabelSizeDownBtn.disabled = review.labelScale <= 0.65;
         if (elements.reviewModeLabelSizeUpBtn) elements.reviewModeLabelSizeUpBtn.disabled = review.labelScale >= 1.8;
+        syncReviewModeShortcutDock();
+        setReviewModeShortcutInfoOpen(review.shortcutInfoOpen);
         setReviewModeOptionsOpen(review.optionsOpen);
         syncReviewModeMiniQuizUi();
         syncReviewModeAngleNavigation();
@@ -7276,10 +7691,17 @@ The deletion becomes permanent when you save the diagram.`);
         review.includeLabelDescriptions = true;
         review.randomizeMiniQuiz = true;
         review.allowDuplicateMiniQuiz = false;
+        review.typedMiniQuiz = false;
+        review.rapidMiniQuiz = false;
+        review.spellUntilCorrectMiniQuiz = false;
         review.miniQuizScope = 'current';
         review.miniQuizMode = 'normal';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal', scope: 'current', targets: [] }, 'normal');
         review.labelScale = 1;
+        review.shortcutDockVisible = true;
+        review.shortcutDockEdge = 'right';
+        review.shortcutDockOffset = 0.5;
+        review.shortcutInfoOpen = false;
         review.zoomScale = 1;
         review.zoomX = 0;
         review.zoomY = 0;
@@ -7301,6 +7723,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function closeReviewModeImage() {
+        clearReviewModeMiniQuizRapidTimer();
         const review = getReviewModeState();
         review.activeEntryId = '';
         review.activeAngleIndex = 0;
@@ -7311,6 +7734,8 @@ The deletion becomes permanent when you save the diagram.`);
         review.temporaryLabelPositions = {};
         review.temporaryLabelPositionsByAngle = {};
         review.suppressLabelClickUntil = 0;
+        review.shortcutInfoOpen = false;
+        reviewModeShortcutDockDrag = null;
         review.miniQuizScope = 'current';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
         reviewModeLabelDrag = null;
@@ -7642,6 +8067,7 @@ The deletion becomes permanent when you save the diagram.`);
         }
         refreshStudioImageEditorElements();
         bindStudioImageEditorEvents();
+        bindImageEditorSharedLabelSuggestionEvents();
         return !!(elements.studioImageEditorOverlay && elements.studioImageEditorCanvas);
     }
 
@@ -7769,7 +8195,7 @@ The deletion becomes permanent when you save the diagram.`);
         list.innerHTML = labels.map((item, index) => `
             <div class="studio-image-editor-label-info-row" data-image-editor-label-info-row data-image-editor-label-index="${index}">
               <span class="studio-image-editor-label-info-number" aria-hidden="true">${index + 1}.</span>
-              <input type="text" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-info-name aria-label="Label ${index + 1} name" placeholder="Label name">
+              <input type="text" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-info-name autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} name" placeholder="Label name">
               <textarea rows="1" maxlength="2000" data-image-editor-label-info-description aria-label="Label ${index + 1} information" placeholder="Enter label information">${escapeHtml(item.description || '')}</textarea>
             </div>
         `).join('');
@@ -7819,6 +8245,362 @@ The deletion becomes permanent when you save the diagram.`);
             const input = elements.studioImageEditorOverlay?.querySelector(selector);
             if (input && input !== sourceElement && input !== document.activeElement) input.value = value;
         });
+    }
+
+    // Phase 22NJ — reusable label-name suggestions and shared descriptions within one diagram.
+    function normalizeImageEditorSharedLabelKey(value = '') {
+        return displayMathChemTextForEditor(normalizeSheetText(value))
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLocaleLowerCase();
+    }
+
+    function isImageEditorSharedLabelTarget(editor = state.auth.imageEditor) {
+        return !!(editor?.open && editor?.labelsEnabled && isImageEditorStandaloneDiagramTarget(editor));
+    }
+
+    function getImageEditorSharedLabelRecords(options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!isImageEditorSharedLabelTarget(editor)) return [];
+        const excludeIndex = Number.isInteger(options.excludeIndex) ? options.excludeIndex : -1;
+        const recordsByKey = new Map();
+        const addLabels = (labels = [], source = '', skipIndex = -1) => {
+            normalizeDiagramLabels(labels || []).forEach((item, index) => {
+                if (index === skipIndex) return;
+                const name = displayMathChemTextForEditor(item.label).replace(/\s+/g, ' ').trim();
+                const key = normalizeImageEditorSharedLabelKey(name);
+                if (!key) return;
+                const description = String(item.description || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
+                // Single-character untouched defaults are not useful predictions unless they carry study information.
+                if (key.length < 2 && !description) return;
+                const existing = recordsByKey.get(key);
+                if (!existing) {
+                    recordsByKey.set(key, { key, label: name, description, source });
+                } else if (!existing.description && description) {
+                    existing.description = description;
+                }
+            });
+        };
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            const activeAngleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
+            draft.angles.forEach(angle => {
+                const isActive = normalizeSheetText(angle.id) === activeAngleId;
+                addLabels(isActive ? editor.labels : angle.labels, normalizeSheetText(angle.name), isActive ? excludeIndex : -1);
+            });
+        } else {
+            addLabels(editor.labels, normalizeSheetText(editor.metadata?.diagramName || editor.sourceLabel), excludeIndex);
+        }
+        return Array.from(recordsByKey.values());
+    }
+
+    function getImageEditorSharedLabelRecordByName(value = '', options = {}) {
+        const key = normalizeImageEditorSharedLabelKey(value);
+        if (!key) return null;
+        return getImageEditorSharedLabelRecords(options).find(record => record.key === key) || null;
+    }
+
+    function syncImageEditorLabelDescriptionFields(key = '', sourceElement = null) {
+        const editor = state.auth.imageEditor;
+        if (!editor || !key) return;
+        (editor.labels || []).forEach((label, index) => {
+            if (normalizeImageEditorSharedLabelKey(label?.label) !== key) return;
+            const textarea = elements.studioImageEditorOverlay?.querySelector(
+                `[data-image-editor-label-info-row][data-image-editor-label-index="${index}"] [data-image-editor-label-info-description]`
+            );
+            if (textarea && textarea !== sourceElement && textarea !== document.activeElement) {
+                textarea.value = String(label.description || '');
+                resizeImageEditorLabelInfoTextarea(textarea);
+            }
+        });
+    }
+
+    function synchronizeImageEditorSharedDescription(index, descriptionValue, options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!isImageEditorSharedLabelTarget(editor) || !editor.labels?.[index]) return false;
+        const key = normalizeImageEditorSharedLabelKey(editor.labels[index].label);
+        if (!key) return false;
+        const description = String(descriptionValue ?? '')
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .slice(0, 2000);
+        editor.labels.forEach(label => {
+            if (normalizeImageEditorSharedLabelKey(label?.label) === key) label.description = description;
+        });
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            const activeAngleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
+            draft.angles.forEach(angle => {
+                if (normalizeSheetText(angle.id) === activeAngleId) {
+                    angle.labels = normalizeDiagramLabels(editor.labels || []);
+                    return;
+                }
+                angle.labels = normalizeDiagramLabels(angle.labels || []).map(label => (
+                    normalizeImageEditorSharedLabelKey(label.label) === key
+                        ? { ...label, description }
+                        : label
+                ));
+            });
+        }
+        syncImageEditorLabelDescriptionFields(key, options.sourceElement || null);
+        return true;
+    }
+
+    function commitAllImageEditorSharedLabelMatches() {
+        const editor = state.auth.imageEditor;
+        if (!isImageEditorSharedLabelTarget(editor)) return;
+        editor.labels.forEach((label, index) => {
+            const record = getImageEditorSharedLabelRecordByName(label?.label, { excludeIndex: index });
+            if (!record) return;
+            label.label = normalizeAuthoredMathChemText(record.label) || getDiagramLabelName(index);
+            label.description = String(record.description || '').slice(0, 2000);
+        });
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            const activeAngleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
+            const activeAngle = draft.angles.find(angle => normalizeSheetText(angle.id) === activeAngleId);
+            if (activeAngle) activeAngle.labels = normalizeDiagramLabels(editor.labels || []);
+        }
+    }
+
+    function synchronizeImageEditorSharedDescriptionsFromDiagram() {
+        const editor = state.auth.imageEditor;
+        if (!isImageEditorSharedLabelTarget(editor)) return;
+        commitAllImageEditorSharedLabelMatches();
+        const records = getImageEditorSharedLabelRecords();
+        records.forEach(record => {
+            if (!record.key) return;
+            const representativeIndex = (editor.labels || []).findIndex(label => normalizeImageEditorSharedLabelKey(label?.label) === record.key);
+            if (representativeIndex >= 0) synchronizeImageEditorSharedDescription(representativeIndex, record.description, { silent: true });
+            else if (editor.target?.multiAngleDraft === true) {
+                const draft = getMultiAngleCreatorState();
+                draft.angles.forEach(angle => {
+                    angle.labels = normalizeDiagramLabels(angle.labels || []).map(label => (
+                        normalizeImageEditorSharedLabelKey(label.label) === record.key
+                            ? { ...label, description: record.description }
+                            : label
+                    ));
+                });
+            }
+        });
+    }
+
+    function ensureImageEditorLabelSuggestionPopup() {
+        let popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
+        if (popup) return popup;
+        popup = document.createElement('div');
+        popup.id = 'studioImageEditorLabelSuggestionPopup';
+        popup.className = 'studio-image-editor-label-suggestion-popup hidden';
+        popup.setAttribute('role', 'listbox');
+        popup.setAttribute('aria-label', 'Reusable label suggestions');
+        popup.hidden = true;
+        document.body.appendChild(popup);
+        popup.addEventListener('pointerdown', event => {
+            const option = event.target.closest('[data-image-editor-label-suggestion-key]');
+            if (!option) return;
+            event.preventDefault();
+            option.click();
+        });
+        popup.addEventListener('click', event => {
+            const option = event.target.closest('[data-image-editor-label-suggestion-key]');
+            if (!option) return;
+            const sourceInput = popup.__sourceInput;
+            const index = Number(popup.__labelIndex);
+            const key = normalizeSheetText(option.dataset.imageEditorLabelSuggestionKey || '');
+            const record = getImageEditorSharedLabelRecords({ excludeIndex: index }).find(item => item.key === key);
+            if (!sourceInput || !Number.isInteger(index) || index < 0 || !record) return;
+            applyImageEditorSharedLabelRecord(index, record, sourceInput);
+        });
+        return popup;
+    }
+
+    function hideImageEditorLabelSuggestions() {
+        const popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
+        if (!popup) return;
+        popup.classList.add('hidden');
+        popup.hidden = true;
+        popup.innerHTML = '';
+        popup.__sourceInput = null;
+        popup.__labelIndex = -1;
+    }
+
+    function positionImageEditorLabelSuggestionPopup(input, popup) {
+        if (!input || !popup || popup.hidden) return;
+        const rect = input.getBoundingClientRect();
+        const viewportWidth = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 320);
+        const viewportHeight = Math.max(320, window.innerHeight || document.documentElement.clientHeight || 320);
+        const width = Math.max(190, Math.min(420, rect.width || 260));
+        popup.style.width = `${width}px`;
+        popup.style.maxWidth = `${Math.max(190, viewportWidth - 16)}px`;
+        popup.style.left = `${Math.max(8, Math.min(viewportWidth - width - 8, rect.left))}px`;
+        const popupHeight = Math.min(260, popup.scrollHeight || 160);
+        const belowTop = rect.bottom + 5;
+        const aboveTop = rect.top - popupHeight - 5;
+        popup.style.top = `${belowTop + popupHeight <= viewportHeight - 8 ? belowTop : Math.max(8, aboveTop)}px`;
+    }
+
+    function showImageEditorLabelSuggestions(input, index) {
+        if (!isImageEditorSharedLabelTarget() || !(input instanceof HTMLInputElement)) {
+            hideImageEditorLabelSuggestions();
+            return;
+        }
+        const query = normalizeImageEditorSharedLabelKey(input.value);
+        if (!query) {
+            hideImageEditorLabelSuggestions();
+            return;
+        }
+        const records = getImageEditorSharedLabelRecords({ excludeIndex: index });
+        const suggestions = records
+            .filter(record => record.key.startsWith(query) || record.key.includes(query))
+            .sort((a, b) => {
+                const aStarts = a.key.startsWith(query) ? 0 : 1;
+                const bStarts = b.key.startsWith(query) ? 0 : 1;
+                return aStarts - bStarts || a.label.localeCompare(b.label);
+            })
+            .slice(0, 8);
+        if (!suggestions.length) {
+            hideImageEditorLabelSuggestions();
+            return;
+        }
+        const popup = ensureImageEditorLabelSuggestionPopup();
+        popup.__sourceInput = input;
+        popup.__labelIndex = index;
+        popup.innerHTML = suggestions.map((record, suggestionIndex) => `
+            <button type="button" class="studio-image-editor-label-suggestion ${suggestionIndex === 0 ? 'is-active' : ''}" data-image-editor-label-suggestion-key="${escapeHtml(record.key)}" role="option" aria-selected="${suggestionIndex === 0 ? 'true' : 'false'}">
+              <span>${escapeHtml(record.label)}</span>
+            </button>
+        `).join('');
+        popup.classList.remove('hidden');
+        popup.hidden = false;
+        positionImageEditorLabelSuggestionPopup(input, popup);
+    }
+
+    function applyImageEditorSharedLabelRecord(index, record, sourceInput = null) {
+        const editor = state.auth.imageEditor;
+        if (!isImageEditorSharedLabelTarget(editor) || !editor.labels?.[index] || !record) return false;
+        editor.labels[index].label = normalizeAuthoredMathChemText(record.label) || getDiagramLabelName(index);
+        editor.labels[index].description = String(record.description || '').slice(0, 2000);
+        syncImageEditorLabelNameFields(index, sourceInput);
+        if (sourceInput) {
+            sourceInput.value = displayMathChemTextForEditor(editor.labels[index].label);
+            try {
+                const end = sourceInput.value.length;
+                sourceInput.setSelectionRange(end, end);
+            } catch (error) {
+                // Some input types/browsers do not expose a selectable text range.
+            }
+        }
+        synchronizeImageEditorSharedDescription(index, editor.labels[index].description);
+        renderImageEditorCanvas();
+        hideImageEditorLabelSuggestions();
+        setImageEditorStatus(`Reused ${displayMathChemTextForEditor(editor.labels[index].label)} and synchronized its description.`);
+        return true;
+    }
+
+    function commitImageEditorSharedLabelName(input, index) {
+        const editor = state.auth.imageEditor;
+        if (!isImageEditorSharedLabelTarget(editor) || !editor.labels?.[index] || !(input instanceof HTMLInputElement)) return false;
+        const typedName = displayMathChemTextForEditor(normalizeSheetText(input.value)).replace(/\s+/g, ' ').trim();
+        const record = getImageEditorSharedLabelRecordByName(typedName, { excludeIndex: index });
+        if (record) return applyImageEditorSharedLabelRecord(index, record, input);
+        editor.labels[index].label = normalizeAuthoredMathChemText(typedName) || getDiagramLabelName(index);
+        input.value = displayMathChemTextForEditor(editor.labels[index].label);
+        syncImageEditorLabelNameFields(index, input);
+        renderImageEditorCanvas();
+        hideImageEditorLabelSuggestions();
+        return false;
+    }
+
+    function getImageEditorLabelInputContext(target) {
+        const input = target?.closest?.('[data-image-editor-label-text], [data-image-editor-label-info-name]');
+        if (!(input instanceof HTMLInputElement)) return null;
+        const row = input.closest('[data-image-editor-label-row], [data-image-editor-label-info-row]');
+        const index = Number(row?.dataset.imageEditorLabelIndex ?? -1);
+        if (!Number.isInteger(index) || index < 0) return null;
+        return { input, index };
+    }
+
+    function bindImageEditorSharedLabelSuggestionEvents() {
+        if (document.documentElement.dataset.imageEditorSharedLabelEventsBound === 'true') return;
+        document.documentElement.dataset.imageEditorSharedLabelEventsBound = 'true';
+        document.addEventListener('focusin', event => {
+            const context = getImageEditorLabelInputContext(event.target);
+            if (context) showImageEditorLabelSuggestions(context.input, context.index);
+        });
+        document.addEventListener('input', event => {
+            const context = getImageEditorLabelInputContext(event.target);
+            if (context) {
+                showImageEditorLabelSuggestions(context.input, context.index);
+                return;
+            }
+            const textarea = event.target.closest?.('[data-image-editor-label-info-description]');
+            const row = textarea?.closest?.('[data-image-editor-label-info-row]');
+            const index = Number(row?.dataset.imageEditorLabelIndex ?? -1);
+            if (textarea instanceof HTMLTextAreaElement && Number.isInteger(index) && index >= 0) {
+                synchronizeImageEditorSharedDescription(index, textarea.value, { sourceElement: textarea });
+            }
+        });
+        document.addEventListener('keydown', event => {
+            const context = getImageEditorLabelInputContext(event.target);
+            if (!context) return;
+            const popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
+            const options = Array.from(popup?.querySelectorAll?.('[data-image-editor-label-suggestion-key]') || []);
+            if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && options.length && !popup.hidden) {
+                event.preventDefault();
+                let activeIndex = options.findIndex(option => option.classList.contains('is-active'));
+                activeIndex = event.key === 'ArrowDown'
+                    ? (activeIndex + 1 + options.length) % options.length
+                    : (activeIndex - 1 + options.length) % options.length;
+                options.forEach((option, index) => {
+                    option.classList.toggle('is-active', index === activeIndex);
+                    option.setAttribute('aria-selected', index === activeIndex ? 'true' : 'false');
+                });
+                options[activeIndex]?.scrollIntoView?.({ block: 'nearest' });
+                return;
+            }
+            if (event.key === 'Enter') {
+                const active = options.find(option => option.classList.contains('is-active'));
+                if (active && popup && !popup.hidden) {
+                    event.preventDefault();
+                    active.click();
+                } else {
+                    commitImageEditorSharedLabelName(context.input, context.index);
+                }
+                return;
+            }
+            if (event.key === 'Tab') {
+                commitImageEditorSharedLabelName(context.input, context.index);
+                return;
+            }
+            if (event.key === 'Escape') hideImageEditorLabelSuggestions();
+        });
+        document.addEventListener('change', event => {
+            const context = getImageEditorLabelInputContext(event.target);
+            if (context) commitImageEditorSharedLabelName(context.input, context.index);
+        });
+        document.addEventListener('focusout', event => {
+            const context = getImageEditorLabelInputContext(event.target);
+            if (!context) return;
+            window.setTimeout(() => {
+                const popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
+                if (popup?.contains(document.activeElement)) return;
+                commitImageEditorSharedLabelName(context.input, context.index);
+            }, 80);
+        });
+        document.addEventListener('pointerdown', event => {
+            const popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
+            if (!popup || popup.hidden) return;
+            if (popup.contains(event.target) || getImageEditorLabelInputContext(event.target)) return;
+            hideImageEditorLabelSuggestions();
+        }, true);
+        window.addEventListener('resize', () => {
+            const popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
+            if (popup && !popup.hidden && popup.__sourceInput) positionImageEditorLabelSuggestionPopup(popup.__sourceInput, popup);
+        });
+        document.addEventListener('scroll', () => {
+            const popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
+            if (popup && !popup.hidden && popup.__sourceInput) positionImageEditorLabelSuggestionPopup(popup.__sourceInput, popup);
+        }, true);
     }
 
     function getImageEditorTargetInfo(target = {}) {
@@ -9325,7 +10107,7 @@ The deletion becomes permanent when you save the diagram.`);
             return `
             <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isConnectorActive ? 'is-connector-selected' : ''} ${isConnectorStylePickerOpen ? 'is-connector-style-open' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
               ${isNumberedLabelTarget ? `<span class="studio-image-editor-label-number" aria-hidden="true">${index + 1}.</span>` : ''}
-              <input type="text" value="${labelText}" data-image-editor-label-text aria-label="Label ${index + 1} answer" placeholder="Label answer">
+              <input type="text" value="${labelText}" data-image-editor-label-text autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} answer" placeholder="Label answer">
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}" aria-label="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}"><span aria-hidden="true">🖌</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector ${isConnectorActive ? 'active' : ''} ${hasConnector ? 'has-connector' : ''}" data-image-editor-label-connector aria-pressed="${isConnectorActive ? 'true' : 'false'}" aria-expanded="${isConnectorStylePickerOpen ? 'true' : 'false'}" aria-haspopup="menu" title="${isConnectorActive ? 'Exit connector editing for' : (hasConnector ? 'Choose or edit connector style for' : 'Choose connector style for')} label ${labelText}" aria-label="${isConnectorActive ? 'Exit connector editing for' : (hasConnector ? 'Choose or edit connector style for' : 'Choose connector style for')} label ${labelText}"><span class="studio-image-editor-label-connector-icon" aria-hidden="true">🔗</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector-delete" data-image-editor-label-connector-delete title="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" aria-label="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" ${hasConnector ? '' : 'disabled'}><span aria-hidden="true">✕</span></button>
@@ -10052,7 +10834,8 @@ The deletion becomes permanent when you save the diagram.`);
             }
             if (event.target.matches('[data-image-editor-label-info-description]')) {
                 editor.labels[index].description = String(event.target.value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
-        resizeImageEditorLabelInfoTextarea(event.target);
+                synchronizeImageEditorSharedDescription(index, editor.labels[index].description, { sourceElement: event.target });
+                resizeImageEditorLabelInfoTextarea(event.target);
             }
         });
         elements.studioImageEditorLabelList?.addEventListener('click', event => {
@@ -10147,6 +10930,7 @@ The deletion becomes permanent when you save the diagram.`);
             setCreatorStatus('Upload an image before using Edit Image.', 'error');
             return;
         }
+        hideImageEditorLabelSuggestions();
         resetImageEditorState();
         const editor = state.auth.imageEditor;
         editor.open = true;
@@ -10176,6 +10960,7 @@ The deletion becomes permanent when you save the diagram.`);
         closeImageEditorSliderPopovers();
         editor.labelsEnabled = !!info.labelsEnabled;
         editor.labels = normalizeImageEditorLabels(info.labels || []);
+        synchronizeImageEditorSharedDescriptionsFromDiagram();
         const recoveredDrawingBackup = restoreImageEditorDrawingBackup(editor);
         editor.labelInfoEnabled = !!(editor.labelsEnabled && isImageEditorNumberedLabelTarget(editor));
         editor.labelInfoPanelOpen = false;
@@ -10216,6 +11001,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function closeStudioImageEditor() {
+        hideImageEditorLabelSuggestions();
         clearImageEditorDrawingSaveTimers(state.auth.imageEditor);
         closeImageEditorSliderPopovers();
         if (elements.studioImageEditorOverlay) {
@@ -10380,6 +11166,7 @@ The deletion becomes permanent when you save the diagram.`);
     async function saveStudioImageEditorImage(options = {}) {
         const editor = state.auth.imageEditor;
         await flushImageEditorDrawingCommit({ silent: true });
+        synchronizeImageEditorSharedDescriptionsFromDiagram();
         const targetKind = editor?.target?.kind || '';
         const isFlashcardTarget = ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(targetKind);
         const isStandaloneDiagram = targetKind === 'standalone-diagram';
@@ -30279,7 +31066,7 @@ function endReviewModeGesturePointer(event, { cancelled = false } = {}) {
 if (elements.reviewModeImageViewport) {
     elements.reviewModeImageViewport.addEventListener('pointerdown', event => {
         if (event.button != null && event.button !== 0) return;
-        if (event.target.closest('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar')) return;
+        if (event.target.closest('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar, .review-mode-shortcut-dock')) return;
         const pointer = { pointerId: event.pointerId, pointerType: event.pointerType || 'mouse', x: event.clientX, y: event.clientY };
         reviewModeGesturePointers.set(event.pointerId, pointer);
 
@@ -30384,6 +31171,7 @@ window.addEventListener('resize', () => {
     if (getReviewModeState().overlayOpen) requestAnimationFrame(() => {
         syncReviewModeImageStage();
         applyReviewModeZoomTransform();
+        applyReviewModeShortcutDockPosition();
     });
 });
 
@@ -30445,6 +31233,19 @@ if (elements.reviewModeShowAngleControlsToggle) {
         review.showAngleControls = elements.reviewModeShowAngleControlsToggle.checked;
         syncReviewModeAngleNavigation();
         syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeShowShortcutDockToggle) {
+    elements.reviewModeShowShortcutDockToggle.addEventListener('change', () => {
+        setReviewModeShortcutDockVisible(elements.reviewModeShowShortcutDockToggle.checked);
+    });
+}
+
+if (elements.reviewModeKeyboardShortcutsBtn) {
+    elements.reviewModeKeyboardShortcutsBtn.addEventListener('click', () => {
+        const review = getReviewModeState();
+        setReviewModeShortcutInfoOpen(!review.shortcutInfoOpen);
     });
 }
 
@@ -30529,6 +31330,38 @@ if (elements.reviewModeMiniAllowDuplicatesToggle) {
     });
 }
 
+if (elements.reviewModeMiniTypedToggle) {
+    elements.reviewModeMiniTypedToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active) return;
+        review.typedMiniQuiz = elements.reviewModeMiniTypedToggle.checked;
+        if (!review.typedMiniQuiz) {
+            review.rapidMiniQuiz = false;
+            review.spellUntilCorrectMiniQuiz = false;
+        }
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniRapidToggle) {
+    elements.reviewModeMiniRapidToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || !review.typedMiniQuiz) return;
+        review.rapidMiniQuiz = elements.reviewModeMiniRapidToggle.checked;
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniSpellUntilCorrectToggle) {
+    elements.reviewModeMiniSpellUntilCorrectToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || !review.typedMiniQuiz) return;
+        review.spellUntilCorrectMiniQuiz = elements.reviewModeMiniSpellUntilCorrectToggle.checked;
+        if (review.spellUntilCorrectMiniQuiz) review.miniQuizMode = 'normal';
+        syncReviewModeControls();
+    });
+}
+
 if (elements.reviewModeMiniProgressToggle) {
     elements.reviewModeMiniProgressToggle.addEventListener('change', () => setReviewModeMiniQuizMode('progress', elements.reviewModeMiniProgressToggle.checked));
 }
@@ -30557,6 +31390,10 @@ if (elements.reviewModeMiniQuizEndBtn) {
     elements.reviewModeMiniQuizEndBtn.addEventListener('click', () => endReviewModeMiniQuiz());
 }
 
+if (elements.reviewModeMiniQuizNextAngleBtn) {
+    elements.reviewModeMiniQuizNextAngleBtn.addEventListener('click', startReviewModeMiniQuizNextAngle);
+}
+
 if (elements.reviewModeLabelSizeDownBtn) {
     elements.reviewModeLabelSizeDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
 }
@@ -30565,17 +31402,75 @@ if (elements.reviewModeLabelSizeUpBtn) {
     elements.reviewModeLabelSizeUpBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale + 0.1));
 }
 
+if (elements.reviewModeShortcutHideBtn) {
+    elements.reviewModeShortcutHideBtn.addEventListener('click', () => setReviewModeShortcutDockVisible(false));
+}
+if (elements.reviewModeShortcutShowBtn) {
+    elements.reviewModeShortcutShowBtn.addEventListener('click', () => setReviewModeShortcutDockVisible(true));
+}
+if (elements.reviewModeShortcutLabelDownBtn) {
+    elements.reviewModeShortcutLabelDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
+}
+if (elements.reviewModeShortcutLabelUpBtn) {
+    elements.reviewModeShortcutLabelUpBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale + 0.1));
+}
+if (elements.reviewModeShortcutColorBtn) {
+    elements.reviewModeShortcutColorBtn.addEventListener('click', toggleReviewModeColor);
+}
+if (elements.reviewModeShortcutLinesBtn) {
+    elements.reviewModeShortcutLinesBtn.addEventListener('click', toggleReviewModeLines);
+}
+if (elements.reviewModeShortcutAllBtn) {
+    elements.reviewModeShortcutAllBtn.addEventListener('click', toggleReviewModeAllInformation);
+}
+if (elements.reviewModeShortcutGrip) {
+    elements.reviewModeShortcutGrip.addEventListener('pointerdown', beginReviewModeShortcutDockDrag);
+    elements.reviewModeShortcutGrip.addEventListener('pointermove', moveReviewModeShortcutDockDrag);
+    elements.reviewModeShortcutGrip.addEventListener('pointerup', endReviewModeShortcutDockDrag);
+    elements.reviewModeShortcutGrip.addEventListener('pointercancel', endReviewModeShortcutDockDrag);
+    elements.reviewModeShortcutGrip.addEventListener('lostpointercapture', endReviewModeShortcutDockDrag);
+}
+
 if (elements.reviewModeLabelLayer) {
     elements.reviewModeLabelLayer.addEventListener('pointerdown', event => {
         const marker = event.target.closest('[data-review-label-index]');
+        if (marker?.classList.contains('review-mode-mini-typed-card') && event.target.closest('input, button')) return;
         if (marker) beginReviewModeLabelDrag(event, marker);
     });
     elements.reviewModeLabelLayer.addEventListener('pointermove', moveReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('pointerup', endReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('pointercancel', endReviewModeLabelDrag);
     elements.reviewModeLabelLayer.addEventListener('lostpointercapture', endReviewModeLabelDrag);
+    elements.reviewModeLabelLayer.addEventListener('input', event => {
+        const input = event.target.closest('[data-review-mini-typed-input]');
+        if (!input) return;
+        const review = getReviewModeState();
+        if (!review.typedMiniQuiz || !review.miniQuiz.active || review.miniQuiz.complete) return;
+        review.miniQuiz.typedValue = input.value;
+        if (review.miniQuiz.typedResult === 'empty' || review.miniQuiz.typedResult === 'retry') review.miniQuiz.typedResult = '';
+    });
+    elements.reviewModeLabelLayer.addEventListener('keydown', event => {
+        if (!event.target.closest('[data-review-mini-typed-input]') || event.key !== 'Enter') return;
+        event.preventDefault();
+        event.stopPropagation();
+        submitReviewModeMiniQuizTypedAnswer();
+    });
     elements.reviewModeLabelLayer.addEventListener('click', event => {
         const review = getReviewModeState();
+        const typedCheck = event.target.closest('[data-review-mini-typed-check]');
+        if (typedCheck && review.miniQuiz.active && !review.miniQuiz.complete) {
+            event.preventDefault();
+            event.stopPropagation();
+            submitReviewModeMiniQuizTypedAnswer();
+            return;
+        }
+        const typedNext = event.target.closest('[data-review-mini-typed-next]');
+        if (typedNext && review.miniQuiz.active && !review.miniQuiz.complete) {
+            event.preventDefault();
+            event.stopPropagation();
+            advanceReviewModeMiniQuizTypedAnswer();
+            return;
+        }
         const miniAnswer = event.target.closest('[data-review-mini-answer]');
         if (miniAnswer && review.miniQuiz.active && !review.miniQuiz.complete) {
             event.preventDefault();
@@ -30592,6 +31487,7 @@ if (elements.reviewModeLabelLayer) {
         }
         if (review.miniQuiz.active) {
             event.preventDefault();
+            if (review.typedMiniQuiz) return;
             if (!review.miniQuiz.complete && !review.miniQuiz.answerRevealed) revealReviewModeMiniQuizAnswer();
             return;
         }
@@ -30612,10 +31508,10 @@ if (elements.reviewModeLabelLayer) {
 }
 
 window.addEventListener('resize', () => {
-    if (getReviewModeState().overlayOpen) requestAnimationFrame(syncReviewModeImageStage);
+    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => { syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); });
 });
 window.addEventListener('orientationchange', () => {
-    if (getReviewModeState().overlayOpen) setTimeout(syncReviewModeImageStage, 120);
+    if (getReviewModeState().overlayOpen) setTimeout(() => { syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); }, 120);
 });
 
 document.addEventListener('keydown', event => {
@@ -30625,11 +31521,34 @@ document.addEventListener('keydown', event => {
         closeReviewModeImage();
         return;
     }
-    if (!review.overlayOpen || review.miniQuiz.active || event.target?.matches?.('input, textarea, select, [contenteditable=\"true\"]')) return;
-    if (event.key === 'ArrowLeft') {
+    if (!review.overlayOpen || event.target?.matches?.('input, textarea, select, [contenteditable="true"]') || event.ctrlKey || event.metaKey || event.altKey) return;
+    const key = String(event.key || '');
+    const lowerKey = key.toLowerCase();
+    if ((key === ' ' || key === 'Spacebar') && review.miniQuiz.active && review.typedMiniQuiz && review.miniQuiz.answerRevealed) {
+        event.preventDefault();
+        advanceReviewModeMiniQuizTypedAnswer();
+    } else if (key === '+' || key === '=' || key === 'Add') {
+        event.preventDefault();
+        setReviewModeLabelScale(review.labelScale + 0.1);
+    } else if (key === '-' || key === '_' || key === 'Subtract') {
+        event.preventDefault();
+        setReviewModeLabelScale(review.labelScale - 0.1);
+    } else if (lowerKey === 'd') {
+        event.preventDefault();
+        toggleReviewModeColor();
+    } else if (lowerKey === 'c') {
+        event.preventDefault();
+        toggleReviewModeLines();
+    } else if (lowerKey === 'a') {
+        event.preventDefault();
+        toggleReviewModeAllInformation();
+    } else if (lowerKey === 'h') {
+        event.preventDefault();
+        setReviewModeShortcutDockVisible(!review.shortcutDockVisible);
+    } else if (!review.miniQuiz.active && key === 'ArrowLeft') {
         event.preventDefault();
         changeReviewModeAngle(-1);
-    } else if (event.key === 'ArrowRight') {
+    } else if (!review.miniQuiz.active && key === 'ArrowRight') {
         event.preventDefault();
         changeReviewModeAngle(1);
     }
@@ -32435,6 +33354,8 @@ elements.studioImageEditorLabelInfoList?.addEventListener('input', event => {
     }
     if (event.target.matches('[data-image-editor-label-info-description]')) {
         editor.labels[index].description = String(event.target.value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
+        synchronizeImageEditorSharedDescription(index, editor.labels[index].description, { sourceElement: event.target });
+        resizeImageEditorLabelInfoTextarea(event.target);
     }
 });
 elements.studioImageEditorLabelList?.addEventListener('click', event => {
