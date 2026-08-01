@@ -28,6 +28,7 @@ MODIFICATION RULES FOR THIS APP
         unstarOnWrongStorageKey: 'studyBunnyUnstarOnWrongSettingsV1',
         hideAnswerFeedbackStorageKey: 'studyBunnyHideAnswerFeedbackSettingsV1',
         globalShuffleAnswersStorageKey: 'studyBunnyGlobalShuffleAnswersSettingsV1',
+        diagramColorPresetsStorageKey: 'studyBunnyDiagramColorPresetsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
         dataSource: 'google_sheets',
@@ -122,6 +123,8 @@ MODIFICATION RULES FOR THIS APP
     const IMAGE_EDITOR_DRAW_BACKUP_PREFIX = 'studyBunnyImageEditorDrawBackupV1:';
     const IMAGE_EDITOR_DRAW_AUTOSAVE_DELAY_MS = 220;
     const IMAGE_EDITOR_DRAW_BACKUP_MAX_BYTES = 1_750_000;
+    const IMAGE_EDITOR_COLOR_PRESET_MAX = 12;
+    const IMAGE_EDITOR_COLOR_PRESET_METADATA_KEY = 'study_bunny_diagram_color_presets';
 
     const state = {
         questions: [],
@@ -409,6 +412,11 @@ MODIFICATION RULES FOR THIS APP
                 scheduleTimerId: null,
                 applyingRemote: false
             },
+            diagramColorPresets: [],
+            diagramColorLastColor: '#000000',
+            diagramColorPresetUpdatedAt: 0,
+            diagramColorPresetSyncTimerId: null,
+            diagramColorPresetSyncInFlight: null,
             imageEditor: {
                 open: false,
                 target: null,
@@ -424,6 +432,17 @@ MODIFICATION RULES FOR THIS APP
                 dragStart: null,
                 history: [],
                 arrowColor: '#000000',
+                lineThickness: 7,
+                zoomScale: 1,
+                zoomX: 0,
+                zoomY: 0,
+                panMode: false,
+                isPanning: false,
+                panPointerId: null,
+                panStartClientX: 0,
+                panStartClientY: 0,
+                panStartX: 0,
+                panStartY: 0,
                 drawTool: 'paintbrush',
                 drawSize: 14,
                 paintTransparency: 0.65,
@@ -446,6 +465,7 @@ MODIFICATION RULES FOR THIS APP
                 activeConnectorLabelIndex: null,
                 connectorStylePickerLabelIndex: null,
                 pendingConnectorStyle: 'straight',
+                pendingConnectorEndpoint: 'none',
                 draggingConnectorAnchor: false,
                 draggingLabelIndex: null,
                 hoveredLabelIndex: null,
@@ -780,7 +800,17 @@ MODIFICATION RULES FOR THIS APP
         createLearningResourcesImageClearBtn: document.getElementById('createLearningResourcesImageClearBtn'),
         createOptionFieldsContainer: document.getElementById('createOptionFieldsContainer'),
         studioImageEditorOverlay: document.getElementById('studioImageEditorOverlay'),
+        studioImageEditorCanvasWrap: document.getElementById('studioImageEditorCanvasWrap'),
         studioImageEditorCanvas: document.getElementById('studioImageEditorCanvas'),
+        studioImageEditorZoomControls: document.getElementById('studioImageEditorZoomControls'),
+        studioImageEditorZoomOutBtn: document.getElementById('studioImageEditorZoomOutBtn'),
+        studioImageEditorZoomResetBtn: document.getElementById('studioImageEditorZoomResetBtn'),
+        studioImageEditorZoomInBtn: document.getElementById('studioImageEditorZoomInBtn'),
+        studioImageEditorZoomValue: document.getElementById('studioImageEditorZoomValue'),
+        studioImageEditorPanLeftBtn: document.getElementById('studioImageEditorPanLeftBtn'),
+        studioImageEditorPanUpBtn: document.getElementById('studioImageEditorPanUpBtn'),
+        studioImageEditorPanDownBtn: document.getElementById('studioImageEditorPanDownBtn'),
+        studioImageEditorPanRightBtn: document.getElementById('studioImageEditorPanRightBtn'),
         studioImageEditorCloseBtn: document.getElementById('studioImageEditorCloseBtn'),
         studioImageEditorCancelBtn: document.getElementById('studioImageEditorCancelBtn'),
         studioImageEditorMultiAngleNavigator: document.getElementById('studioImageEditorMultiAngleNavigator'),
@@ -801,7 +831,12 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorStatus: document.getElementById('studioImageEditorStatus'),
         studioImageEditorTitle: document.getElementById('studioImageEditorTitle'),
         studioImageEditorSubtitle: document.getElementById('studioImageEditorSubtitle'),
+        studioImageEditorColorToggle: document.getElementById('studioImageEditorColorToggle'),
+        studioImageEditorColorPopover: document.getElementById('studioImageEditorColorPopover'),
+        studioImageEditorCurrentColorSwatch: document.getElementById('studioImageEditorCurrentColorSwatch'),
         studioImageEditorArrowColorInput: document.getElementById('studioImageEditorArrowColorInput'),
+        studioImageEditorColorPresetList: document.getElementById('studioImageEditorColorPresetList'),
+        studioImageEditorAddColorPresetBtn: document.getElementById('studioImageEditorAddColorPresetBtn'),
         studioImageEditorDrawToolButtons: Array.from(document.querySelectorAll('[data-image-editor-draw-tool]')),
         studioImageEditorDrawSizeInput: document.getElementById('studioImageEditorDrawSizeInput'),
         studioImageEditorDrawSizeValue: document.getElementById('studioImageEditorDrawSizeValue'),
@@ -2541,6 +2576,15 @@ MODIFICATION RULES FOR THIS APP
         return normalizeDiagramConnectorStyle(source?.style || source?.connectorStyle || 'straight');
     }
 
+    function normalizeDiagramConnectorEndpoint(endpoint = '') {
+        return normalizeSheetText(endpoint || '').toLowerCase() === 'none' ? 'none' : 'ball';
+    }
+
+    function getDiagramConnectorEndpoint(connector = null) {
+        const source = connector && typeof connector === 'object' ? connector : null;
+        return normalizeDiagramConnectorEndpoint(source?.endpoint || source?.endpointStyle || 'ball');
+    }
+
     function normalizeDiagramConnector(connector = null) {
         const source = connector && typeof connector === 'object' ? connector : null;
         if (!source) return null;
@@ -2553,7 +2597,8 @@ MODIFICATION RULES FOR THIS APP
             anchorY: Math.min(100, Math.max(0, anchorYValue)),
             color: normalizeEditorHexColor(source.color || source.strokeColor || '#000000', '#000000'),
             thickness: Math.min(24, Math.max(1, Number(source.thickness ?? source.lineWidth ?? 7) || 7)),
-            ...(style !== 'straight' ? { style } : {})
+            ...(style !== 'straight' ? { style } : {}),
+            ...(getDiagramConnectorEndpoint(source) === 'none' ? { endpoint: 'none' } : {})
         };
     }
 
@@ -2608,11 +2653,14 @@ MODIFICATION RULES FOR THIS APP
         } else {
             path += ` L ${point(anchor.x)} ${point(anchor.y)}`;
         }
+        const normalizedScreenScale = Math.max(0.0001, Number(screenScale) || 1);
         return {
             path,
             anchor,
             color: normalizedConnector.color || '#000000',
-            thickness: Math.min(24, Math.max(1, Number(normalizedConnector.thickness) || 7))
+            thickness: Math.min(24, Math.max(1, Number(normalizedConnector.thickness) || 7)) / normalizedScreenScale,
+            screenScale: normalizedScreenScale,
+            endpoint: getDiagramConnectorEndpoint(normalizedConnector)
         };
     }
 
@@ -2620,8 +2668,8 @@ MODIFICATION RULES FOR THIS APP
         return normalizeDiagramLabels(labels || []).map((label, index) => {
             const geometry = getDiagramConnectorSvgGeometry(label.connector, label, width, height, screenScale);
             if (!geometry) return '';
-            const radius = Math.max(4, geometry.thickness * 0.9);
-            return `<g data-diagram-connector-index="${index}"><path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}"></circle></g>`;
+            const radius = Math.max(4 / Math.max(0.0001, geometry.screenScale || 1), geometry.thickness * 0.9);
+            return `<g data-diagram-connector-index="${index}"><path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round"></path>${geometry.endpoint === 'ball' ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}"></circle>` : ''}</g>`;
         }).join('');
     }
 
@@ -2636,7 +2684,7 @@ MODIFICATION RULES FOR THIS APP
         }
         const width = Math.max(1, image.naturalWidth);
         const height = Math.max(1, image.naturalHeight);
-        const renderedWidth = Math.max(1, stage?.getBoundingClientRect?.().width || image.getBoundingClientRect?.().width || width);
+        const renderedWidth = Math.max(1, image.offsetWidth || stage?.offsetWidth || image.clientWidth || width);
         const screenScale = renderedWidth / width;
         svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
         svg.setAttribute('preserveAspectRatio', 'none');
@@ -5924,7 +5972,9 @@ The deletion becomes permanent when you save the diagram.`);
                 nextEditor.showLabelPanel = editorPreferences.showLabelPanel;
                 nextEditor.metadataPanelOpen = editorPreferences.metadataPanelOpen;
                 nextEditor.labelInfoPanelOpen = editorPreferences.labelInfoPanelOpen;
-                nextEditor.drawTool = normalizeSheetText(editorPreferences.drawTool) || 'paintbrush';
+                nextEditor.drawTool = ['paintbrush', 'eraser'].includes(normalizeSheetText(editorPreferences.drawTool))
+                    ? normalizeSheetText(editorPreferences.drawTool)
+                    : 'paintbrush';
                 elements.studioImageEditorDrawToolButtons?.forEach(button => button.classList.toggle('active', normalizeSheetText(button.dataset.imageEditorDrawTool) === nextEditor.drawTool));
                 setImageEditorMode(editorPreferences.mode || 'crop');
                 refreshImageEditorMetadataUi();
@@ -7924,9 +7974,234 @@ The deletion becomes permanent when you save the diagram.`);
         button.disabled = !hasImage;
     }
 
+    function normalizeImageEditorColorPresetList(values) {
+        const normalized = [];
+        (Array.isArray(values) ? values : []).forEach(value => {
+            const color = normalizeEditorHexColor(value, '').toLowerCase();
+            if (!/^#[0-9a-f]{6}$/i.test(color) || normalized.includes(color)) return;
+            normalized.push(color);
+        });
+        return normalized.slice(0, IMAGE_EDITOR_COLOR_PRESET_MAX);
+    }
+
+    function getImageEditorColorPresetStorageKey(userId = state.auth.user?.id) {
+        const owner = normalizeSheetText(userId) || 'anonymous';
+        return `${CONFIG.diagramColorPresetsStorageKey}:${owner}`;
+    }
+
+    function normalizeImageEditorColorPresetEnvelope(value) {
+        const source = value && typeof value === 'object' && !Array.isArray(value)
+            ? value
+            : { colors: Array.isArray(value) ? value : [], updatedAt: 0 };
+        return {
+            colors: normalizeImageEditorColorPresetList(source.colors),
+            lastColor: normalizeEditorHexColor(source.lastColor || '#000000', '#000000').toLowerCase(),
+            updatedAt: Math.max(0, Number(source.updatedAt) || 0)
+        };
+    }
+
+    function readLocalImageEditorColorPresets(userId = state.auth.user?.id) {
+        try {
+            const raw = window.localStorage?.getItem(getImageEditorColorPresetStorageKey(userId));
+            return normalizeImageEditorColorPresetEnvelope(raw ? JSON.parse(raw) : null);
+        } catch (error) {
+            console.warn('Could not read Diagram Creator color presets:', error);
+            return { colors: [], lastColor: '#000000', updatedAt: 0 };
+        }
+    }
+
+    function writeLocalImageEditorColorPresets(envelope, userId = state.auth.user?.id) {
+        const normalized = normalizeImageEditorColorPresetEnvelope(envelope);
+        try {
+            window.localStorage?.setItem(getImageEditorColorPresetStorageKey(userId), JSON.stringify(normalized));
+        } catch (error) {
+            console.warn('Could not save Diagram Creator color presets locally:', error);
+        }
+        return normalized;
+    }
+
+    function getRemoteImageEditorColorPresets(user = state.auth.user) {
+        return normalizeImageEditorColorPresetEnvelope(user?.user_metadata?.[IMAGE_EDITOR_COLOR_PRESET_METADATA_KEY]);
+    }
+
+    function updateImageEditorCurrentColorSwatch(color = elements.studioImageEditorArrowColorInput?.value) {
+        const normalized = normalizeEditorHexColor(color || '#000000', '#000000');
+        if (elements.studioImageEditorCurrentColorSwatch) {
+            elements.studioImageEditorCurrentColorSwatch.style.backgroundColor = normalized;
+            elements.studioImageEditorCurrentColorSwatch.title = normalized.toUpperCase();
+        }
+    }
+
+    function renderImageEditorColorPresets() {
+        const list = elements.studioImageEditorColorPresetList;
+        if (!list) return;
+        const activeColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput?.value || state.auth.imageEditor?.arrowColor || '#000000', '#000000').toLowerCase();
+        const colors = normalizeImageEditorColorPresetList(state.auth.diagramColorPresets);
+        state.auth.diagramColorPresets = colors;
+        list.innerHTML = colors.length
+            ? colors.map(color => `
+                <span class="studio-image-editor-color-preset-item">
+                  <button type="button" class="studio-image-editor-color-preset-swatch ${color === activeColor ? 'is-active' : ''}" data-image-editor-color-preset="${color}" style="--preset-color:${color}" aria-label="Use saved color ${color.toUpperCase()}" title="Use ${color.toUpperCase()}"></button>
+                  <button type="button" class="studio-image-editor-color-preset-delete" data-image-editor-color-preset-delete="${color}" aria-label="Delete saved color ${color.toUpperCase()}" title="Delete ${color.toUpperCase()}">×</button>
+                </span>
+            `).join('')
+            : '<span class="studio-image-editor-color-preset-empty">No saved colors yet.</span>';
+        if (elements.studioImageEditorAddColorPresetBtn) {
+            elements.studioImageEditorAddColorPresetBtn.disabled = colors.length >= IMAGE_EDITOR_COLOR_PRESET_MAX;
+            elements.studioImageEditorAddColorPresetBtn.title = colors.length >= IMAGE_EDITOR_COLOR_PRESET_MAX
+                ? `Maximum ${IMAGE_EDITOR_COLOR_PRESET_MAX} saved colors`
+                : 'Save current color';
+        }
+        updateImageEditorCurrentColorSwatch(activeColor);
+    }
+
+    function applyImageEditorActiveColor(value, options = {}) {
+        const color = normalizeEditorHexColor(value || '#000000', '#000000').toLowerCase();
+        if (elements.studioImageEditorArrowColorInput && elements.studioImageEditorArrowColorInput.value !== color) {
+            elements.studioImageEditorArrowColorInput.value = color;
+        }
+        const editor = state.auth.imageEditor;
+        state.auth.diagramColorLastColor = color;
+        state.auth.diagramColorPresetUpdatedAt = Date.now();
+        writeLocalImageEditorColorPresets({
+            colors: state.auth.diagramColorPresets,
+            lastColor: color,
+            updatedAt: state.auth.diagramColorPresetUpdatedAt
+        });
+        scheduleImageEditorColorPresetSync();
+        if (editor) {
+            editor.arrowColor = color;
+            let shouldRender = false;
+            if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
+                editor.draftShape.color = color;
+                shouldRender = true;
+            }
+            if (isImageEditorConnectorMode(editor)) {
+                const index = editor.activeConnectorLabelIndex;
+                const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
+                if (connector && editor.labels?.[index]) {
+                    editor.labels[index].connector = { ...connector, color };
+                    shouldRender = true;
+                }
+            }
+            if (shouldRender) renderImageEditorCanvas();
+        }
+        updateImageEditorCurrentColorSwatch(color);
+        renderImageEditorColorPresets();
+        if (options.announce === true) setImageEditorStatus(`Color ${color.toUpperCase()} selected.`);
+        return color;
+    }
+
+    async function persistImageEditorColorPresetsToAccount() {
+        if (!state.auth.client || !state.auth.user?.id) return false;
+        if (state.auth.diagramColorPresetSyncInFlight) return state.auth.diagramColorPresetSyncInFlight;
+        const envelope = normalizeImageEditorColorPresetEnvelope({
+            colors: state.auth.diagramColorPresets,
+            lastColor: state.auth.diagramColorLastColor,
+            updatedAt: state.auth.diagramColorPresetUpdatedAt || Date.now()
+        });
+        const promise = state.auth.client.auth.updateUser({
+            data: { [IMAGE_EDITOR_COLOR_PRESET_METADATA_KEY]: envelope }
+        }).then(({ data, error }) => {
+            if (error) throw error;
+            if (data?.user) {
+                state.auth.user = data.user;
+                if (state.auth.session) state.auth.session.user = data.user;
+            }
+            return true;
+        }).catch(error => {
+            console.warn('Could not sync Diagram Creator color presets:', error);
+            return false;
+        }).finally(() => {
+            if (state.auth.diagramColorPresetSyncInFlight === promise) state.auth.diagramColorPresetSyncInFlight = null;
+            if (state.auth.diagramColorPresetUpdatedAt > envelope.updatedAt) scheduleImageEditorColorPresetSync();
+        });
+        state.auth.diagramColorPresetSyncInFlight = promise;
+        return promise;
+    }
+
+    function scheduleImageEditorColorPresetSync() {
+        if (state.auth.diagramColorPresetSyncTimerId) window.clearTimeout(state.auth.diagramColorPresetSyncTimerId);
+        state.auth.diagramColorPresetSyncTimerId = window.setTimeout(() => {
+            state.auth.diagramColorPresetSyncTimerId = null;
+            persistImageEditorColorPresetsToAccount();
+        }, 240);
+    }
+
+    function saveImageEditorColorPreset(color = elements.studioImageEditorArrowColorInput?.value) {
+        const normalized = normalizeEditorHexColor(color || '#000000', '#000000').toLowerCase();
+        const current = normalizeImageEditorColorPresetList(state.auth.diagramColorPresets);
+        if (current.includes(normalized)) {
+            applyImageEditorActiveColor(normalized);
+            setImageEditorStatus('That color is already saved.');
+            return false;
+        }
+        if (current.length >= IMAGE_EDITOR_COLOR_PRESET_MAX) {
+            setImageEditorStatus(`You can save up to ${IMAGE_EDITOR_COLOR_PRESET_MAX} colors.`);
+            return false;
+        }
+        state.auth.diagramColorPresets = [...current, normalized];
+        state.auth.diagramColorPresetUpdatedAt = Date.now();
+        writeLocalImageEditorColorPresets({ colors: state.auth.diagramColorPresets, lastColor: state.auth.diagramColorLastColor, updatedAt: state.auth.diagramColorPresetUpdatedAt });
+        renderImageEditorColorPresets();
+        scheduleImageEditorColorPresetSync();
+        setImageEditorStatus(`Saved ${normalized.toUpperCase()} as a color preset.`);
+        return true;
+    }
+
+    function deleteImageEditorColorPreset(color) {
+        const normalized = normalizeEditorHexColor(color || '', '').toLowerCase();
+        const current = normalizeImageEditorColorPresetList(state.auth.diagramColorPresets);
+        const next = current.filter(item => item !== normalized);
+        if (next.length === current.length) return false;
+        state.auth.diagramColorPresets = next;
+        state.auth.diagramColorPresetUpdatedAt = Date.now();
+        writeLocalImageEditorColorPresets({ colors: next, lastColor: state.auth.diagramColorLastColor, updatedAt: state.auth.diagramColorPresetUpdatedAt });
+        renderImageEditorColorPresets();
+        scheduleImageEditorColorPresetSync();
+        setImageEditorStatus(`Removed ${normalized.toUpperCase()} from saved colors.`);
+        return true;
+    }
+
+    function syncImageEditorColorPresetsFromAuth() {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        if (!userId) {
+            state.auth.diagramColorPresets = [];
+            state.auth.diagramColorLastColor = '#000000';
+            state.auth.diagramColorPresetUpdatedAt = 0;
+            renderImageEditorColorPresets();
+            return;
+        }
+        const local = readLocalImageEditorColorPresets(userId);
+        const remote = getRemoteImageEditorColorPresets(state.auth.user);
+        let selected = remote;
+        if (local.updatedAt > remote.updatedAt) selected = local;
+        else if (local.updatedAt === remote.updatedAt && local.colors.length && !remote.colors.length) selected = local;
+        state.auth.diagramColorPresets = selected.colors;
+        state.auth.diagramColorLastColor = selected.lastColor;
+        state.auth.diagramColorPresetUpdatedAt = selected.updatedAt;
+        writeLocalImageEditorColorPresets(selected, userId);
+        if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = selected.lastColor;
+        if (!state.auth.imageEditor?.open) state.auth.imageEditor.arrowColor = selected.lastColor;
+        renderImageEditorColorPresets();
+        if (selected === local && (local.updatedAt > remote.updatedAt || JSON.stringify(local.colors) !== JSON.stringify(remote.colors))) {
+            scheduleImageEditorColorPresetSync();
+        }
+    }
+
     function refreshStudioImageEditorElements() {
         elements.studioImageEditorOverlay = document.getElementById('studioImageEditorOverlay');
+        elements.studioImageEditorCanvasWrap = document.getElementById('studioImageEditorCanvasWrap');
         elements.studioImageEditorCanvas = document.getElementById('studioImageEditorCanvas');
+        elements.studioImageEditorZoomControls = document.getElementById('studioImageEditorZoomControls');
+        elements.studioImageEditorZoomOutBtn = document.getElementById('studioImageEditorZoomOutBtn');
+        elements.studioImageEditorZoomResetBtn = document.getElementById('studioImageEditorZoomResetBtn');
+        elements.studioImageEditorZoomInBtn = document.getElementById('studioImageEditorZoomInBtn');
+        elements.studioImageEditorZoomValue = document.getElementById('studioImageEditorZoomValue');
+        elements.studioImageEditorPanLeftBtn = document.getElementById('studioImageEditorPanLeftBtn');
+        elements.studioImageEditorPanUpBtn = document.getElementById('studioImageEditorPanUpBtn');
+        elements.studioImageEditorPanDownBtn = document.getElementById('studioImageEditorPanDownBtn');
+        elements.studioImageEditorPanRightBtn = document.getElementById('studioImageEditorPanRightBtn');
         elements.studioImageEditorCloseBtn = document.getElementById('studioImageEditorCloseBtn');
         elements.studioImageEditorCancelBtn = document.getElementById('studioImageEditorCancelBtn');
         elements.studioImageEditorMultiAngleNavigator = document.getElementById('studioImageEditorMultiAngleNavigator');
@@ -7947,7 +8222,12 @@ The deletion becomes permanent when you save the diagram.`);
         elements.studioImageEditorStatus = document.getElementById('studioImageEditorStatus');
         elements.studioImageEditorTitle = document.getElementById('studioImageEditorTitle');
         elements.studioImageEditorSubtitle = document.getElementById('studioImageEditorSubtitle');
+        elements.studioImageEditorColorToggle = document.getElementById('studioImageEditorColorToggle');
+        elements.studioImageEditorColorPopover = document.getElementById('studioImageEditorColorPopover');
+        elements.studioImageEditorCurrentColorSwatch = document.getElementById('studioImageEditorCurrentColorSwatch');
         elements.studioImageEditorArrowColorInput = document.getElementById('studioImageEditorArrowColorInput');
+        elements.studioImageEditorColorPresetList = document.getElementById('studioImageEditorColorPresetList');
+        elements.studioImageEditorAddColorPresetBtn = document.getElementById('studioImageEditorAddColorPresetBtn');
         elements.studioImageEditorLineThicknessInput = document.getElementById('studioImageEditorLineThicknessInput');
         elements.studioImageEditorLineThicknessValue = document.getElementById('studioImageEditorLineThicknessValue');
         elements.studioImageEditorLineThicknessToggle = document.getElementById('studioImageEditorLineThicknessToggle');
@@ -7996,28 +8276,26 @@ The deletion becomes permanent when you save the diagram.`);
                       <div class="studio-image-editor-toolbar" aria-label="Image editor tools">
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="crop">Crop</button>
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-rect">Blur Box</button>
-                        <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="arrow">Arrow</button>
-                        <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="line">Line</button>
-                        <label class="studio-image-editor-rgb-control" title="Arrow, line, connector, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, connector, highlighter, and draw RGB color"></label>
-                        <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow, line, and connector thickness"><label class="studio-image-editor-range-control" title="Arrow, line, and connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow, line, and connector thickness"></label></div></div>
+                        <div id="studioImageEditorZoomControls" class="studio-image-editor-zoom-controls hidden" aria-label="Diagram zoom controls"><button id="studioImageEditorZoomOutBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-btn" aria-label="Zoom out">−</button><button id="studioImageEditorZoomResetBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-reset-btn" aria-label="Reset diagram zoom" title="Reset zoom"><span id="studioImageEditorZoomValue">100%</span></button><button id="studioImageEditorZoomInBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-btn" aria-label="Zoom in">+</button></div>
+                        <div class="studio-image-editor-slider-popover studio-image-editor-color-control" data-image-editor-popover="color"><button type="button" id="studioImageEditorColorToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle studio-image-editor-color-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorColorPopover">RGB <span id="studioImageEditorCurrentColorSwatch" class="studio-image-editor-current-color-swatch" aria-hidden="true"></span></button><div id="studioImageEditorColorPopover" class="studio-image-editor-popover-panel studio-image-editor-color-popover hidden" role="dialog" aria-label="Connector and drawing colors"><label class="studio-image-editor-color-picker-row" title="Connector and drawing RGB color"><span>Color</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Connector and drawing RGB color"></label><div class="studio-image-editor-color-presets-heading">Saved colors</div><div id="studioImageEditorColorPresetList" class="studio-image-editor-color-preset-list" aria-label="Saved color presets"></div><button type="button" id="studioImageEditorAddColorPresetBtn" class="studio-image-editor-color-preset-add" aria-label="Save current color preset" title="Save current color">+</button></div></div>
+                        <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness"><label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Connector thickness"></label></div></div>
                         <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
-                          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="highlighter" id="studioImageEditorHighlighterBtn" title="Highlighter tool" aria-label="Highlighter tool">🖍️</button>
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
                         </div>
                         <span id="studioImageEditorDrawActiveLabelValue" class="studio-image-editor-draw-active-label" aria-live="polite">Choose label Draw</span>
-                        <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Draw, highlighter, and eraser size"><label class="studio-image-editor-range-control" title="Draw, highlighter, and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Draw, highlighter, and eraser size"></label></div></div>
+                        <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size"><label class="studio-image-editor-range-control" title="Paintbrush and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Paintbrush and eraser size"></label></div></div>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="transparency"><button type="button" id="studioImageEditorPaintTransparencyToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPaintTransparencyPopover">Opacity <span id="studioImageEditorPaintTransparencyValue" class="studio-image-editor-range-value" aria-live="polite">65%</span></button><div id="studioImageEditorPaintTransparencyPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush transparency"><label class="studio-image-editor-range-control" title="Paintbrush transparency"><span>Opacity</span><input id="studioImageEditorPaintTransparencyInput" type="range" min="0" max="100" step="1" value="65" aria-label="Paintbrush transparency"></label></div></div>
                         <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button>
                         <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
-                        <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
+                        <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Undo last diagram edit (Ctrl+Z / Command+Z)" aria-keyshortcuts="Control+Z Meta+Z">Undo</button>
                         <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>
                       </div>
                       <button id="studioImageEditorCloseBtn" type="button" class="auth-icon-btn" aria-label="Close image editor">×</button>
                     </div>
                     <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
                     <div class="studio-image-editor-workspace">
-                      <div class="studio-image-editor-canvas-wrap">
+                      <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
                         <canvas id="studioImageEditorCanvas"></canvas>
                       </div>
                       <div id="studioImageEditorLabelPanel" class="studio-image-editor-label-panel hidden" aria-label="Image labels">
@@ -8059,13 +8337,14 @@ The deletion becomes permanent when you save the diagram.`);
                 .studio-image-editor-tools{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
                 .studio-image-editor-tools .active{outline:2px solid rgba(250,204,21,.95)}
                 .studio-image-editor-workspace{flex:1 1 auto;min-height:0;overflow:hidden}
-                .studio-image-editor-canvas-wrap{display:flex;justify-content:center;align-items:center;min-height:0;height:100%;overflow:hidden;border-radius:16px;background:rgba(0,0,0,.22);padding:8px}
-                #studioImageEditorCanvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;background:#fff;border-radius:10px;object-fit:contain}
+                .studio-image-editor-canvas-wrap{display:flex;justify-content:center;align-items:center;min-height:0;height:100%;overflow:hidden;border-radius:16px;background:rgba(0,0,0,.22);padding:8px;touch-action:none;overscroll-behavior:contain}
+                #studioImageEditorCanvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;background:#fff;border-radius:10px;object-fit:contain;transform-origin:center center;will-change:transform}
                 .studio-image-editor-status{min-height:0;margin:0;color:#fef3c7;font-weight:700}
             `;
             document.head.appendChild(style);
         }
         refreshStudioImageEditorElements();
+        renderImageEditorColorPresets();
         bindStudioImageEditorEvents();
         bindImageEditorSharedLabelSuggestionEvents();
         return !!(elements.studioImageEditorOverlay && elements.studioImageEditorCanvas);
@@ -8737,6 +9016,16 @@ The deletion becomes permanent when you save the diagram.`);
             history: [],
             arrowColor: '#000000',
             lineThickness: 7,
+            zoomScale: 1,
+            zoomX: 0,
+            zoomY: 0,
+            panMode: false,
+            isPanning: false,
+            panPointerId: null,
+            panStartClientX: 0,
+            panStartClientY: 0,
+            panStartX: 0,
+            panStartY: 0,
             drawTool: 'paintbrush',
             drawSize: 14,
             paintTransparency: 0.65,
@@ -8759,11 +9048,283 @@ The deletion becomes permanent when you save the diagram.`);
             activeConnectorLabelIndex: null,
             connectorStylePickerLabelIndex: null,
             pendingConnectorStyle: 'straight',
+            pendingConnectorEndpoint: 'none',
             draggingConnectorAnchor: false,
             draggingLabelIndex: null,
             hoveredLabelIndex: null,
             showLabelPanel: false
         };
+    }
+
+    const IMAGE_EDITOR_MIN_ZOOM = 1;
+    const IMAGE_EDITOR_MAX_ZOOM = 5;
+    const IMAGE_EDITOR_ZOOM_STEP = 0.5;
+
+    function normalizeImageEditorZoomValue(value, fallback = 0) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    }
+
+    function clampImageEditorZoomPan(scale, x, y) {
+        const wrap = elements.studioImageEditorCanvasWrap;
+        const canvas = elements.studioImageEditorCanvas;
+        const normalizedScale = Math.min(IMAGE_EDITOR_MAX_ZOOM, Math.max(IMAGE_EDITOR_MIN_ZOOM, normalizeImageEditorZoomValue(scale, 1)));
+        if (!wrap || !canvas || normalizedScale <= IMAGE_EDITOR_MIN_ZOOM + 0.001) {
+            return { scale: IMAGE_EDITOR_MIN_ZOOM, x: 0, y: 0 };
+        }
+        const baseWidth = Math.max(1, canvas.offsetWidth || canvas.clientWidth || 1);
+        const baseHeight = Math.max(1, canvas.offsetHeight || canvas.clientHeight || 1);
+        const availableWidth = Math.max(1, wrap.clientWidth - 16);
+        const availableHeight = Math.max(1, wrap.clientHeight - 16);
+        const maxX = Math.max(0, ((baseWidth * normalizedScale) - availableWidth) / 2);
+        const maxY = Math.max(0, ((baseHeight * normalizedScale) - availableHeight) / 2);
+        return {
+            scale: normalizedScale,
+            x: Math.min(maxX, Math.max(-maxX, normalizeImageEditorZoomValue(x, 0))),
+            y: Math.min(maxY, Math.max(-maxY, normalizeImageEditorZoomValue(y, 0)))
+        };
+    }
+
+    function syncImageEditorZoomUi() {
+        const editor = state.auth.imageEditor;
+        const isDiagramCreator = !!(editor?.open && isImageEditorStandaloneDiagramTarget(editor) && editor.baseCanvas);
+        const scale = Math.min(IMAGE_EDITOR_MAX_ZOOM, Math.max(IMAGE_EDITOR_MIN_ZOOM, normalizeImageEditorZoomValue(editor?.zoomScale, 1)));
+        const isZoomed = scale > IMAGE_EDITOR_MIN_ZOOM + 0.01;
+        if (elements.studioImageEditorZoomControls) {
+            elements.studioImageEditorZoomControls.classList.toggle('hidden', !isDiagramCreator);
+            elements.studioImageEditorZoomControls.setAttribute('aria-hidden', isDiagramCreator ? 'false' : 'true');
+        }
+        if (elements.studioImageEditorZoomValue) elements.studioImageEditorZoomValue.textContent = `${Math.round(scale * 100)}%`;
+        if (elements.studioImageEditorZoomOutBtn) elements.studioImageEditorZoomOutBtn.disabled = !isDiagramCreator || !isZoomed;
+        if (elements.studioImageEditorZoomResetBtn) elements.studioImageEditorZoomResetBtn.disabled = !isDiagramCreator || !isZoomed;
+        if (elements.studioImageEditorZoomInBtn) elements.studioImageEditorZoomInBtn.disabled = !isDiagramCreator || scale >= IMAGE_EDITOR_MAX_ZOOM - 0.01;
+        if (!isZoomed && editor) editor.panMode = false;
+        elements.studioImageEditorCanvasWrap?.classList.toggle('is-zoomed', !!(isDiagramCreator && isZoomed));
+        elements.studioImageEditorCanvasWrap?.classList.toggle('is-panning', !!editor?.isPanning);
+    }
+
+    function applyImageEditorZoomTransform({ animate = false } = {}) {
+        const editor = state.auth.imageEditor;
+        const canvas = elements.studioImageEditorCanvas;
+        if (!editor || !canvas) return;
+        const next = clampImageEditorZoomPan(editor.zoomScale, editor.zoomX, editor.zoomY);
+        editor.zoomScale = next.scale;
+        editor.zoomX = next.x;
+        editor.zoomY = next.y;
+        canvas.classList.toggle('is-zoom-resetting', !!animate);
+        canvas.style.transform = `translate3d(${next.x}px, ${next.y}px, 0) scale(${next.scale})`;
+        if (animate) {
+            window.setTimeout(() => canvas.classList.remove('is-zoom-resetting'), 190);
+        }
+        syncImageEditorZoomUi();
+    }
+
+    function resetImageEditorZoom({ animate = false } = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        editor.zoomScale = IMAGE_EDITOR_MIN_ZOOM;
+        editor.zoomX = 0;
+        editor.zoomY = 0;
+        editor.panMode = false;
+        editor.isPanning = false;
+        editor.panPointerId = null;
+        applyImageEditorZoomTransform({ animate });
+    }
+
+    function setImageEditorPanMode(enabled) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        const canPan = isImageEditorStandaloneDiagramTarget(editor) && editor.zoomScale > IMAGE_EDITOR_MIN_ZOOM + 0.01;
+        editor.panMode = !!enabled && canPan;
+        if (!editor.panMode) {
+            editor.isPanning = false;
+            editor.panPointerId = null;
+        }
+        syncImageEditorZoomUi();
+    }
+
+    function zoomImageEditorAtPoint(nextScale, clientX, clientY) {
+        const editor = state.auth.imageEditor;
+        const wrap = elements.studioImageEditorCanvasWrap;
+        if (!editor || !wrap || !isImageEditorStandaloneDiagramTarget(editor)) return;
+        const rect = wrap.getBoundingClientRect();
+        const centerX = rect.left + (rect.width / 2);
+        const centerY = rect.top + (rect.height / 2);
+        const currentScale = Math.max(IMAGE_EDITOR_MIN_ZOOM, normalizeImageEditorZoomValue(editor.zoomScale, 1));
+        const localX = (clientX - centerX - editor.zoomX) / currentScale;
+        const localY = (clientY - centerY - editor.zoomY) / currentScale;
+        const clampedScale = Math.min(IMAGE_EDITOR_MAX_ZOOM, Math.max(IMAGE_EDITOR_MIN_ZOOM, nextScale));
+        editor.zoomScale = clampedScale;
+        editor.zoomX = clientX - centerX - (localX * clampedScale);
+        editor.zoomY = clientY - centerY - (localY * clampedScale);
+        applyImageEditorZoomTransform();
+    }
+
+    function changeImageEditorZoom(delta) {
+        const editor = state.auth.imageEditor;
+        const wrap = elements.studioImageEditorCanvasWrap;
+        if (!editor || !wrap || !isImageEditorStandaloneDiagramTarget(editor)) return;
+        const rect = wrap.getBoundingClientRect();
+        zoomImageEditorAtPoint(
+            (editor.zoomScale || IMAGE_EDITOR_MIN_ZOOM) + delta,
+            rect.left + (rect.width / 2),
+            rect.top + (rect.height / 2)
+        );
+    }
+
+    function nudgeImageEditorPan(directionX = 0, directionY = 0) {
+        const editor = state.auth.imageEditor;
+        const wrap = elements.studioImageEditorCanvasWrap;
+        if (!editor || !wrap || !isImageEditorStandaloneDiagramTarget(editor) || editor.zoomScale <= IMAGE_EDITOR_MIN_ZOOM + 0.01) return;
+        const shorterSide = Math.min(wrap.clientWidth || 0, wrap.clientHeight || 0);
+        const step = Math.max(40, Math.min(110, shorterSide * 0.12 || 64));
+        editor.zoomX += Math.sign(Number(directionX) || 0) * step;
+        editor.zoomY += Math.sign(Number(directionY) || 0) * step;
+        applyImageEditorZoomTransform();
+    }
+
+    function applyImageEditorConnectorThicknessFromControl(control) {
+        const editor = state.auth.imageEditor;
+        if (!editor || !control) return;
+        const raw = Number(control.value);
+        const nextThickness = Math.min(24, Math.max(1, Number.isFinite(raw) ? raw : 7));
+        control.value = String(nextThickness);
+        editor.lineThickness = nextThickness;
+        if (elements.studioImageEditorLineThicknessValue) {
+            elements.studioImageEditorLineThicknessValue.textContent = String(nextThickness);
+        }
+        const index = editor.activeConnectorLabelIndex;
+        const connector = Number.isInteger(index)
+            ? normalizeDiagramConnector(editor.labels?.[index]?.connector)
+            : null;
+        if (Number.isInteger(index) && connector && editor.labels?.[index]) {
+            editor.labels[index].connector = { ...connector, thickness: nextThickness };
+            renderImageEditorCanvas();
+        }
+    }
+
+    let imageEditorZoomWindowEventsBound = false;
+
+    function bindImageEditorZoomAndThicknessEvents() {
+        const bindOnce = (element, key, eventName, handler, options) => {
+            if (!element || element.dataset[key] === 'true') return;
+            element.dataset[key] = 'true';
+            element.addEventListener(eventName, handler, options);
+        };
+
+        bindOnce(elements.studioImageEditorZoomOutBtn, 'zoomClickBound', 'click', () => changeImageEditorZoom(-IMAGE_EDITOR_ZOOM_STEP));
+        bindOnce(elements.studioImageEditorZoomInBtn, 'zoomClickBound', 'click', () => changeImageEditorZoom(IMAGE_EDITOR_ZOOM_STEP));
+        bindOnce(elements.studioImageEditorZoomResetBtn, 'zoomClickBound', 'click', () => resetImageEditorZoom({ animate: true }));
+
+        const thicknessInput = elements.studioImageEditorLineThicknessInput;
+        if (thicknessInput && thicknessInput.dataset.connectorThicknessBound !== 'true') {
+            thicknessInput.dataset.connectorThicknessBound = 'true';
+            const applyThickness = event => applyImageEditorConnectorThicknessFromControl(event.currentTarget);
+            thicknessInput.addEventListener('input', applyThickness);
+            thicknessInput.addEventListener('change', applyThickness);
+        }
+        bindOnce(elements.studioImageEditorLineThicknessToggle, 'thicknessToggleBound', 'click', event => {
+            event.stopPropagation();
+            toggleImageEditorSliderPopover('thickness');
+        });
+        bindOnce(elements.studioImageEditorCanvasWrap, 'zoomWheelBound', 'wheel', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor) || (!event.ctrlKey && !event.metaKey)) return;
+            event.preventDefault();
+            const factor = Math.exp(-event.deltaY * 0.01);
+            zoomImageEditorAtPoint((editor.zoomScale || IMAGE_EDITOR_MIN_ZOOM) * factor, event.clientX, event.clientY);
+        }, { passive: false });
+
+        if (!imageEditorZoomWindowEventsBound) {
+            imageEditorZoomWindowEventsBound = true;
+            window.addEventListener('resize', () => {
+                const editor = state.auth.imageEditor;
+                if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor)) return;
+                requestAnimationFrame(() => applyImageEditorZoomTransform());
+            });
+            const isTypingTarget = target => !!target?.closest?.('input, textarea, select, [contenteditable="true"]');
+            window.addEventListener('keydown', event => {
+                const editor = state.auth.imageEditor;
+                if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor) || isTypingTarget(event.target)) return;
+                const isUndoShortcut = !event.altKey
+                    && !event.shiftKey
+                    && (event.ctrlKey || event.metaKey)
+                    && String(event.key || '').toLowerCase() === 'z';
+                if (isUndoShortcut) {
+                    event.preventDefault();
+                    if (event.repeat) return;
+                    undoImageEditorAction().catch(error => {
+                        console.error(error);
+                        setImageEditorStatus('Could not undo that edit.');
+                    });
+                    return;
+                }
+                if (event.code === 'Space') {
+                    event.preventDefault();
+                    editor.spacePanHeld = true;
+                    elements.studioImageEditorCanvasWrap?.classList.add('is-space-pan-ready');
+                    return;
+                }
+                if (editor.zoomScale <= IMAGE_EDITOR_MIN_ZOOM + 0.01) return;
+                const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+                const direction = directions[event.key];
+                if (!direction) return;
+                event.preventDefault();
+                nudgeImageEditorPan(direction[0], direction[1]);
+            });
+            window.addEventListener('keyup', event => {
+                if (event.code !== 'Space') return;
+                const editor = state.auth.imageEditor;
+                if (editor) editor.spacePanHeld = false;
+                elements.studioImageEditorCanvasWrap?.classList.remove('is-space-pan-ready');
+            });
+            window.addEventListener('blur', () => {
+                const editor = state.auth.imageEditor;
+                if (editor) editor.spacePanHeld = false;
+                elements.studioImageEditorCanvasWrap?.classList.remove('is-space-pan-ready');
+            });
+        }
+    }
+
+
+    function bindImageEditorColorPresetEvents() {
+        const addButton = elements.studioImageEditorAddColorPresetBtn;
+        if (addButton && addButton.dataset.colorPresetAddBound !== 'true') {
+            addButton.dataset.colorPresetAddBound = 'true';
+            addButton.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                saveImageEditorColorPreset(elements.studioImageEditorArrowColorInput?.value);
+            });
+        }
+
+        const presetList = elements.studioImageEditorColorPresetList;
+        if (presetList && presetList.dataset.colorPresetListBound !== 'true') {
+            presetList.dataset.colorPresetListBound = 'true';
+            presetList.addEventListener('click', event => {
+                const deleteButton = event.target.closest?.('[data-image-editor-color-preset-delete]');
+                if (deleteButton && presetList.contains(deleteButton)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    deleteImageEditorColorPreset(deleteButton.dataset.imageEditorColorPresetDelete);
+                    return;
+                }
+                const presetButton = event.target.closest?.('[data-image-editor-color-preset]');
+                if (presetButton && presetList.contains(presetButton)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    applyImageEditorActiveColor(presetButton.dataset.imageEditorColorPreset, { announce: true });
+                }
+            });
+        }
+
+        const colorInput = elements.studioImageEditorArrowColorInput;
+        if (colorInput && colorInput.dataset.colorPresetInputBound !== 'true') {
+            colorInput.dataset.colorPresetInputBound = 'true';
+            colorInput.addEventListener('input', event => {
+                applyImageEditorActiveColor(event.currentTarget?.value || '#000000');
+            });
+        }
     }
 
     function getImageEditorCanvasPoint(event) {
@@ -8837,6 +9398,7 @@ The deletion becomes permanent when you save the diagram.`);
     function toggleImageEditorDrawTool(value) {
         const editor = state.auth.imageEditor;
         if (!editor) return;
+        setImageEditorPanMode(false);
         finishImageEditorActiveStroke(null, { silent: true });
         const nextTool = normalizeImageEditorDrawTool(value);
         const isSameActiveTool = isImageEditorLabelDrawActive()
@@ -9450,7 +10012,13 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function handleImageEditorGlobalPointerEnd(event) {
-        if (!state.auth.imageEditor?.activeDrawStroke) return;
+        const editor = state.auth.imageEditor;
+        if (editor?.isPanning && (editor.panPointerId === null || editor.panPointerId === event?.pointerId)) {
+            editor.isPanning = false;
+            editor.panPointerId = null;
+            applyImageEditorZoomTransform();
+        }
+        if (!editor?.activeDrawStroke) return;
         finishImageEditorActiveStroke(event?.type === 'lostpointercapture' ? null : event);
     }
 
@@ -9695,15 +10263,19 @@ The deletion becomes permanent when you save the diagram.`);
         renderImageEditorCanvas();
     }
 
-    function getImageEditorConnectorStylePreviewSvg(style = 'straight') {
+    function getImageEditorConnectorStylePreviewSvg(style = 'straight', endpoint = 'ball') {
         const safeStyle = normalizeDiagramConnectorStyle(style);
+        const safeEndpoint = normalizeDiagramConnectorEndpoint(endpoint);
         const pathByStyle = {
             straight: 'M4 11 H50',
             curved: 'M4 17 C18 17 32 5 50 5',
             elbow: 'M4 17 H27 V5 H50',
             angled: 'M4 17 H14 L50 5'
         };
-        return `<svg class="studio-image-editor-connector-style-preview" viewBox="0 0 54 22" aria-hidden="true" focusable="false"><path d="${pathByStyle[safeStyle]}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="4" cy="${safeStyle === 'straight' ? 11 : 17}" r="2.3" fill="currentColor"></circle></svg>`;
+        const endpointMarkup = safeEndpoint === 'ball'
+            ? `<circle cx="50" cy="${safeStyle === 'straight' ? 11 : 5}" r="3" fill="currentColor"></circle>`
+            : '';
+        return `<svg class="studio-image-editor-connector-style-preview" viewBox="0 0 54 22" aria-hidden="true" focusable="false"><path d="${pathByStyle[safeStyle]}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>${endpointMarkup}</svg>`;
     }
 
     function closeImageEditorConnectorStylePicker(refresh = true) {
@@ -9717,6 +10289,7 @@ The deletion becomes permanent when you save the diagram.`);
     function toggleImageEditorConnectorStylePicker(index) {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
+        setImageEditorPanMode(false);
         const isSameActive = editor.mode === 'connector' && editor.activeConnectorLabelIndex === index;
         if (isSameActive) {
             toggleImageEditorLabelConnector(index);
@@ -9724,7 +10297,9 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const isOpen = editor.connectorStylePickerLabelIndex === index;
         editor.connectorStylePickerLabelIndex = isOpen ? null : index;
-        editor.pendingConnectorStyle = getDiagramConnectorStyle(editor.labels[index].connector);
+        const existingConnector = normalizeDiagramConnector(editor.labels[index].connector);
+        editor.pendingConnectorStyle = getDiagramConnectorStyle(existingConnector);
+        editor.pendingConnectorEndpoint = existingConnector ? getDiagramConnectorEndpoint(existingConnector) : 'none';
         editor.showLabelPanel = true;
         editor.mode = 'labels';
         editor.activeDrawLabelIndex = null;
@@ -9739,29 +10314,37 @@ The deletion becomes permanent when you save the diagram.`);
         setImageEditorStatus(isOpen ? '' : 'Choose a connector style for this label.');
     }
 
-    function selectImageEditorConnectorStyle(index, style = 'straight') {
+    function selectImageEditorConnectorStyle(index, style = 'straight', endpoint = 'none') {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
         const nextStyle = normalizeDiagramConnectorStyle(style);
+        const nextEndpoint = normalizeDiagramConnectorEndpoint(endpoint);
         const existing = normalizeDiagramConnector(editor.labels[index].connector);
-        if (existing && getDiagramConnectorStyle(existing) !== nextStyle) {
+        if (existing && (getDiagramConnectorStyle(existing) !== nextStyle || getDiagramConnectorEndpoint(existing) !== nextEndpoint)) {
             pushImageEditorLabelHistory();
             const nextConnector = { ...existing };
             if (nextStyle === 'straight') delete nextConnector.style;
             else nextConnector.style = nextStyle;
+            if (nextEndpoint === 'none') nextConnector.endpoint = 'none';
+            else delete nextConnector.endpoint;
             editor.labels[index] = { ...editor.labels[index], connector: nextConnector };
         }
         editor.pendingConnectorStyle = nextStyle;
+        editor.pendingConnectorEndpoint = nextEndpoint;
         editor.connectorStylePickerLabelIndex = null;
-        toggleImageEditorLabelConnector(index, nextStyle);
+        toggleImageEditorLabelConnector(index, nextStyle, nextEndpoint);
     }
 
-    function toggleImageEditorLabelConnector(index, preferredStyle = null) {
+    function toggleImageEditorLabelConnector(index, preferredStyle = null, preferredEndpoint = null) {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
+        setImageEditorPanMode(false);
         const requestedStyle = preferredStyle === null || preferredStyle === undefined
             ? null
             : normalizeDiagramConnectorStyle(preferredStyle);
+        const requestedEndpoint = preferredEndpoint === null || preferredEndpoint === undefined
+            ? null
+            : normalizeDiagramConnectorEndpoint(preferredEndpoint);
         const isSameActive = editor.mode === 'connector' && editor.activeConnectorLabelIndex === index;
         editor.activeDrawLabelIndex = null;
         editor.activeDrawStroke = null;
@@ -9780,6 +10363,7 @@ The deletion becomes permanent when you save the diagram.`);
             editor.activeConnectorLabelIndex = index;
             const connector = normalizeDiagramConnector(editor.labels[index].connector);
             editor.pendingConnectorStyle = requestedStyle || getDiagramConnectorStyle(connector);
+            editor.pendingConnectorEndpoint = requestedEndpoint || (connector ? getDiagramConnectorEndpoint(connector) : 'none');
             if (connector) {
                 editor.arrowColor = connector.color;
                 editor.lineThickness = connector.thickness;
@@ -9941,6 +10525,27 @@ The deletion becomes permanent when you save the diagram.`);
         ctx.lineTo(anchor.x, anchor.y);
     }
 
+    function getImageEditorCanvasRenderScale(canvas = elements.studioImageEditorCanvas) {
+        if (!canvas) return 1;
+        const measuredWidth = Number(canvas.offsetWidth || canvas.clientWidth || 0);
+        if (measuredWidth > 0) return Math.max(0.0001, (canvas.width || 1) / measuredWidth);
+        const wrap = elements.studioImageEditorCanvasWrap;
+        const availableWidth = Math.max(1, (wrap?.clientWidth || canvas.width || 1) - 16);
+        const availableHeight = Math.max(1, (wrap?.clientHeight || canvas.height || 1) - 16);
+        const fitScale = Math.min(1, availableWidth / Math.max(1, canvas.width || 1), availableHeight / Math.max(1, canvas.height || 1));
+        return Math.max(0.0001, 1 / Math.max(0.0001, fitScale));
+    }
+
+    function getImageEditorConnectorEndpointRenderMetrics(screenThickness = 7, renderScale = 1) {
+        const thickness = Math.min(24, Math.max(1, Number(screenThickness) || 7));
+        const scale = Math.max(0.0001, Number(renderScale) || 1);
+        return {
+            dotRadius: Math.max(4, thickness * 0.9) * scale,
+            ringRadius: (5.75 + (thickness * 0.85)) * scale,
+            ringLineWidth: 2.25 * scale
+        };
+    }
+
     function drawImageEditorConnectors(ctx, labels = [], canvas = elements.studioImageEditorCanvas) {
         const editor = state.auth.imageEditor;
         const drafts = normalizeDiagramLabels(labels || []);
@@ -9952,7 +10557,9 @@ The deletion becomes permanent when you save the diagram.`);
             const labelPoint = getImageEditorLabelPixelPosition(item, canvas);
             if (!anchor || !labelPoint) return;
             const isActive = editor?.mode === 'connector' && editor?.activeConnectorLabelIndex === index;
-            const thickness = Math.min(24, Math.max(1, Number(connector.thickness) || 7));
+            const screenThickness = Math.min(24, Math.max(1, Number(connector.thickness) || 7));
+            const renderScale = getImageEditorCanvasRenderScale(canvas);
+            const thickness = screenThickness * renderScale;
             ctx.save();
             ctx.strokeStyle = connector.color || '#000000';
             ctx.fillStyle = connector.color || '#000000';
@@ -9963,16 +10570,18 @@ The deletion becomes permanent when you save the diagram.`);
             ctx.beginPath();
             traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint);
             ctx.stroke();
-            const dotRadius = Math.max(4, thickness * 0.9);
-            ctx.beginPath();
-            ctx.arc(anchor.x, anchor.y, dotRadius, 0, Math.PI * 2);
-            ctx.fill();
+            const endpointMetrics = getImageEditorConnectorEndpointRenderMetrics(screenThickness, renderScale);
+            if (getDiagramConnectorEndpoint(connector) === 'ball') {
+                ctx.beginPath();
+                ctx.arc(anchor.x, anchor.y, endpointMetrics.dotRadius, 0, Math.PI * 2);
+                ctx.fill();
+            }
             if (isActive) {
                 ctx.globalAlpha = 1;
                 ctx.strokeStyle = '#facc15';
-                ctx.lineWidth = Math.max(2, thickness * 0.45);
+                ctx.lineWidth = endpointMetrics.ringLineWidth;
                 ctx.beginPath();
-                ctx.arc(anchor.x, anchor.y, dotRadius + Math.max(6, thickness), 0, Math.PI * 2);
+                ctx.arc(anchor.x, anchor.y, endpointMetrics.ringRadius, 0, Math.PI * 2);
                 ctx.stroke();
             }
             ctx.restore();
@@ -10084,6 +10693,10 @@ The deletion becomes permanent when you save the diagram.`);
             ['elbow', 'Elbow'],
             ['angled', 'Angled']
         ];
+        const connectorEndpointRows = [
+            ['none', 'No ball'],
+            ['ball', 'Ball']
+        ];
         const isNumberedLabelTarget = isImageEditorNumberedLabelTarget(editor);
         elements.studioImageEditorLabelList.innerHTML = labels.map((item, index) => {
             const isDrawActive = editor.activeDrawLabelIndex === index;
@@ -10091,16 +10704,22 @@ The deletion becomes permanent when you save the diagram.`);
             const connector = normalizeDiagramConnector(item.connector);
             const hasConnector = !!connector;
             const currentConnectorStyle = getDiagramConnectorStyle(connector || { style: editor.pendingConnectorStyle || 'straight' });
+            const currentConnectorEndpoint = connector ? getDiagramConnectorEndpoint(connector) : normalizeDiagramConnectorEndpoint(editor.pendingConnectorEndpoint || 'none');
             const isConnectorActive = editor.mode === 'connector' && editor.activeConnectorLabelIndex === index;
             const isConnectorStylePickerOpen = editor.connectorStylePickerLabelIndex === index;
             const labelText = escapeHtml(displayMathChemTextForEditor(item.label));
             const stylePicker = isConnectorStylePickerOpen ? `
               <div class="studio-image-editor-connector-style-picker" data-image-editor-connector-style-picker role="menu" aria-label="Connector style for label ${labelText}">
-                ${connectorStyles.map(([style, title]) => `
-                  <button type="button" class="studio-image-editor-connector-style-option ${currentConnectorStyle === style ? 'is-selected' : ''}" data-image-editor-connector-style="${style}" role="menuitemradio" aria-checked="${currentConnectorStyle === style ? 'true' : 'false'}" title="${title} connector">
-                    ${getImageEditorConnectorStylePreviewSvg(style)}
-                    <span>${title}</span>
-                  </button>
+                ${connectorEndpointRows.map(([endpoint, rowLabel]) => `
+                  <div class="studio-image-editor-connector-style-row-label">${rowLabel}</div>
+                  ${connectorStyles.map(([style, title]) => {
+                    const isSelected = currentConnectorStyle === style && currentConnectorEndpoint === endpoint;
+                    return `
+                    <button type="button" class="studio-image-editor-connector-style-option ${isSelected ? 'is-selected' : ''}" data-image-editor-connector-style="${style}" data-image-editor-connector-endpoint="${endpoint}" role="menuitemradio" aria-checked="${isSelected ? 'true' : 'false'}" title="${title} connector — ${rowLabel.toLowerCase()}">
+                      ${getImageEditorConnectorStylePreviewSvg(style, endpoint)}
+                      <span>${title}</span>
+                    </button>`;
+                  }).join('')}
                 `).join('')}
               </div>
             ` : '';
@@ -10139,6 +10758,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function closeImageEditorSliderPopovers() {
         const popovers = [
+            [elements.studioImageEditorColorToggle, elements.studioImageEditorColorPopover],
             [elements.studioImageEditorLineThicknessToggle, elements.studioImageEditorLineThicknessPopover],
             [elements.studioImageEditorDrawSizeToggle, elements.studioImageEditorDrawSizePopover],
             [elements.studioImageEditorPaintTransparencyToggle, elements.studioImageEditorPaintTransparencyPopover]
@@ -10154,6 +10774,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function toggleImageEditorSliderPopover(kind) {
         const map = {
+            color: [elements.studioImageEditorColorToggle, elements.studioImageEditorColorPopover],
             thickness: [elements.studioImageEditorLineThicknessToggle, elements.studioImageEditorLineThicknessPopover],
             size: [elements.studioImageEditorDrawSizeToggle, elements.studioImageEditorDrawSizePopover],
             transparency: [elements.studioImageEditorPaintTransparencyToggle, elements.studioImageEditorPaintTransparencyPopover]
@@ -10174,6 +10795,7 @@ The deletion becomes permanent when you save the diagram.`);
         const drawActive = isImageEditorLabelDrawActive();
         const connectorActive = isImageEditorConnectorMode(editor);
         const activeTool = normalizeImageEditorDrawTool(editor?.drawTool || 'paintbrush');
+        updateImageEditorCurrentColorSwatch(editor?.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000');
         const activeLabelIndex = drawActive ? editor.activeDrawLabelIndex : editor?.activeConnectorLabelIndex;
         const activeLabel = (drawActive || connectorActive) ? normalizeDiagramLabels(editor?.labels || [])[activeLabelIndex] : null;
         const activeLabelText = htmlToDisplayText(activeLabel?.label || activeLabel?.name || '') || `Label ${Number(activeLabelIndex) + 1}`;
@@ -10322,6 +10944,8 @@ The deletion becomes permanent when you save the diagram.`);
         refreshImageEditorMetadataUi();
         refreshImageEditorLabelInfoUi();
         refreshImageEditorDrawUi();
+        syncImageEditorZoomUi();
+        requestAnimationFrame(() => applyImageEditorZoomTransform());
         updateImageEditorCanvasPointerState();
     }
 
@@ -10422,7 +11046,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (editor.history.length > 20) editor.history.shift();
     }
 
-    function paintImageIntoBaseCanvas(image) {
+    function paintImageIntoBaseCanvas(image, { preserveViewport = false } = {}) {
         const editor = state.auth.imageEditor;
         if (!editor) return;
         const ratio = Math.min(1, IMAGE_EDITOR_MAX_DIMENSION / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
@@ -10436,6 +11060,7 @@ The deletion becomes permanent when you save the diagram.`);
         editor.baseCanvas = baseCanvas;
         editor.activeDrawStroke = null;
         editor.draftShape = null;
+        if (!preserveViewport) resetImageEditorZoom();
         renderImageEditorCanvas();
     }
 
@@ -10551,6 +11176,7 @@ The deletion becomes permanent when you save the diagram.`);
         editor.baseCanvas = nextCanvas;
         editor.labels = normalizeImageEditorLabels(nextLabels);
         editor.draftShape = null;
+        resetImageEditorZoom();
         refreshImageEditorLabelUi();
         renderImageEditorCanvas();
         setImageEditorStatus('');
@@ -10565,7 +11191,7 @@ The deletion becomes permanent when you save the diagram.`);
         const previous = editor.history.pop();
         if (typeof previous === 'string') {
             const image = await loadImageElement(previous);
-            paintImageIntoBaseCanvas(image);
+            paintImageIntoBaseCanvas(image, { preserveViewport: true });
         } else if (previous?.labelsOnly) {
             editor.labels = normalizeImageEditorLabels(previous.labels || editor.labels || []);
             editor.drawStrokes = cloneImageEditorDrawStrokes(previous.drawStrokes || editor.drawStrokes || []);
@@ -10578,7 +11204,7 @@ The deletion becomes permanent when you save the diagram.`);
             renderImageEditorCanvas();
         } else if (previous?.baseDataUrl) {
             const image = await loadImageElement(previous.baseDataUrl);
-            paintImageIntoBaseCanvas(image);
+            paintImageIntoBaseCanvas(image, { preserveViewport: true });
             editor.labels = normalizeImageEditorLabels(previous.labels || editor.labels || []);
             editor.drawStrokes = cloneImageEditorDrawStrokes(previous.drawStrokes || []);
             if (editor.activeDrawLabelIndex !== null && editor.activeDrawLabelIndex >= editor.labels.length) editor.activeDrawLabelIndex = null;
@@ -10614,6 +11240,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor) return;
         finishImageEditorActiveStroke(null, { silent: true });
         const requestedMode = mode || 'crop';
+        setImageEditorPanMode(false);
         if (requestedMode === 'labels' && !editor.labelsEnabled) return;
         const canToggleOff = ['blur-rect', 'blur-oval', 'arrow', 'line'].includes(requestedMode);
         const toggledOff = canToggleOff && editor.mode === requestedMode;
@@ -10623,7 +11250,7 @@ The deletion becomes permanent when you save the diagram.`);
         editor.mode = nextMode;
         editor.connectorStylePickerLabelIndex = null;
         // Phase 22LY: once the Labels panel is opened, keep it visible while the user
-        // switches to crop, blur, arrow, line, or other tools. Only label interaction
+        // switches to crop, blur, connector, draw, or other tools. Only label interaction
         // mode changes; the panel itself remains available for reference and editing.
         if (editor.mode === 'labels' && editor.labelsEnabled) editor.showLabelPanel = true;
         if (editor.mode !== 'labels') {
@@ -10660,6 +11287,8 @@ The deletion becomes permanent when you save the diagram.`);
     function bindStudioImageEditorEvents() {
         const overlay = elements.studioImageEditorOverlay;
         if (!overlay) return;
+        bindImageEditorZoomAndThicknessEvents();
+        bindImageEditorColorPresetEvents();
         const bindMultiAngleEditorEvents = () => {
             if (overlay.dataset.imageEditorMultiAngleEventsBound === 'true') return;
             overlay.dataset.imageEditorMultiAngleEventsBound = 'true';
@@ -10717,49 +11346,7 @@ The deletion becomes permanent when you save the diagram.`);
                 setImageEditorMode(normalizeSheetText(button.dataset.imageEditorTool) || 'crop');
             });
         });
-        elements.studioImageEditorArrowColorInput?.addEventListener('input', () => {
-            const editor = state.auth.imageEditor;
-            if (!editor) return;
-            editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput.value, '#000000');
-            let shouldRender = false;
-            if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
-                editor.draftShape.color = editor.arrowColor;
-                shouldRender = true;
-            }
-            if (isImageEditorConnectorMode(editor)) {
-                const index = editor.activeConnectorLabelIndex;
-                const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
-                if (connector && editor.labels?.[index]) {
-                    editor.labels[index].connector = { ...connector, color: editor.arrowColor };
-                    shouldRender = true;
-                }
-            }
-            if (shouldRender) renderImageEditorCanvas();
-        });
-        elements.studioImageEditorLineThicknessInput?.addEventListener('input', () => {
-            const editor = state.auth.imageEditor;
-            if (!editor) return;
-            editor.lineThickness = getImageEditorLineThickness();
-            if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness);
-            let shouldRender = false;
-            if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
-                editor.draftShape.thickness = editor.lineThickness;
-                shouldRender = true;
-            }
-            if (isImageEditorConnectorMode(editor)) {
-                const index = editor.activeConnectorLabelIndex;
-                const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
-                if (connector && editor.labels?.[index]) {
-                    editor.labels[index].connector = { ...connector, thickness: editor.lineThickness };
-                    shouldRender = true;
-                }
-            }
-            if (shouldRender) renderImageEditorCanvas();
-        });
-        elements.studioImageEditorLineThicknessToggle?.addEventListener('click', event => {
-            event.stopPropagation();
-            toggleImageEditorSliderPopover('thickness');
-        });
+
         elements.studioImageEditorDrawSizeToggle?.addEventListener('click', event => {
             event.stopPropagation();
             toggleImageEditorSliderPopover('size');
@@ -10851,7 +11438,7 @@ The deletion becomes permanent when you save the diagram.`);
             const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
             const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
             if (connectorStyleBtn) {
-                selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight');
+                selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight', connectorStyleBtn.dataset.imageEditorConnectorEndpoint || 'none');
                 return;
             }
             if (connectorBtn) {
@@ -10863,6 +11450,7 @@ The deletion becomes permanent when you save the diagram.`);
                 return;
             }
             if (drawBtn) {
+                setImageEditorPanMode(false);
                 editor.mode = 'labels';
                 editor.activeConnectorLabelIndex = null;
                 editor.connectorStylePickerLabelIndex = null;
@@ -10939,6 +11527,12 @@ The deletion becomes permanent when you save the diagram.`);
         editor.sourceLabel = info.sourceLabel || info.fallbackLabel;
         editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput?.value || '#000000', '#000000');
         editor.lineThickness = getImageEditorLineThickness();
+        editor.zoomScale = IMAGE_EDITOR_MIN_ZOOM;
+        editor.zoomX = 0;
+        editor.zoomY = 0;
+        editor.panMode = false;
+        editor.isPanning = false;
+        editor.panPointerId = null;
         editor.drawTool = 'paintbrush';
         editor.drawSize = getImageEditorDrawSize();
         editor.paintTransparency = getImageEditorPaintTransparency();
@@ -10948,9 +11542,10 @@ The deletion becomes permanent when you save the diagram.`);
         editor.metadataEnabled = isImageEditorStandaloneDiagramTarget(editor) || isImageEditorFlashcardLabelTarget(editor);
         editor.metadataPanelOpen = false;
         editor.metadata = normalizeDiagramMetadata(info.metadata || {});
-        // Existing flashcard brush/highlighter/eraser strokes reopen as editable overlay strokes.
+        // Existing paintbrush, eraser, and legacy highlighter strokes reopen as editable overlay strokes.
         // The eye visibility map below controls what is shown in this editor session.
         if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = editor.arrowColor;
+        renderImageEditorColorPresets();
         if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(editor.lineThickness || 7);
         if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness || 7);
         if (elements.studioImageEditorDrawSizeInput) elements.studioImageEditorDrawSizeInput.value = String(editor.drawSize || 14);
@@ -11244,7 +11839,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function handleImageEditorPointerLeave(event) {
         const editor = state.auth.imageEditor;
-        if (!editor?.open || !['labels', 'connector'].includes(editor.mode) || editor.isDrawing) return;
+        if (!editor?.open || editor.isPanning || !['labels', 'connector'].includes(editor.mode) || editor.isDrawing) return;
         editor.hoveredLabelIndex = null;
         updateImageEditorCanvasPointerState();
         renderImageEditorCanvas();
@@ -11253,6 +11848,22 @@ The deletion becomes permanent when you save the diagram.`);
     function handleImageEditorPointerDown(event) {
         const editor = state.auth.imageEditor;
         if (!editor?.open || !editor.baseCanvas) return;
+        const wantsSpacePan = isImageEditorStandaloneDiagramTarget(editor)
+            && editor.zoomScale > IMAGE_EDITOR_MIN_ZOOM + 0.01
+            && editor.spacePanHeld
+            && (event.button == null || event.button === 0);
+        if (wantsSpacePan) {
+            event.preventDefault();
+            editor.isPanning = true;
+            editor.panPointerId = event.pointerId;
+            editor.panStartClientX = event.clientX;
+            editor.panStartClientY = event.clientY;
+            editor.panStartX = editor.zoomX;
+            editor.panStartY = editor.zoomY;
+            syncImageEditorZoomUi();
+            captureImageEditorPointer(event);
+            return;
+        }
         const point = getImageEditorCanvasPoint(event);
         if (!point) return;
         event.preventDefault();
@@ -11291,7 +11902,8 @@ The deletion becomes permanent when you save the diagram.`);
                     anchorY: Math.min(100, Math.max(0, (point.y / canvas.height) * 100)),
                     color: existing?.color || normalizeEditorHexColor(editor.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000', '#000000'),
                     thickness: existing?.thickness || Math.min(24, Math.max(1, Number(editor.lineThickness) || getImageEditorLineThickness())),
-                    ...(connectorStyle !== 'straight' ? { style: connectorStyle } : {})
+                    ...(connectorStyle !== 'straight' ? { style: connectorStyle } : {}),
+                    ...(normalizeDiagramConnectorEndpoint(editor.pendingConnectorEndpoint || 'none') === 'none' ? { endpoint: 'none' } : {})
                 };
             }
             updateImageEditorCanvasPointerState();
@@ -11333,6 +11945,13 @@ The deletion becomes permanent when you save the diagram.`);
 
     function handleImageEditorPointerMove(event) {
         const editor = state.auth.imageEditor;
+        if (editor?.isPanning && editor.panPointerId === event.pointerId) {
+            event.preventDefault();
+            editor.zoomX = editor.panStartX + (event.clientX - editor.panStartClientX);
+            editor.zoomY = editor.panStartY + (event.clientY - editor.panStartClientY);
+            applyImageEditorZoomTransform();
+            return;
+        }
         const point = getImageEditorCanvasPoint(event);
         if (!point) return;
         if (editor?.mode === 'connector' && editor.labelsEnabled && isImageEditorConnectorMode(editor)) {
@@ -11430,6 +12049,14 @@ The deletion becomes permanent when you save the diagram.`);
 
     function handleImageEditorPointerUp(event) {
         const editor = state.auth.imageEditor;
+        if (editor?.isPanning && editor.panPointerId === event.pointerId) {
+            event.preventDefault();
+            editor.isPanning = false;
+            editor.panPointerId = null;
+            releaseImageEditorPointer(event);
+            applyImageEditorZoomTransform();
+            return;
+        }
         if (!editor?.isDrawing) return;
         event.preventDefault();
         editor.isDrawing = false;
@@ -17491,7 +18118,7 @@ The deletion becomes permanent when you save the diagram.`);
             setFlashcardTermEditorHtml(parsedTermSide.html, detailRow.term_plain);
             setFlashcardDefinitionEditorHtml(parsedDefinitionSide.html, detailRow.definition_plain);
             // Phase 22KW regression fix: when an existing flashcard opens in Edit Image,
-            // restore editable paintbrush/highlighter/eraser stroke metadata as well as labels.
+            // restore editable paintbrush/eraser and legacy highlighter stroke metadata as well as labels.
             // Without this, a later Save Changes can overwrite saved strokes with an empty array.
             setStudioFlashcardTermImageState(
                 normalizeSheetText(detailRow.term_image_url),
@@ -19747,12 +20374,20 @@ if (elements.openQuizStudioBtn) {
         state.auth.user = session?.user || null;
 
         if (state.auth.user?.id) {
+            syncImageEditorColorPresetsFromAuth();
             await loadAuthProfile(state.auth.user.id);
             await syncStudioSavedImagesFromSupabase({ force: !sameSignedInUser, reason: 'auth-session' });
             await refreshStudioManagementData({ force: !sameSignedInUser });
         } else {
             invalidateSupabaseManagementCache();
             state.auth.profile = null;
+            state.auth.diagramColorPresets = [];
+            state.auth.diagramColorLastColor = '#000000';
+            state.auth.diagramColorPresetUpdatedAt = 0;
+            if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = '#000000';
+            if (state.auth.diagramColorPresetSyncTimerId) window.clearTimeout(state.auth.diagramColorPresetSyncTimerId);
+            state.auth.diagramColorPresetSyncTimerId = null;
+            renderImageEditorColorPresets();
             state.auth.supabaseFolders = [];
             state.auth.managedQuizzes = [];
             state.auth.quizChallengeAchievements = new Map();
@@ -33274,38 +33909,6 @@ elements.studioImageEditorToolButtons?.forEach(button => {
     button.addEventListener('click', () => setImageEditorMode(button.dataset.imageEditorTool || 'crop'));
 });
 
-elements.studioImageEditorArrowColorInput?.addEventListener('input', () => {
-    const editor = state.auth.imageEditor;
-    if (!editor) return;
-    editor.arrowColor = normalizeEditorHexColor(elements.studioImageEditorArrowColorInput.value, '#000000');
-    let shouldRender = false;
-    if (editor.draftShape?.type === 'arrow' || editor.draftShape?.type === 'line') {
-        editor.draftShape.color = editor.arrowColor;
-        shouldRender = true;
-    }
-    if (isImageEditorConnectorMode(editor)) {
-        const index = editor.activeConnectorLabelIndex;
-        const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
-        if (connector && editor.labels?.[index]) {
-            editor.labels[index].connector = { ...connector, color: editor.arrowColor };
-            shouldRender = true;
-        }
-    }
-    if (shouldRender) renderImageEditorCanvas();
-});
-
-elements.studioImageEditorLineThicknessInput?.addEventListener('input', () => {
-    const editor = state.auth.imageEditor;
-    if (!editor || !isImageEditorConnectorMode(editor)) return;
-    editor.lineThickness = getImageEditorLineThickness();
-    if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness);
-    const index = editor.activeConnectorLabelIndex;
-    const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
-    if (!connector || !editor.labels?.[index]) return;
-    editor.labels[index].connector = { ...connector, thickness: editor.lineThickness };
-    renderImageEditorCanvas();
-});
-
 elements.studioImageEditorDrawToolButtons?.forEach(button => {
     button.addEventListener('click', () => {
         if (button.disabled) return;
@@ -33371,7 +33974,7 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
     const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
     const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
     if (connectorStyleBtn) {
-        selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight');
+        selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight', connectorStyleBtn.dataset.imageEditorConnectorEndpoint || 'none');
         return;
     }
     if (connectorBtn) {

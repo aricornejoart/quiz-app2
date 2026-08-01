@@ -4469,7 +4469,7 @@ body.fullscreen-mode.active-question-classify {
 
 .studio-progress-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: auto repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -8409,14 +8409,14 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
 
 .studio-image-editor-toolbar .auth-action-btn,
 .studio-image-editor-actions .auth-action-btn,
-.studio-image-editor-rgb-control {
+.studio-image-editor-color-toggle {
   min-height: 34px;
   padding: 6px 10px;
   font-size: 0.82rem;
   border-radius: 11px;
 }
 
-.studio-image-editor-rgb-control {
+.studio-image-editor-color-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -8426,7 +8426,7 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   font-weight: 800;
 }
 
-.studio-image-editor-rgb-control input[type="color"] {
+.studio-image-editor-color-picker-row input[type="color"] {
   width: 30px;
   height: 24px;
   padding: 0;
@@ -9711,7 +9711,7 @@ body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.
 }
 
 /* Phase 22JX: Draw UI placement only. Keep per-label Draw activation, but place
-   the actual Draw/Highlighter/Eraser tools in the main image-editor toolbar next
+   the Paintbrush/Eraser tools in the main image-editor toolbar next
    to RGB so the label panel stays focused on Label Name | Draw | Delete. */
 .studio-image-editor-draw-toolbar {
   display: inline-flex;
@@ -9932,7 +9932,7 @@ body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.
 
 .studio-image-editor-header .studio-image-editor-toolbar .auth-action-btn,
 .studio-image-editor-popover-toggle,
-.studio-image-editor-rgb-control {
+.studio-image-editor-color-toggle {
   min-height: 32px;
   padding: 5px 8px;
   font-size: 0.78rem;
@@ -9947,11 +9947,11 @@ body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.
   padding: 5px 7px;
 }
 
-.studio-image-editor-rgb-control {
+.studio-image-editor-color-toggle {
   gap: 5px;
 }
 
-.studio-image-editor-rgb-control input[type="color"] {
+.studio-image-editor-color-picker-row input[type="color"] {
   width: 28px;
   height: 22px;
 }
@@ -10003,7 +10003,7 @@ body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.
 
   .studio-image-editor-header .studio-image-editor-toolbar .auth-action-btn,
   .studio-image-editor-popover-toggle,
-  .studio-image-editor-rgb-control {
+  .studio-image-editor-color-toggle {
     min-height: 30px;
     padding: 4px 7px;
     font-size: 0.74rem;
@@ -10021,7 +10021,7 @@ body.ipad-landscape-flashcard-layout .flashcard-card.is-flipped .flashcard-face.
     font-size: 0.7rem;
   }
 
-  .studio-image-editor-rgb-control input[type="color"] {
+  .studio-image-editor-color-picker-row input[type="color"] {
     width: 26px;
     height: 20px;
   }
@@ -11695,6 +11695,17 @@ body.review-mode-image-open {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
 }
 
+
+.studio-image-editor-connector-style-row-label {
+  align-self: center;
+  min-width: 43px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+}
+
 .studio-image-editor-connector-style-option {
   min-width: 0;
   min-height: 48px;
@@ -12999,5 +13010,219 @@ body.review-mode-image-open {
     min-height: 44px;
     padding: 10px 11px;
     font-size: 0.82rem;
+  }
+}
+
+
+/* Phase 22NK1 — Diagram Creator zoom, Shift-drag navigation, and connector thickness binding. */
+.studio-image-editor-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.studio-image-editor-zoom-controls.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-zoom-controls .auth-action-btn {
+  min-width: 32px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.studio-image-editor-zoom-reset-btn {
+  min-width: 56px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-image-editor-canvas-wrap {
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+#studioImageEditorCanvas,
+.studio-image-editor-canvas {
+  transform-origin: center center;
+  will-change: transform;
+}
+
+#studioImageEditorCanvas.is-zoom-resetting,
+.studio-image-editor-canvas.is-zoom-resetting {
+  transition: transform 160ms ease;
+}
+
+.studio-image-editor-canvas-wrap.is-zoomed {
+  cursor: default;
+}
+
+.studio-image-editor-canvas-wrap.is-panning .studio-image-editor-canvas {
+  cursor: grabbing !important;
+}
+
+@media (max-width: 700px) {
+  .studio-image-editor-zoom-controls {
+    gap: 2px;
+  }
+
+  .studio-image-editor-zoom-controls .auth-action-btn {
+    min-width: 30px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .studio-image-editor-zoom-reset-btn {
+    min-width: 52px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #studioImageEditorCanvas.is-zoom-resetting,
+  .studio-image-editor-canvas.is-zoom-resetting {
+    transition: none;
+  }
+}
+
+/* Phase 22NK2 — keyboard panning and two-row connector endpoint styles. */
+.studio-image-editor-canvas-wrap.is-space-pan-ready.is-zoomed {
+  cursor: grab;
+}
+
+.studio-image-editor-canvas-wrap.is-panning {
+  cursor: grabbing;
+}
+
+
+/* Phase 22NL: account-synchronized Diagram Creator color presets. */
+.studio-image-editor-color-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-image-editor-current-color-swatch {
+  width: 22px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 6px;
+  background: #000000;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+}
+
+.studio-image-editor-color-popover {
+  min-width: min(250px, calc(100vw - 20px));
+}
+
+.studio-image-editor-color-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.studio-image-editor-color-picker-row input[type="color"] {
+  width: 68px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.studio-image-editor-color-presets-heading {
+  margin-top: 10px;
+  margin-bottom: 7px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.studio-image-editor-color-preset-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  max-width: 230px;
+}
+
+.studio-image-editor-color-preset-item {
+  position: relative;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+}
+
+.studio-image-editor-color-preset-swatch {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.52);
+  border-radius: 50%;
+  background: var(--preset-color, #000000);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.studio-image-editor-color-preset-swatch.is-active {
+  outline: 3px solid rgba(250, 204, 21, 0.9);
+  outline-offset: 2px;
+}
+
+.studio-image-editor-color-preset-delete {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 50%;
+  color: #ffffff;
+  background: rgba(24, 26, 31, 0.96);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 15px;
+  cursor: pointer;
+}
+
+.studio-image-editor-color-preset-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 9px;
+  padding: 0;
+  border: 2px dashed rgba(255, 255, 255, 0.48);
+  border-radius: 50%;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1.25rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.studio-image-editor-color-preset-add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.studio-image-editor-color-preset-empty {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+@media (max-width: 700px) {
+  .studio-image-editor-current-color-swatch {
+    width: 20px;
+    height: 16px;
+  }
+
+  .studio-image-editor-color-popover {
+    min-width: min(230px, calc(100vw - 16px));
   }
 }

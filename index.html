@@ -37,7 +37,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nj1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nm" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -50,7 +50,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=22nj1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=22nm-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -761,7 +761,7 @@ MODIFICATION RULES FOR THIS APP
                     <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
                       <div class="multi-angle-creator-heading">
                         <div>
-                          <div class="multi-angle-creator-eyebrow">Phase 22NJ1</div>
+                          <div class="multi-angle-creator-eyebrow">Phase 22NK1</div>
                           <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
                           <div class="multi-angle-creator-note">Every angle uses one shared canvas and background color. Finish framing before adding labels for the most consistent rotation.</div>
                         </div>
@@ -1957,25 +1957,35 @@ MODIFICATION RULES FOR THIS APP
         <div class="studio-image-editor-toolbar" aria-label="Image editing tools">
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool active" data-image-editor-tool="crop">Crop</button>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="blur-rect">Blur Box</button>
-          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="arrow">Arrow</button>
-          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="line">Line</button>
-          <label class="studio-image-editor-rgb-control" title="Arrow, line, connector, highlighter, and draw RGB color"><span>RGB</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Arrow, line, connector, highlighter, and draw RGB color"></label>
+          <div id="studioImageEditorZoomControls" class="studio-image-editor-zoom-controls hidden" aria-label="Diagram zoom controls">
+            <button id="studioImageEditorZoomOutBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-btn" aria-label="Zoom out">−</button>
+            <button id="studioImageEditorZoomResetBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-reset-btn" aria-label="Reset diagram zoom" title="Reset zoom"><span id="studioImageEditorZoomValue">100%</span></button>
+            <button id="studioImageEditorZoomInBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-btn" aria-label="Zoom in">+</button>
+          </div>
+          <div class="studio-image-editor-slider-popover studio-image-editor-color-control" data-image-editor-popover="color">
+            <button type="button" id="studioImageEditorColorToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle studio-image-editor-color-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorColorPopover">RGB <span id="studioImageEditorCurrentColorSwatch" class="studio-image-editor-current-color-swatch" aria-hidden="true"></span></button>
+            <div id="studioImageEditorColorPopover" class="studio-image-editor-popover-panel studio-image-editor-color-popover hidden" role="dialog" aria-label="Connector and drawing colors">
+              <label class="studio-image-editor-color-picker-row" title="Connector and drawing RGB color"><span>Color</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Connector and drawing RGB color"></label>
+              <div class="studio-image-editor-color-presets-heading">Saved colors</div>
+              <div id="studioImageEditorColorPresetList" class="studio-image-editor-color-preset-list" aria-label="Saved color presets"></div>
+              <button type="button" id="studioImageEditorAddColorPresetBtn" class="studio-image-editor-color-preset-add" aria-label="Save current color preset" title="Save current color">+</button>
+            </div>
+          </div>
           <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness">
             <button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button>
-            <div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Arrow, line, and connector thickness">
-              <label class="studio-image-editor-range-control" title="Arrow, line, and connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Arrow, line, and connector thickness"></label>
+            <div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness">
+              <label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Connector thickness"></label>
             </div>
           </div>
           <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
             <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
-            <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="highlighter" id="studioImageEditorHighlighterBtn" title="Highlighter tool" aria-label="Highlighter tool">🖍️</button>
             <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
           </div>
           <span id="studioImageEditorDrawActiveLabelValue" class="studio-image-editor-draw-active-label" aria-live="polite">Choose label Draw</span>
           <div class="studio-image-editor-slider-popover" data-image-editor-popover="size">
             <button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button>
-            <div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Draw, highlighter, and eraser size">
-              <label class="studio-image-editor-range-control" title="Draw, highlighter, and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Draw, highlighter, and eraser size"></label>
+            <div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size">
+              <label class="studio-image-editor-range-control" title="Paintbrush and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Paintbrush and eraser size"></label>
             </div>
           </div>
           <div class="studio-image-editor-slider-popover" data-image-editor-popover="transparency">
@@ -1986,7 +1996,7 @@ MODIFICATION RULES FOR THIS APP
           </div>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button>
           <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
-          <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
+          <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Undo last diagram edit (Ctrl+Z / Command+Z)" aria-keyshortcuts="Control+Z Meta+Z">Undo</button>
           <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>
         </div>
         <button id="studioImageEditorCloseBtn" class="studio-image-editor-close" type="button" aria-label="Close image editor">✕</button>
@@ -1994,7 +2004,7 @@ MODIFICATION RULES FOR THIS APP
 
       <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
       <div class="studio-image-editor-workspace">
-        <div class="studio-image-editor-canvas-wrap">
+        <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
           <canvas id="studioImageEditorCanvas" class="studio-image-editor-canvas"></canvas>
         </div>
         <div id="studioImageEditorLabelPanel" class="studio-image-editor-label-panel hidden" aria-label="Image labels">
@@ -2067,6 +2077,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22nj1"></script>
+  <script src="script.js?v=22nm"></script>
 </body>
 </html>
