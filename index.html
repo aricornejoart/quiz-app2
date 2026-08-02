@@ -37,7 +37,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nm" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nn" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -50,7 +50,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=22nm-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=22nn-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -761,7 +761,7 @@ MODIFICATION RULES FOR THIS APP
                     <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
                       <div class="multi-angle-creator-heading">
                         <div>
-                          <div class="multi-angle-creator-eyebrow">Phase 22NK1</div>
+                          <div class="multi-angle-creator-eyebrow">Phase 22NN</div>
                           <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
                           <div class="multi-angle-creator-note">Every angle uses one shared canvas and background color. Finish framing before adding labels for the most consistent rotation.</div>
                         </div>
@@ -2077,6 +2077,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22nm"></script>
+  <script src="script.js?v=22nn"></script>
 </body>
 </html>

@@ -13226,3 +13226,136 @@ body.review-mode-image-open {
     min-width: min(230px, calc(100vw - 16px));
   }
 }
+
+/* Phase 22NN — Multi-Angle Canvas Setup Study Bunny theme integration. */
+.multi-angle-creator-panel {
+  border-color: var(--color-border-soft);
+  background: var(--color-bg-surface-alt);
+  box-shadow: 0 16px 34px rgba(12, 8, 32, 0.28);
+  color: var(--color-text-main);
+}
+
+.multi-angle-creator-eyebrow {
+  color: var(--color-border-soft-2);
+}
+
+.multi-angle-creator-title,
+.multi-angle-indicator,
+.multi-angle-control-title,
+.multi-angle-list-heading,
+.multi-angle-list-name {
+  color: var(--color-text-main);
+}
+
+.multi-angle-creator-note,
+.multi-angle-preview-help,
+.multi-angle-anchor-help {
+  color: var(--color-text-muted);
+}
+
+.multi-angle-canvas-wrap {
+  border-color: var(--color-border-soft);
+  background: #090909;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.multi-angle-control-group,
+.multi-angle-list-drawer {
+  border-color: var(--color-border-soft);
+  background: var(--color-bg-option);
+}
+
+.multi-angle-control-group label {
+  color: var(--color-text-muted);
+}
+
+.multi-angle-control-group label strong {
+  color: var(--color-text-main);
+}
+
+.multi-angle-control-group input[type="text"],
+.multi-angle-control-group input[type="number"] {
+  border-color: var(--color-border-soft);
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+  caret-color: var(--color-text-main);
+}
+
+.multi-angle-control-group input[type="text"]::placeholder,
+.multi-angle-control-group input[type="number"]::placeholder {
+  color: rgba(207, 207, 255, 0.62);
+}
+
+.multi-angle-control-group input[type="text"]:focus,
+.multi-angle-control-group input[type="number"]:focus {
+  border-color: var(--color-border-strong);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.2);
+}
+
+.multi-angle-control-group input[type="range"],
+.multi-angle-check-row input[type="checkbox"] {
+  accent-color: var(--color-border-strong);
+}
+
+.multi-angle-creator-panel .multi-angle-background-control {
+  border-color: var(--color-border-soft);
+  background: var(--color-bg-control);
+  color: var(--color-text-main);
+}
+
+.multi-angle-creator-panel .multi-angle-background-control input[type="color"] {
+  border: 1px solid var(--color-border-soft-2);
+  background: transparent;
+}
+
+.multi-angle-background-readout {
+  border: 1px solid var(--color-border-soft);
+  background: rgba(9, 9, 9, 0.82);
+  color: var(--color-text-main);
+}
+
+.multi-angle-list-row {
+  border-color: var(--color-border-soft);
+  background: var(--color-bg-control);
+}
+
+.multi-angle-list-row:hover {
+  border-color: var(--color-border-soft-2);
+  background: var(--color-bg-control-hover);
+}
+
+.multi-angle-list-row.is-active {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-control-hover);
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.2);
+}
+
+.multi-angle-creator-panel .auth-secondary-btn {
+  border-color: var(--color-border-soft-2);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--color-text-main);
+}
+
+.multi-angle-creator-panel .auth-secondary-btn:hover:not(:disabled),
+.multi-angle-creator-panel .auth-secondary-btn:focus-visible:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-control-hover);
+}
+
+.multi-angle-creator-panel .multi-angle-delete-angle-btn,
+.multi-angle-creator-panel .multi-angle-list-delete-btn {
+  border-color: rgba(248, 113, 113, 0.58);
+  background: rgba(127, 29, 29, 0.18);
+  color: #fecaca;
+}
+
+.multi-angle-creator-panel .multi-angle-delete-angle-btn:hover:not(:disabled),
+.multi-angle-creator-panel .multi-angle-delete-angle-btn:focus-visible:not(:disabled),
+.multi-angle-creator-panel .multi-angle-list-delete-btn:hover:not(:disabled),
+.multi-angle-creator-panel .multi-angle-list-delete-btn:focus-visible:not(:disabled) {
+  border-color: rgba(248, 113, 113, 0.88);
+  background: rgba(185, 28, 28, 0.34);
+  color: #ffffff;
+}
+
