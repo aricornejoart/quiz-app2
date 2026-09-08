@@ -6695,7 +6695,7 @@ The deletion becomes permanent when you save the diagram.`);
     // Phase 22MX: image-specific iPad pinch zoom and pan for the complete Review Mode stage.
     const REVIEW_MODE_MIN_ZOOM = 1;
     const REVIEW_MODE_MAX_ZOOM = 5;
-    const REVIEW_MODE_FOCUS_MAX_ZOOM = 3;
+    const REVIEW_MODE_FOCUS_MAX_ZOOM = 2;
     const REVIEW_MODE_FOCUS_PADDING_RATIO = 0.22;
     const REVIEW_MODE_FOCUS_MIN_PADDING = 36;
     let reviewModeZoomResetTimer = null;
