@@ -377,12 +377,16 @@ MODIFICATION RULES FOR THIS APP
                 activeAngleIndex: 0,
                 overlayOpen: false,
                 optionsOpen: false,
-                showAngleControls: false,
+                showAngleControls: true,
                 showAllNames: false,
                 showDrawData: true,
                 showConnectors: true,
+                showConnectorContrast: true,
+                focusMode: false,
+                focusLabelIndex: -1,
+                focusRestoreZoom: null,
                 includeLabelDescriptions: true,
-                labelScale: 1,
+                labelScale: 1.5,
                 shortcutDockVisible: true,
                 shortcutDockEdge: 'right',
                 shortcutDockOffset: 0.5,
@@ -616,10 +620,13 @@ MODIFICATION RULES FOR THIS APP
         reviewModeShowAngleControlsToggle: document.getElementById('reviewModeShowAngleControlsToggle'),
         reviewModeShowShortcutDockToggle: document.getElementById('reviewModeShowShortcutDockToggle'),
         reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
+        reviewModeLabelNumberToggle: document.getElementById('reviewModeLabelNumberToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
         reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
         reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
+        reviewModeShowConnectorContrastToggle: document.getElementById('reviewModeShowConnectorContrastToggle'),
+        reviewModeFocusToggle: document.getElementById('reviewModeFocusToggle'),
         reviewModeMiniQuizScope: document.getElementById('reviewModeMiniQuizScope'),
         reviewModeMiniScopeCurrent: document.getElementById('reviewModeMiniScopeCurrent'),
         reviewModeMiniScopeAll: document.getElementById('reviewModeMiniScopeAll'),
@@ -655,6 +662,8 @@ MODIFICATION RULES FOR THIS APP
         reviewModeShortcutColorBtn: document.getElementById('reviewModeShortcutColorBtn'),
         reviewModeShortcutLinesBtn: document.getElementById('reviewModeShortcutLinesBtn'),
         reviewModeShortcutAllBtn: document.getElementById('reviewModeShortcutAllBtn'),
+        reviewModeShortcutNextBtn: document.getElementById('reviewModeShortcutNextBtn'),
+        reviewModeShortcutFocusBtn: document.getElementById('reviewModeShortcutFocusBtn'),
         createClassName: document.getElementById('createClassName'),
         createClassBtn: document.getElementById('createClassBtn'),
         createFolderClassSelect: document.getElementById('createFolderClassSelect'),
@@ -1619,37 +1628,9 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
-    function normalizeRichBaseStylesForTarget(baseStyles = {}, targetStyles = {}) {
-        const nextStyles = { ...baseStyles };
-        if (nextStyles.fontSize && isLegacyRichDefaultFontSize(nextStyles.fontSize)) {
-            delete nextStyles.fontSize;
-        }
-        return nextStyles;
-    }
-
-    function normalizeLegacyRichDefaultFontSize(node) {
-        if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-        const nodeFontSize = node.style?.fontSize || '';
-        if (isLegacyRichDefaultFontSize(nodeFontSize) && !isManualRichFontSizeElement(node)) {
-            node.style.removeProperty('font-size');
-            node.removeAttribute('data-sb-font-size');
-            cleanupEmptyRichStyleAttribute(node);
-        } else if (nodeFontSize && isRichDefaultEditorFontSize(nodeFontSize) && !isManualRichFontSizeElement(node)) {
-            node.style.removeProperty('font-size');
-            cleanupEmptyRichStyleAttribute(node);
-        } else if (nodeFontSize) {
-            const normalizedFontSize = normalizeRichStyleValue('fontSize', nodeFontSize);
-            if (normalizedFontSize && node.style.fontSize !== normalizedFontSize) {
-                node.style.fontSize = normalizedFontSize;
-                node.setAttribute('data-sb-font-size', 'manual');
-            }
-        }
-        Array.from(node.childNodes).forEach(normalizeLegacyRichDefaultFontSize);
-    }
-
-    function wrapRichTextNode(node, baseStyles = {}, targetStyles = {}) {
+    function wrapRichTextNode(node, targetStyles = {}) {
         const span = document.createElement('span');
-        applyRichStyleMapToElement(span, { ...baseStyles, ...targetStyles }, true);
+        applyRichStyleMapToElement(span, targetStyles, true);
         span.appendChild(node);
         return span;
     }
@@ -1666,23 +1647,67 @@ MODIFICATION RULES FOR THIS APP
         return node;
     }
 
-    function buildStrictRichStyledFragment(fragment, baseStyles = {}, targetStyles = {}) {
+    function buildPropertyOnlyRichStyledFragment(fragment, targetStyles = {}) {
         const nextFragment = document.createDocumentFragment();
-        const safeBaseStyles = normalizeRichBaseStylesForTarget(baseStyles, targetStyles);
         Array.from(fragment.childNodes).forEach(node => {
             if (node.nodeType === Node.TEXT_NODE) {
-                nextFragment.appendChild(wrapRichTextNode(node, safeBaseStyles, targetStyles));
+                nextFragment.appendChild(wrapRichTextNode(node, targetStyles));
                 return;
             }
             if (node.nodeType === Node.ELEMENT_NODE) {
-                if (!targetStyles.fontSize) normalizeLegacyRichDefaultFontSize(node);
-                applyRichStyleMapToElement(node, safeBaseStyles, false);
                 nextFragment.appendChild(applyTargetStylesToRichNode(node, targetStyles));
                 return;
             }
             nextFragment.appendChild(node);
         });
         return nextFragment;
+    }
+
+    function normalizeRichEditorLists(editorEl) {
+        if (!editorEl) return;
+        editorEl.querySelectorAll('ul, ol').forEach(list => {
+            list.removeAttribute('align');
+            if (list.style?.textAlign) list.style.removeProperty('text-align');
+            if (list.style?.marginLeft) list.style.removeProperty('margin-left');
+            if (list.style?.paddingLeft) list.style.removeProperty('padding-left');
+            if (list.style?.marginInlineStart) list.style.removeProperty('margin-inline-start');
+            if (list.style?.paddingInlineStart) list.style.removeProperty('padding-inline-start');
+            cleanupEmptyRichStyleAttribute(list);
+        });
+        editorEl.querySelectorAll('li').forEach(item => {
+            item.removeAttribute('align');
+            if (item.style?.textAlign) item.style.removeProperty('text-align');
+            cleanupEmptyRichStyleAttribute(item);
+
+            const directBlocks = Array.from(item.children)
+                .filter(child => ['DIV', 'P'].includes(child.tagName));
+            directBlocks.forEach(block => {
+                const siblings = Array.from(item.childNodes);
+                const blockIndex = siblings.indexOf(block);
+                const hasMeaningfulBefore = siblings.slice(0, blockIndex).some(node => {
+                    if (node.nodeType === Node.TEXT_NODE) return !!normalizeSheetText((node.textContent || '').replace(/\u200b/g, ''));
+                    return node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'BR';
+                });
+                const hasMeaningfulAfter = siblings.slice(blockIndex + 1).some(node => {
+                    if (node.nodeType === Node.TEXT_NODE) return !!normalizeSheetText((node.textContent || '').replace(/\u200b/g, ''));
+                    return node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'BR';
+                });
+                if (hasMeaningfulBefore && block.previousSibling?.nodeName !== 'BR') {
+                    item.insertBefore(document.createElement('br'), block);
+                }
+                while (block.firstChild) item.insertBefore(block.firstChild, block);
+                if (hasMeaningfulAfter && block.previousSibling?.nodeName !== 'BR') {
+                    item.insertBefore(document.createElement('br'), block);
+                }
+                block.remove();
+            });
+
+            while (item.firstChild?.nodeName === 'BR') item.firstChild.remove();
+            while (item.lastChild?.nodeName === 'BR') item.lastChild.remove();
+            Array.from(item.childNodes).forEach(node => {
+                if (node.nodeName === 'BR' && node.previousSibling?.nodeName === 'BR') node.remove();
+            });
+        });
     }
 
     function saveRichEditorSelection(editorEl, stateBag) {
@@ -1718,19 +1743,18 @@ MODIFICATION RULES FOR THIS APP
         const safeStyles = getSafeRichInlineStyles(styleDraft);
         if (!Object.keys(safeStyles).length) return;
 
-        const baseStyles = normalizeRichBaseStylesForTarget(getRichInheritedInlineStyles(range.startContainer, editorEl), safeStyles);
         const nextRange = document.createRange();
 
         if (range.collapsed) {
             const span = document.createElement('span');
-            applyRichStyleMapToElement(span, { ...baseStyles, ...safeStyles }, true);
+            applyRichStyleMapToElement(span, safeStyles, true);
             const marker = document.createTextNode('​');
             span.appendChild(marker);
             range.insertNode(span);
             nextRange.setStart(marker, marker.textContent.length);
             nextRange.collapse(true);
         } else {
-            const styledFragment = buildStrictRichStyledFragment(range.extractContents(), baseStyles, safeStyles);
+            const styledFragment = buildPropertyOnlyRichStyledFragment(range.extractContents(), safeStyles);
             const anchor = document.createTextNode('');
             range.insertNode(anchor);
             anchor.parentNode.insertBefore(styledFragment, anchor);
@@ -1792,6 +1816,11 @@ MODIFICATION RULES FOR THIS APP
         editorEl.focus();
         restoreRichEditorSelection(editorEl, stateBag);
         document.execCommand(normalizedCommand, false, value);
+        if (normalizedCommand === 'insertUnorderedList'
+            || normalizedCommand === 'insertOrderedList'
+            || normalizedCommand.startsWith('justify')) {
+            normalizeRichEditorLists(editorEl);
+        }
         saveRichEditorSelection(editorEl, stateBag);
         dispatchRichEditorInput(editorEl);
     }
@@ -1833,8 +1862,8 @@ MODIFICATION RULES FOR THIS APP
     function buildStudyBunnyTemplateRows(type, variant = 'blank') {
         const isExample = variant === 'example';
         if (type === 'flashcard') {
-            const rows = [['Term', 'flashcard', 'Definition', 'Term image URL', 'Definition image URL', 'Learning resources', 'Learning resources image URL']];
-            if (isExample) rows.push(['Cell membrane', '', 'A selectively permeable barrier around the cell.', '', '', 'Review phospholipid bilayer structure and membrane proteins.', '']);
+            const rows = [['Term', 'flashcard', 'Definition', 'build_up', 'Term image URL', 'Definition image URL', 'Learning resources', 'Learning resources image URL']];
+            if (isExample) rows.push(['Cell membrane', '', 'A selectively permeable barrier around the cell.', 'cell-membrane-string', '', '', 'Review phospholipid bilayer structure and membrane proteins.', '']);
             return rows;
         }
         if (type === 'hierarchy') {
@@ -2664,16 +2693,24 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
-    function buildDiagramConnectorSvgMarkup(labels = [], width = 1, height = 1, screenScale = 1) {
+    function buildDiagramConnectorSvgMarkup(labels = [], width = 1, height = 1, screenScale = 1, options = {}) {
+        const outlineColor = normalizeSheetText(options?.outlineColor || '');
+        const outlineExtraWidth = Math.max(0, Number(options?.outlineExtraWidth) || 0);
         return normalizeDiagramLabels(labels || []).map((label, index) => {
             const geometry = getDiagramConnectorSvgGeometry(label.connector, label, width, height, screenScale);
             if (!geometry) return '';
             const radius = Math.max(4 / Math.max(0.0001, geometry.screenScale || 1), geometry.thickness * 0.9);
-            return `<g data-diagram-connector-index="${index}"><path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round"></path>${geometry.endpoint === 'ball' ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}"></circle>` : ''}</g>`;
+            const outlineWidth = outlineColor && outlineExtraWidth > 0
+                ? geometry.thickness + (outlineExtraWidth / Math.max(0.0001, geometry.screenScale || 1))
+                : 0;
+            const outlinePath = outlineWidth > 0
+                ? `<path d="${geometry.path}" fill="none" stroke="${outlineColor}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round"></path>`
+                : '';
+            return `<g data-diagram-connector-index="${index}">${outlinePath}<path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round"></path>${geometry.endpoint === 'ball' ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}"></circle>` : ''}</g>`;
         }).join('');
     }
 
-    function renderDiagramConnectorSvgLayer(svg = null, labels = [], image = null, stage = null, visible = true) {
+    function renderDiagramConnectorSvgLayer(svg = null, labels = [], image = null, stage = null, visible = true, options = {}) {
         if (!svg) return;
         const safeLabels = normalizeDiagramLabels(labels || []);
         const hasConnectors = safeLabels.some(label => !!normalizeDiagramConnector(label.connector));
@@ -2688,7 +2725,7 @@ MODIFICATION RULES FOR THIS APP
         const screenScale = renderedWidth / width;
         svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
         svg.setAttribute('preserveAspectRatio', 'none');
-        svg.innerHTML = buildDiagramConnectorSvgMarkup(safeLabels, width, height, screenScale);
+        svg.innerHTML = buildDiagramConnectorSvgMarkup(safeLabels, width, height, screenScale, options);
         svg.classList.remove('hidden');
     }
 
@@ -6310,8 +6347,13 @@ The deletion becomes permanent when you save the diagram.`);
         review.optionsOpen = review.optionsOpen === true;
         review.showAngleControls = review.showAngleControls === true;
         review.showAllNames = review.showAllNames === true;
+        review.showLabelNumbers = review.showLabelNumbers === true;
         review.showDrawData = review.showDrawData !== false;
         review.showConnectors = review.showConnectors !== false;
+        review.showConnectorContrast = review.showConnectorContrast !== false;
+        review.focusMode = review.focusMode === true;
+        review.focusLabelIndex = Number.isInteger(Number(review.focusLabelIndex)) ? Math.floor(Number(review.focusLabelIndex)) : -1;
+        if (!review.focusRestoreZoom || typeof review.focusRestoreZoom !== 'object') review.focusRestoreZoom = null;
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
         review.includeLabelDescriptions = review.includeLabelDescriptions !== false;
         review.randomizeMiniQuiz = review.randomizeMiniQuiz !== false;
@@ -6325,7 +6367,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!review.temporaryLabelPositions || typeof review.temporaryLabelPositions !== 'object' || Array.isArray(review.temporaryLabelPositions)) review.temporaryLabelPositions = {};
         if (!review.temporaryLabelPositionsByAngle || typeof review.temporaryLabelPositionsByAngle !== 'object' || Array.isArray(review.temporaryLabelPositionsByAngle)) review.temporaryLabelPositionsByAngle = {};
         review.suppressLabelClickUntil = Math.max(0, Number(review.suppressLabelClickUntil) || 0);
-        review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1));
+        review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1.5));
         review.shortcutDockVisible = review.shortcutDockVisible !== false;
         review.shortcutDockEdge = ['left', 'right', 'top', 'bottom'].includes(review.shortcutDockEdge) ? review.shortcutDockEdge : 'right';
         const shortcutDockOffset = Number(review.shortcutDockOffset);
@@ -6534,6 +6576,16 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeShortcutAllBtn.classList.toggle('is-active', allShown);
             elements.reviewModeShortcutAllBtn.setAttribute('aria-pressed', allShown ? 'true' : 'false');
         }
+        if (elements.reviewModeShortcutNextBtn) {
+            const canAdvance = review.miniQuiz.active && !review.miniQuiz.complete;
+            elements.reviewModeShortcutNextBtn.disabled = !canAdvance;
+            elements.reviewModeShortcutNextBtn.setAttribute('aria-disabled', canAdvance ? 'false' : 'true');
+        }
+        if (elements.reviewModeShortcutFocusBtn) {
+            elements.reviewModeShortcutFocusBtn.classList.toggle('is-active', review.focusMode);
+            elements.reviewModeShortcutFocusBtn.setAttribute('aria-pressed', review.focusMode ? 'true' : 'false');
+            elements.reviewModeShortcutFocusBtn.textContent = review.focusMode ? 'Focus On' : 'Focus';
+        }
         if (elements.reviewModeShortcutLabelDownBtn) elements.reviewModeShortcutLabelDownBtn.disabled = review.labelScale <= 0.65;
         if (elements.reviewModeShortcutLabelUpBtn) elements.reviewModeShortcutLabelUpBtn.disabled = review.labelScale >= 1.8;
         if (elements.reviewModeShowShortcutDockToggle) elements.reviewModeShowShortcutDockToggle.checked = review.shortcutDockVisible;
@@ -6643,7 +6695,11 @@ The deletion becomes permanent when you save the diagram.`);
     // Phase 22MX: image-specific iPad pinch zoom and pan for the complete Review Mode stage.
     const REVIEW_MODE_MIN_ZOOM = 1;
     const REVIEW_MODE_MAX_ZOOM = 5;
+    const REVIEW_MODE_FOCUS_MAX_ZOOM = 3;
+    const REVIEW_MODE_FOCUS_PADDING_RATIO = 0.22;
+    const REVIEW_MODE_FOCUS_MIN_PADDING = 36;
     let reviewModeZoomResetTimer = null;
+    let reviewModeFocusFrameId = 0;
 
     function normalizeReviewModeZoomValue(value, fallback = 0) {
         const number = Number(value);
@@ -6671,9 +6727,10 @@ The deletion becomes permanent when you save the diagram.`);
     function syncReviewModeZoomUi() {
         const review = getReviewModeState();
         const isZoomed = review.zoomScale > REVIEW_MODE_MIN_ZOOM + 0.01 || Math.abs(review.zoomX) > 0.5 || Math.abs(review.zoomY) > 0.5;
+        const showReset = isZoomed || review.focusMode;
         elements.reviewModeImageViewport?.classList.toggle('is-zoomed', isZoomed);
-        elements.reviewModeResetZoomBtn?.classList.toggle('hidden', !isZoomed);
-        elements.reviewModeResetZoomBtn?.setAttribute('aria-hidden', isZoomed ? 'false' : 'true');
+        elements.reviewModeResetZoomBtn?.classList.toggle('hidden', !showReset);
+        elements.reviewModeResetZoomBtn?.setAttribute('aria-hidden', showReset ? 'false' : 'true');
     }
 
     function applyReviewModeZoomTransform({ animate = false } = {}) {
@@ -6699,13 +6756,145 @@ The deletion becomes permanent when you save the diagram.`);
         syncReviewModeZoomUi();
     }
 
-    function resetReviewModeZoom({ animate = false } = {}) {
+    function getReviewModeFocusLabelIndex(review = getReviewModeState()) {
+        if (review.miniQuiz.active && !review.miniQuiz.complete) {
+            const activeIndex = getReviewModeMiniQuizActiveLabelIndex(review);
+            if (activeIndex >= 0) return activeIndex;
+        }
+        const labels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
+        const preferredIndex = Math.floor(Number(review.focusLabelIndex));
+        if (preferredIndex >= 0 && preferredIndex < labels.length) return preferredIndex;
+        const revealedIndex = Array.from(review.revealedLabels || []).find(index => Number.isInteger(index) && index >= 0 && index < labels.length);
+        if (revealedIndex != null) return revealedIndex;
+        const connectorIndex = labels.findIndex(label => !!normalizeDiagramConnector(label.connector));
+        if (connectorIndex >= 0) return connectorIndex;
+        return labels.length ? 0 : -1;
+    }
+
+    function getReviewModeFocusBounds(labelIndex) {
+        const stage = elements.reviewModeImageStage;
+        const image = elements.reviewModeImage;
+        const connectorLayer = elements.reviewModeConnectorLayer;
+        if (!stage || !image || !image.naturalWidth || !image.naturalHeight) return null;
+        const labels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
+        const label = labels[labelIndex];
+        if (!label) return null;
+        const stageWidth = Math.max(1, stage.offsetWidth);
+        const stageHeight = Math.max(1, stage.offsetHeight);
+        const centerX = (label.x / 100) * stageWidth;
+        const centerY = (label.y / 100) * stageHeight;
+        const marker = elements.reviewModeLabelLayer?.querySelector?.(`[data-review-label-index="${labelIndex}"]`);
+        const labelNode = marker?.closest?.('.review-mode-mini-label-wrap') || marker;
+        const halfLabelWidth = Math.max(16, Number(labelNode?.offsetWidth || 0) / 2);
+        const halfLabelHeight = Math.max(16, Number(labelNode?.offsetHeight || 0) / 2);
+        let minX = centerX - halfLabelWidth;
+        let maxX = centerX + halfLabelWidth;
+        let minY = centerY - halfLabelHeight;
+        let maxY = centerY + halfLabelHeight;
+
+        const connectorGroup = connectorLayer?.querySelector?.(`[data-diagram-connector-index="${labelIndex}"]`);
+        if (connectorGroup?.getBBox) {
+            try {
+                const box = connectorGroup.getBBox();
+                const scaleX = stageWidth / Math.max(1, image.naturalWidth);
+                const scaleY = stageHeight / Math.max(1, image.naturalHeight);
+                minX = Math.min(minX, box.x * scaleX);
+                maxX = Math.max(maxX, (box.x + box.width) * scaleX);
+                minY = Math.min(minY, box.y * scaleY);
+                maxY = Math.max(maxY, (box.y + box.height) * scaleY);
+            } catch (_) {}
+        } else {
+            const connector = normalizeDiagramConnector(label.connector);
+            if (connector) {
+                const anchorX = (connector.anchorX / 100) * stageWidth;
+                const anchorY = (connector.anchorY / 100) * stageHeight;
+                minX = Math.min(minX, anchorX);
+                maxX = Math.max(maxX, anchorX);
+                minY = Math.min(minY, anchorY);
+                maxY = Math.max(maxY, anchorY);
+            }
+        }
+        return { minX, maxX, minY, maxY, stageWidth, stageHeight };
+    }
+
+    function focusReviewModeCurrentLabel({ animate = true } = {}) {
         const review = getReviewModeState();
+        const viewport = elements.reviewModeImageViewport;
+        if (!review.overlayOpen || !review.focusMode || !viewport || !isReviewModeActiveAngleOverlayReady()) return false;
+        const labelIndex = getReviewModeFocusLabelIndex(review);
+        if (labelIndex < 0) return false;
+        review.focusLabelIndex = labelIndex;
+        const bounds = getReviewModeFocusBounds(labelIndex);
+        if (!bounds) return false;
+        const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+        const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+        const paddingX = Math.max(REVIEW_MODE_FOCUS_MIN_PADDING, contentWidth * REVIEW_MODE_FOCUS_PADDING_RATIO);
+        const paddingY = Math.max(REVIEW_MODE_FOCUS_MIN_PADDING, contentHeight * REVIEW_MODE_FOCUS_PADDING_RATIO);
+        const framedWidth = contentWidth + (paddingX * 2);
+        const framedHeight = contentHeight + (paddingY * 2);
+        const availableWidth = Math.max(1, viewport.clientWidth - 32);
+        const availableHeight = Math.max(1, viewport.clientHeight - 32);
+        const nextScale = Math.min(
+            REVIEW_MODE_FOCUS_MAX_ZOOM,
+            Math.max(REVIEW_MODE_MIN_ZOOM, Math.min(availableWidth / framedWidth, availableHeight / framedHeight))
+        );
+        const focusCenterX = (bounds.minX + bounds.maxX) / 2;
+        const focusCenterY = (bounds.minY + bounds.maxY) / 2;
+        review.zoomScale = nextScale;
+        review.zoomX = -(focusCenterX - (bounds.stageWidth / 2)) * nextScale;
+        review.zoomY = -(focusCenterY - (bounds.stageHeight / 2)) * nextScale;
+        applyReviewModeZoomTransform({ animate });
+        return true;
+    }
+
+    function scheduleReviewModeFocusCurrentLabel({ animate = true } = {}) {
+        if (reviewModeFocusFrameId) window.cancelAnimationFrame(reviewModeFocusFrameId);
+        reviewModeFocusFrameId = window.requestAnimationFrame(() => {
+            reviewModeFocusFrameId = window.requestAnimationFrame(() => {
+                reviewModeFocusFrameId = 0;
+                focusReviewModeCurrentLabel({ animate });
+            });
+        });
+    }
+
+    function setReviewModeFocusMode(enabled, { animate = true } = {}) {
+        const review = getReviewModeState();
+        const nextEnabled = !!enabled;
+        if (nextEnabled === review.focusMode) {
+            if (nextEnabled) scheduleReviewModeFocusCurrentLabel({ animate });
+            return;
+        }
+        if (nextEnabled) {
+            review.focusRestoreZoom = { scale: review.zoomScale, x: review.zoomX, y: review.zoomY };
+            review.focusMode = true;
+            syncReviewModeZoomUi();
+            scheduleReviewModeFocusCurrentLabel({ animate });
+        } else {
+            review.focusMode = false;
+            const restore = review.focusRestoreZoom;
+            review.focusRestoreZoom = null;
+            review.zoomScale = Math.max(REVIEW_MODE_MIN_ZOOM, Number(restore?.scale) || REVIEW_MODE_MIN_ZOOM);
+            review.zoomX = Number(restore?.x) || 0;
+            review.zoomY = Number(restore?.y) || 0;
+            applyReviewModeZoomTransform({ animate });
+        }
+        syncReviewModeControls();
+    }
+
+    function resetReviewModeZoom({ animate = false, disableFocus = false } = {}) {
+        const review = getReviewModeState();
+        if (disableFocus) {
+            review.focusMode = false;
+            review.focusRestoreZoom = null;
+        } else if (review.focusMode) {
+            review.focusRestoreZoom = { scale: REVIEW_MODE_MIN_ZOOM, x: 0, y: 0 };
+        }
         review.zoomScale = REVIEW_MODE_MIN_ZOOM;
         review.zoomX = 0;
         review.zoomY = 0;
         elements.reviewModeImageViewport?.classList.remove('is-panning');
         applyReviewModeZoomTransform({ animate });
+        if (disableFocus) syncReviewModeControls();
     }
 
     function zoomReviewModeAtPoint(nextScale, clientX, clientY) {
@@ -6999,6 +7188,15 @@ The deletion becomes permanent when you save the diagram.`);
         });
     }
 
+    function findNextReviewModeMiniQuizAngleIndex(entry, currentAngleIndex = -1, allowDuplicates = false) {
+        const angles = getStudioSavedImageAngles(entry || {});
+        const startIndex = Math.max(-1, Math.floor(Number(currentAngleIndex) || 0));
+        for (let angleIndex = startIndex + 1; angleIndex < angles.length; angleIndex += 1) {
+            if (buildReviewModeMiniQuizTargets(entry, 'current', angleIndex, allowDuplicates).length) return angleIndex;
+        }
+        return -1;
+    }
+
     function clearReviewModeMiniQuizRapidTimer() {
         if (reviewModeMiniQuizRapidTimerId) {
             window.clearTimeout(reviewModeMiniQuizRapidTimerId);
@@ -7113,6 +7311,7 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+        review.focusLabelIndex = Math.max(0, Number(target.labelIndex) || 0);
         const targetAngleIndex = Math.min(Math.max(0, target.angleIndex), Math.max(0, angles.length - 1));
         if (targetAngleIndex !== review.activeAngleIndex) {
             storeReviewModeAngleUiState();
@@ -7127,6 +7326,7 @@ The deletion becomes permanent when you save the diagram.`);
         renderReviewModeLabels();
         syncReviewModeControls();
         syncReviewModeAngleNavigation();
+        if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
     }
 
     function syncReviewModeMiniQuizUi() {
@@ -7138,12 +7338,16 @@ The deletion becomes permanent when you save the diagram.`);
         elements.reviewModeMiniQuizComplete?.classList.toggle('hidden', !(mini.active && mini.complete));
         elements.reviewModeMiniQuizComplete?.setAttribute('aria-hidden', mini.active && mini.complete ? 'false' : 'true');
         if (elements.reviewModeMiniQuizNextAngleBtn) {
-            const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
-            const canQuizNextAngle = !!(mini.active && mini.complete && mini.scope === 'current' && review.activeAngleIndex < angles.length - 1);
-            const nextAngle = canQuizNextAngle ? angles[review.activeAngleIndex + 1] : null;
+            const entry = getActiveReviewModeEntry();
+            const angles = getStudioSavedImageAngles(entry || {});
+            const nextAngleIndex = mini.active && mini.complete && mini.scope === 'current'
+                ? findNextReviewModeMiniQuizAngleIndex(entry, review.activeAngleIndex, review.allowDuplicateMiniQuiz)
+                : -1;
+            const canQuizNextAngle = nextAngleIndex >= 0;
+            const nextAngle = canQuizNextAngle ? angles[nextAngleIndex] : null;
             elements.reviewModeMiniQuizNextAngleBtn.classList.toggle('hidden', !canQuizNextAngle);
             elements.reviewModeMiniQuizNextAngleBtn.disabled = !canQuizNextAngle;
-            elements.reviewModeMiniQuizNextAngleBtn.textContent = nextAngle ? `Quiz Next Angle: ${nextAngle.name || `Angle ${review.activeAngleIndex + 2}`}` : 'Quiz Next Angle';
+            elements.reviewModeMiniQuizNextAngleBtn.textContent = nextAngle ? `Quiz Next Angle: ${nextAngle.name || `Angle ${nextAngleIndex + 1}`}` : 'Quiz Next Angle';
         }
         if (elements.reviewModeTakeMiniQuizBtn) {
             elements.reviewModeTakeMiniQuizBtn.disabled = mini.active;
@@ -7207,12 +7411,11 @@ The deletion becomes permanent when you save the diagram.`);
     function startReviewModeMiniQuizNextAngle() {
         const review = getReviewModeState();
         const entry = getActiveReviewModeEntry();
-        const angles = getStudioSavedImageAngles(entry || {});
-        if (!review.miniQuiz.active || !review.miniQuiz.complete || review.miniQuiz.scope !== 'current' || review.activeAngleIndex >= angles.length - 1) return;
-        const nextAngleIndex = review.activeAngleIndex + 1;
-        const nextTargets = buildReviewModeMiniQuizTargets(entry, 'current', nextAngleIndex, review.allowDuplicateMiniQuiz);
-        if (!nextTargets.length) {
-            setCreatorStatus('The next angle does not have any labels to quiz.', 'error');
+        if (!review.miniQuiz.active || !review.miniQuiz.complete || review.miniQuiz.scope !== 'current') return;
+        const nextAngleIndex = findNextReviewModeMiniQuizAngleIndex(entry, review.activeAngleIndex, review.allowDuplicateMiniQuiz);
+        if (nextAngleIndex < 0) {
+            setCreatorStatus('There are no later angles with labels to quiz.', 'error');
+            syncReviewModeMiniQuizUi();
             return;
         }
         storeReviewModeAngleUiState();
@@ -7363,6 +7566,20 @@ The deletion becomes permanent when you save the diagram.`);
         if (review.typedMiniQuiz) focusReviewModeTypedAnswerInput();
     }
 
+    function answerReviewModeMiniQuizCorrectFromShortcut() {
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        if (!mini.active || mini.complete) return false;
+        clearReviewModeMiniQuizRapidTimer();
+        mini.answerRevealed = true;
+        if (review.typedMiniQuiz) {
+            mini.typedAnswerKnown = true;
+            mini.typedResult = 'correct';
+        }
+        advanceReviewModeMiniQuiz(true);
+        return true;
+    }
+
     function setReviewModeMiniQuizMode(mode, enabled) {
         const review = getReviewModeState();
         if (review.miniQuiz.active) return;
@@ -7409,7 +7626,8 @@ The deletion becomes permanent when you save the diagram.`);
                 ? labels.map(label => ({ ...label, connector: null }))
                 : labels.map((label, index) => index === activeIndex ? label : ({ ...label, connector: null }));
         }
-        renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, labels, elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors);
+        const connectorOptions = review.showConnectorContrast ? { outlineColor: '#ffffff', outlineExtraWidth: 2 } : {};
+        renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, labels, elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors, connectorOptions);
     }
 
     function setReviewModeTemporaryLabelPosition(index, x, y) {
@@ -7548,6 +7766,7 @@ The deletion becomes permanent when you save the diagram.`);
                 return;
             }
             const index = getReviewModeMiniQuizActiveLabelIndex(review);
+            review.focusLabelIndex = index;
             const item = labels[index];
             if (!item) {
                 finishReviewModeMiniQuiz();
@@ -7588,7 +7807,7 @@ The deletion becomes permanent when you save the diagram.`);
                     <div class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-typed-card${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-live="polite">${typedBody}</div>
                   </div>`;
             } else {
-                const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : String(index + 1);
+                const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : (review.showLabelNumbers ? String(index + 1) : '?');
                 const descriptionHtml = showDescription
                     ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
                     : '';
@@ -7604,6 +7823,7 @@ The deletion becomes permanent when you save the diagram.`);
             renderReviewModeDrawData();
             renderReviewModeConnectors();
             syncReviewModeMiniQuizUi();
+            if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
             return;
         }
 
@@ -7616,7 +7836,7 @@ The deletion becomes permanent when you save the diagram.`);
             const isDescriptionVisible = !!(review.includeLabelDescriptions && description && isSelected && isNameVisible);
             const actionText = isSelected ? 'Hide' : 'Show';
             const targetText = review.disableLabelNamesOnClick && !review.showAllNames ? 'drawing for' : 'label';
-            const nameHtml = isNameVisible ? renderMathChemTextToHtml(item.label) : String(index + 1);
+            const nameHtml = isNameVisible ? renderMathChemTextToHtml(item.label) : (review.showLabelNumbers ? String(index + 1) : '?');
             const descriptionHtml = isDescriptionVisible
                 ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
                 : '';
@@ -7625,6 +7845,7 @@ The deletion becomes permanent when you save the diagram.`);
         renderReviewModeDrawData();
         renderReviewModeConnectors();
         syncReviewModeMiniQuizUi();
+        if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
     }
 
     function syncReviewModeImageStage() {
@@ -7641,6 +7862,7 @@ The deletion becomes permanent when you save the diagram.`);
         renderReviewModeDrawData();
         renderReviewModeConnectors();
         applyReviewModeShortcutDockPosition();
+        if (getReviewModeState().focusMode) scheduleReviewModeFocusCurrentLabel({ animate: false });
     }
 
     function syncReviewModeControls() {
@@ -7668,6 +7890,7 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
             elements.reviewModeShowAllNamesToggle.disabled = miniActive;
         }
+        if (elements.reviewModeLabelNumberToggle) elements.reviewModeLabelNumberToggle.checked = review.showLabelNumbers;
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
         if (elements.reviewModeDisableNamesOnClickToggle) {
             elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
@@ -7675,6 +7898,11 @@ The deletion becomes permanent when you save the diagram.`);
         }
         if (elements.reviewModeIncludeDescriptionsToggle) elements.reviewModeIncludeDescriptionsToggle.checked = review.includeLabelDescriptions;
         if (elements.reviewModeShowConnectorsToggle) elements.reviewModeShowConnectorsToggle.checked = review.showConnectors;
+        if (elements.reviewModeShowConnectorContrastToggle) {
+            elements.reviewModeShowConnectorContrastToggle.checked = review.showConnectorContrast;
+            elements.reviewModeShowConnectorContrastToggle.disabled = !review.showConnectors;
+        }
+        if (elements.reviewModeFocusToggle) elements.reviewModeFocusToggle.checked = review.focusMode;
         if (elements.reviewModeMiniRandomizeToggle) {
             elements.reviewModeMiniRandomizeToggle.checked = review.randomizeMiniQuiz;
             elements.reviewModeMiniRandomizeToggle.disabled = miniActive;
@@ -7733,10 +7961,15 @@ The deletion becomes permanent when you save the diagram.`);
         review.activeAngleIndex = 0;
         review.overlayOpen = true;
         review.optionsOpen = false;
-        review.showAngleControls = false;
+        review.showAngleControls = true;
         review.showAllNames = false;
+        review.showLabelNumbers = false;
         review.showDrawData = true;
         review.showConnectors = true;
+        review.showConnectorContrast = true;
+        review.focusMode = false;
+        review.focusLabelIndex = -1;
+        review.focusRestoreZoom = null;
         review.disableLabelNamesOnClick = false;
         review.includeLabelDescriptions = true;
         review.randomizeMiniQuiz = true;
@@ -7747,7 +7980,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.miniQuizScope = 'current';
         review.miniQuizMode = 'normal';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal', scope: 'current', targets: [] }, 'normal');
-        review.labelScale = 1;
+        review.labelScale = 1.5;
         review.shortcutDockVisible = true;
         review.shortcutDockEdge = 'right';
         review.shortcutDockOffset = 0.5;
@@ -7812,7 +8045,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function setReviewModeLabelScale(nextScale) {
         const review = getReviewModeState();
-        review.labelScale = Math.min(1.8, Math.max(0.65, Number(nextScale) || 1));
+        review.labelScale = Math.min(1.8, Math.max(0.65, Number(nextScale) || 1.5));
         syncReviewModeControls();
         renderReviewModeLabels();
     }
@@ -8077,12 +8310,8 @@ The deletion becomes permanent when you save the diagram.`);
                 shouldRender = true;
             }
             if (isImageEditorConnectorMode(editor)) {
-                const index = editor.activeConnectorLabelIndex;
-                const connector = normalizeDiagramConnector(editor.labels?.[index]?.connector);
-                if (connector && editor.labels?.[index]) {
-                    editor.labels[index].connector = { ...connector, color };
-                    shouldRender = true;
-                }
+                applyImageEditorDiagramWideConnectorStyle({ color });
+                shouldRender = true;
             }
             if (shouldRender) renderImageEditorCanvas();
         }
@@ -9183,6 +9412,64 @@ The deletion becomes permanent when you save the diagram.`);
         applyImageEditorZoomTransform();
     }
 
+    function applyImageEditorDiagramWideConnectorStyle({ color = null, thickness = null } = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelsEnabled) return false;
+        const normalizedColor = color == null ? null : normalizeEditorHexColor(color, '#000000').toLowerCase();
+        const normalizedThickness = thickness == null ? null : Math.min(24, Math.max(1, Number(thickness) || 7));
+        let changed = false;
+        const applyToLabels = labels => {
+            const source = Array.isArray(labels) ? labels : [];
+            source.forEach((label, index) => {
+                const connector = normalizeDiagramConnector(label?.connector);
+                if (!connector) return;
+                const nextConnector = { ...connector };
+                if (normalizedColor !== null && nextConnector.color !== normalizedColor) {
+                    nextConnector.color = normalizedColor;
+                    changed = true;
+                }
+                if (normalizedThickness !== null && Number(nextConnector.thickness) !== normalizedThickness) {
+                    nextConnector.thickness = normalizedThickness;
+                    changed = true;
+                }
+                source[index] = { ...label, connector: nextConnector };
+            });
+            return source;
+        };
+
+        applyToLabels(editor.labels);
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            (draft.angles || []).forEach(angle => {
+                angle.labels = normalizeDiagramLabels(angle.labels || []);
+                applyToLabels(angle.labels);
+            });
+        }
+        return changed;
+    }
+
+    function getImageEditorDiagramConnectorDefaults(editor = state.auth.imageEditor) {
+        if (!editor?.labelsEnabled) return null;
+        const connectorFromLabels = labels => {
+            const normalized = normalizeDiagramLabels(labels || []);
+            for (const label of normalized) {
+                const connector = normalizeDiagramConnector(label.connector);
+                if (connector) return connector;
+            }
+            return null;
+        };
+        const currentConnector = connectorFromLabels(editor.labels || []);
+        if (currentConnector) return currentConnector;
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            for (const angle of draft.angles || []) {
+                const connector = connectorFromLabels(angle.labels || []);
+                if (connector) return connector;
+            }
+        }
+        return null;
+    }
+
     function applyImageEditorConnectorThicknessFromControl(control) {
         const editor = state.auth.imageEditor;
         if (!editor || !control) return;
@@ -9193,12 +9480,8 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.studioImageEditorLineThicknessValue) {
             elements.studioImageEditorLineThicknessValue.textContent = String(nextThickness);
         }
-        const index = editor.activeConnectorLabelIndex;
-        const connector = Number.isInteger(index)
-            ? normalizeDiagramConnector(editor.labels?.[index]?.connector)
-            : null;
-        if (Number.isInteger(index) && connector && editor.labels?.[index]) {
-            editor.labels[index].connector = { ...connector, thickness: nextThickness };
+        if (isImageEditorConnectorMode(editor)) {
+            applyImageEditorDiagramWideConnectorStyle({ thickness: nextThickness });
             renderImageEditorCanvas();
         }
     }
@@ -10370,7 +10653,7 @@ The deletion becomes permanent when you save the diagram.`);
                 if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = connector.color;
                 if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(connector.thickness);
                 if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(connector.thickness);
-                setImageEditorStatus(`${editor.pendingConnectorStyle[0].toUpperCase()}${editor.pendingConnectorStyle.slice(1)} connector active. Drag its image anchor or drag any label. Use RGB and Thickness to restyle it.`);
+                setImageEditorStatus(`${editor.pendingConnectorStyle[0].toUpperCase()}${editor.pendingConnectorStyle.slice(1)} connector active. Drag its image anchor or drag any label. Use RGB and Thickness to restyle every connector in this diagram.`);
             } else {
                 setImageEditorStatus(`${editor.pendingConnectorStyle[0].toUpperCase()}${editor.pendingConnectorStyle.slice(1)} connector active. Click the target area on the image to place its fixed anchor.`);
             }
@@ -10561,11 +10844,17 @@ The deletion becomes permanent when you save the diagram.`);
             const renderScale = getImageEditorCanvasRenderScale(canvas);
             const thickness = screenThickness * renderScale;
             ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = (screenThickness + 2) * renderScale;
+            ctx.beginPath();
+            traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint);
+            ctx.stroke();
             ctx.strokeStyle = connector.color || '#000000';
             ctx.fillStyle = connector.color || '#000000';
             ctx.lineWidth = thickness;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
             ctx.globalAlpha = 0.96;
             ctx.beginPath();
             traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint);
@@ -11555,6 +11844,15 @@ The deletion becomes permanent when you save the diagram.`);
         closeImageEditorSliderPopovers();
         editor.labelsEnabled = !!info.labelsEnabled;
         editor.labels = normalizeImageEditorLabels(info.labels || []);
+        const diagramConnectorDefaults = getImageEditorDiagramConnectorDefaults(editor);
+        if (diagramConnectorDefaults) {
+            editor.arrowColor = diagramConnectorDefaults.color;
+            editor.lineThickness = diagramConnectorDefaults.thickness;
+            if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = editor.arrowColor;
+            if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(editor.lineThickness);
+            if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness);
+            updateImageEditorCurrentColorSwatch(editor.arrowColor);
+        }
         synchronizeImageEditorSharedDescriptionsFromDiagram();
         const recoveredDrawingBackup = restoreImageEditorDrawingBackup(editor);
         editor.labelInfoEnabled = !!(editor.labelsEnabled && isImageEditorNumberedLabelTarget(editor));
@@ -12719,7 +13017,7 @@ The deletion becomes permanent when you save the diagram.`);
         const quizType = normalizeSheetText(quiz.quizType || quiz.type || '');
         if (!Number(quiz.questionCount || 0)) return false;
         if (challenge?.requiresBuildUp) {
-            return (quizType === 'multiple_choice' || quizType === 'diagrams') && !!quiz.hasBuildUpStrings;
+            return isBuildUpCapableQuestionType(quizType) && !!quiz.hasBuildUpStrings;
         }
         // Phase 22IN: Flashcards support the four main challenge modes.
         // They do not have answer choices to shuffle, but they still use the
@@ -12730,7 +13028,7 @@ The deletion becomes permanent when you save the diagram.`);
     function getQuizChallengeDisabledReason(quiz = {}, challenge = null) {
         if (canQuizUseChallengeSettings(quiz, challenge)) return '';
         if (challenge?.requiresBuildUp) {
-            return 'Build Up challenges require a multiple-choice or diagrams quiz with at least one Build Up string.';
+            return 'Build Up challenges require a multiple-choice, diagrams, or flashcard quiz with at least one Build Up string.';
         }
         return 'Challenges require a quiz with at least one study question.';
     }
@@ -13590,7 +13888,9 @@ The deletion becomes permanent when you save the diagram.`);
         const challengeButtonLabel = challengesExpanded ? 'Hide Challenges' : `Challenges ${unlockedChallengeCount}/${QUIZ_CHALLENGES.length}`;
         const actionMenuOpen = state.auth.openQuizActionMenuId === quiz.id;
         const duplicateOptionsOpen = actionMenuOpen && state.auth.openQuizActionSubmenu === `${quiz.id}:duplicate`;
+        const createFlashcardsOptionsOpen = actionMenuOpen && state.auth.openQuizActionSubmenu === `${quiz.id}:flashcards`;
         const starOptionsOpen = actionMenuOpen && state.auth.openQuizActionSubmenu === `${quiz.id}:star`;
+        const canCreateFlashcards = quiz.quizType === 'multiple_choice';
         return `
             <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
               <div class="studio-list-meta">
@@ -13616,6 +13916,12 @@ The deletion becomes permanent when you save the diagram.`);
                       <button type="button" role="menuitem" data-action="duplicate-quiz-starred">Duplicate Starred Questions Only</button>
                       <button type="button" role="menuitem" data-action="duplicate-quiz-unstarred">Duplicate Unstarred Questions Only</button>
                     </div>
+                    ${canCreateFlashcards ? `
+                    <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-create-flashcards-options" aria-expanded="${createFlashcardsOptionsOpen ? 'true' : 'false'}"><span>Create Flashcards</span><span aria-hidden="true">${createFlashcardsOptionsOpen ? '⌄' : '›'}</span></button>
+                    <div class="studio-quiz-actions-submenu${createFlashcardsOptionsOpen ? ' open' : ''}" role="group" aria-label="Create flashcards options">
+                      <button type="button" role="menuitem" data-action="create-flashcards-all">Entire Quiz</button>
+                      <button type="button" role="menuitem" data-action="create-flashcards-starred">From Starred Only</button>
+                    </div>` : ''}
                     <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-star-options" aria-expanded="${starOptionsOpen ? 'true' : 'false'}"><span>Star Options</span><span aria-hidden="true">${starOptionsOpen ? '⌄' : '›'}</span></button>
                     <div class="studio-quiz-actions-submenu${starOptionsOpen ? ' open' : ''}" role="group" aria-label="Star options">
                       <button type="button" role="menuitem" data-action="reset-starred">Reset Starred</button>
@@ -14226,7 +14532,7 @@ The deletion becomes permanent when you save the diagram.`);
 
         try {
             const entry = await runCachedSupabaseManagementRequest('managedQuizzes', options, async () => {
-                const [quizResult, questionRows, multipleChoiceRows] = await Promise.all([
+                const [quizResult, questionRows, multipleChoiceRows, flashcardBuildUpRows] = await Promise.all([
                     state.auth.client
                         .from('quizzes')
                         .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
@@ -14245,7 +14551,8 @@ The deletion becomes permanent when you save the diagram.`);
                             .from('multiple_choice_questions')
                             .select('question_id, options_json'),
                         { label: 'managed quiz multiple-choice metadata rows' }
-                    )
+                    ),
+                    loadManagedFlashcardBuildUpRows()
                 ]);
 
                 let { data: quizzes, error: quizzesError } = quizResult;
@@ -14273,6 +14580,7 @@ The deletion becomes permanent when you save the diagram.`);
                 (multipleChoiceRows || []).forEach(row => {
                     multipleChoiceMetadataByQuestionId.set(row.question_id, row);
                 });
+                const flashcardBuildUpByQuestionId = new Map((flashcardBuildUpRows || []).map(row => [normalizeSheetText(row.question_id), normalizeBuildUpValue(row.build_up)]));
 
                 const managedQuizzes = (quizzes || []).map(quiz => {
                     const folder = state.auth.supabaseFolders.find(item => item.id === quiz.folder_id) || null;
@@ -14291,7 +14599,10 @@ The deletion becomes permanent when you save the diagram.`);
                     };
                     const hasBuildUpStrings = rows.some(row => {
                         const effectiveType = getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id));
-                        if (effectiveType !== 'multiple_choice' && effectiveType !== 'diagrams') return false;
+                        if (effectiveType === 'flashcard') {
+                            return !!flashcardBuildUpByQuestionId.get(normalizeSheetText(row.id));
+                        }
+                        if (!isBuildUpCapableQuestionType(effectiveType)) return false;
                         const detail = multipleChoiceMetadataByQuestionId.get(row.id);
                         return !!getBuildUpValueFromOptionsJson(detail?.options_json);
                     });
@@ -16682,6 +16993,7 @@ The deletion becomes permanent when you save the diagram.`);
                 definition_html: buildStoredFlashcardSideContent(item.row.definitionHtml, { labels: definitionLabels, drawStrokes: item.row.definitionImageDrawStrokes || [], metadata: item.row.definitionImageMetadata || {}, imagePresent: !!item.savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: item.row.definitionSavedImageSignature }),
                 term_plain: item.row.term,
                 definition_plain: item.row.definition,
+                ...(normalizeBuildUpValue(item.row.buildUp || item.row.build_up) ? { build_up: normalizeBuildUpValue(item.row.buildUp || item.row.build_up) } : {}),
                 term_image_url: item.savedTermImage || '',
                 definition_image_url: item.savedDefinitionImage || ''
             };
@@ -16695,7 +17007,7 @@ The deletion becomes permanent when you save the diagram.`);
         const detailResult = await runWithTransientFetchRetry(() => state.auth.client
             .from('flashcard_questions')
             .upsert(detailPayload, { onConflict: 'question_id' }), 'Saving new flashcard detail records', { attempts: 2 });
-        if (detailResult.error) throw detailResult.error;
+        if (detailResult.error) throwFlashcardBuildUpMigrationErrorIfNeeded(detailResult.error);
 
         // Reuse now publishes a shared Saved Image entry at toggle time.
         // Do not rebuild or overwrite Saved Images from the live flashcard row during save.
@@ -16978,10 +17290,11 @@ The deletion becomes permanent when you save the diagram.`);
             definition_html: storedDefinitionHtml,
             term_plain: term,
             definition_plain: definition,
+            ...(getStudioQuestionBuildUpValue(row) ? { build_up: getStudioQuestionBuildUpValue(row) } : {}),
             term_image_url: savedTermImage || '',
             definition_image_url: savedDefinitionImage || ''
         }, { onConflict: 'question_id' }), 'Saving flashcard detail record', { attempts: 2 });
-        if (detailResult.error) throw detailResult.error;
+        if (detailResult.error) throwFlashcardBuildUpMigrationErrorIfNeeded(detailResult.error);
 
         const previousRefs = new Set();
         if (learningResourcesImageChanged) collectSupabaseMediaReferences(previousLearningResourcesImage, previousRefs);
@@ -17239,7 +17552,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function isStudioBuildUpEditMode() {
-        return ['multiple_choice', 'diagrams'].includes(getStudioCurrentQuizType()) && !!normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
+        return isBuildUpCapableQuestionType(getStudioCurrentQuizType()) && !!normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
     }
 
     function clearStudioBuildUpEditMode(options = {}) {
@@ -17253,7 +17566,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function isStudioBuildUpFocusMode() {
-        return ['multiple_choice', 'diagrams'].includes(getStudioCurrentQuizType()) && !!normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
+        return isBuildUpCapableQuestionType(getStudioCurrentQuizType()) && !!normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
     }
 
     function clearStudioBuildUpFocusMode(options = {}) {
@@ -17349,17 +17662,33 @@ The deletion becomes permanent when you save the diagram.`);
     async function updateStudioQuestionBuildUpString(questionId, nextBuildUpValue = '') {
         const normalizedQuestionId = normalizeSheetText(questionId);
         if (!state.auth.client || !state.auth.editingQuizId || !normalizedQuestionId) {
-            throw new Error('Select a saved multiple-choice question first.');
+            throw new Error('Select a saved question or flashcard first.');
         }
         const questionRow = state.auth.studioQuizQuestions.find(question => normalizeSheetText(question.id) === normalizedQuestionId);
         const questionType = normalizeSheetText(questionRow?.question_type || 'multiple_choice');
-        if (!questionRow || (questionType !== 'multiple_choice' && questionType !== 'diagrams')) {
-            throw new Error('Build Up strings are only available for multiple-choice or diagram questions.');
+        if (!questionRow || !isBuildUpCapableQuestionType(questionType)) {
+            throw new Error('Build Up strings are only available for multiple-choice, diagram, or flashcard items.');
         }
+        const nextBuildUp = normalizeBuildUpValue(nextBuildUpValue);
+
+        if (questionType === 'flashcard') {
+            const { error } = await state.auth.client
+                .from('flashcard_questions')
+                .update({ build_up: nextBuildUp || null })
+                .eq('question_id', normalizedQuestionId);
+            if (error) {
+                if (isMissingFlashcardBuildUpColumnError(error)) {
+                    throw new Error('Run the Phase 22NP Supabase migration before editing flashcard Build Up strings.');
+                }
+                throw error;
+            }
+            questionRow.buildUp = nextBuildUp;
+            return nextBuildUp;
+        }
+
         const detail = await loadMultipleChoiceDetailByQuestionId(normalizedQuestionId);
         if (!detail) throw new Error("Could not load this question's multiple-choice details.");
         const optionPayload = normalizeOptionsJsonForBuildUpUpdate(detail);
-        const nextBuildUp = normalizeBuildUpValue(nextBuildUpValue);
         let nextOptionsJson = buildMultipleChoiceOptionsJsonPayload(optionPayload, nextBuildUp, {
             allowMultipleAnswers: getAllowMultipleAnswersFromDetailRow(detail),
             correctAnswers: getMultipleChoiceCorrectAnswersFromDetailRow(detail),
@@ -17407,7 +17736,7 @@ The deletion becomes permanent when you save the diagram.`);
         }
         await updateStudioQuestionBuildUpString(questionId, activeBuildUp);
         renderStudioQuestionList();
-        setCreatorStatus('Question added to this Build Up string.', 'success');
+        setCreatorStatus('Item added to this Build Up string.', 'success');
     }
 
     async function handleStudioBuildUpRemoveQuestion(questionId) {
@@ -17415,7 +17744,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!activeBuildUp) throw new Error('Open a Build Up string first.');
         const questionRow = getStudioQuestionRowById(questionId);
         if (!isSameBuildUpString(getStudioQuestionBuildUpValue(questionRow), activeBuildUp)) {
-            setCreatorStatus('That question is not in this Build Up string.', 'error');
+            setCreatorStatus('That item is not in this Build Up string.', 'error');
             return;
         }
         await updateStudioQuestionBuildUpString(questionId, '');
@@ -17423,11 +17752,11 @@ The deletion becomes permanent when you save the diagram.`);
         if (!remaining) {
             state.auth.studioActiveBuildUpString = '';
             renderStudioQuestionList();
-            setCreatorStatus('Question removed. That Build Up string is now empty.', 'success');
+            setCreatorStatus('Item removed. That Build Up string is now empty.', 'success');
             return;
         }
         renderStudioQuestionList();
-        setCreatorStatus('Question removed from this Build Up string.', 'success');
+        setCreatorStatus('Item removed from this Build Up string.', 'success');
     }
 
     function syncStudioQuestionStarredFilterButton() {
@@ -17571,7 +17900,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editingType = getStudioCurrentQuizType();
         const activeBuildUpString = normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
         const focusedBuildUpString = normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
-        const supportsBuildUpEditing = editingType === 'multiple_choice' || editingType === 'diagrams';
+        const supportsBuildUpEditing = isBuildUpCapableQuestionType(editingType);
         const buildUpEditActive = supportsBuildUpEditing && !!activeBuildUpString;
         let buildUpFocusActive = !buildUpEditActive && supportsBuildUpEditing && !!focusedBuildUpString;
         if (activeBuildUpString && !supportsBuildUpEditing) {
@@ -17601,7 +17930,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (buildUpEditActive) {
             filteredQuestions = displayRows.filter(questionRow => {
                 const rowType = normalizeSheetText(questionRow.question_type || 'multiple_choice');
-                return rowType === 'multiple_choice' || rowType === 'diagrams';
+                return isBuildUpCapableQuestionType(rowType);
             });
         } else if (buildUpFocusActive) {
             if (query) {
@@ -17633,7 +17962,7 @@ The deletion becomes permanent when you save the diagram.`);
 
         if (!filteredQuestions.length && !focusNewDraftActive) {
             const emptyLabel = buildUpEditActive
-                ? '<div class="studio-list-empty">This quiz has no multiple-choice or diagram questions available for Build Up string editing.</div>'
+                ? '<div class="studio-list-empty">This quiz has no multiple-choice, diagram, or saved flashcard items available for Build Up string editing.</div>'
                 : (buildUpFocusActive
                     ? '<div class="studio-list-empty">This Build Up string is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
                     : (focusModeActive
@@ -17648,7 +17977,7 @@ The deletion becomes permanent when you save the diagram.`);
         const sharedDiagramSourceQuestionId = isStudioSharedDiagramCapableMode(editingType) ? getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) : '';
         const buildUpEditorBannerHtml = buildUpEditActive
             ? `<div class="studio-build-up-editor-banner">
-                <div><strong>Editing String:</strong> ${escapeHtml(activeBuildUpString)} <span>Add or remove multiple-choice or diagram questions below. Normal question order controls the Build Up order.</span></div>
+                <div><strong>Editing String:</strong> ${escapeHtml(activeBuildUpString)} <span>Add or remove multiple-choice, diagram, or saved flashcard items below. Normal item order controls the Build Up order.</span></div>
                 <button type="button" class="studio-build-up-done-btn" data-studio-build-up-clear="true">Done</button>
               </div>`
             : '';
@@ -17704,7 +18033,7 @@ The deletion becomes permanent when you save the diagram.`);
             const starBadgeHtml = isStarredRow
                 ? '<span class="studio-question-list-star" title="Starred question" aria-label="Starred question">★</span>'
                 : '';
-            const isBuildUpQuestionRow = supportsBuildUpEditing && (questionType === 'multiple_choice' || questionType === 'diagrams') && !isPendingRow && !isLocalFlashcardRow;
+            const isBuildUpQuestionRow = supportsBuildUpEditing && isBuildUpCapableQuestionType(questionType) && !isPendingRow && !isLocalFlashcardRow;
             const isActiveBuildUpMember = buildUpEditActive && isSameBuildUpString(questionBuildUpValue, activeBuildUpString);
             const isFocusedBuildUpMember = buildUpFocusActive && isSameBuildUpString(questionBuildUpValue, focusedBuildUpString);
             const isOtherBuildUpMember = buildUpEditActive && !!questionBuildUpValue && !isActiveBuildUpMember;
@@ -17987,7 +18316,7 @@ The deletion becomes permanent when you save the diagram.`);
                 storage_question_type: normalizeSheetText(row.question_type || 'multiple_choice'),
                 image_url: normalizeSheetText(row.image_url),
                 sort_order: Number(row.sort_order ?? 0),
-                buildUp: multipleChoiceBuildUpMap.get(normalizedQuestionId) || '',
+                buildUp: normalizeBuildUpValue(row.question_type === 'flashcard' ? flashcardDetail.build_up : multipleChoiceBuildUpMap.get(normalizedQuestionId)) || '',
                 mc_search_text: buildStudioMultipleChoiceSearchText(multipleChoiceDetail),
                 isStarred: !!starredMap.get(normalizedQuestionId)
             };
@@ -18634,23 +18963,58 @@ The deletion becomes permanent when you save the diagram.`);
         return rows[0] || null;
     }
 
+    function isMissingFlashcardBuildUpColumnError(error = {}) {
+        const errorText = [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(' ');
+        return /build_up/i.test(errorText) && /(flashcard_questions|column|schema cache|does not exist|42703)/i.test(errorText);
+    }
+
+    function throwFlashcardBuildUpMigrationErrorIfNeeded(error) {
+        if (isMissingFlashcardBuildUpColumnError(error)) {
+            throw new Error('Run SUPABASE_PHASE22NP_FLASHCARD_BUILD_UP_MIGRATION.sql before saving flashcard Build Up strings.');
+        }
+        throw error;
+    }
+
     async function loadFlashcardDetailsByQuestionIds(questionIds, options = {}) {
         if (!state.auth.client || !Array.isArray(questionIds) || !questionIds.length) {
             return [];
         }
 
         const includeImages = options.includeImages !== false;
-        const selectColumns = includeImages
+        const baseColumns = includeImages
             ? 'question_id, term_html, definition_html, term_plain, definition_plain, term_image_url, definition_image_url'
             : 'question_id, term_html, definition_html, term_plain, definition_plain';
-
-        const { data, error } = await state.auth.client
+        const primary = await state.auth.client
             .from('flashcard_questions')
-            .select(selectColumns)
+            .select(`${baseColumns}, build_up`)
             .in('question_id', questionIds);
 
-        if (error) throw error;
-        return data || [];
+        if (!primary.error) return primary.data || [];
+        if (!isMissingFlashcardBuildUpColumnError(primary.error)) throw primary.error;
+
+        const fallback = await state.auth.client
+            .from('flashcard_questions')
+            .select(baseColumns)
+            .in('question_id', questionIds);
+        if (fallback.error) throw fallback.error;
+        return (fallback.data || []).map(row => ({ ...row, build_up: '' }));
+    }
+
+    async function loadManagedFlashcardBuildUpRows() {
+        if (!state.auth.client) return [];
+        try {
+            return await fetchAllSupabaseRows(
+                () => state.auth.client
+                    .from('flashcard_questions')
+                    .select('question_id, build_up')
+                    .not('build_up', 'is', null)
+                    .neq('build_up', ''),
+                { label: 'managed quiz flashcard Build Up metadata rows' }
+            );
+        } catch (error) {
+            if (isMissingFlashcardBuildUpColumnError(error)) return [];
+            throw error;
+        }
     }
 
     async function loadFlashcardImageDetailsByQuestionIds(questionIds) {
@@ -20175,10 +20539,11 @@ if (elements.openQuizStudioBtn) {
             definition_html: normalizeSheetText(detail.definition_html),
             term_plain: normalizeSheetText(detail.term_plain || question.prompt_plain),
             definition_plain: normalizeSheetText(detail.definition_plain),
+            ...(normalizeBuildUpValue(detail.build_up) ? { build_up: normalizeBuildUpValue(detail.build_up) } : {}),
             term_image_url: termImageUrl || '',
             definition_image_url: definitionImageUrl || ''
         });
-        if (error) throw error;
+        if (error) throwFlashcardBuildUpMigrationErrorIfNeeded(error);
     }
 
     async function insertBackupHierarchyDetail(questionId, detail = {}) {
@@ -21250,9 +21615,20 @@ if (elements.openQuizStudioBtn) {
             const definitionImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {});
             storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedFlashcardMedia.term_image_url });
             storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedFlashcardMedia.definition_image_url });
-            const detailPayload = { question_id: questionId, term_html: storedTermHtml, definition_html: storedDefinitionHtml, term_plain: term, definition_plain: definition, term_image_url: savedFlashcardMedia.term_image_url || '', definition_image_url: savedFlashcardMedia.definition_image_url || '' };
+            const savedQuestionRow = state.auth.studioQuizQuestions.find(row => normalizeSheetText(row?.id) === normalizeSheetText(questionId));
+            const savedBuildUp = getStudioQuestionBuildUpValue(savedQuestionRow);
+            const detailPayload = {
+                question_id: questionId,
+                term_html: storedTermHtml,
+                definition_html: storedDefinitionHtml,
+                term_plain: term,
+                definition_plain: definition,
+                ...(savedBuildUp ? { build_up: savedBuildUp } : {}),
+                term_image_url: savedFlashcardMedia.term_image_url || '',
+                definition_image_url: savedFlashcardMedia.definition_image_url || ''
+            };
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
-            if (detailError) throw detailError;
+            if (detailError) throwFlashcardBuildUpMigrationErrorIfNeeded(detailError);
             await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, ...savedFlashcardMedia });
             if (!isEditingQuestion) {
                 await applyPendingStudioInsertOrder(quizId, questionId);
@@ -21941,10 +22317,11 @@ if (elements.openQuizStudioBtn) {
                 definition_html: detail.definition_html || '',
                 term_plain: detail.term_plain || '',
                 definition_plain: detail.definition_plain || '',
+                ...(normalizeBuildUpValue(detail.build_up) ? { build_up: normalizeBuildUpValue(detail.build_up) } : {}),
                 term_image_url: clonedFlashcardMedia.term_image_url || '',
                 definition_image_url: clonedFlashcardMedia.definition_image_url || ''
             });
-            if (error) throw error;
+            if (error) throwFlashcardBuildUpMigrationErrorIfNeeded(error);
             return newQuestionId;
         }
 
@@ -22033,6 +22410,273 @@ if (elements.openQuizStudioBtn) {
             if (fallbackError) throw fallbackError;
         }
         return newQuestionId;
+    }
+
+    function getUniqueManagedQuizName(baseName = 'Untitled Quiz') {
+        const normalizedBaseName = normalizeSheetText(baseName) || 'Untitled Quiz';
+        const existingNames = new Set((state.auth.managedQuizzes || [])
+            .map(quiz => normalizeSheetText(quiz?.name).toLowerCase())
+            .filter(Boolean));
+        if (!existingNames.has(normalizedBaseName.toLowerCase())) return normalizedBaseName;
+        let suffix = 2;
+        while (existingNames.has(`${normalizedBaseName} (${suffix})`.toLowerCase())) suffix += 1;
+        return `${normalizedBaseName} (${suffix})`;
+    }
+
+    function isLikelyMultipleChoiceMediaAnswer(value = '') {
+        const normalized = normalizeSheetText(value);
+        return !!normalized && (
+            isSupabaseMediaReference(normalized)
+            || /^data:image\//i.test(normalized)
+            || /^blob:/i.test(normalized)
+            || /^https?:\/\//i.test(normalized)
+        );
+    }
+
+    function buildFlashcardConversionDraftFromMultipleChoice(questionRow = {}, detailRow = {}) {
+        const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detailRow);
+        const correctAnswers = getMultipleChoiceCorrectAnswersFromDetailRow(detailRow);
+        if (!correctAnswers.length) {
+            return { skipped: true, reason: 'missing_correct_answer' };
+        }
+
+        const matchedOptions = [];
+        const unmatchedAnswers = [];
+        correctAnswers.forEach(answer => {
+            const match = optionDrafts.find(option => getOptionAnswerValue(option) === answer) || null;
+            if (match) matchedOptions.push(match);
+            else unmatchedAnswers.push(answer);
+        });
+
+        const answerTexts = [];
+        const correctImageOptions = [];
+        matchedOptions.forEach((option, index) => {
+            const optionText = normalizeSheetText(option?.text);
+            const optionImage = normalizeSheetText(option?.imageUrl);
+            if (optionText) answerTexts.push(optionText);
+            if (optionImage) correctImageOptions.push({ ...option, sourceAnswerIndex: index });
+        });
+        unmatchedAnswers.forEach(answer => {
+            if (!isLikelyMultipleChoiceMediaAnswer(answer)) answerTexts.push(answer);
+        });
+
+        const uniqueAnswerTexts = Array.from(new Set(answerTexts.map(normalizeSheetText).filter(Boolean)));
+        const imageOnlyCorrectCount = matchedOptions.filter(option => !normalizeSheetText(option?.text) && normalizeSheetText(option?.imageUrl)).length;
+        if (!uniqueAnswerTexts.length && imageOnlyCorrectCount > 1) {
+            return { skipped: true, reason: 'multiple_image_only_answers' };
+        }
+        if (!uniqueAnswerTexts.length && !correctImageOptions.length) {
+            return { skipped: true, reason: 'unusable_correct_answer' };
+        }
+
+        const definitionPlain = uniqueAnswerTexts.length > 1
+            ? uniqueAnswerTexts.map(answer => `• ${answer}`).join('\n')
+            : (uniqueAnswerTexts[0] || '');
+        const definitionHtml = definitionPlain ? buildStoredHtmlFromPlain(definitionPlain) : '';
+        const termPlain = normalizeSheetText(questionRow.prompt_plain) || getStoredTextForDisplay('', questionRow.prompt_html || '');
+        const termHtml = normalizeSheetText(questionRow.prompt_html) || buildStoredHtmlFromPlain(termPlain);
+        if (!termPlain && !termHtml && !normalizeSheetText(questionRow.image_url)) {
+            return { skipped: true, reason: 'missing_question_content' };
+        }
+
+        return {
+            skipped: false,
+            termPlain,
+            termHtml,
+            definitionPlain,
+            definitionHtml,
+            termImageSource: normalizeSheetText(questionRow.image_url),
+            definitionImageSource: normalizeSheetText(correctImageOptions[0]?.imageUrl),
+            learningResourcesHtml: normalizeSheetText(questionRow.learning_resources_html),
+            learningResourcesImageSource: normalizeSheetText(questionRow.learning_resources_image_url),
+            buildUp: getBuildUpValueFromOptionsJson(detailRow.options_json),
+            termImageLabels: getQuestionImageLabelsFromDetailRow(detailRow),
+            correctAnswerCount: correctAnswers.length,
+            correctImageCount: correctImageOptions.length
+        };
+    }
+
+    async function insertConvertedFlashcardQuestion(targetQuizId, conversionDraft, targetSortOrder) {
+        const { data: insertedQuestion, error: insertQuestionError } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: targetQuizId,
+                question_type: 'flashcard',
+                prompt_html: conversionDraft.termHtml || '',
+                prompt_plain: conversionDraft.termPlain || '',
+                image_url: '',
+                learning_resources_html: conversionDraft.learningResourcesHtml || '',
+                learning_resources_image_url: '',
+                sort_order: targetSortOrder
+            })
+            .select('id')
+            .single();
+        if (insertQuestionError) throw insertQuestionError;
+
+        const newQuestionId = insertedQuestion.id;
+        const clonedMedia = await cloneMediaRefsInObject({
+            term_image_url: conversionDraft.termImageSource || '',
+            definition_image_url: conversionDraft.definitionImageSource || '',
+            learning_resources_image_url: conversionDraft.learningResourcesImageSource || ''
+        }, {
+            quizId: targetQuizId,
+            questionId: newQuestionId,
+            usageContext: 'multiple_choice_to_flashcard'
+        });
+
+        const clonedLearningResourcesImage = normalizeSheetText(clonedMedia.learning_resources_image_url);
+        if (clonedLearningResourcesImage) {
+            const { error: learningMediaError } = await state.auth.client
+                .from('questions')
+                .update({ learning_resources_image_url: clonedLearningResourcesImage })
+                .eq('id', newQuestionId);
+            if (learningMediaError) throw learningMediaError;
+        }
+
+        const clonedTermImage = normalizeSheetText(clonedMedia.term_image_url);
+        const clonedDefinitionImage = normalizeSheetText(clonedMedia.definition_image_url);
+        const storedTermHtml = buildStoredFlashcardSideContent(conversionDraft.termHtml || '', {
+            labels: conversionDraft.termImageLabels || [],
+            imagePresent: !!clonedTermImage
+        });
+        const storedDefinitionHtml = buildStoredFlashcardSideContent(conversionDraft.definitionHtml || '', {
+            imagePresent: !!clonedDefinitionImage
+        });
+        const detailPayload = {
+            question_id: newQuestionId,
+            term_html: storedTermHtml,
+            definition_html: storedDefinitionHtml,
+            term_plain: conversionDraft.termPlain || '',
+            definition_plain: conversionDraft.definitionPlain || '',
+            ...(normalizeBuildUpValue(conversionDraft.buildUp) ? { build_up: normalizeBuildUpValue(conversionDraft.buildUp) } : {}),
+            term_image_url: clonedTermImage,
+            definition_image_url: clonedDefinitionImage
+        };
+        let detailInsert = await state.auth.client.from('flashcard_questions').insert(detailPayload);
+        if (detailInsert.error && isMissingFlashcardBuildUpColumnError(detailInsert.error) && !normalizeBuildUpValue(conversionDraft.buildUp)) {
+            const fallbackPayload = { ...detailPayload };
+            delete fallbackPayload.build_up;
+            detailInsert = await state.auth.client.from('flashcard_questions').insert(fallbackPayload);
+        }
+        if (detailInsert.error) throwFlashcardBuildUpMigrationErrorIfNeeded(detailInsert.error);
+        return newQuestionId;
+    }
+
+    async function cleanupFailedFlashcardConversionQuiz(quizId = '') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        if (!normalizedQuizId || !state.auth.client) return;
+        try {
+            const mediaRefs = await getQuizMediaReferences(normalizedQuizId);
+            await state.auth.client.from('quizzes').delete().eq('id', normalizedQuizId);
+            await deleteSupabaseMediaReferences(mediaRefs);
+        } catch (cleanupError) {
+            console.warn('Could not fully clean up the failed flashcard conversion:', cleanupError);
+        }
+    }
+
+    async function handleCreateFlashcardsFromQuiz(quizId, conversionMode = 'all') {
+        const normalizedQuizId = normalizeSheetText(quizId);
+        const normalizedMode = conversionMode === 'starred' ? 'starred' : 'all';
+        const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === normalizedQuizId) || null;
+        if (!state.auth.client || !state.auth.user?.id || !managedQuiz) {
+            setCreatorStatus('Could not find that multiple-choice quiz.', 'error');
+            return;
+        }
+        if (managedQuiz.quizType !== 'multiple_choice') {
+            setCreatorStatus('Create Flashcards is available only for multiple-choice quizzes.', 'error');
+            return;
+        }
+
+        let createdQuizId = '';
+        try {
+            setCreatorProgressStatus('Creating flashcards', 'loading source questions');
+            const [{ data: sourceQuizRow, error: sourceQuizError }, { data: questionRows, error: questionRowsError }] = await Promise.all([
+                state.auth.client
+                    .from('quizzes')
+                    .select('id, folder_id, name, description, sort_order')
+                    .eq('id', normalizedQuizId)
+                    .maybeSingle(),
+                state.auth.client
+                    .from('questions')
+                    .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, sort_order, question_type')
+                    .eq('quiz_id', normalizedQuizId)
+                    .order('sort_order', { ascending: true })
+            ]);
+            if (sourceQuizError) throw sourceQuizError;
+            if (questionRowsError) throw questionRowsError;
+            if (!sourceQuizRow) throw new Error('Could not load the source quiz.');
+
+            const allQuestionRows = (questionRows || []).filter(row => normalizeSheetText(row.question_type || 'multiple_choice') === 'multiple_choice');
+            let selectedQuestionRows = allQuestionRows;
+            if (normalizedMode === 'starred') {
+                const starredIds = new Set(await loadStarredQuestionIdsForQuiz(managedQuiz, normalizedQuizId));
+                selectedQuestionRows = allQuestionRows.filter(row => starredIds.has(normalizeSheetText(row.id)));
+                if (!selectedQuestionRows.length) {
+                    setCreatorStatus('This quiz has no starred questions to convert.', 'error');
+                    return;
+                }
+            }
+            if (!selectedQuestionRows.length) {
+                setCreatorStatus('This quiz has no multiple-choice questions to convert.', 'error');
+                return;
+            }
+
+            const details = await loadMultipleChoiceDetailsByQuestionIds(selectedQuestionRows.map(row => row.id));
+            const detailMap = new Map((details || []).map(detail => [normalizeSheetText(detail.question_id), detail]));
+            const candidates = selectedQuestionRows.map(row => {
+                const detail = detailMap.get(normalizeSheetText(row.id));
+                if (!detail) return { row, draft: { skipped: true, reason: 'missing_details' } };
+                return { row, draft: buildFlashcardConversionDraftFromMultipleChoice(row, detail) };
+            });
+            const convertibleCandidates = candidates.filter(candidate => !candidate.draft.skipped);
+            const skippedCount = candidates.length - convertibleCandidates.length;
+            if (!convertibleCandidates.length) {
+                setCreatorStatus('No flashcards were created because the selected questions did not contain usable correct answers.', 'error');
+                return;
+            }
+
+            const sourceName = normalizeSheetText(sourceQuizRow.name) || 'Untitled Quiz';
+            const requestedName = normalizedMode === 'starred'
+                ? `${sourceName} — Starred Flashcards`
+                : `${sourceName} — Flashcards`;
+            const destinationName = getUniqueManagedQuizName(requestedName);
+            const folderId = normalizeSheetText(sourceQuizRow.folder_id) || null;
+            const sourceDirectClassId = folderId ? '' : getQuizClassIdFromDescription(sourceQuizRow.description || '');
+            const destinationDescription = sourceDirectClassId ? setQuizClassInDescription('', sourceDirectClassId) : '';
+            const nextSortOrder = await getNextQuizSortOrder(folderId);
+            const { data: insertedQuiz, error: insertQuizError } = await state.auth.client
+                .from('quizzes')
+                .insert({
+                    user_id: state.auth.user.id,
+                    folder_id: folderId,
+                    name: destinationName,
+                    description: destinationDescription,
+                    sort_order: nextSortOrder,
+                    is_archived: false
+                })
+                .select('id')
+                .single();
+            if (insertQuizError) throw insertQuizError;
+            createdQuizId = insertedQuiz.id;
+
+            for (let index = 0; index < convertibleCandidates.length; index += 1) {
+                setCreatorProgressStatus('Creating flashcards', `converting ${index + 1} of ${convertibleCandidates.length}`);
+                const candidate = convertibleCandidates[index];
+                await insertConvertedFlashcardQuestion(createdQuizId, candidate.draft, index);
+            }
+
+            setCreatorProgressStatus('Creating flashcards', 'refreshing Quiz Studio');
+            await refreshStudioManagementData({ force: true });
+            await refreshQuizCatalog({ selectQuizId: `sb:${createdQuizId}`, loadSelectedQuiz: false });
+            const sourceLabel = normalizedMode === 'starred' ? 'starred questions' : 'entire quiz';
+            const createdCount = convertibleCandidates.length;
+            const skippedMessage = skippedCount ? ` Skipped ${skippedCount} question${skippedCount === 1 ? '' : 's'} without a usable correct answer.` : '';
+            setCreatorStatus(`Created ${createdCount} flashcard${createdCount === 1 ? '' : 's'} from the ${sourceLabel} in “${destinationName}”.${skippedMessage}`, 'success');
+        } catch (error) {
+            console.error('Could not create flashcards from quiz:', error);
+            if (createdQuizId) await cleanupFailedFlashcardConversionQuiz(createdQuizId);
+            setCreatorStatus(error.message || 'Could not create the flashcard quiz.', 'error');
+        }
     }
 
     async function handleDuplicateStudioQuestion() {
@@ -22511,10 +23155,11 @@ if (elements.openQuizStudioBtn) {
             definition_html: buildStoredHtmlFromPlain(definition),
             term_plain: term,
             definition_plain: definition,
+            ...(normalizeBuildUpValue(question.buildUp) ? { build_up: normalizeBuildUpValue(question.buildUp) } : {}),
             term_image_url: savedFlashcardMedia.term_image_url || '',
             definition_image_url: savedFlashcardMedia.definition_image_url || ''
         }, { onConflict: 'question_id' });
-        if (detailError) throw detailError;
+        if (detailError) throwFlashcardBuildUpMigrationErrorIfNeeded(detailError);
     }
 
     async function importHierarchyQuestionToSupabase(quizId, question, sortOrder) {
@@ -23814,10 +24459,18 @@ function advancePastAutoStarredExcludedCurrentQuestion() {
     const previousIndex = state.currentIndex;
     state.questionQueue = state.questionQueue.filter(question => getAutoStarQuestionKey(question) !== key);
     state.questions = state.questions.filter(question => getAutoStarQuestionKey(question) !== key);
+    state.masteryCheckSegmentQuestions = state.masteryCheckSegmentQuestions.filter(question => getAutoStarQuestionKey(question) !== key);
+    state.masteryCheckResumeQueue = state.masteryCheckResumeQueue.filter(question => getAutoStarQuestionKey(question) !== key);
+    if (currentQuestion?.id) {
+        state.masteryCheckSegmentIds.delete(currentQuestion.id);
+        state.masteryCheckCheckpointSolvedIds.delete(currentQuestion.id);
+    }
     state.autoStar.excludedQuestionKeys.delete(key);
+    resetPendingStudyAdvanceFlags();
 
     if (!state.questionQueue.length) {
         state.currentIndex = 0;
+        state.emptyQuizMessage = 'All questions in this deck are currently starred and excluded.';
         if (isRetentionMode()) {
             state.retentionFinished = true;
         } else if (isMasteryCheckMode()) {
@@ -23826,6 +24479,7 @@ function advancePastAutoStarredExcludedCurrentQuestion() {
             state.normalFinished = true;
         }
     } else {
+        state.emptyQuizMessage = '';
         state.currentIndex = Math.min(previousIndex, state.questionQueue.length - 1);
     }
 
@@ -24533,8 +25187,8 @@ function updateAllowBuildUpAvailability() {
         allowBuildUpHelp.innerText = challengeLocked
             ? 'Locked on for this Build Up challenge.'
             : (hasBuildUpStrings
-                ? 'Keeps multiple-choice or diagram questions with the same Build Up string together in study order, even when Shuffle Questions is on.'
-                : 'Available when multiple-choice or diagram questions include Build Up string values from import or editor tools.');
+                ? 'Keeps multiple-choice, diagram, or flashcard items with the same Build Up string together in study order, even when Shuffle Questions is on.'
+                : 'Available when multiple-choice, diagram, or flashcard items include Build Up string values from import or editor tools.');
     }
 }
 
@@ -24560,7 +25214,7 @@ function updateTetherBuildUpAvailability() {
 
     if (tetherHelp) {
         if (!hasBuildUpStrings) {
-            tetherHelp.innerText = 'Available when multiple-choice or diagram questions include Build Up string values from import or editor tools.';
+            tetherHelp.innerText = 'Available when multiple-choice, diagram, or flashcard items include Build Up string values from import or editor tools.';
         } else if (!allowBuildUpActive) {
             tetherHelp.innerText = 'Turn on Allow Build Up first.';
         } else if (!supportedModeActive) {
@@ -25019,7 +25673,7 @@ function clearFlashcardSwipeFeedback() {
     const feedback = document.getElementById('flashcardSwipeFeedback');
     if (feedback) {
         feedback.innerText = '';
-        feedback.classList.remove('show', 'know', 'dont-know');
+        feedback.classList.remove('show', 'know', 'dont-know', 'star-know');
     }
     clearFlashcardSwipeBorderState();
 }
@@ -25027,7 +25681,7 @@ function clearFlashcardSwipeFeedback() {
 function clearFlashcardSwipeBorderState() {
     const card = document.getElementById('flashcardCard');
     if (!card) return;
-    card.classList.remove('swiping-know', 'swiping-dont-know');
+    card.classList.remove('swiping-know', 'swiping-dont-know', 'swiping-star-know');
 }
 
 function setFlashcardSwipeBorderState(kind) {
@@ -25038,6 +25692,8 @@ function setFlashcardSwipeBorderState(kind) {
         card.classList.add('swiping-know');
     } else if (kind === 'dont-know') {
         card.classList.add('swiping-dont-know');
+    } else if (kind === 'star-know') {
+        card.classList.add('swiping-star-know');
     }
 }
 
@@ -25045,17 +25701,23 @@ function setFlashcardSwipeFeedback(kind) {
     const feedback = document.getElementById('flashcardSwipeFeedback');
     if (!feedback) return;
 
+    feedback.classList.remove('know', 'dont-know', 'star-know');
+
     if (kind === 'know') {
         feedback.innerText = 'Know';
         feedback.classList.add('show', 'know');
-        feedback.classList.remove('dont-know');
         return;
     }
 
     if (kind === 'dont-know') {
         feedback.innerText = "Don't know";
         feedback.classList.add('show', 'dont-know');
-        feedback.classList.remove('know');
+        return;
+    }
+
+    if (kind === 'star-know') {
+        feedback.innerText = '★ Starred';
+        feedback.classList.add('show', 'star-know');
         return;
     }
 
@@ -25236,19 +25898,27 @@ function isCurrentFlashcardStudyQuestion() {
     return normalizeSheetText(currentQuestion?.type || '').toLowerCase() === 'flashcard';
 }
 
-function triggerFlashcardGradeWithSwipeFeedback(knewIt) {
+function triggerFlashcardGradeWithSwipeFeedback(knewIt, options = {}) {
+    const { starOnKnow = false } = options;
     if (state.flashcardGradeFeedbackPending || state.questionAnswered) return true;
     if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return true;
     if (isRetentionMode() && state.retentionAnswerLocked) return true;
 
-    const kind = knewIt ? 'know' : 'dont-know';
+    const kind = starOnKnow && knewIt ? 'star-know' : (knewIt ? 'know' : 'dont-know');
     state.flashcardGradeFeedbackPending = true;
     setFlashcardSwipeBorderState(kind);
     setFlashcardSwipeFeedback(kind);
 
     setTimeout(() => {
         state.flashcardGradeFeedbackPending = false;
-        gradeFlashcard(knewIt);
+        Promise.resolve(gradeFlashcard(knewIt, { starOnKnow }))
+            .then(result => {
+                if (result === false) clearFlashcardSwipeFeedback();
+            })
+            .catch(error => {
+                console.error('Flashcard keyboard action failed:', error);
+                clearFlashcardSwipeFeedback();
+            });
     }, 90);
 
     return true;
@@ -25258,8 +25928,8 @@ function handleFlashcardStudyKeyboardShortcut(event) {
     if (!isCurrentFlashcardStudyQuestion()) return false;
 
     const key = event.key;
-    const isFlipKey = key === ' ' || key === 'Spacebar' || key === 'Space' || event.code === 'Space' || key === 'ArrowUp' || key === 'ArrowDown';
-    const isGradeKey = key === 'ArrowLeft' || key === 'ArrowRight';
+    const isFlipKey = key === ' ' || key === 'Spacebar' || key === 'Space' || event.code === 'Space' || key === 'ArrowDown';
+    const isGradeKey = key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp';
     if (!isFlipKey && !isGradeKey) return false;
     if (event.repeat) return false;
 
@@ -25268,6 +25938,10 @@ function handleFlashcardStudyKeyboardShortcut(event) {
     if (isFlipKey) {
         toggleFlashcardFlip();
         return true;
+    }
+
+    if (key === 'ArrowUp') {
+        return triggerFlashcardGradeWithSwipeFeedback(true, { starOnKnow: true });
     }
 
     return triggerFlashcardGradeWithSwipeFeedback(key === 'ArrowRight');
@@ -25934,8 +26608,13 @@ function resetPendingStudyAdvanceFlags() {
     state.masteryCheckPendingCheckpointComplete = false;
 }
 
+function isBuildUpCapableQuestionType(value = '') {
+    const normalizedType = normalizeSheetText(value).toLowerCase().replace(/_/g, ' ');
+    return normalizedType === 'multiple choice' || normalizedType === 'diagrams' || normalizedType === 'flashcard';
+}
+
 function isBuildUpSupportedQuestion(question = {}) {
-    return (question?.type === 'multiple choice' || question?.type === 'diagrams') && !!normalizeBuildUpValue(question?.buildUp);
+    return isBuildUpCapableQuestionType(question?.type) && !!normalizeBuildUpValue(question?.buildUp);
 }
 
 function isAllowBuildUpEnabled() {
@@ -25948,7 +26627,7 @@ function isTetherBuildUpEnabled() {
 
 function getBuildUpGroupKey(question = {}) {
     const buildUp = normalizeBuildUpValue(question?.buildUp);
-    if (!buildUp || (question?.type !== 'multiple choice' && question?.type !== 'diagrams')) return '';
+    if (!buildUp || !isBuildUpCapableQuestionType(question?.type)) return '';
     const scope = normalizeSheetText(question?.sourceQuizId || state.activeQuizDescriptor?.sourceQuizId || state.activeQuizDescriptor?.id || 'active-quiz');
     return `${scope}::${buildUp.toLocaleLowerCase()}`;
 }
@@ -26461,7 +27140,9 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 return {
                     id: `q_${state.questionIdCounter++}`,
                     sourceQuestionId: row.id,
+                    sourceQuizId: normalizeSheetText(quizDescriptor.sourceQuizId),
                     type: 'flashcard',
+                    buildUp: normalizeBuildUpValue(detail.build_up),
                     termText: getStoredTextForDisplay(detail.term_plain, parsedTermSide.html),
                     termHtml: parsedTermSide.html,
                     definitionText: getStoredTextForDisplay(detail.definition_plain, parsedDefinitionSide.html),
@@ -26843,6 +27524,30 @@ function getMultipleChoiceSheetLayout(rows) {
     };
 }
 
+function getFlashcardSheetLayout(rows) {
+    const headers = getSheetHeaderValues(rows);
+    const termColumn = findSheetColumnByHeader(headers, ['Term', 'Front', 'Flashcard term']);
+    const definitionColumn = findSheetColumnByHeader(headers, ['Definition', 'Back', 'Flashcard definition']);
+    const buildUpColumn = findSheetColumnByHeader(headers, ['build_up', 'Build Up', 'Build Up Group', 'String', 'Question String', 'Case String']);
+    const termImageColumn = findSheetColumnByHeader(headers, ['Term image URL', 'Term image', 'Front image URL', 'Front image']);
+    const definitionImageColumn = findSheetColumnByHeader(headers, ['Definition image URL', 'Definition image', 'Back image URL', 'Back image']);
+    const learningResourcesColumn = findSheetColumnByHeader(headers, ['Learning resources', 'Learning resource', 'Resources']);
+    const learningResourcesImageColumn = findSheetColumnByHeader(headers, ['Learning resources image URL', 'Learning resource image URL', 'Resources image URL']);
+    const usesHeaders = termColumn >= 0 && definitionColumn >= 0;
+    if (usesHeaders) {
+        return { termColumn, definitionColumn, buildUpColumn, termImageColumn, definitionImageColumn, learningResourcesColumn, learningResourcesImageColumn };
+    }
+    return {
+        termColumn: 0,
+        definitionColumn: 2,
+        buildUpColumn: -1,
+        termImageColumn: 3,
+        definitionImageColumn: 4,
+        learningResourcesColumn: 5,
+        learningResourcesImageColumn: 6
+    };
+}
+
 function resolveMultipleChoiceCorrectAnswers(rawCorrect, optionDrafts, correctUsesOptionNumber = false) {
     const normalizedCorrect = normalizeSheetText(rawCorrect);
     if (!normalizedCorrect) return [];
@@ -26950,17 +27655,19 @@ function parseQuestionsFromGoogleSheetRows(rows) {
     }
 
     if (type === 'flashcard') {
+        const layout = getFlashcardSheetLayout(rows);
         return rows.slice(1).map(r => {
             const c = r.c || [];
             return {
                 id: `q_${state.questionIdCounter++}`,
                 type: 'flashcard',
-                termText: getCellValue(c[0]),
-                definitionText: getCellValue(c[2]),
-                termImage: getCellValue(c[3]),
-                definitionImage: getCellValue(c[4]),
-                learningResources: getCellValue(c[5]),
-                learningResourcesImage: getCellValue(c[6])
+                termText: getCellValue(c[layout.termColumn]),
+                definitionText: getCellValue(c[layout.definitionColumn]),
+                buildUp: layout.buildUpColumn >= 0 ? normalizeBuildUpValue(getCellValue(c[layout.buildUpColumn])) : '',
+                termImage: layout.termImageColumn >= 0 ? getCellValue(c[layout.termImageColumn]) : '',
+                definitionImage: layout.definitionImageColumn >= 0 ? getCellValue(c[layout.definitionImageColumn]) : '',
+                learningResources: layout.learningResourcesColumn >= 0 ? getCellValue(c[layout.learningResourcesColumn]) : '',
+                learningResourcesImage: layout.learningResourcesImageColumn >= 0 ? getCellValue(c[layout.learningResourcesImageColumn]) : ''
             };
         }).filter(q => q.termText || q.definitionText || q.termImage || q.definitionImage);
     }
@@ -28924,18 +29631,18 @@ function fitFlashcardTextToFixedCard(root = document) {
     });
 }
 
-function enableFlashcardGesture(card, onKnow, onDontKnow) {
+function enableFlashcardGesture(card, onKnow, onDontKnow, onStarKnow) {
     let tracking = false;
     let startX = 0;
     let startY = 0;
     let activePointerId = null;
-    let angledTouchSwipe = false;
+    let lockedDirection = '';
+    let previousDx = 0;
+    let previousDy = 0;
+    let gestureMoved = false;
 
     const clampSwipeValue = (value, min, max) => Math.max(min, Math.min(max, value));
-
-    function isAngledTouchFlashcardSwipeEvent(event) {
-        return event?.pointerType === 'touch' && isAppleTouchStudyDevice();
-    }
+    const getCardRect = () => card.getBoundingClientRect();
 
     function isFlashcardGestureBlockedTarget(target) {
         if (!target || !target.closest) return false;
@@ -28953,7 +29660,7 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
     }
 
     function clearSwipeBorderState() {
-        card.classList.remove('swiping-know', 'swiping-dont-know');
+        card.classList.remove('swiping-know', 'swiping-dont-know', 'swiping-star-know');
     }
 
     function setSwipeBorderState(kind) {
@@ -28962,19 +29669,192 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
             card.classList.add('swiping-know');
         } else if (kind === 'dont-know') {
             card.classList.add('swiping-dont-know');
+        } else if (kind === 'star-know') {
+            card.classList.add('swiping-star-know');
         }
     }
 
+    function getSwipeScores(dx, dy) {
+        const rect = getCardRect();
+        const width = Math.max(1, rect.width);
+        const height = Math.max(1, rect.height);
+        return {
+            width,
+            height,
+            horizontalDistance: Math.abs(dx),
+            upwardDistance: Math.max(0, -dy),
+            horizontalScore: Math.abs(dx) / width,
+            upwardScore: Math.max(0, -dy) / height
+        };
+    }
+
+    function resetDirectionWhenReturningToCenter(dx, dy) {
+        const scores = getSwipeScores(dx, dy);
+        const centerX = clampSwipeValue(scores.width * 0.045, 14, 28);
+        const centerY = clampSwipeValue(scores.height * 0.035, 14, 28);
+        const isInsideCenter = Math.abs(dx) <= centerX && Math.abs(dy) <= centerY;
+        const hadEstablishedMovement = !!lockedDirection
+            || Math.abs(previousDx) > centerX
+            || Math.abs(previousDy) > centerY;
+        if (!hadEstablishedMovement) return false;
+
+        const crossedHorizontalCenter = (
+            (previousDx > centerX && dx <= 0) ||
+            (previousDx < -centerX && dx >= 0)
+        ) && Math.abs(dy) <= Math.max(centerY, 34);
+        const horizontalLockReversed = (
+            (lockedDirection === 'know' && dx < -centerX) ||
+            (lockedDirection === 'dont-know' && dx > centerX)
+        ) && Math.abs(dy) <= Math.max(centerY, 42);
+
+        if (!isInsideCenter && !crossedHorizontalCenter && !horizontalLockReversed) return false;
+
+        lockedDirection = '';
+        if (isInsideCenter) {
+            startX += dx;
+            startY += dy;
+            previousDx = 0;
+            previousDy = 0;
+            return true;
+        }
+        return false;
+    }
+
+    function getDominantSwipeDirection(dx, dy, { allowLock = true, release = false } = {}) {
+        const scores = getSwipeScores(dx, dy);
+        const movement = Math.max(scores.horizontalDistance, scores.upwardDistance);
+        const minimumPreviewDistance = release ? 12 : 18;
+        if (movement < minimumPreviewDistance) return '';
+        if (dy > 0 && Math.abs(dy) > scores.horizontalDistance * 1.15) return '';
+
+        if (lockedDirection) {
+            const lockedScore = lockedDirection === 'star-know' ? scores.upwardScore : scores.horizontalScore;
+            const competingScore = lockedDirection === 'star-know' ? scores.horizontalScore : scores.upwardScore;
+            if (competingScore >= lockedScore * 1.35 && movement >= 46) {
+                lockedDirection = lockedDirection === 'star-know'
+                    ? (dx >= 0 ? 'know' : 'dont-know')
+                    : 'star-know';
+            }
+            return lockedDirection;
+        }
+
+        const dominanceRatio = release ? 1.04 : 1.16;
+        let direction = '';
+        if (scores.upwardDistance > 0 && scores.upwardScore >= scores.horizontalScore * dominanceRatio) {
+            direction = 'star-know';
+        } else if (scores.horizontalScore >= scores.upwardScore * dominanceRatio) {
+            direction = dx >= 0 ? 'know' : 'dont-know';
+        }
+
+        if (!direction && release) {
+            if (scores.upwardDistance > 0 && scores.upwardScore > scores.horizontalScore) {
+                direction = 'star-know';
+            } else if (scores.horizontalDistance > 0) {
+                direction = dx >= 0 ? 'know' : 'dont-know';
+            }
+        }
+
+        if (allowLock && !release && direction && movement >= 26) {
+            lockedDirection = direction;
+        }
+        return direction;
+    }
+
+    function isCommittedSwipe(kind, dx, dy) {
+        if (!kind) return false;
+        const scores = getSwipeScores(dx, dy);
+        const horizontalThreshold = clampSwipeValue(scores.width * 0.22, 64, 112);
+        const upwardThreshold = clampSwipeValue(scores.height * 0.18, 62, 108);
+
+        if (kind === 'star-know') {
+            return scores.upwardDistance >= upwardThreshold
+                && scores.upwardScore >= scores.horizontalScore * 0.92;
+        }
+
+        return scores.horizontalDistance >= horizontalThreshold
+            && scores.horizontalScore >= scores.upwardScore * 0.92;
+    }
+
+    function applySwipeResistance(value, softLimit) {
+        const distance = Math.abs(value);
+        if (distance <= softLimit) return value;
+        return Math.sign(value) * (softLimit + ((distance - softLimit) * 0.35));
+    }
+
+    function getFreeDragTransform(dx, dy) {
+        const rect = getCardRect();
+        const visualX = applySwipeResistance(dx, Math.max(72, rect.width * 0.42));
+        const visualY = applySwipeResistance(dy, Math.max(72, rect.height * 0.42));
+        const rotation = clampSwipeValue((visualX / Math.max(1, rect.width)) * 10, -9, 9);
+        return { rect, visualX, visualY, rotation };
+    }
+
+    function applyDragTransform(_kind, dx, dy) {
+        const { visualX, visualY, rotation } = getFreeDragTransform(dx, dy);
+        card.style.transform = `translate(${visualX}px, ${visualY}px) rotate(${rotation}deg)`;
+    }
+
     function resetCardPosition() {
-        card.style.transition = 'transform 0.18s ease';
+        card.style.transition = 'transform 0.2s cubic-bezier(0.22, 0.72, 0.25, 1)';
         card.style.transform = '';
         clearSwipeBorderState();
+    }
+
+    function animateCardExit(kind, dx, dy) {
+        const { rect, visualX, visualY, rotation } = getFreeDragTransform(dx, dy);
+        card.style.transition = 'transform 0.19s cubic-bezier(0.32, 0.72, 0.24, 1), opacity 0.19s ease';
+        card.style.opacity = '0.92';
+
+        if (kind === 'star-know') {
+            const exitY = Math.max(window.innerHeight + rect.height, rect.height * 2.2);
+            const exitX = clampSwipeValue(visualX * 1.35, -rect.width * 0.78, rect.width * 0.78);
+            const exitRotation = clampSwipeValue(rotation * 0.65, -6, 6);
+            card.style.transform = `translate(${exitX}px, -${exitY}px) rotate(${exitRotation}deg) scale(0.96)`;
+            return;
+        }
+
+        const direction = kind === 'know' ? 1 : -1;
+        const exitX = direction * Math.max(window.innerWidth + rect.width, rect.width * 2.2);
+        const exitYLimit = Math.max(rect.height * 0.9, window.innerHeight * 0.48);
+        const exitY = clampSwipeValue(visualY * 1.45, -exitYLimit, exitYLimit);
+        const exitRotation = clampSwipeValue(rotation + (direction * 5), -12, 12);
+        card.style.transform = `translate(${exitX}px, ${exitY}px) rotate(${exitRotation}deg)`;
     }
 
     function endTracking() {
         tracking = false;
         activePointerId = null;
-        angledTouchSwipe = false;
+        lockedDirection = '';
+        previousDx = 0;
+        previousDy = 0;
+        gestureMoved = false;
+    }
+
+    function runConfirmedAction(kind, dx, dy) {
+        setSwipeBorderState(kind);
+        setFlashcardSwipeFeedback(kind);
+        animateCardExit(kind, dx, dy);
+
+        const handler = kind === 'star-know'
+            ? onStarKnow
+            : (kind === 'know' ? onKnow : onDontKnow);
+
+        Promise.resolve(typeof handler === 'function' ? handler() : false)
+            .then(result => {
+                if (result === false && document.body.contains(card)) {
+                    card.style.opacity = '';
+                    resetCardPosition();
+                    clearFlashcardSwipeFeedback();
+                }
+            })
+            .catch(error => {
+                console.error('Flashcard swipe action failed:', error);
+                if (document.body.contains(card)) {
+                    card.style.opacity = '';
+                    resetCardPosition();
+                    clearFlashcardSwipeFeedback();
+                }
+            });
     }
 
     function finishInteraction(e, cancelled = false) {
@@ -28985,41 +29865,32 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         const dy = e.clientY - startY;
         const absX = Math.abs(dx);
         const absY = Math.abs(dy);
-        const isTap = absX < 10 && absY < 10;
-        const isSwipe = angledTouchSwipe
-            ? absX >= 64 && absX >= absY * 0.65
-            : absX >= 70 && absX > absY * 1.2;
+        const isTap = !gestureMoved && absX < 10 && absY < 10;
+        const direction = getDominantSwipeDirection(dx, dy, { allowLock: false, release: true });
+        const isSwipe = isCommittedSwipe(direction, dx, dy);
 
         try {
             if (card.hasPointerCapture(e.pointerId)) {
                 card.releasePointerCapture(e.pointerId);
             }
         } catch (err) {
-            // ignore pointer capture release failures
+            // Ignore pointer capture release failures.
         }
 
         endTracking();
-        resetCardPosition();
 
         if (cancelled || state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.questionAnswered) {
+            resetCardPosition();
             clearFlashcardSwipeFeedback();
-            clearSwipeBorderState();
             return;
         }
 
         if (isSwipe) {
-            setSwipeBorderState(dx > 0 ? 'know' : 'dont-know');
-            setFlashcardSwipeFeedback(dx > 0 ? 'know' : 'dont-know');
-            setTimeout(() => {
-                if (dx > 0) {
-                    onKnow();
-                } else {
-                    onDontKnow();
-                }
-            }, 90);
+            runConfirmedAction(direction, dx, dy);
             return;
         }
 
+        resetCardPosition();
         clearFlashcardSwipeFeedback();
 
         if (isTap) {
@@ -29038,15 +29909,19 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         startX = e.clientX;
         startY = e.clientY;
         activePointerId = e.pointerId;
-        angledTouchSwipe = isAngledTouchFlashcardSwipeEvent(e);
+        lockedDirection = '';
+        previousDx = 0;
+        previousDy = 0;
+        gestureMoved = false;
         card.style.transition = 'none';
+        card.style.opacity = '';
         clearFlashcardSwipeFeedback();
         clearSwipeBorderState();
 
         try {
             card.setPointerCapture(e.pointerId);
         } catch (err) {
-            // ignore pointer capture failures
+            // Ignore pointer capture failures.
         }
     });
 
@@ -29055,66 +29930,101 @@ function enableFlashcardGesture(card, onKnow, onDontKnow) {
         if (activePointerId !== null && e.pointerId !== activePointerId) return;
         if (state.questionAnswered) return;
 
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        const absX = Math.abs(dx);
-        const absY = Math.abs(dy);
+        let dx = e.clientX - startX;
+        let dy = e.clientY - startY;
+        let absX = Math.abs(dx);
+        let absY = Math.abs(dy);
+        if (absX > 5 || absY > 5) e.preventDefault();
+        if (absX > 10 || absY > 10) gestureMoved = true;
 
-        if (angledTouchSwipe) {
-            if (absX > 6 || absY > 6) {
-                e.preventDefault();
-            }
-
-            const limitedDx = clampSwipeValue(dx * 0.68, -132, 132);
-            const limitedDy = clampSwipeValue(dy * 0.34, -56, 56);
-            const rotation = clampSwipeValue(dx * 0.035, -8, 8);
-            card.style.transform = `translate(${limitedDx}px, ${limitedDy}px) rotate(${rotation}deg)`;
-
-            if (absX >= 20 && absX >= absY * 0.65) {
-                const swipeKind = dx > 0 ? 'know' : 'dont-know';
-                setSwipeBorderState(swipeKind);
-                setFlashcardSwipeFeedback(swipeKind);
-            } else {
-                clearSwipeBorderState();
-                clearFlashcardSwipeFeedback();
-            }
-            return;
+        const recentered = resetDirectionWhenReturningToCenter(dx, dy);
+        if (recentered) {
+            dx = 0;
+            dy = 0;
+            absX = 0;
+            absY = 0;
         }
 
-        if (absX > absY) {
-            e.preventDefault();
-        }
+        const direction = getDominantSwipeDirection(dx, dy);
+        applyDragTransform(direction, dx, dy);
 
-        const limitedDx = Math.max(-52, Math.min(52, dx * 0.24));
-        card.style.transform = `translateX(${limitedDx}px)`;
-
-        if (absX >= 18 && absX > absY) {
-            const swipeKind = dx > 0 ? 'know' : 'dont-know';
-            setSwipeBorderState(swipeKind);
-            setFlashcardSwipeFeedback(swipeKind);
+        if (direction) {
+            setSwipeBorderState(direction);
+            setFlashcardSwipeFeedback(direction);
         } else {
             clearSwipeBorderState();
             clearFlashcardSwipeFeedback();
         }
+
+        previousDx = dx;
+        previousDy = dy;
     }, { passive: false });
 
     card.addEventListener('pointerup', e => finishInteraction(e));
     card.addEventListener('pointercancel', e => finishInteraction(e, true));
 }
 
-function gradeFlashcard(knewIt) {
-    if (isQuizFinished()) return;
-    if (state.questionAnswered) return;
-    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return;
-    if (isRetentionMode() && state.retentionAnswerLocked) return;
+async function ensureFlashcardConfidentKnowStarred(question) {
+    if (!question) throw new Error('No flashcard is available to star.');
+
+    if (!question.isStarred) {
+        if (!canPersistQuestionStarState(question)) {
+            throw new Error('This flashcard could not be starred. Reload the saved quiz and try again.');
+        }
+        if (state.auth.starringInFlight) {
+            throw new Error('The previous star change is still saving.');
+        }
+
+        state.auth.starringInFlight = true;
+        syncQuestionStarButton();
+        try {
+            await persistQuestionStarState(question, true);
+            applyQuestionStarStateAcrossDeck(question.sourceQuestionId, true);
+        } finally {
+            state.auth.starringInFlight = false;
+            syncQuestionStarButton();
+        }
+    }
+
+    if (isExcludeStarredEnabled()) {
+        markAutoStarredQuestionExcludedInSession(question);
+        removeAutoStarredQuestionFromFutureQueue(question);
+    }
+    updateProgress();
+    return true;
+}
+
+async function gradeFlashcard(knewIt, options = {}) {
+    const { starOnKnow = false, animationDelayMs = 0 } = options;
+    if (isQuizFinished()) return false;
+    if (state.questionAnswered) return false;
+    if (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen) return false;
+    if (isRetentionMode() && state.retentionAnswerLocked) return false;
 
     const q = state.questionQueue[state.currentIndex];
     state.questionAnswered = true;
     setFlashcardInteractionEnabled(false);
-    applyQuestionOutcome(q, knewIt);
-    nextQuestion();
-}
 
+    if (starOnKnow && knewIt) {
+        try {
+            await ensureFlashcardConfidentKnowStarred(q);
+        } catch (error) {
+            console.error('Could not star flashcard from upward swipe:', error);
+            state.questionAnswered = false;
+            setFlashcardInteractionEnabled(true);
+            setFeedback(error?.message || 'Could not star this flashcard.', false);
+            syncStudyTimerForCurrentQuestion();
+            return false;
+        }
+    }
+
+    applyQuestionOutcome(q, knewIt);
+    if (animationDelayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, animationDelayMs));
+    }
+    nextQuestion();
+    return true;
+}
 function showFlashcard(q) {
     state.flashcardGradeFeedbackPending = false;
     resetFlashcardImageFrameResizeObserver();
@@ -29176,6 +30086,8 @@ function showFlashcard(q) {
     const swipeFeedback = document.createElement('div');
     swipeFeedback.id = 'flashcardSwipeFeedback';
     swipeFeedback.className = 'flashcard-swipe-feedback';
+    swipeFeedback.setAttribute('role', 'status');
+    swipeFeedback.setAttribute('aria-live', 'polite');
     container.appendChild(swipeFeedback);
 
     const gradeRow = document.createElement('div');
@@ -29201,7 +30113,12 @@ function showFlashcard(q) {
     elements.questionContainer.appendChild(container);
 
     queueFlashcardLazyImageHydration(q);
-    enableFlashcardGesture(card, () => gradeFlashcard(true), () => gradeFlashcard(false));
+    enableFlashcardGesture(
+        card,
+        () => gradeFlashcard(true, { animationDelayMs: 195 }),
+        () => gradeFlashcard(false, { animationDelayMs: 195 }),
+        () => gradeFlashcard(true, { starOnKnow: true, animationDelayMs: 195 })
+    );
     setFlashcardInteractionEnabled(true);
     queueDesktopFullscreenFlashcardHeightSync();
     fitFlashcardTextToFixedCard(container);
@@ -31566,7 +32483,7 @@ if (elements.multiAngleCanvas) {
 // Phase 22MX: coordinated Review Mode pinch zoom, zoomed panning, and normal-size angle swipes.
 if (elements.reviewModePrevAngleBtn) elements.reviewModePrevAngleBtn.addEventListener('click', () => changeReviewModeAngle(-1));
 if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.addEventListener('click', () => changeReviewModeAngle(1));
-if (elements.reviewModeResetZoomBtn) elements.reviewModeResetZoomBtn.addEventListener('click', () => resetReviewModeZoom({ animate: true }));
+if (elements.reviewModeResetZoomBtn) elements.reviewModeResetZoomBtn.addEventListener('click', () => resetReviewModeZoom({ animate: true, disableFocus: true }));
 
 const reviewModeGesturePointers = new Map();
 let reviewModeAngleSwipe = null;
@@ -31790,7 +32707,7 @@ if (elements.reviewModeImageViewport) {
     elements.reviewModeImageViewport.addEventListener('dblclick', event => {
         if (getReviewModeState().zoomScale <= REVIEW_MODE_MIN_ZOOM + 0.01) return;
         event.preventDefault();
-        resetReviewModeZoom({ animate: true });
+        resetReviewModeZoom({ animate: true, disableFocus: true });
     });
 
     elements.reviewModeImageViewport.addEventListener('wheel', event => {
@@ -31893,6 +32810,15 @@ if (elements.reviewModeShowAllNamesToggle) {
     });
 }
 
+if (elements.reviewModeLabelNumberToggle) {
+    elements.reviewModeLabelNumberToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.showLabelNumbers = elements.reviewModeLabelNumberToggle.checked;
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
 if (elements.reviewModeShowDrawDataToggle) {
     elements.reviewModeShowDrawDataToggle.addEventListener('change', () => {
         const review = getReviewModeState();
@@ -31926,6 +32852,21 @@ if (elements.reviewModeShowConnectorsToggle) {
         review.showConnectors = elements.reviewModeShowConnectorsToggle.checked;
         renderReviewModeConnectors();
         syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeShowConnectorContrastToggle) {
+    elements.reviewModeShowConnectorContrastToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.showConnectorContrast = elements.reviewModeShowConnectorContrastToggle.checked;
+        renderReviewModeConnectors();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeFocusToggle) {
+    elements.reviewModeFocusToggle.addEventListener('change', () => {
+        setReviewModeFocusMode(elements.reviewModeFocusToggle.checked);
     });
 }
 
@@ -32058,6 +32999,12 @@ if (elements.reviewModeShortcutLinesBtn) {
 if (elements.reviewModeShortcutAllBtn) {
     elements.reviewModeShortcutAllBtn.addEventListener('click', toggleReviewModeAllInformation);
 }
+if (elements.reviewModeShortcutNextBtn) {
+    elements.reviewModeShortcutNextBtn.addEventListener('click', () => answerReviewModeMiniQuizCorrectFromShortcut());
+}
+if (elements.reviewModeShortcutFocusBtn) {
+    elements.reviewModeShortcutFocusBtn.addEventListener('click', () => setReviewModeFocusMode(!getReviewModeState().focusMode));
+}
 if (elements.reviewModeShortcutGrip) {
     elements.reviewModeShortcutGrip.addEventListener('pointerdown', beginReviewModeShortcutDockDrag);
     elements.reviewModeShortcutGrip.addEventListener('pointermove', moveReviewModeShortcutDockDrag);
@@ -32128,6 +33075,7 @@ if (elements.reviewModeLabelLayer) {
         }
         const index = Number(marker.dataset.reviewLabelIndex);
         if (!Number.isInteger(index) || index < 0) return;
+        review.focusLabelIndex = index;
         if (review.showAllNames) {
             review.showAllNames = false;
             review.revealedLabels = new Set(normalizeDiagramLabels(getActiveReviewModeAngle(getActiveReviewModeEntry())?.labels || []).map((_, labelIndex) => labelIndex));
@@ -32156,12 +33104,20 @@ document.addEventListener('keydown', event => {
         closeReviewModeImage();
         return;
     }
-    if (!review.overlayOpen || event.target?.matches?.('input, textarea, select, [contenteditable="true"]') || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!review.overlayOpen || event.ctrlKey || event.metaKey || event.altKey) return;
     const key = String(event.key || '');
-    const lowerKey = key.toLowerCase();
-    if ((key === ' ' || key === 'Spacebar') && review.miniQuiz.active && review.typedMiniQuiz && review.miniQuiz.answerRevealed) {
+    if (review.miniQuiz.active && !review.miniQuiz.complete && key === 'ArrowRight') {
         event.preventDefault();
-        advanceReviewModeMiniQuizTypedAnswer();
+        event.stopPropagation();
+        answerReviewModeMiniQuizCorrectFromShortcut();
+        return;
+    }
+    if (event.target?.matches?.('input, textarea, select, [contenteditable="true"]')) return;
+    const lowerKey = key.toLowerCase();
+    if (key === ' ' || key === 'Spacebar') {
+        event.preventDefault();
+        if (event.repeat) return;
+        setReviewModeFocusMode(!review.focusMode);
     } else if (key === '+' || key === '=' || key === 'Add') {
         event.preventDefault();
         setReviewModeLabelScale(review.labelScale + 0.1);
@@ -34452,8 +35408,12 @@ if (elements.studioQuizList) {
             return;
         }
 
-        if (action === 'toggle-duplicate-options' || action === 'toggle-star-options') {
-            const submenuType = action === 'toggle-duplicate-options' ? 'duplicate' : 'star';
+        if (action === 'toggle-duplicate-options' || action === 'toggle-create-flashcards-options' || action === 'toggle-star-options') {
+            const submenuType = action === 'toggle-duplicate-options'
+                ? 'duplicate'
+                : action === 'toggle-create-flashcards-options'
+                    ? 'flashcards'
+                    : 'star';
             const submenuKey = `${quizId}:${submenuType}`;
             state.auth.openQuizActionMenuId = quizId;
             state.auth.openQuizActionSubmenu = state.auth.openQuizActionSubmenu === submenuKey ? '' : submenuKey;
@@ -34525,6 +35485,18 @@ if (elements.studioQuizList) {
             handleDuplicateQuiz(quizId, duplicateMode).catch(err => {
                 console.error(err);
                 setCreatorStatus('Could not duplicate the quiz.', 'error');
+            });
+            return;
+        }
+
+        if (action === 'create-flashcards-all' || action === 'create-flashcards-starred') {
+            const conversionMode = action === 'create-flashcards-starred' ? 'starred' : 'all';
+            state.auth.openQuizActionMenuId = '';
+            state.auth.openQuizActionSubmenu = '';
+            renderQuizManagementList();
+            handleCreateFlashcardsFromQuiz(quizId, conversionMode).catch(err => {
+                console.error(err);
+                setCreatorStatus('Could not create the flashcard quiz.', 'error');
             });
             return;
         }

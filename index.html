@@ -37,7 +37,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22nn" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22ns5" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -50,7 +50,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=22nn-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=22ns5-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -202,7 +202,7 @@ MODIFICATION RULES FOR THIS APP
                   >?</button>
                 </div>
                 <div id="allowBuildUpHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Keeps multiple-choice questions with the same Build Up string together in study order, even when Shuffle Questions is on.
+                  Keeps multiple-choice, diagram, or flashcard items with the same Build Up string together in study order, even when Shuffle Questions is on.
                 </div>
                 <label class="toggle-switch" for="allowBuildUp" aria-label="Allow Build Up toggle">
                   <input type="checkbox" id="allowBuildUp">
@@ -761,7 +761,7 @@ MODIFICATION RULES FOR THIS APP
                     <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
                       <div class="multi-angle-creator-heading">
                         <div>
-                          <div class="multi-angle-creator-eyebrow">Phase 22NN</div>
+                          <div class="multi-angle-creator-eyebrow">Phase 22NP</div>
                           <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
                           <div class="multi-angle-creator-note">Every angle uses one shared canvas and background color. Finish framing before adding labels for the most consistent rotation.</div>
                         </div>
@@ -1006,7 +1006,7 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
                     <div class="creator-subsection-title">Template Downloads</div>
-                    <div class="creator-note">Download CSV starter templates, paste them into Google Sheets, then import the finished sheet tab below. Multiple-choice templates include optional section and build_up columns for auto-splitting one sheet into section quizzes and keeping Build Up strings together during study. Blank templates include headers only; example templates include one sample row.</div>
+                    <div class="creator-note">Download CSV starter templates, paste them into Google Sheets, then import the finished sheet tab below. Multiple-choice templates include optional section and build_up columns, and flashcard templates include an optional build_up column, for keeping Build Up strings together during study. Blank templates include headers only; example templates include one sample row.</div>
                     <div class="studio-template-grid">
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-template-download="multiple_choice" data-template-variant="blank">Blank Multiple Choice</button>
                       <button type="button" class="auth-action-btn auth-secondary-btn" data-template-download="flashcard" data-template-variant="blank">Blank Flashcard</button>
@@ -1084,7 +1084,7 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Import Google Sheet Template</div>
-                    <div class="creator-note">Paste a Google Sheet URL or sheet ID from your template, enter the tab name, choose where it should go in Supabase, and optionally set the base quiz name. If the sheet includes section values, Study Bunny creates one quiz per section and appends the section with a dash. If multiple-choice rows share a build_up value, Allow Build Up can keep those questions together during study.</div>
+                    <div class="creator-note">Paste a Google Sheet URL or sheet ID from your template, enter the tab name, choose where it should go in Supabase, and optionally set the base quiz name. If the sheet includes section values, Study Bunny creates one quiz per section and appends the section with a dash. If multiple-choice or flashcard rows share a build_up value, Allow Build Up can keep those questions or cards together during study.</div>
 
                     <label class="auth-field">
                       <span>Google Sheet URL or ID</span>
@@ -1767,7 +1767,7 @@ MODIFICATION RULES FOR THIS APP
       <label class="review-mode-switch-row">
         <span>Show angle controls</span>
         <span class="review-mode-toggle-control">
-          <input id="reviewModeShowAngleControlsToggle" type="checkbox" role="switch" aria-label="Show angle arrows and angle name">
+          <input id="reviewModeShowAngleControlsToggle" type="checkbox" role="switch" aria-label="Show angle arrows and angle name" checked>
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
@@ -1782,6 +1782,13 @@ MODIFICATION RULES FOR THIS APP
         <span>Show all label names</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeShowAllNamesToggle" type="checkbox" role="switch" aria-label="Show all label names">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Label number</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeLabelNumberToggle" type="checkbox" role="switch" aria-label="Show label numbers instead of question marks">
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
@@ -1814,6 +1821,20 @@ MODIFICATION RULES FOR THIS APP
         </span>
       </label>
       <label class="review-mode-switch-row">
+        <span>Show connector contrast</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowConnectorContrastToggle" type="checkbox" role="switch" aria-label="Show white connector contrast border" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Focus</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeFocusToggle" type="checkbox" role="switch" aria-label="Focus on the current review label">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
         <span>Show all label drawings</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeShowAllDrawingsToggle" type="checkbox" role="switch" aria-label="Show drawings for all labels">
@@ -1824,7 +1845,7 @@ MODIFICATION RULES FOR THIS APP
         <span>Label size</span>
         <div class="review-mode-size-controls">
           <button id="reviewModeLabelSizeDownBtn" type="button" aria-label="Decrease label size">−</button>
-          <span id="reviewModeLabelSizeValue" aria-live="polite">100%</span>
+          <span id="reviewModeLabelSizeValue" aria-live="polite">150%</span>
           <button id="reviewModeLabelSizeUpBtn" type="button" aria-label="Increase label size">+</button>
         </div>
       </div>
@@ -1837,6 +1858,8 @@ MODIFICATION RULES FOR THIS APP
         <div><span>Show/hide connector lines</span><kbd>C</kbd></div>
         <div><span>Show/hide all</span><kbd>A</kbd></div>
         <div><span>Show/hide shortcut controls</span><kbd>H</kbd></div>
+        <div><span>Focus on/off</span><kbd>Space</kbd></div>
+        <div><span>Correct + next Mini Quiz question</span><kbd>→</kbd></div>
       </div>
       <fieldset id="reviewModeMiniQuizScope" class="review-mode-mini-quiz-scope hidden" aria-hidden="true">
         <legend>Quiz scope</legend>
@@ -1940,6 +1963,8 @@ MODIFICATION RULES FOR THIS APP
           <button id="reviewModeShortcutColorBtn" type="button">Color On</button>
           <button id="reviewModeShortcutLinesBtn" type="button">Lines On</button>
           <button id="reviewModeShortcutAllBtn" type="button" aria-pressed="false">Show All</button>
+          <button id="reviewModeShortcutNextBtn" type="button" aria-label="Mark current Mini Quiz question correct and go to the next question">Next</button>
+          <button id="reviewModeShortcutFocusBtn" type="button" aria-pressed="false">Focus</button>
         </div>
         <button id="reviewModeShortcutShowBtn" class="review-mode-shortcut-show-btn hidden" type="button">Show</button>
       </div>
@@ -2077,6 +2102,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22nn"></script>
+  <script src="script.js?v=22ns5"></script>
 </body>
 </html>

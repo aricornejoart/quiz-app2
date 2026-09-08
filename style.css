@@ -1072,7 +1072,7 @@ body.classify-dragging {
   height: var(--flashcard-fixed-height);
   min-height: 0;
   cursor: pointer;
-  touch-action: pan-y;
+  touch-action: none;
   transform: translateX(0);
 }
 
@@ -1094,6 +1094,11 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-card {
 .flashcard-card.swiping-dont-know .flashcard-face {
   border-color: #ff9f43;
   box-shadow: 0 0 0 2px rgba(255, 159, 67, 0.18), 0 14px 28px rgba(0, 0, 0, 0.35);
+}
+
+.flashcard-card.swiping-star-know .flashcard-face {
+  border-color: #f6c945;
+  box-shadow: 0 0 0 3px rgba(246, 201, 69, 0.24), 0 16px 34px rgba(0, 0, 0, 0.38);
 }
 
 .flashcard-card-inner {
@@ -1390,6 +1395,11 @@ body.fullscreen-mode.ipad-landscape-flashcard-layout .flashcard-container {
 
 .flashcard-swipe-feedback.dont-know {
   color: #ff9b9d;
+}
+
+.flashcard-swipe-feedback.star-know {
+  color: #ffd75e;
+  text-shadow: 0 2px 16px rgba(246, 201, 69, 0.4);
 }
 
 .flashcard-grade-row {
@@ -4081,7 +4091,7 @@ body.fullscreen-mode.active-question-classify {
   gap: 6px;
 }
 
-.auth-field span {
+.auth-field > span {
   font-size: 14px;
   color: var(--color-text-muted);
 }
@@ -5035,7 +5045,7 @@ body.studio-question-dragging {
   gap: 6px;
 }
 
-.studio-flashcard-inline-field span {
+.studio-flashcard-inline-field > span {
   font-size: 12px;
   color: var(--color-text-muted);
 }
@@ -5358,7 +5368,7 @@ body.studio-question-dragging {
 
 /* Phase 22G desktop-only Quiz Studio readability bump. Touch/tablet/phone font sizes stay unchanged. */
 @media screen and (min-width: 1025px) and (hover: hover) and (pointer: fine) {
-  .quiz-studio-page .auth-field span,
+  .quiz-studio-page .auth-field > span,
   .quiz-studio-page .studio-list-subtitle,
   .quiz-studio-page .studio-file-name {
     font-size: 15px;
@@ -11132,7 +11142,7 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
 
 .review-mode-label-layer {
   z-index: 4;
-  --review-label-scale: 1;
+  --review-label-scale: 1.5;
 }
 
 .review-mode-label-marker {
@@ -12730,13 +12740,13 @@ body.review-mode-image-open {
   z-index: 7;
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 7px;
   max-width: calc(100% - 20px);
   max-height: calc(100% - 20px);
   box-sizing: border-box;
   border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 13px;
-  padding: 4px;
+  border-radius: 18px;
+  padding: 7px;
   color: #fff;
   background: rgba(20, 17, 43, 0.48);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -12762,7 +12772,7 @@ body.review-mode-image-open {
 .review-mode-shortcut-actions {
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 7px;
 }
 
 .review-mode-shortcut-dock[data-edge="left"] .review-mode-shortcut-actions,
@@ -12777,15 +12787,15 @@ body.review-mode-image-open {
 }
 
 .review-mode-shortcut-dock button {
-  min-width: 40px;
-  min-height: 36px;
+  min-width: 70px;
+  min-height: 60px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 9px;
-  padding: 5px 8px;
+  border-radius: 13px;
+  padding: 9px 13px;
   color: rgba(255, 255, 255, 0.94);
   background: rgba(14, 12, 31, 0.42);
   font: inherit;
-  font-size: 0.68rem;
+  font-size: 0.9rem;
   font-weight: 900;
   line-height: 1.05;
   cursor: pointer;
@@ -12807,10 +12817,10 @@ body.review-mode-image-open {
 
 .review-mode-shortcut-grip {
   display: grid;
-  min-width: 30px !important;
-  min-height: 26px !important;
+  min-width: 48px !important;
+  min-height: 44px !important;
   place-items: center;
-  padding: 3px !important;
+  padding: 6px !important;
   cursor: grab !important;
 }
 
@@ -12820,21 +12830,21 @@ body.review-mode-image-open {
 }
 
 .review-mode-shortcut-grip-dots {
-  width: 14px;
-  height: 20px;
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.9) 1.45px, transparent 1.7px);
+  width: 21px;
+  height: 28px;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.9) 2px, transparent 2.35px);
   background-position: 0 0;
-  background-size: 7px 7px;
+  background-size: 9px 9px;
 }
 
 .review-mode-shortcut-dock[data-edge="top"] .review-mode-shortcut-grip-dots,
 .review-mode-shortcut-dock[data-edge="bottom"] .review-mode-shortcut-grip-dots {
-  width: 20px;
-  height: 14px;
+  width: 28px;
+  height: 21px;
 }
 
 .review-mode-shortcut-show-btn {
-  min-width: 48px !important;
+  min-width: 82px !important;
 }
 
 .review-mode-keyboard-shortcuts-btn {
@@ -12937,24 +12947,24 @@ body.review-mode-image-open {
 
 @media (max-width: 620px) {
   .review-mode-shortcut-dock {
-    gap: 3px;
-    border-radius: 11px;
-    padding: 3px;
+    gap: 5px;
+    border-radius: 15px;
+    padding: 5px;
   }
 
   .review-mode-shortcut-actions {
-    gap: 3px;
+    gap: 5px;
   }
 
   .review-mode-shortcut-dock button {
-    min-width: 36px;
-    min-height: 34px;
-    padding: 4px 6px;
-    font-size: 0.61rem;
+    min-width: 58px;
+    min-height: 50px;
+    padding: 7px 9px;
+    font-size: 0.78rem;
   }
 
   .review-mode-shortcut-show-btn {
-    min-width: 44px !important;
+    min-width: 70px !important;
   }
 }
 
@@ -13359,3 +13369,106 @@ body.review-mode-image-open {
   color: #ffffff;
 }
 
+
+/* ===== Phase 22NR Rich Text Formatting Engine Repair ===== */
+.studio-rich-editor {
+  text-align: left !important;
+}
+
+.studio-rich-editor ul,
+.studio-rich-editor ol,
+#learningResourcesContent ul,
+#learningResourcesContent ol {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0.45em 0 !important;
+  margin-inline-start: 0 !important;
+  padding-inline-start: 1.1em !important;
+  text-align: left !important;
+  text-indent: 0 !important;
+  list-style-position: outside !important;
+}
+
+.studio-rich-editor ul,
+#learningResourcesContent ul {
+  list-style-type: disc;
+}
+
+.studio-rich-editor ol,
+#learningResourcesContent ol {
+  list-style-type: decimal;
+}
+
+.studio-rich-editor li,
+#learningResourcesContent li {
+  display: list-item;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0.22em 0 !important;
+  margin-inline-start: 0 !important;
+  padding: 0 !important;
+  text-align: left !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.studio-rich-editor li > p,
+.studio-rich-editor li > div,
+#learningResourcesContent li > p,
+#learningResourcesContent li > div {
+  display: inline !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.studio-rich-editor li > br:first-child,
+#learningResourcesContent li > br:first-child {
+  display: none;
+}
+
+.flashcard-side-text ul,
+.flashcard-side-text ol {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0.45em 0 !important;
+  margin-inline-start: 0 !important;
+  padding-inline-start: 1.1em !important;
+  text-align: left !important;
+  text-indent: 0 !important;
+  list-style-position: outside !important;
+}
+
+.flashcard-side-text ul {
+  list-style-type: disc;
+}
+
+.flashcard-side-text ol {
+  list-style-type: decimal;
+}
+
+.flashcard-side-text li {
+  display: list-item;
+  max-width: 100%;
+  margin: 0.22em 0 !important;
+  margin-inline-start: 0 !important;
+  padding: 0 !important;
+  text-align: left !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.flashcard-side-text li > p,
+.flashcard-side-text li > div {
+  display: inline !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.flashcard-side-text li > br:first-child {
+  display: none;
+}
