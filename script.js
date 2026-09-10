@@ -2889,6 +2889,7 @@ MODIFICATION RULES FOR THIS APP
 
     // ================= PHASE 22MT MULTI-ANGLE DIAGRAM MODEL =================
     const MULTI_ANGLE_DEFAULT_CANVAS = Object.freeze({ width: 1100, height: 1500, background: '#000000' });
+    const STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION = 1;
 
     function createMultiAngleId(prefix = 'angle') {
         return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -2939,6 +2940,7 @@ MODIFICATION RULES FOR THIS APP
         const imageValue = normalizeSheetText(source.imageValue || source.value || source.normalizedValue || source.editedValue || source.mediaValue || fallback.imageValue || '');
         if (!imageValue) return null;
         const sourceValue = normalizeSheetText(source.sourceValue || source.imageOnlyValue || source.originalValue || source.sourceMediaValue || imageValue);
+        const thumbnailValue = normalizeSheetText(source.thumbnailValue || source.thumbnailMediaValue || fallback.thumbnailValue || fallback.thumbnailMediaValue || '');
         const fileName = normalizeSheetText(source.fileName || getSavedImageFileNameFromLabel(source.imageLabel || source.label || '', `angle-${index + 1}.png`)) || `angle-${index + 1}.png`;
         return {
             id: normalizeSheetText(source.id) || createMultiAngleId('angle'),
@@ -2950,6 +2952,12 @@ MODIFICATION RULES FOR THIS APP
             mediaValue: normalizeSheetText(source.mediaValue || (isSupabaseMediaReference(imageValue) ? imageValue : '')),
             imageOnlyMediaValue: normalizeSheetText(source.imageOnlyMediaValue || source.sourceMediaValue || (isSupabaseMediaReference(sourceValue) ? sourceValue : '')),
             sourceMediaValue: normalizeSheetText(source.sourceMediaValue || source.imageOnlyMediaValue || (isSupabaseMediaReference(sourceValue) ? sourceValue : '')),
+            thumbnailValue,
+            thumbnailMediaValue: normalizeSheetText(source.thumbnailMediaValue || (isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '')),
+            thumbnailWidth: Math.max(0, Math.round(Number(source.thumbnailWidth) || 0)),
+            thumbnailHeight: Math.max(0, Math.round(Number(source.thumbnailHeight) || 0)),
+            thumbnailBytes: Math.max(0, Math.round(Number(source.thumbnailBytes) || 0)),
+            thumbnailVersion: Math.max(0, Math.round(Number(source.thumbnailVersion) || (thumbnailValue ? STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION : 0))),
             labels: normalizeDiagramLabels(source.labels || []),
             drawStrokes: cloneImageEditorDrawStrokes(source.drawStrokes || source.strokes || []),
             framing: normalizeMultiAngleFraming(source.framing || {}),
@@ -2971,6 +2979,12 @@ MODIFICATION RULES FOR THIS APP
             sourceValue: normalized.imageOnlyValue,
             mediaValue: normalized.mediaValue,
             sourceMediaValue: normalized.imageOnlyMediaValue,
+            thumbnailValue: normalized.thumbnailValue,
+            thumbnailMediaValue: normalized.thumbnailMediaValue,
+            thumbnailWidth: normalized.thumbnailWidth || 0,
+            thumbnailHeight: normalized.thumbnailHeight || 0,
+            thumbnailBytes: normalized.thumbnailBytes || 0,
+            thumbnailVersion: normalized.thumbnailVersion || 0,
             labels: normalized.labels,
             drawStrokes: normalized.drawStrokes
         }, 0, normalized);
@@ -4224,6 +4238,10 @@ MODIFICATION RULES FOR THIS APP
     const STUDIO_SAVED_IMAGE_PENDING_UPSERT_KEY_PREFIX = 'study_bunny_saved_image_pending_upserts_v1_';
     const STUDIO_SAVED_IMAGE_PENDING_DELETE_KEY_PREFIX = 'study_bunny_saved_image_pending_deletes_v1_';
     const STUDIO_SAVED_IMAGE_REMOTE_TABLE = 'saved_images';
+    const STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_SIDE = 720;
+    const STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_BYTES = 250 * 1024;
+    const STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220" viewBox="0 0 360 220"><rect width="360" height="220" fill="#17131f"/><rect x="10" y="10" width="340" height="200" rx="16" fill="#211a2d" stroke="#665a76" stroke-width="2"/><path d="M115 145l42-43 31 29 25-24 42 38H115z" fill="#665a76"/><circle cx="226" cy="77" r="16" fill="#827391"/><text x="180" y="187" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" fill="#d8cee2">Preview created when opened</text></svg>')}`;
+    const studioSavedImageThumbnailJobs = new Map();
 
     function getSavedImageFileNameFromLabel(label = '', fallback = 'saved-image.png') {
         const text = normalizeSheetText(label);
@@ -4259,6 +4277,8 @@ MODIFICATION RULES FOR THIS APP
         const imageOnlyValue = normalizeSheetText(entry.imageOnlyValue || entry.sourceValue || entry.imageOnlyMediaValue || entry.sourceMediaValue || firstRawAngle.sourceValue || firstRawAngle.imageOnlyValue || imageValue);
         const mediaValue = normalizeSheetText(entry.mediaValue || entry.savedMediaValue || firstRawAngle.mediaValue || (isSupabaseMediaReference(imageValue) ? imageValue : ''));
         const imageOnlyMediaValue = normalizeSheetText(entry.imageOnlyMediaValue || entry.sourceMediaValue || firstRawAngle.sourceMediaValue || firstRawAngle.imageOnlyMediaValue || (isSupabaseMediaReference(imageOnlyValue) ? imageOnlyValue : mediaValue));
+        const thumbnailValue = normalizeSheetText(entry.thumbnailValue || entry.thumbnailMediaValue || firstRawAngle.thumbnailValue || firstRawAngle.thumbnailMediaValue || '');
+        const thumbnailMediaValue = normalizeSheetText(entry.thumbnailMediaValue || firstRawAngle.thumbnailMediaValue || (isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : ''));
         const fallback = { imageValue, imageOnlyValue, mediaValue, imageOnlyMediaValue, fileName };
         const normalizedAngles = rawAngles.map((angle, index) => normalizeStudioSavedImageAngle(angle, index, fallback)).filter(Boolean);
         const firstAngle = normalizedAngles[0] || normalizeStudioSavedImageAngle({
@@ -4269,6 +4289,12 @@ MODIFICATION RULES FOR THIS APP
             sourceValue: imageOnlyValue,
             mediaValue,
             sourceMediaValue: imageOnlyMediaValue,
+            thumbnailValue,
+            thumbnailMediaValue,
+            thumbnailWidth: entry.thumbnailWidth || 0,
+            thumbnailHeight: entry.thumbnailHeight || 0,
+            thumbnailBytes: entry.thumbnailBytes || 0,
+            thumbnailVersion: entry.thumbnailVersion || 0,
             labels: entry.labels || [],
             drawStrokes: entry.drawStrokes || entry.strokes || []
         }, 0, fallback);
@@ -4280,6 +4306,12 @@ MODIFICATION RULES FOR THIS APP
             imageOnlyValue: firstAngle?.sourceValue || imageOnlyValue,
             mediaValue: firstAngle?.mediaValue || mediaValue,
             imageOnlyMediaValue: firstAngle?.sourceMediaValue || imageOnlyMediaValue,
+            thumbnailValue: firstAngle?.thumbnailValue || thumbnailValue,
+            thumbnailMediaValue: firstAngle?.thumbnailMediaValue || thumbnailMediaValue,
+            thumbnailWidth: Math.max(0, Math.round(Number(firstAngle?.thumbnailWidth || entry.thumbnailWidth) || 0)),
+            thumbnailHeight: Math.max(0, Math.round(Number(firstAngle?.thumbnailHeight || entry.thumbnailHeight) || 0)),
+            thumbnailBytes: Math.max(0, Math.round(Number(firstAngle?.thumbnailBytes || entry.thumbnailBytes) || 0)),
+            thumbnailVersion: Math.max(0, Math.round(Number(firstAngle?.thumbnailVersion || entry.thumbnailVersion) || ((firstAngle?.thumbnailValue || thumbnailValue) ? STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION : 0))),
             imageLabel: normalizeSheetText(entry.imageLabel || entry.label || `Saved: ${fileName}`) || `Saved: ${fileName}`,
             imageOnlyLabel: normalizeSheetText(entry.imageOnlyLabel || entry.sourceLabel || `Selected: ${fileName}`) || `Selected: ${fileName}`,
             labels: normalizeDiagramLabels(firstAngle?.labels || entry.labels || []),
@@ -4295,6 +4327,240 @@ MODIFICATION RULES FOR THIS APP
             result.angles = (normalizedAngles.length ? normalizedAngles : [firstAngle]).filter(Boolean);
         }
         return result;
+    }
+
+    function getStudioSavedImageThumbnailValue(entry = {}) {
+        const rawAngles = Array.isArray(entry?.angles) ? entry.angles : [];
+        return normalizeSheetText(
+            entry?.thumbnailValue
+            || entry?.thumbnailMediaValue
+            || rawAngles[0]?.thumbnailValue
+            || rawAngles[0]?.thumbnailMediaValue
+            || ''
+        );
+    }
+
+    function getStudioSavedImageThumbnailMeta(entry = {}) {
+        const rawAngles = Array.isArray(entry?.angles) ? entry.angles : [];
+        const source = getStudioSavedImageThumbnailValue(entry) ? entry : (rawAngles[0] || {});
+        return {
+            width: Math.max(0, Math.round(Number(source?.thumbnailWidth) || 0)),
+            height: Math.max(0, Math.round(Number(source?.thumbnailHeight) || 0)),
+            bytes: Math.max(0, Math.round(Number(source?.thumbnailBytes) || 0)),
+            version: Math.max(0, Math.round(Number(source?.thumbnailVersion) || 0))
+        };
+    }
+
+    function studioSavedImageCanvasToBlob(canvas, type = 'image/webp', quality = 0.82) {
+        return new Promise((resolve, reject) => {
+            if (!canvas?.toBlob) {
+                reject(new Error('Thumbnail canvas export is unavailable.'));
+                return;
+            }
+            try {
+                canvas.toBlob(blob => {
+                    if (blob) resolve(blob);
+                    else reject(new Error('Could not encode Saved Image thumbnail.'));
+                }, type, quality);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    function studioSavedImageBlobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(normalizeSheetText(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('Could not read thumbnail data.'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    async function createStudioSavedImageThumbnailFromDrawable(drawable, naturalWidth = 0, naturalHeight = 0) {
+        const sourceWidth = Math.max(1, Math.round(Number(naturalWidth) || drawable?.naturalWidth || drawable?.videoWidth || drawable?.width || 1));
+        const sourceHeight = Math.max(1, Math.round(Number(naturalHeight) || drawable?.naturalHeight || drawable?.videoHeight || drawable?.height || 1));
+        const initialScale = Math.min(1, STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_SIDE / Math.max(sourceWidth, sourceHeight));
+        const scaleSteps = [1, 0.86, 0.72, 0.6, 0.5];
+        const qualities = [0.92, 0.86, 0.8, 0.72, 0.64, 0.56, 0.48];
+        let best = null;
+
+        for (const scaleStep of scaleSteps) {
+            const width = Math.max(1, Math.round(sourceWidth * initialScale * scaleStep));
+            const height = Math.max(1, Math.round(sourceHeight * initialScale * scaleStep));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d', { alpha: true });
+            if (!ctx) continue;
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(drawable, 0, 0, width, height);
+
+            for (const quality of qualities) {
+                let blob = null;
+                try {
+                    blob = await studioSavedImageCanvasToBlob(canvas, 'image/webp', quality);
+                    if (normalizeSheetText(blob?.type).toLowerCase() !== 'image/webp') {
+                        blob = await studioSavedImageCanvasToBlob(canvas, 'image/jpeg', quality);
+                    }
+                } catch (_) {
+                    blob = await studioSavedImageCanvasToBlob(canvas, 'image/jpeg', quality);
+                }
+                const candidate = { blob, width, height, quality };
+                if (!best || blob.size < best.blob.size) best = candidate;
+                if (blob.size <= STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_BYTES) {
+                    // Prefer the highest-quality candidate that satisfies the 250 KB ceiling.
+                    const dataUrl = await studioSavedImageBlobToDataUrl(blob);
+                    return { dataUrl, width, height, bytes: blob.size, quality };
+                }
+            }
+        }
+
+        if (!best?.blob) return null;
+        const dataUrl = await studioSavedImageBlobToDataUrl(best.blob);
+        return { dataUrl, width: best.width, height: best.height, bytes: best.blob.size, quality: best.quality };
+    }
+
+    async function createStudioSavedImageThumbnailFromSource(sourceValue = '') {
+        const source = normalizeSheetText(sourceValue);
+        if (!source) return null;
+        let loadSource = source;
+        let revokeAfter = false;
+        try {
+            loadSource = await getCanvasBlobUrlFromSource(source);
+            revokeAfter = /^blob:/i.test(loadSource) && loadSource !== source;
+            const image = await loadImageElement(loadSource);
+            return await createStudioSavedImageThumbnailFromDrawable(image, image.naturalWidth, image.naturalHeight);
+        } finally {
+            if (revokeAfter && loadSource) URL.revokeObjectURL(loadSource);
+        }
+    }
+
+    async function uploadStudioSavedImageThumbnail(thumbnail = null, entry = {}, suffix = 'primary') {
+        if (!thumbnail?.dataUrl || !state.auth.client || !state.auth.user?.id) return '';
+        try {
+            return normalizeSheetText(await savePrivateMediaValueWithDedupCache(thumbnail.dataUrl, {
+                quizId: null,
+                questionId: null,
+                usageContext: `saved_image_thumbnail_v${STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION}_${suffix}`,
+                label: `Thumbnail ${normalizeSheetText(entry?.fileName || 'saved-image')}`,
+                mediaSaveCache: state.auth.studioSavedImageMediaSaveCache instanceof Map
+                    ? state.auth.studioSavedImageMediaSaveCache
+                    : (state.auth.studioSavedImageMediaSaveCache = new Map())
+            }) || '');
+        } catch (error) {
+            console.warn('Could not upload Saved Image thumbnail; it will retry after a later full-image load.', error);
+            return '';
+        }
+    }
+
+    async function ensureStudioSavedImageThumbnail(entryId = '', options = {}) {
+        const safeEntryId = normalizeSheetText(entryId);
+        if (!safeEntryId) return null;
+        const angleId = normalizeSheetText(options.angleId || '');
+        const jobKey = `${safeEntryId}::${angleId || 'primary'}`;
+        if (studioSavedImageThumbnailJobs.has(jobKey)) return studioSavedImageThumbnailJobs.get(jobKey);
+
+        const task = (async () => {
+            const currentEntry = getStudioSavedImageLibraryForPicker().find(item => normalizeSheetText(item.id) === safeEntryId);
+            if (!currentEntry) return null;
+            const currentAngles = getStudioSavedImageAngles(currentEntry);
+            const angleIndex = angleId ? currentAngles.findIndex(angle => normalizeSheetText(angle.id) === angleId) : 0;
+            const targetAngle = angleIndex >= 0 ? currentAngles[angleIndex] : currentAngles[0];
+            const existingThumbnail = angleId
+                ? normalizeSheetText(targetAngle?.thumbnailValue || targetAngle?.thumbnailMediaValue || '')
+                : getStudioSavedImageThumbnailValue(currentEntry);
+            if (existingThumbnail) return existingThumbnail;
+
+            let thumbnail = options.thumbnail || null;
+            if (!thumbnail && options.canvas) {
+                thumbnail = await createStudioSavedImageThumbnailFromDrawable(options.canvas, options.canvas.width, options.canvas.height);
+            }
+            if (!thumbnail && options.image) {
+                try {
+                    thumbnail = await createStudioSavedImageThumbnailFromDrawable(options.image, options.image.naturalWidth, options.image.naturalHeight);
+                } catch (_) {
+                    thumbnail = null;
+                }
+            }
+            if (!thumbnail) {
+                const sourceValue = normalizeSheetText(options.sourceValue || targetAngle?.imageValue || currentEntry.imageValue || '');
+                if (!sourceValue) return null;
+                thumbnail = await createStudioSavedImageThumbnailFromSource(sourceValue);
+            }
+            if (!thumbnail?.dataUrl) return null;
+
+            const thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, currentEntry, angleId || 'primary');
+            if (!thumbnailValue) return null;
+
+            const latestEntry = getStudioSavedImageLibraryForPicker().find(item => normalizeSheetText(item.id) === safeEntryId) || currentEntry;
+            const latestAngles = getStudioSavedImageAngles(latestEntry);
+            const nextAngles = latestAngles.map((angle, index) => {
+                const shouldUpdate = angleId
+                    ? normalizeSheetText(angle.id) === angleId
+                    : index === 0;
+                if (!shouldUpdate) return angle;
+                return {
+                    ...angle,
+                    thumbnailValue,
+                    thumbnailMediaValue: thumbnailValue,
+                    thumbnailWidth: thumbnail.width,
+                    thumbnailHeight: thumbnail.height,
+                    thumbnailBytes: thumbnail.bytes,
+                    thumbnailVersion: STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION
+                };
+            });
+            const updatePrimary = !angleId || normalizeSheetText(nextAngles[0]?.id) === angleId;
+            const replacement = {
+                ...latestEntry,
+                ...(updatePrimary ? {
+                    thumbnailValue,
+                    thumbnailMediaValue: thumbnailValue,
+                    thumbnailWidth: thumbnail.width,
+                    thumbnailHeight: thumbnail.height,
+                    thumbnailBytes: thumbnail.bytes,
+                    thumbnailVersion: STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION
+                } : {}),
+                ...(latestAngles.length > 1 ? { angles: nextAngles, isMultiAngle: true } : {})
+            };
+            const saved = replaceStudioSavedImageLibraryEntry(latestEntry, replacement);
+            if (saved) {
+                if (state.auth.studioSavedImagePicker?.open) renderStudioSavedImagePicker();
+                if (state.auth.currentStudioSection === 'review-mode' && !getReviewModeState()?.overlayOpen) renderReviewModeLibrary();
+                if (state.auth.currentStudioSection === 'diagram-creator' && getDiagramCreatorLibraryState()?.view === 'saved') renderDiagramCreatorSavedImages();
+            }
+            return thumbnailValue;
+        })().catch(error => {
+            console.warn('Could not create Saved Image thumbnail; the original image remains unchanged.', error);
+            return null;
+        }).finally(() => {
+            studioSavedImageThumbnailJobs.delete(jobKey);
+        });
+
+        studioSavedImageThumbnailJobs.set(jobKey, task);
+        return task;
+    }
+
+    function applyStudioSavedImageThumbnailToElement(imageEl, entry = {}) {
+        if (!imageEl) return;
+        const thumbnailValue = getStudioSavedImageThumbnailValue(entry);
+        if (thumbnailValue) {
+            setImageElementSourceWithMediaResolution(imageEl, thumbnailValue, {
+                onError: () => {
+                    imageEl.dataset.mediaPreviewSource = '';
+                    imageEl.dataset.resolvedMediaUrl = '';
+                    imageEl.src = STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER;
+                }
+            });
+            return;
+        }
+        imageEl.dataset.mediaPreviewSource = '';
+        imageEl.dataset.resolvedMediaUrl = '';
+        imageEl.onload = null;
+        imageEl.onerror = null;
+        imageEl.src = STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER;
     }
 
     function getStudioSavedImageSyncUserId() {
@@ -4665,6 +4931,8 @@ MODIFICATION RULES FOR THIS APP
                 const sourceValue = sourceInput === normalizeSheetText(angle.imageValue)
                     ? imageValue
                     : await saveValue(sourceInput, `angle_${index + 1}_source`);
+                const thumbnailInput = normalizeSheetText(angle.thumbnailValue || angle.thumbnailMediaValue || '');
+                const thumbnailValue = thumbnailInput ? await saveValue(thumbnailInput, `angle_${index + 1}_thumbnail`) : '';
                 preparedAngles.push(normalizeStudioSavedImageAngle({
                     ...angle,
                     imageValue,
@@ -4672,7 +4940,13 @@ MODIFICATION RULES FOR THIS APP
                     sourceValue: sourceValue || imageValue,
                     mediaValue: isSupabaseMediaReference(imageValue) ? imageValue : angle.mediaValue,
                     imageOnlyMediaValue: isSupabaseMediaReference(sourceValue || imageValue) ? (sourceValue || imageValue) : angle.imageOnlyMediaValue,
-                    sourceMediaValue: isSupabaseMediaReference(sourceValue || imageValue) ? (sourceValue || imageValue) : angle.sourceMediaValue
+                    sourceMediaValue: isSupabaseMediaReference(sourceValue || imageValue) ? (sourceValue || imageValue) : angle.sourceMediaValue,
+                    thumbnailValue,
+                    thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
+                    thumbnailWidth: angle.thumbnailWidth || 0,
+                    thumbnailHeight: angle.thumbnailHeight || 0,
+                    thumbnailBytes: angle.thumbnailBytes || 0,
+                    thumbnailVersion: thumbnailValue ? (angle.thumbnailVersion || STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION) : 0
                 }, index, normalized));
             }
             const first = preparedAngles[0];
@@ -4683,6 +4957,12 @@ MODIFICATION RULES FOR THIS APP
                 imageOnlyValue: first.sourceValue,
                 mediaValue: first.mediaValue,
                 imageOnlyMediaValue: first.sourceMediaValue,
+                thumbnailValue: first.thumbnailValue || '',
+                thumbnailMediaValue: first.thumbnailMediaValue || '',
+                thumbnailWidth: first.thumbnailWidth || 0,
+                thumbnailHeight: first.thumbnailHeight || 0,
+                thumbnailBytes: first.thumbnailBytes || 0,
+                thumbnailVersion: first.thumbnailVersion || 0,
                 labels: first.labels,
                 drawStrokes: first.drawStrokes,
                 angles: preparedAngles,
@@ -4696,6 +4976,8 @@ MODIFICATION RULES FOR THIS APP
         const imageOnlyValue = originalSource === normalizeSheetText(normalized.imageValue)
             ? imageValue
             : await saveValue(originalSource, 'original');
+        const thumbnailInput = normalizeSheetText(normalized.thumbnailValue || normalized.thumbnailMediaValue || '');
+        const thumbnailValue = thumbnailInput ? await saveValue(thumbnailInput, 'thumbnail') : '';
         return normalizeStudioSavedImageEntry({
             ...normalized,
             id: syncKey,
@@ -4703,6 +4985,12 @@ MODIFICATION RULES FOR THIS APP
             imageOnlyValue: imageOnlyValue || imageValue,
             mediaValue: isSupabaseMediaReference(imageValue) ? imageValue : normalized.mediaValue,
             imageOnlyMediaValue: isSupabaseMediaReference(imageOnlyValue || imageValue) ? (imageOnlyValue || imageValue) : normalized.imageOnlyMediaValue,
+            thumbnailValue,
+            thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
+            thumbnailWidth: normalized.thumbnailWidth || 0,
+            thumbnailHeight: normalized.thumbnailHeight || 0,
+            thumbnailBytes: normalized.thumbnailBytes || 0,
+            thumbnailVersion: thumbnailValue ? (normalized.thumbnailVersion || STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION) : 0,
             updatedAt: new Date().toISOString()
         });
     }
@@ -5014,6 +5302,14 @@ MODIFICATION RULES FOR THIS APP
                 : (state.auth.studioSavedImageMediaSaveCache = new Map())
         });
         const sharedValue = normalizeSheetText(savedImageValue || imageValue);
+        let thumbnail = null;
+        let thumbnailValue = '';
+        try {
+            thumbnail = await createStudioSavedImageThumbnailFromSource(imageValue);
+            thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, { fileName }, `flashcard_${safeSide}`);
+        } catch (error) {
+            console.warn('Flashcard Saved Image thumbnail will be created later when the full image is opened.', error);
+        }
         return normalizeStudioSavedImageEntry({
             id: createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}::${JSON.stringify(metadata)}`),
             fileName,
@@ -5021,6 +5317,12 @@ MODIFICATION RULES FOR THIS APP
             imageOnlyValue: sharedValue,
             mediaValue: isSupabaseMediaReference(sharedValue) ? sharedValue : '',
             imageOnlyMediaValue: isSupabaseMediaReference(sharedValue) ? sharedValue : '',
+            thumbnailValue,
+            thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
+            thumbnailWidth: thumbnail?.width || 0,
+            thumbnailHeight: thumbnail?.height || 0,
+            thumbnailBytes: thumbnail?.bytes || 0,
+            thumbnailVersion: thumbnailValue ? STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION : 0,
             imageLabel: `Saved: ${fileName}`,
             imageOnlyLabel: `Saved: ${fileName}`,
             labels,
@@ -5530,6 +5832,9 @@ MODIFICATION RULES FOR THIS APP
                         return;
                     }
                     applyStudioSavedImageToFlashcardTarget(entry, mode === 'edits');
+                    if (!getStudioSavedImageThumbnailValue(entry)) {
+                        ensureStudioSavedImageThumbnail(entry.id, { sourceValue: getStudioSavedImageApplyValue(entry, mode === 'edits') }).catch(() => {});
+                    }
                     closeStudioSavedImagePicker();
                 }
             });
@@ -5712,7 +6017,7 @@ MODIFICATION RULES FOR THIS APP
             return `
                 <article class="studio-diagram-library-card">
                   <button type="button" class="studio-diagram-library-preview" data-diagram-creator-edit="${escapeHtml(entry.id)}" aria-label="Edit ${escapeHtml(title)}">
-                    <img class="studio-diagram-library-thumb" data-diagram-creator-thumb="${escapeHtml(entry.imageValue)}" alt="${escapeHtml(title)}">
+                    <img class="studio-diagram-library-thumb" data-diagram-creator-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(title)}">
                     <span class="studio-diagram-library-card-body">
                       <span class="studio-diagram-library-name">${escapeHtml(title)}</span>
                       ${summary ? `<span class="studio-diagram-library-meta">${escapeHtml(summary)}</span>` : ''}
@@ -5726,8 +6031,9 @@ MODIFICATION RULES FOR THIS APP
                 </article>
             `;
         }).join('');
-        elements.diagramCreatorImageGrid.querySelectorAll('[data-diagram-creator-thumb]').forEach(img => {
-            setImageElementSourceWithMediaResolution(img, img.dataset.diagramCreatorThumb || '');
+        const entryById = new Map(entries.map(entry => [normalizeSheetText(entry.id), entry]));
+        elements.diagramCreatorImageGrid.querySelectorAll('[data-diagram-creator-thumb-id]').forEach(img => {
+            applyStudioSavedImageThumbnailToElement(img, entryById.get(normalizeSheetText(img.dataset.diagramCreatorThumbId)) || {});
         });
     }
 
@@ -5864,7 +6170,13 @@ MODIFICATION RULES FOR THIS APP
             editedValue: normalizeSheetText(existing.editedValue || existing.imageValue || ''),
             labels: normalizeDiagramLabels(existing.labels || []),
             drawStrokes: cloneImageEditorDrawStrokes(existing.drawStrokes || []),
-            framing: normalizeMultiAngleFraming(existing.framing || {})
+            framing: normalizeMultiAngleFraming(existing.framing || {}),
+            thumbnailValue: normalizeSheetText(existing.thumbnailValue || existing.thumbnailMediaValue || ''),
+            thumbnailMediaValue: normalizeSheetText(existing.thumbnailMediaValue || (isSupabaseMediaReference(existing.thumbnailValue) ? existing.thumbnailValue : '')),
+            thumbnailWidth: Math.max(0, Math.round(Number(existing.thumbnailWidth) || 0)),
+            thumbnailHeight: Math.max(0, Math.round(Number(existing.thumbnailHeight) || 0)),
+            thumbnailBytes: Math.max(0, Math.round(Number(existing.thumbnailBytes) || 0)),
+            thumbnailVersion: Math.max(0, Math.round(Number(existing.thumbnailVersion) || 0))
         };
         angle.runtimeImage = await loadMultiAngleRuntimeImage(angle, false);
         angle.naturalWidth = Math.max(1, angle.runtimeImage?.naturalWidth || Number(existing.naturalWidth) || 1);
@@ -6391,6 +6703,8 @@ The deletion becomes permanent when you save the diagram.`);
                 const normalizedDataUrl = getMultiAngleRenderedDataUrl(angle);
                 let savedImage = normalizedDataUrl;
                 let savedSource = angle.sourceValue;
+                let thumbnail = null;
+                let thumbnailValue = '';
                 try {
                     savedImage = await savePrivateMediaValueWithDedupCache(normalizedDataUrl, {
                         quizId: null,
@@ -6406,6 +6720,8 @@ The deletion becomes permanent when you save the diagram.`);
                         label: `Source ${angle.name || `Angle ${index + 1}`}`,
                         mediaSaveCache: cache
                     }) || angle.sourceValue;
+                    thumbnail = await createStudioSavedImageThumbnailFromSource(normalizedDataUrl);
+                    thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, { fileName: angle.fileName }, `multi_angle_${index + 1}`);
                 } catch (error) {
                     console.warn('Could not upload one multi-angle image; retaining local image data:', error);
                 }
@@ -6419,6 +6735,12 @@ The deletion becomes permanent when you save the diagram.`);
                     mediaValue: isSupabaseMediaReference(savedImage) ? savedImage : '',
                     sourceMediaValue: isSupabaseMediaReference(savedSource) ? savedSource : '',
                     imageOnlyMediaValue: isSupabaseMediaReference(savedSource) ? savedSource : '',
+                    thumbnailValue,
+                    thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
+                    thumbnailWidth: thumbnail?.width || 0,
+                    thumbnailHeight: thumbnail?.height || 0,
+                    thumbnailBytes: thumbnail?.bytes || 0,
+                    thumbnailVersion: thumbnailValue ? STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION : 0,
                     labels: angle.labels,
                     drawStrokes: angle.drawStrokes,
                     framing: angle.framing,
@@ -6437,6 +6759,12 @@ The deletion becomes permanent when you save the diagram.`);
                 imageOnlyValue: first.sourceValue,
                 mediaValue: first.mediaValue,
                 imageOnlyMediaValue: first.sourceMediaValue,
+                thumbnailValue: first.thumbnailValue || '',
+                thumbnailMediaValue: first.thumbnailMediaValue || '',
+                thumbnailWidth: first.thumbnailWidth || 0,
+                thumbnailHeight: first.thumbnailHeight || 0,
+                thumbnailBytes: first.thumbnailBytes || 0,
+                thumbnailVersion: first.thumbnailVersion || 0,
                 imageLabel: `Saved: ${fileName}`,
                 imageOnlyLabel: `Saved source: ${fileName}`,
                 labels: first.labels,
@@ -6494,6 +6822,9 @@ The deletion becomes permanent when you save the diagram.`);
         }
         if (isMultiAngleSavedImageEntry(entry)) {
             await openMultiAngleSavedDiagram(entry);
+            if (!getStudioSavedImageThumbnailValue(entry) && state.auth.imageEditor?.baseCanvas) {
+                ensureStudioSavedImageThumbnail(entry.id, { canvas: state.auth.imageEditor.baseCanvas }).catch(() => {});
+            }
             return;
         }
         setDiagramCreatorLibraryView('saved');
@@ -6507,6 +6838,9 @@ The deletion becomes permanent when you save the diagram.`);
             savedImageEntryId: entry.id,
             savedImageOriginalEntry: entry
         });
+        if (!getStudioSavedImageThumbnailValue(entry) && state.auth.imageEditor?.baseCanvas) {
+            ensureStudioSavedImageThumbnail(entry.id, { canvas: state.auth.imageEditor.baseCanvas }).catch(() => {});
+        }
     }
 
     // ================= PHASE 22MC: REVIEW MODE =================
@@ -6663,7 +6997,7 @@ The deletion becomes permanent when you save the diagram.`);
             return `
                 <article class="studio-review-image-card">
                   <button type="button" class="studio-review-image-open" data-review-image-id="${escapeHtml(entry.id)}" aria-label="Review ${escapeHtml(title)}">
-                    <img class="studio-review-image-thumb" data-review-image-thumb="${escapeHtml(entry.imageValue)}" alt="${escapeHtml(title)}">
+                    <img class="studio-review-image-thumb" data-review-image-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(title)}">
                     <span class="studio-review-image-card-body">
                       <span class="studio-review-image-name">${escapeHtml(title)}</span>
                       ${summary ? `<span class="studio-review-image-meta">${escapeHtml(summary)}</span>` : ''}
@@ -6674,8 +7008,9 @@ The deletion becomes permanent when you save the diagram.`);
                 </article>
             `;
         }).join('');
-        elements.reviewModeImageGrid.querySelectorAll('[data-review-image-thumb]').forEach(img => {
-            setImageElementSourceWithMediaResolution(img, img.dataset.reviewImageThumb || '');
+        const entryById = new Map(entries.map(entry => [normalizeSheetText(entry.id), entry]));
+        elements.reviewModeImageGrid.querySelectorAll('[data-review-image-thumb-id]').forEach(img => {
+            applyStudioSavedImageThumbnailToElement(img, entryById.get(normalizeSheetText(img.dataset.reviewImageThumbId)) || {});
         });
     }
 
@@ -7274,6 +7609,12 @@ The deletion becomes permanent when you save the diagram.`);
                 renderReviewModeLabels();
                 syncReviewModeAngleNavigation();
                 preloadReviewModeAdjacentAngles();
+                if (getReviewModeState().activeAngleIndex === 0 && !getStudioSavedImageThumbnailValue(activeEntry)) {
+                    ensureStudioSavedImageThumbnail(activeEntry.id, {
+                        image: elements.reviewModeImage,
+                        sourceValue: activeAngle?.imageValue || angle.imageValue
+                    }).catch(() => {});
+                }
                 requestAnimationFrame(() => {
                     if (loadToken !== reviewModeAngleLoadToken || !isReviewModeActiveAngleOverlayReady()) return;
                     syncReviewModeImageStage();
@@ -8346,7 +8687,7 @@ The deletion becomes permanent when you save the diagram.`);
               <div class="studio-saved-image-grid">
                 ${filteredEntries.map(entry => `
                   <div class="studio-saved-image-card">
-                    <img class="studio-saved-image-thumb" data-studio-saved-image-thumb="${escapeHtml(entry.imageValue)}" alt="${escapeHtml(entry.fileName)}">
+                    <img class="studio-saved-image-thumb" data-studio-saved-image-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(entry.fileName)}">
                     <div class="studio-saved-image-name" title="${escapeHtml(entry.metadata?.diagramName || entry.fileName)}">${escapeHtml(entry.metadata?.diagramName || entry.fileName)}</div>
                     ${(entry.metadata?.subjectName || entry.metadata?.anatomyType || entry.metadata?.organSystem) ? `<div class="studio-saved-image-meta">${[entry.metadata?.subjectName, entry.metadata?.anatomyType, entry.metadata?.organSystem].filter(Boolean).map(value => escapeHtml(value)).join(' · ')}</div>` : ''}
                     <div class="studio-saved-image-actions">
@@ -8366,8 +8707,9 @@ The deletion becomes permanent when you save the diagram.`);
               <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-picker-cancel>Cancel</button>
             </div>
         `;
-        body.querySelectorAll('[data-studio-saved-image-thumb]').forEach(imageEl => {
-            setImageElementSourceWithMediaResolution(imageEl, imageEl.dataset.studioSavedImageThumb || '');
+        const entryById = new Map(filteredEntries.map(entry => [normalizeSheetText(entry.id), entry]));
+        body.querySelectorAll('[data-studio-saved-image-thumb-id]').forEach(imageEl => {
+            applyStudioSavedImageThumbnailToElement(imageEl, entryById.get(normalizeSheetText(imageEl.dataset.studioSavedImageThumbId)) || {});
         });
     }
 
@@ -12273,6 +12615,14 @@ The deletion becomes permanent when you save the diagram.`);
             console.warn('Could not upload saved image snapshot; keeping local saved image copy instead:', error);
             sharedValue = normalizedValue;
         }
+        let thumbnail = null;
+        let thumbnailValue = '';
+        try {
+            thumbnail = await createStudioSavedImageThumbnailFromSource(normalizedValue);
+            thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, { fileName }, 'diagram');
+        } catch (error) {
+            console.warn('Saved Image thumbnail will be created later when the full image is opened.', error);
+        }
         const nextEntry = {
             id: isReplacing ? getStudioSavedImageSyncKey(originalEntry) : createStableSavedImageId(`${sharedValue}::${JSON.stringify(labels)}::${JSON.stringify(drawStrokes)}::${JSON.stringify(metadata)}`),
             fileName,
@@ -12280,6 +12630,12 @@ The deletion becomes permanent when you save the diagram.`);
             imageOnlyValue: sharedValue,
             mediaValue: isSupabaseMediaReference(sharedValue) ? sharedValue : '',
             imageOnlyMediaValue: isSupabaseMediaReference(sharedValue) ? sharedValue : '',
+            thumbnailValue,
+            thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
+            thumbnailWidth: thumbnail?.width || 0,
+            thumbnailHeight: thumbnail?.height || 0,
+            thumbnailBytes: thumbnail?.bytes || 0,
+            thumbnailVersion: thumbnailValue ? STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION : 0,
             imageLabel: `Saved: ${fileName}`,
             imageOnlyLabel: `Saved: ${fileName}`,
             labels,
