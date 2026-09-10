@@ -39,7 +39,8 @@ MODIFICATION RULES FOR THIS APP
         mediaAssets: {
             bucketName: 'study-bunny-media',
             referencePrefix: 'sb-media:',
-            signedUrlExpiresIn: 604800
+            signedUrlExpiresIn: 30 * 24 * 60 * 60,
+            signedUrlCacheStorageKey: 'studyBunnyMediaSignedUrlCacheV1'
         }
     };
 
@@ -352,6 +353,7 @@ MODIFICATION RULES FOR THIS APP
             },
             supabaseManagementInFlight: new Map(),
             mediaSignedUrlCache: new Map(),
+            mediaSignedUrlCacheLoadedUserId: '',
             mediaSignedUrlPromiseCache: new Map(),
             mediaDisplaySourceCache: new Map(),
             flashcardImageDetailCache: new Map(),
@@ -2195,7 +2197,7 @@ MODIFICATION RULES FOR THIS APP
             throw new Error(getPhase18StorageErrorMessage(error) || 'Could not link the shared diagram image to its source question.');
         }
 
-        state.auth.mediaSignedUrlCache?.delete(assetId);
+        deleteCachedMediaSignedUrl(assetId);
         return normalizedValue;
     }
 
@@ -2215,6 +2217,86 @@ MODIFICATION RULES FOR THIS APP
         return Object.fromEntries(savedEntries);
     }
 
+    function getMediaSignedUrlCacheStorageKey(userId = state.auth.user?.id) {
+        const safeUserId = normalizeSheetText(userId);
+        if (!safeUserId) return '';
+        return `${CONFIG.mediaAssets.signedUrlCacheStorageKey}:${safeUserId}`;
+    }
+
+    function persistMediaSignedUrlCacheToStorage() {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        const storageKey = getMediaSignedUrlCacheStorageKey(userId);
+        if (!storageKey || state.auth.mediaSignedUrlCacheLoadedUserId !== userId) return;
+        try {
+            const now = Date.now();
+            const entries = Array.from(state.auth.mediaSignedUrlCache instanceof Map ? state.auth.mediaSignedUrlCache.entries() : [])
+                .filter(([assetId, record]) => normalizeSheetText(assetId) && normalizeSheetText(record?.url) && Number(record?.expiresAt) > now + 60000)
+                .sort((left, right) => Number(right[1]?.expiresAt || 0) - Number(left[1]?.expiresAt || 0))
+                .slice(0, 1500)
+                .map(([assetId, record]) => [assetId, {
+                    url: normalizeSheetText(record.url),
+                    expiresAt: Number(record.expiresAt)
+                }]);
+            window.localStorage?.setItem(storageKey, JSON.stringify({ version: 1, entries }));
+        } catch (error) {
+            console.warn('Could not persist signed media URL cache:', error);
+        }
+    }
+
+    function hydrateMediaSignedUrlCacheFromStorage() {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        if (!userId) return;
+        if (state.auth.mediaSignedUrlCacheLoadedUserId === userId) return;
+
+        state.auth.mediaSignedUrlCache = new Map();
+        state.auth.mediaDisplaySourceCache = new Map();
+        state.auth.mediaSignedUrlCacheLoadedUserId = userId;
+
+        const storageKey = getMediaSignedUrlCacheStorageKey(userId);
+        if (!storageKey) return;
+        try {
+            const raw = window.localStorage?.getItem(storageKey);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+            const now = Date.now();
+            let pruned = false;
+            entries.forEach(entry => {
+                const assetId = normalizeSheetText(entry?.[0]);
+                const record = entry?.[1];
+                const url = normalizeSheetText(record?.url);
+                const expiresAt = Number(record?.expiresAt);
+                if (!assetId || !url || !Number.isFinite(expiresAt) || expiresAt <= now + 60000) {
+                    pruned = true;
+                    return;
+                }
+                state.auth.mediaSignedUrlCache.set(assetId, { url, expiresAt });
+            });
+            if (pruned) persistMediaSignedUrlCacheToStorage();
+        } catch (error) {
+            console.warn('Could not restore signed media URL cache:', error);
+        }
+    }
+
+    function getCachedMediaSignedUrl(assetId) {
+        hydrateMediaSignedUrlCacheFromStorage();
+        return state.auth.mediaSignedUrlCache?.get(assetId);
+    }
+
+    function setCachedMediaSignedUrl(assetId, record) {
+        if (!assetId || !record?.url || !record?.expiresAt) return;
+        hydrateMediaSignedUrlCacheFromStorage();
+        if (!(state.auth.mediaSignedUrlCache instanceof Map)) state.auth.mediaSignedUrlCache = new Map();
+        state.auth.mediaSignedUrlCache.set(assetId, record);
+        persistMediaSignedUrlCacheToStorage();
+    }
+
+    function deleteCachedMediaSignedUrl(assetId) {
+        if (!assetId) return;
+        hydrateMediaSignedUrlCacheFromStorage();
+        if (state.auth.mediaSignedUrlCache?.delete(assetId)) persistMediaSignedUrlCacheToStorage();
+    }
+
     async function createSignedMediaUrlMap(refs) {
         if (!state.auth.client || !refs?.length) return new Map();
 
@@ -2225,7 +2307,7 @@ MODIFICATION RULES FOR THIS APP
 
         uniqueRefs.forEach(ref => {
             const assetId = getSupabaseMediaAssetId(ref);
-            const cached = state.auth.mediaSignedUrlCache?.get(assetId);
+            const cached = getCachedMediaSignedUrl(assetId);
             if (cached?.url && cached.expiresAt > now + 60000) {
                 resolvedMap.set(ref, cached.url);
             } else if (assetId) {
@@ -2270,7 +2352,7 @@ MODIFICATION RULES FOR THIS APP
                 if (!asset?.id || !signedUrl) return;
                 const ref = buildSupabaseMediaReference(asset.id);
                 resolvedMap.set(ref, signedUrl);
-                state.auth.mediaSignedUrlCache?.set(asset.id, {
+                setCachedMediaSignedUrl(asset.id, {
                     url: signedUrl,
                     expiresAt: now + (CONFIG.mediaAssets.signedUrlExpiresIn * 1000)
                 });
@@ -2286,7 +2368,7 @@ MODIFICATION RULES FOR THIS APP
         const assetId = getSupabaseMediaAssetId(normalizedValue);
         if (!assetId) return '';
         const now = Date.now();
-        const cached = state.auth.mediaSignedUrlCache?.get(assetId);
+        const cached = getCachedMediaSignedUrl(assetId);
         if (cached?.url && cached.expiresAt > now + 60000) return cached.url;
         const pendingCache = state.auth.mediaSignedUrlPromiseCache instanceof Map
             ? state.auth.mediaSignedUrlPromiseCache
@@ -3891,7 +3973,7 @@ MODIFICATION RULES FOR THIS APP
             const bucketName = asset.bucket_name || CONFIG.mediaAssets.bucketName;
             if (!assetsByBucket.has(bucketName)) assetsByBucket.set(bucketName, []);
             assetsByBucket.get(bucketName).push(asset.object_path);
-            state.auth.mediaSignedUrlCache?.delete(asset.id);
+            deleteCachedMediaSignedUrl(asset.id);
         });
 
         for (const [bucketName, paths] of assetsByBucket.entries()) {
@@ -21015,6 +21097,10 @@ if (elements.openQuizStudioBtn) {
             await refreshStudioManagementData({ force: !sameSignedInUser });
         } else {
             invalidateSupabaseManagementCache();
+            state.auth.mediaSignedUrlCache = new Map();
+            state.auth.mediaSignedUrlCacheLoadedUserId = '';
+            state.auth.mediaSignedUrlPromiseCache = new Map();
+            state.auth.mediaDisplaySourceCache = new Map();
             state.auth.profile = null;
             state.auth.diagramColorPresets = [];
             state.auth.diagramColorLastColor = '#000000';
