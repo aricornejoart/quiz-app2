@@ -37,7 +37,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22ns6" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22ns8" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -50,7 +50,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=22ns6-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=22ns8-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1760,6 +1760,7 @@ MODIFICATION RULES FOR THIS APP
         <button id="reviewModeNextAngleBtn" type="button" class="review-mode-angle-btn" aria-label="Next angle">›</button>
       </div>
       <button id="reviewModeResetZoomBtn" class="review-mode-toolbar-btn review-mode-reset-zoom-btn hidden" type="button" aria-label="Reset diagram zoom">Reset Zoom</button>
+      <span id="reviewModeZoomPercent" class="review-mode-zoom-percent" aria-live="polite" aria-label="Current review zoom">100%</span>
     </div>
     <div id="reviewModeOptionsPanel" class="review-mode-options-panel hidden" aria-hidden="true">
       <div class="review-mode-options-title">Review Options</div>
@@ -1795,7 +1796,7 @@ MODIFICATION RULES FOR THIS APP
       <label class="review-mode-switch-row">
         <span>Show label drawings</span>
         <span class="review-mode-toggle-control">
-          <input id="reviewModeShowDrawDataToggle" type="checkbox" role="switch" aria-label="Show label paintbrush and drawing data" checked>
+          <input id="reviewModeShowDrawDataToggle" type="checkbox" role="switch" aria-label="Show label paintbrush and drawing data">
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
@@ -2031,6 +2032,8 @@ MODIFICATION RULES FOR THIS APP
       <div class="studio-image-editor-workspace">
         <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
           <canvas id="studioImageEditorCanvas" class="studio-image-editor-canvas"></canvas>
+          <svg id="studioImageEditorConnectorLayer" class="studio-image-editor-connector-layer hidden" aria-hidden="true" focusable="false"></svg>
+          <canvas id="studioImageEditorLabelOverlayCanvas" class="studio-image-editor-label-overlay-canvas hidden" aria-hidden="true"></canvas>
         </div>
         <div id="studioImageEditorLabelPanel" class="studio-image-editor-label-panel hidden" aria-label="Image labels">
           <div class="studio-image-editor-label-panel-header">
@@ -2102,6 +2105,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22ns6"></script>
+  <script src="script.js?v=22ns8"></script>
 </body>
 </html>

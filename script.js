@@ -379,7 +379,7 @@ MODIFICATION RULES FOR THIS APP
                 optionsOpen: false,
                 showAngleControls: true,
                 showAllNames: false,
-                showDrawData: true,
+                showDrawData: false,
                 showConnectors: true,
                 showConnectorContrast: true,
                 focusMode: false,
@@ -612,6 +612,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeNextAngleBtn: document.getElementById('reviewModeNextAngleBtn'),
         reviewModeAngleIndicator: document.getElementById('reviewModeAngleIndicator'),
         reviewModeResetZoomBtn: document.getElementById('reviewModeResetZoomBtn'),
+        reviewModeZoomPercent: document.getElementById('reviewModeZoomPercent'),
         reviewModeImageStage: document.getElementById('reviewModeImageStage'),
         reviewModeImage: document.getElementById('reviewModeImage'),
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
@@ -811,6 +812,8 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorOverlay: document.getElementById('studioImageEditorOverlay'),
         studioImageEditorCanvasWrap: document.getElementById('studioImageEditorCanvasWrap'),
         studioImageEditorCanvas: document.getElementById('studioImageEditorCanvas'),
+        studioImageEditorConnectorLayer: document.getElementById('studioImageEditorConnectorLayer'),
+        studioImageEditorLabelOverlayCanvas: document.getElementById('studioImageEditorLabelOverlayCanvas'),
         studioImageEditorZoomControls: document.getElementById('studioImageEditorZoomControls'),
         studioImageEditorZoomOutBtn: document.getElementById('studioImageEditorZoomOutBtn'),
         studioImageEditorZoomResetBtn: document.getElementById('studioImageEditorZoomResetBtn'),
@@ -2645,6 +2648,20 @@ MODIFICATION RULES FOR THIS APP
         }).filter(label => label.label);
     }
 
+    function getConnectorEndpointInsetPoint(anchor, tangentStart, inset = 0) {
+        const amount = Math.max(0, Number(inset) || 0);
+        if (!amount) return { x: anchor.x, y: anchor.y };
+        const dx = anchor.x - tangentStart.x;
+        const dy = anchor.y - tangentStart.y;
+        const length = Math.hypot(dx, dy);
+        if (length <= 0.0001) return { x: anchor.x, y: anchor.y };
+        const safeInset = Math.min(amount, Math.max(0, length - 0.0001));
+        return {
+            x: anchor.x - ((dx / length) * safeInset),
+            y: anchor.y - ((dy / length) * safeInset)
+        };
+    }
+
     function getDiagramConnectorSvgGeometry(connector = null, label = null, width = 1, height = 1, screenScale = 1) {
         const normalizedConnector = normalizeDiagramConnector(connector);
         if (!normalizedConnector || !label) return null;
@@ -2664,27 +2681,43 @@ MODIFICATION RULES FOR THIS APP
         const distance = Math.max(1, Math.hypot(dx, dy));
         const direction = dx >= 0 ? 1 : -1;
         const point = value => Number(value).toFixed(3);
-        let path = `M ${point(labelPoint.x)} ${point(labelPoint.y)}`;
-        if (style === 'curved') {
-            const scale = Math.max(0.0001, Number(screenScale) || 1);
-            const minimumControl = 24 / scale;
-            const controlLength = Math.min(distance * 0.48, Math.max(minimumControl, Math.abs(dx) * 0.55));
-            path += ` C ${point(labelPoint.x + direction * controlLength)} ${point(labelPoint.y)} ${point(anchor.x - direction * controlLength * 0.38)} ${point(anchor.y)} ${point(anchor.x)} ${point(anchor.y)}`;
-        } else if (style === 'elbow') {
-            const midX = labelPoint.x + dx * 0.5;
-            path += ` L ${point(midX)} ${point(labelPoint.y)} L ${point(midX)} ${point(anchor.y)} L ${point(anchor.x)} ${point(anchor.y)}`;
-        } else if (style === 'angled') {
-            const scale = Math.max(0.0001, Number(screenScale) || 1);
-            const minSegment = 12 / scale;
-            const maxSegment = 40 / scale;
-            const horizontalLength = Math.min(maxSegment, Math.max(minSegment, distance * 0.15));
-            path += ` L ${point(labelPoint.x + direction * horizontalLength)} ${point(labelPoint.y)} L ${point(anchor.x)} ${point(anchor.y)}`;
-        } else {
-            path += ` L ${point(anchor.x)} ${point(anchor.y)}`;
-        }
-        const normalizedScreenScale = Math.max(0.0001, Number(screenScale) || 1);
+        const scale = Math.max(0.0001, Number(screenScale) || 1);
+
+        const buildPath = (endInset = 0) => {
+            let path = `M ${point(labelPoint.x)} ${point(labelPoint.y)}`;
+            if (style === 'curved') {
+                const minimumControl = 24 / scale;
+                const controlLength = Math.min(distance * 0.48, Math.max(minimumControl, Math.abs(dx) * 0.55));
+                const control1 = { x: labelPoint.x + direction * controlLength, y: labelPoint.y };
+                const control2 = { x: anchor.x - direction * controlLength * 0.38, y: anchor.y };
+                const endPoint = getConnectorEndpointInsetPoint(anchor, control2, endInset);
+                path += ` C ${point(control1.x)} ${point(control1.y)} ${point(control2.x)} ${point(control2.y)} ${point(endPoint.x)} ${point(endPoint.y)}`;
+            } else if (style === 'elbow') {
+                const midX = labelPoint.x + dx * 0.5;
+                const finalSegmentStart = { x: midX, y: anchor.y };
+                const tangentStart = Math.hypot(anchor.x - finalSegmentStart.x, anchor.y - finalSegmentStart.y) > 0.0001
+                    ? finalSegmentStart
+                    : { x: midX, y: labelPoint.y };
+                const endPoint = getConnectorEndpointInsetPoint(anchor, tangentStart, endInset);
+                path += ` L ${point(midX)} ${point(labelPoint.y)} L ${point(midX)} ${point(anchor.y)} L ${point(endPoint.x)} ${point(endPoint.y)}`;
+            } else if (style === 'angled') {
+                const minSegment = 24 / scale;
+                const maxSegment = 80 / scale;
+                const horizontalLength = Math.min(maxSegment, Math.max(minSegment, distance * 0.30));
+                const bend = { x: labelPoint.x + direction * horizontalLength, y: labelPoint.y };
+                const endPoint = getConnectorEndpointInsetPoint(anchor, bend, endInset);
+                path += ` L ${point(bend.x)} ${point(bend.y)} L ${point(endPoint.x)} ${point(endPoint.y)}`;
+            } else {
+                const endPoint = getConnectorEndpointInsetPoint(anchor, labelPoint, endInset);
+                path += ` L ${point(endPoint.x)} ${point(endPoint.y)}`;
+            }
+            return path;
+        };
+
+        const normalizedScreenScale = scale;
         return {
-            path,
+            path: buildPath(0),
+            buildPath,
             anchor,
             color: normalizedConnector.color || '#000000',
             thickness: Math.min(24, Math.max(1, Number(normalizedConnector.thickness) || 7)) / normalizedScreenScale,
@@ -2696,17 +2729,38 @@ MODIFICATION RULES FOR THIS APP
     function buildDiagramConnectorSvgMarkup(labels = [], width = 1, height = 1, screenScale = 1, options = {}) {
         const outlineColor = normalizeSheetText(options?.outlineColor || '');
         const outlineExtraWidth = Math.max(0, Number(options?.outlineExtraWidth) || 0);
+        const activeConnectorIndex = Number.isInteger(Number(options?.activeConnectorIndex)) ? Number(options.activeConnectorIndex) : -1;
+        const activeRingColor = normalizeEditorHexColor(options?.activeRingColor || '#facc15', '#facc15');
+        const activeRingExtraRadius = Math.max(0, Number(options?.activeRingExtraRadius) || 5.75);
+        const activeRingThicknessFactor = Math.max(0, Number(options?.activeRingThicknessFactor) || 0.85);
+        const activeRingLineWidth = Math.max(0.5, Number(options?.activeRingLineWidth) || 2.25);
+        const precisionAttrs = 'shape-rendering="geometricPrecision" vector-effect="none"';
         return normalizeDiagramLabels(labels || []).map((label, index) => {
             const geometry = getDiagramConnectorSvgGeometry(label.connector, label, width, height, screenScale);
             if (!geometry) return '';
-            const radius = Math.max(4 / Math.max(0.0001, geometry.screenScale || 1), geometry.thickness * 0.9);
+            const scale = Math.max(0.0001, geometry.screenScale || 1);
+            const screenThickness = geometry.thickness * scale;
+            const radius = Math.max(4 / scale, geometry.thickness * 0.9);
             const outlineWidth = outlineColor && outlineExtraWidth > 0
-                ? geometry.thickness + (outlineExtraWidth / Math.max(0.0001, geometry.screenScale || 1))
+                ? geometry.thickness + (outlineExtraWidth / scale)
                 : 0;
+            const outlineEndInset = outlineWidth > 0
+                ? (outlineExtraWidth / 2) / scale
+                : 0;
+            const outlinePathData = outlineWidth > 0 && typeof geometry.buildPath === 'function'
+                ? geometry.buildPath(outlineEndInset)
+                : geometry.path;
             const outlinePath = outlineWidth > 0
-                ? `<path d="${geometry.path}" fill="none" stroke="${outlineColor}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round"></path>`
+                ? `<path d="${outlinePathData}" fill="none" stroke="${outlineColor}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round" ${precisionAttrs}></path>`
                 : '';
-            return `<g data-diagram-connector-index="${index}">${outlinePath}<path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round"></path>${geometry.endpoint === 'ball' ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}"></circle>` : ''}</g>`;
+            const endpoint = geometry.endpoint === 'ball'
+                ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}" ${precisionAttrs}></circle>`
+                : '';
+            const activeRingRadius = (activeRingExtraRadius + (screenThickness * activeRingThicknessFactor)) / scale;
+            const activeRing = index === activeConnectorIndex
+                ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${activeRingRadius.toFixed(3)}" fill="none" stroke="${activeRingColor}" stroke-width="${(activeRingLineWidth / scale).toFixed(3)}" ${precisionAttrs}></circle>`
+                : '';
+            return `<g data-diagram-connector-index="${index}" ${precisionAttrs}>${outlinePath}<path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round" ${precisionAttrs}></path>${endpoint}${activeRing}</g>`;
         }).join('');
     }
 
@@ -2725,6 +2779,8 @@ MODIFICATION RULES FOR THIS APP
         const screenScale = renderedWidth / width;
         svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
         svg.setAttribute('preserveAspectRatio', 'none');
+        svg.setAttribute('shape-rendering', 'geometricPrecision');
+        svg.dataset.vectorConnectorLayer = 'true';
         svg.innerHTML = buildDiagramConnectorSvgMarkup(safeLabels, width, height, screenScale, options);
         svg.classList.remove('hidden');
     }
@@ -4621,16 +4677,20 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function loadStudioSavedImageRemoteRows() {
+    function getStudioSavedImageRemoteRowKey(row = {}) {
+        return normalizeSheetText(row?.dedupe_key || row?.id);
+    }
+
+    async function loadStudioSavedImageRemoteIndexRows() {
         const userId = getStudioSavedImageSyncUserId();
         if (!state.auth.client || !userId) return { rows: [], ok: false };
         try {
             const { data, error } = await runWithTransientFetchRetry(() => state.auth.client
                 .from(STUDIO_SAVED_IMAGE_REMOTE_TABLE)
-                .select('id, dedupe_key, payload, deleted_at, created_at, updated_at')
+                .select('id, dedupe_key, deleted_at, created_at, updated_at')
                 .eq('user_id', userId)
                 .order('updated_at', { ascending: false })
-                .limit(500), 'Loading Saved Images', { attempts: 2 });
+                .limit(500), 'Loading Saved Images index', { attempts: 2 });
             if (error) throw error;
             state.auth.studioSavedImageSync.tableUnavailable = false;
             return { rows: Array.isArray(data) ? data : [], ok: true };
@@ -4638,10 +4698,78 @@ MODIFICATION RULES FOR THIS APP
             if (isStudioSavedImageRemoteSchemaError(error)) {
                 state.auth.studioSavedImageSync.tableUnavailable = true;
             } else {
-                console.warn('Could not load synchronized Saved Images:', error);
+                console.warn('Could not load synchronized Saved Images index:', error);
             }
             return { rows: [], ok: false, error };
         }
+    }
+
+    async function loadStudioSavedImageRemotePayloadRows(rowIds = []) {
+        const userId = getStudioSavedImageSyncUserId();
+        const ids = Array.from(new Set((Array.isArray(rowIds) ? rowIds : []).map(normalizeSheetText).filter(Boolean)));
+        if (!ids.length) return { rows: [], ok: true };
+        if (!state.auth.client || !userId) return { rows: [], ok: false };
+        try {
+            const { data, error } = await runWithTransientFetchRetry(() => state.auth.client
+                .from(STUDIO_SAVED_IMAGE_REMOTE_TABLE)
+                .select('id, dedupe_key, payload, deleted_at, created_at, updated_at')
+                .eq('user_id', userId)
+                .in('id', ids), 'Loading changed Saved Images', { attempts: 2 });
+            if (error) throw error;
+            state.auth.studioSavedImageSync.tableUnavailable = false;
+            return { rows: Array.isArray(data) ? data : [], ok: true };
+        } catch (error) {
+            if (isStudioSavedImageRemoteSchemaError(error)) {
+                state.auth.studioSavedImageSync.tableUnavailable = true;
+            } else {
+                console.warn('Could not load changed synchronized Saved Images:', error);
+            }
+            return { rows: [], ok: false, error };
+        }
+    }
+
+    async function loadStudioSavedImageRemoteEntries(remoteIndexRows = [], userId = getStudioSavedImageSyncUserId()) {
+        const activeRemoteRows = (Array.isArray(remoteIndexRows) ? remoteIndexRows : [])
+            .filter(row => !row?.deleted_at)
+            .slice(0, STUDIO_SAVED_IMAGE_LIBRARY_LIMIT);
+        const localEntries = mergeStudioSavedImageEntries(
+            state.auth.studioSavedImageMemoryLibrary || [],
+            loadStudioSavedImageUserCache(userId),
+            canUseLegacyStudioSavedImagesForUser(userId) ? loadLegacyStudioSavedImageLibrary() : []
+        );
+        const localByKey = new Map(localEntries.map(entry => [getStudioSavedImageSyncKey(entry), entry]).filter(([key]) => key));
+        const resolvedByKey = new Map();
+        const changedIds = [];
+
+        activeRemoteRows.forEach(row => {
+            const syncKey = getStudioSavedImageRemoteRowKey(row);
+            const localEntry = localByKey.get(syncKey) || null;
+            const remoteUpdatedAt = normalizeSheetText(row?.updated_at);
+            const localUpdatedAt = normalizeSheetText(localEntry?.updatedAt);
+            if (localEntry && remoteUpdatedAt && localUpdatedAt === remoteUpdatedAt) {
+                resolvedByKey.set(syncKey, localEntry);
+            } else if (row?.id) {
+                changedIds.push(row.id);
+            }
+        });
+
+        if (changedIds.length) {
+            const payloadLoad = await loadStudioSavedImageRemotePayloadRows(changedIds);
+            if (!payloadLoad.ok) return { entries: [], ok: false, error: payloadLoad.error };
+            (payloadLoad.rows || []).forEach(row => {
+                const normalized = normalizeStudioSavedImageRemoteRow(row);
+                const syncKey = getStudioSavedImageRemoteRowKey(row);
+                if (normalized && syncKey) resolvedByKey.set(syncKey, normalized);
+            });
+        }
+
+        const entries = activeRemoteRows
+            .map(row => {
+                const syncKey = getStudioSavedImageRemoteRowKey(row);
+                return resolvedByKey.get(syncKey) || localByKey.get(syncKey) || null;
+            })
+            .filter(Boolean);
+        return { entries, ok: true };
     }
 
     async function flushStudioSavedImagePendingDeletes(userId = getStudioSavedImageSyncUserId()) {
@@ -4710,21 +4838,36 @@ MODIFICATION RULES FOR THIS APP
         if (sync.inFlight) return sync.inFlight;
         if (options.force) sync.tableUnavailable = false;
         const task = (async () => {
-            const firstLoad = await loadStudioSavedImageRemoteRows();
-            if (!firstLoad.ok) return false;
+            // Read only the small remote index first. Full JSON payloads are fetched
+            // only for rows that are new or changed versus this device's local cache.
+            const firstIndexLoad = await loadStudioSavedImageRemoteIndexRows();
+            if (!firstIndexLoad.ok) return false;
+
+            const hadPendingDeletes = getStudioSavedImagePendingDeletes(userId).length > 0;
+            const hadPendingUpserts = getStudioSavedImagePendingUpsertKeys(userId).size > 0;
+            const migrationWasPending = !isStudioSavedImageLegacyMigrationComplete(userId);
+
             await flushStudioSavedImagePendingDeletes(userId);
-            await migrateLegacyStudioSavedImagesToRemote(firstLoad.rows, userId);
+            await migrateLegacyStudioSavedImagesToRemote(firstIndexLoad.rows, userId);
             await flushStudioSavedImagePendingUpserts(userId);
-            const finalLoad = await loadStudioSavedImageRemoteRows();
-            if (!finalLoad.ok) return false;
+
+            let remoteIndexRows = firstIndexLoad.rows;
+            if (hadPendingDeletes || hadPendingUpserts || migrationWasPending) {
+                const finalIndexLoad = await loadStudioSavedImageRemoteIndexRows();
+                if (!finalIndexLoad.ok) return false;
+                remoteIndexRows = finalIndexLoad.rows;
+            }
+
+            const remoteEntryLoad = await loadStudioSavedImageRemoteEntries(remoteIndexRows, userId);
+            if (!remoteEntryLoad.ok) return false;
+
             const pendingKeys = getStudioSavedImagePendingUpsertKeys(userId);
             const pendingLocalEntries = mergeStudioSavedImageEntries(
                 state.auth.studioSavedImageMemoryLibrary || [],
                 loadStudioSavedImageUserCache(userId),
                 loadLegacyStudioSavedImageLibrary()
             ).filter(entry => pendingKeys.has(getStudioSavedImageSyncKey(entry)));
-            const remoteEntries = finalLoad.rows.map(normalizeStudioSavedImageRemoteRow).filter(Boolean);
-            const merged = mergeStudioSavedImageEntries(remoteEntries, pendingLocalEntries);
+            const merged = mergeStudioSavedImageEntries(remoteEntryLoad.entries, pendingLocalEntries);
             sync.applyingRemote = true;
             try {
                 state.auth.studioSavedImageMemoryLibrary = merged;
@@ -6348,7 +6491,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.showAngleControls = review.showAngleControls === true;
         review.showAllNames = review.showAllNames === true;
         review.showLabelNumbers = review.showLabelNumbers === true;
-        review.showDrawData = review.showDrawData !== false;
+        review.showDrawData = review.showDrawData === true;
         review.showConnectors = review.showConnectors !== false;
         review.showConnectorContrast = review.showConnectorContrast !== false;
         review.focusMode = review.focusMode === true;
@@ -6700,6 +6843,7 @@ The deletion becomes permanent when you save the diagram.`);
     const REVIEW_MODE_FOCUS_MIN_PADDING = 36;
     let reviewModeZoomResetTimer = null;
     let reviewModeFocusFrameId = 0;
+    let reviewModeVectorRefreshFrameId = 0;
 
     function normalizeReviewModeZoomValue(value, fallback = 0) {
         const number = Number(value);
@@ -6731,6 +6875,19 @@ The deletion becomes permanent when you save the diagram.`);
         elements.reviewModeImageViewport?.classList.toggle('is-zoomed', isZoomed);
         elements.reviewModeResetZoomBtn?.classList.toggle('hidden', !showReset);
         elements.reviewModeResetZoomBtn?.setAttribute('aria-hidden', showReset ? 'false' : 'true');
+        if (elements.reviewModeZoomPercent) {
+            elements.reviewModeZoomPercent.textContent = `${Math.round(review.zoomScale * 100)}%`;
+            elements.reviewModeZoomPercent.setAttribute('aria-label', `Current review zoom ${Math.round(review.zoomScale * 100)} percent`);
+        }
+    }
+
+    function scheduleReviewModeVectorConnectorRefresh() {
+        if (reviewModeVectorRefreshFrameId) return;
+        reviewModeVectorRefreshFrameId = window.requestAnimationFrame(() => {
+            reviewModeVectorRefreshFrameId = 0;
+            if (!getReviewModeState().overlayOpen) return;
+            renderReviewModeConnectors();
+        });
     }
 
     function applyReviewModeZoomTransform({ animate = false } = {}) {
@@ -6754,6 +6911,7 @@ The deletion becomes permanent when you save the diagram.`);
             }, 190);
         }
         syncReviewModeZoomUi();
+        scheduleReviewModeVectorConnectorRefresh();
     }
 
     function getReviewModeFocusLabelIndex(review = getReviewModeState()) {
@@ -7964,7 +8122,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.showAngleControls = true;
         review.showAllNames = false;
         review.showLabelNumbers = false;
-        review.showDrawData = true;
+        review.showDrawData = false;
         review.showConnectors = true;
         review.showConnectorContrast = true;
         review.focusMode = false;
@@ -8422,6 +8580,8 @@ The deletion becomes permanent when you save the diagram.`);
         elements.studioImageEditorOverlay = document.getElementById('studioImageEditorOverlay');
         elements.studioImageEditorCanvasWrap = document.getElementById('studioImageEditorCanvasWrap');
         elements.studioImageEditorCanvas = document.getElementById('studioImageEditorCanvas');
+        elements.studioImageEditorConnectorLayer = document.getElementById('studioImageEditorConnectorLayer');
+        elements.studioImageEditorLabelOverlayCanvas = document.getElementById('studioImageEditorLabelOverlayCanvas');
         elements.studioImageEditorZoomControls = document.getElementById('studioImageEditorZoomControls');
         elements.studioImageEditorZoomOutBtn = document.getElementById('studioImageEditorZoomOutBtn');
         elements.studioImageEditorZoomResetBtn = document.getElementById('studioImageEditorZoomResetBtn');
@@ -8526,6 +8686,8 @@ The deletion becomes permanent when you save the diagram.`);
                     <div class="studio-image-editor-workspace">
                       <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
                         <canvas id="studioImageEditorCanvas"></canvas>
+                        <svg id="studioImageEditorConnectorLayer" class="studio-image-editor-connector-layer hidden" aria-hidden="true" focusable="false"></svg>
+                        <canvas id="studioImageEditorLabelOverlayCanvas" class="studio-image-editor-label-overlay-canvas hidden" aria-hidden="true"></canvas>
                       </div>
                       <div id="studioImageEditorLabelPanel" class="studio-image-editor-label-panel hidden" aria-label="Image labels">
                         <div class="studio-image-editor-label-panel-header">
@@ -9342,6 +9504,7 @@ The deletion becomes permanent when you save the diagram.`);
         editor.zoomY = next.y;
         canvas.classList.toggle('is-zoom-resetting', !!animate);
         canvas.style.transform = `translate3d(${next.x}px, ${next.y}px, 0) scale(${next.scale})`;
+        renderImageEditorVectorOverlays({ animate });
         if (animate) {
             window.setTimeout(() => canvas.classList.remove('is-zoom-resetting'), 190);
         }
@@ -10771,110 +10934,111 @@ The deletion becomes permanent when you save the diagram.`);
         };
     }
 
-    function traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint) {
-        const style = getDiagramConnectorStyle(connector);
-        const dx = anchor.x - labelPoint.x;
-        const dy = anchor.y - labelPoint.y;
-        const distance = Math.max(1, Math.hypot(dx, dy));
-        const direction = dx >= 0 ? 1 : -1;
-        ctx.moveTo(labelPoint.x, labelPoint.y);
-        if (style === 'curved') {
-            const controlLength = Math.min(distance * 0.48, Math.max(getImageEditorCanvasScreenTolerance(24), Math.abs(dx) * 0.55));
-            ctx.bezierCurveTo(
-                labelPoint.x + direction * controlLength,
-                labelPoint.y,
-                anchor.x - direction * controlLength * 0.38,
-                anchor.y,
-                anchor.x,
-                anchor.y
-            );
-            return;
-        }
-        if (style === 'elbow') {
-            const midX = labelPoint.x + dx * 0.5;
-            ctx.lineTo(midX, labelPoint.y);
-            ctx.lineTo(midX, anchor.y);
-            ctx.lineTo(anchor.x, anchor.y);
-            return;
-        }
-        if (style === 'angled') {
-            const minSegment = getImageEditorCanvasScreenTolerance(12);
-            const maxSegment = getImageEditorCanvasScreenTolerance(40);
-            const horizontalLength = Math.min(maxSegment, Math.max(minSegment, distance * 0.15));
-            ctx.lineTo(labelPoint.x + direction * horizontalLength, labelPoint.y);
-            ctx.lineTo(anchor.x, anchor.y);
-            return;
-        }
-        ctx.lineTo(anchor.x, anchor.y);
-    }
+    let imageEditorVectorResizeObserver = null;
+    let imageEditorVectorSyncFrameId = 0;
 
-    function getImageEditorCanvasRenderScale(canvas = elements.studioImageEditorCanvas) {
-        if (!canvas) return 1;
-        const measuredWidth = Number(canvas.offsetWidth || canvas.clientWidth || 0);
-        if (measuredWidth > 0) return Math.max(0.0001, (canvas.width || 1) / measuredWidth);
+    function ensureImageEditorVectorOverlayLayers() {
         const wrap = elements.studioImageEditorCanvasWrap;
-        const availableWidth = Math.max(1, (wrap?.clientWidth || canvas.width || 1) - 16);
-        const availableHeight = Math.max(1, (wrap?.clientHeight || canvas.height || 1) - 16);
-        const fitScale = Math.min(1, availableWidth / Math.max(1, canvas.width || 1), availableHeight / Math.max(1, canvas.height || 1));
-        return Math.max(0.0001, 1 / Math.max(0.0001, fitScale));
+        const canvas = elements.studioImageEditorCanvas;
+        if (!wrap || !canvas) return null;
+        let svg = elements.studioImageEditorConnectorLayer || wrap.querySelector('#studioImageEditorConnectorLayer');
+        if (!svg) {
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'studioImageEditorConnectorLayer';
+            svg.classList.add('studio-image-editor-connector-layer');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.setAttribute('focusable', 'false');
+            wrap.appendChild(svg);
+        }
+        let labelCanvas = elements.studioImageEditorLabelOverlayCanvas || wrap.querySelector('#studioImageEditorLabelOverlayCanvas');
+        if (!labelCanvas) {
+            labelCanvas = document.createElement('canvas');
+            labelCanvas.id = 'studioImageEditorLabelOverlayCanvas';
+            labelCanvas.className = 'studio-image-editor-label-overlay-canvas';
+            labelCanvas.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(labelCanvas);
+        }
+        elements.studioImageEditorConnectorLayer = svg;
+        elements.studioImageEditorLabelOverlayCanvas = labelCanvas;
+        if ('ResizeObserver' in window && !imageEditorVectorResizeObserver) {
+            imageEditorVectorResizeObserver = new ResizeObserver(() => scheduleImageEditorVectorOverlaySync());
+            imageEditorVectorResizeObserver.observe(canvas);
+            imageEditorVectorResizeObserver.observe(wrap);
+        }
+        return { svg, labelCanvas };
     }
 
-    function getImageEditorConnectorEndpointRenderMetrics(screenThickness = 7, renderScale = 1) {
-        const thickness = Math.min(24, Math.max(1, Number(screenThickness) || 7));
-        const scale = Math.max(0.0001, Number(renderScale) || 1);
-        return {
-            dotRadius: Math.max(4, thickness * 0.9) * scale,
-            ringRadius: (5.75 + (thickness * 0.85)) * scale,
-            ringLineWidth: 2.25 * scale
-        };
-    }
-
-    function drawImageEditorConnectors(ctx, labels = [], canvas = elements.studioImageEditorCanvas) {
-        const editor = state.auth.imageEditor;
-        const drafts = normalizeDiagramLabels(labels || []);
-        if (!ctx || !canvas || !drafts.length) return;
-        drafts.forEach((item, index) => {
-            const connector = normalizeDiagramConnector(item.connector);
-            if (!connector) return;
-            const anchor = getImageEditorConnectorCanvasPoint(connector, canvas);
-            const labelPoint = getImageEditorLabelPixelPosition(item, canvas);
-            if (!anchor || !labelPoint) return;
-            const isActive = editor?.mode === 'connector' && editor?.activeConnectorLabelIndex === index;
-            const screenThickness = Math.min(24, Math.max(1, Number(connector.thickness) || 7));
-            const renderScale = getImageEditorCanvasRenderScale(canvas);
-            const thickness = screenThickness * renderScale;
-            ctx.save();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.globalAlpha = 1;
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = (screenThickness + 2) * renderScale;
-            ctx.beginPath();
-            traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint);
-            ctx.stroke();
-            ctx.strokeStyle = connector.color || '#000000';
-            ctx.fillStyle = connector.color || '#000000';
-            ctx.lineWidth = thickness;
-            ctx.globalAlpha = 0.96;
-            ctx.beginPath();
-            traceImageEditorConnectorPath(ctx, connector, anchor, labelPoint);
-            ctx.stroke();
-            const endpointMetrics = getImageEditorConnectorEndpointRenderMetrics(screenThickness, renderScale);
-            if (getDiagramConnectorEndpoint(connector) === 'ball') {
-                ctx.beginPath();
-                ctx.arc(anchor.x, anchor.y, endpointMetrics.dotRadius, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            if (isActive) {
-                ctx.globalAlpha = 1;
-                ctx.strokeStyle = '#facc15';
-                ctx.lineWidth = endpointMetrics.ringLineWidth;
-                ctx.beginPath();
-                ctx.arc(anchor.x, anchor.y, endpointMetrics.ringRadius, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-            ctx.restore();
+    function syncImageEditorVectorOverlayBounds({ animate = false } = {}) {
+        const layers = ensureImageEditorVectorOverlayLayers();
+        const wrap = elements.studioImageEditorCanvasWrap;
+        const canvas = elements.studioImageEditorCanvas;
+        if (!layers || !wrap || !canvas || !canvas.width || !canvas.height) return false;
+        const wrapRect = wrap.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        if (!canvasRect.width || !canvasRect.height) return false;
+        const left = canvasRect.left - wrapRect.left;
+        const top = canvasRect.top - wrapRect.top;
+        [layers.svg, layers.labelCanvas].forEach(layer => {
+            layer.classList.toggle('is-zoom-resetting', !!animate);
+            layer.style.left = `${left}px`;
+            layer.style.top = `${top}px`;
+            layer.style.width = `${canvasRect.width}px`;
+            layer.style.height = `${canvasRect.height}px`;
         });
+        if (animate) {
+            window.setTimeout(() => {
+                layers.svg?.classList.remove('is-zoom-resetting');
+                layers.labelCanvas?.classList.remove('is-zoom-resetting');
+            }, 190);
+        }
+        return true;
+    }
+
+    function scheduleImageEditorVectorOverlaySync({ render = true } = {}) {
+        if (imageEditorVectorSyncFrameId) return;
+        imageEditorVectorSyncFrameId = window.requestAnimationFrame(() => {
+            imageEditorVectorSyncFrameId = 0;
+            if (render) renderImageEditorVectorOverlays();
+            else syncImageEditorVectorOverlayBounds();
+        });
+    }
+
+    function renderImageEditorVectorOverlays({ animate = false } = {}) {
+        const editor = state.auth.imageEditor;
+        const canvas = elements.studioImageEditorCanvas;
+        const layers = ensureImageEditorVectorOverlayLayers();
+        if (!canvas || !layers) return;
+        if (!editor?.open || !editor.baseCanvas || !syncImageEditorVectorOverlayBounds({ animate })) {
+            layers.svg.innerHTML = '';
+            const emptyCtx = layers.labelCanvas.getContext('2d');
+            emptyCtx?.clearRect(0, 0, layers.labelCanvas.width || 1, layers.labelCanvas.height || 1);
+            layers.svg.classList.add('hidden');
+            layers.labelCanvas.classList.add('hidden');
+            return;
+        }
+        const baseScreenScale = Math.max(0.0001, (canvas.offsetWidth || canvas.clientWidth || 1) / Math.max(1, canvas.width || 1));
+        const connectorOptions = {
+            outlineColor: '#ffffff',
+            outlineExtraWidth: 2,
+            activeConnectorIndex: editor.mode === 'connector' ? Number(editor.activeConnectorLabelIndex) : -1,
+            activeRingColor: '#facc15',
+            activeRingExtraRadius: 5.75,
+            activeRingThicknessFactor: 0.85,
+            activeRingLineWidth: 2.25
+        };
+        layers.svg.setAttribute('viewBox', `0 0 ${Math.max(1, canvas.width)} ${Math.max(1, canvas.height)}`);
+        layers.svg.setAttribute('preserveAspectRatio', 'none');
+        layers.svg.setAttribute('shape-rendering', 'geometricPrecision');
+        layers.svg.dataset.vectorConnectorLayer = 'true';
+        layers.svg.innerHTML = buildDiagramConnectorSvgMarkup(editor.labels || [], canvas.width, canvas.height, baseScreenScale, connectorOptions);
+        layers.svg.classList.toggle('hidden', !normalizeDiagramLabels(editor.labels || []).some(label => !!normalizeDiagramConnector(label.connector)));
+
+        if (layers.labelCanvas.width !== canvas.width) layers.labelCanvas.width = canvas.width;
+        if (layers.labelCanvas.height !== canvas.height) layers.labelCanvas.height = canvas.height;
+        const labelCtx = layers.labelCanvas.getContext('2d');
+        labelCtx.clearRect(0, 0, layers.labelCanvas.width, layers.labelCanvas.height);
+        if (editor.labelsEnabled) drawImageEditorLabels(labelCtx, getImageEditorDisplayLabels(editor.labels || []), layers.labelCanvas);
+        layers.labelCanvas.classList.toggle('hidden', !editor.labelsEnabled);
     }
 
     function findImageEditorActiveConnectorAnchorAtPoint(point) {
@@ -11271,11 +11435,10 @@ The deletion becomes permanent when you save the diagram.`);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(baseCanvas, 0, 0);
         drawImageEditorDrawLayer(ctx, canvas);
-        drawImageEditorConnectors(ctx, editor.labels || [], canvas);
 
         const draft = editor.draftShape;
         if (!draft) {
-            drawImageEditorLabels(ctx, getImageEditorDisplayLabels(editor.labels || []), canvas);
+            renderImageEditorVectorOverlays();
             return;
         }
         ctx.save();
@@ -11306,7 +11469,7 @@ The deletion becomes permanent when you save the diagram.`);
             drawEditorLine(ctx, draft, true);
         }
         ctx.restore();
-        drawImageEditorLabels(ctx, getImageEditorDisplayLabels(editor.labels || []), canvas);
+        renderImageEditorVectorOverlays();
     }
 
     function pushImageEditorHistory() {
@@ -11858,8 +12021,9 @@ The deletion becomes permanent when you save the diagram.`);
         editor.labelInfoEnabled = !!(editor.labelsEnabled && isImageEditorNumberedLabelTarget(editor));
         editor.labelInfoPanelOpen = false;
         editor.drawVisibilityByLabel = {};
+        const hideDiagramDrawingsByDefault = isImageEditorStandaloneDiagramTarget(editor);
         editor.labels.forEach((label, index) => {
-            editor.drawVisibilityByLabel[String(index)] = true;
+            editor.drawVisibilityByLabel[String(index)] = !hideDiagramDrawingsByDefault;
         });
         editor.showLabelPanel = false;
         refreshImageEditorLabelUi();
@@ -14546,12 +14710,7 @@ The deletion becomes permanent when you save the diagram.`);
                             .order('sort_order', { ascending: true }),
                         { label: 'managed quiz question rows' }
                     ),
-                    fetchAllSupabaseRows(
-                        () => state.auth.client
-                            .from('multiple_choice_questions')
-                            .select('question_id, options_json'),
-                        { label: 'managed quiz multiple-choice metadata rows' }
-                    ),
+                    loadQuizCatalogMultipleChoiceMetadataRows('managed quiz multiple-choice metadata rows'),
                     loadManagedFlashcardBuildUpRows()
                 ]);
 
@@ -19832,6 +19991,96 @@ if (elements.openQuizStudioBtn) {
         return rows;
     }
 
+
+    // Egress guard: Quiz Studio only needs a few small metadata markers from
+    // multiple_choice_questions when building the quiz catalog. Pulling the full
+    // options_json for every question also transfers answer text, explanations,
+    // diagram labels, and option media metadata that the catalog never renders.
+    // Keep a compatibility fallback so older PostgREST versions still work.
+    function normalizeQuizCatalogMultipleChoiceMetadataRow(row = {}) {
+        const optionsJson = {};
+        const setText = (targetKey, value) => {
+            const normalized = normalizeSheetText(value);
+            if (normalized) optionsJson[targetKey] = normalized;
+        };
+        const hasJsonCollectionValue = value => {
+            if (Array.isArray(value)) return value.length > 0;
+            if (value && typeof value === 'object') return Object.keys(value).length > 0;
+            const normalized = normalizeSheetText(value);
+            return !!normalized && normalized !== '[]' && normalized !== '{}';
+        };
+
+        setText('questionType', row.question_type_marker);
+        setText('kind', row.kind_marker);
+        setText('mode', row.mode_marker);
+
+        const typedAnswerMarker = normalizeSheetText(row.typed_answer_marker).toLowerCase();
+        if (['true', 't', '1', 'yes'].includes(typedAnswerMarker)) {
+            optionsJson.typedAnswer = true;
+        }
+        if (hasJsonCollectionValue(row.accepted_answers_marker)) {
+            optionsJson.acceptedAnswers = ['__catalog_present__'];
+        }
+        if (hasJsonCollectionValue(row.typed_answer_variants_marker)) {
+            optionsJson.typedAnswerVariants = ['__catalog_present__'];
+        }
+
+        const buildUp = normalizeBuildUpValue(
+            row.build_up_marker
+            || row.build_up_snake_marker
+            || row.build_up_group_marker
+            || row.build_up_group_snake_marker
+            || row.legacy_build_up_marker
+            || row.legacy_build_up_snake_marker
+            || row.legacy_build_up_group_marker
+            || row.legacy_build_up_group_snake_marker
+        );
+        if (buildUp) optionsJson.buildUp = buildUp;
+
+        return {
+            question_id: row.question_id,
+            options_json: optionsJson
+        };
+    }
+
+    async function loadQuizCatalogMultipleChoiceMetadataRows(label = 'quiz catalog multiple-choice metadata rows') {
+        const slimSelect = [
+            'question_id',
+            'question_type_marker:options_json->>questionType',
+            'kind_marker:options_json->>kind',
+            'mode_marker:options_json->>mode',
+            'typed_answer_marker:options_json->>typedAnswer',
+            'accepted_answers_marker:options_json->>acceptedAnswers',
+            'typed_answer_variants_marker:options_json->>typedAnswerVariants',
+            'build_up_marker:options_json->>buildUp',
+            'build_up_snake_marker:options_json->>build_up',
+            'build_up_group_marker:options_json->>buildUpGroup',
+            'build_up_group_snake_marker:options_json->>build_up_group',
+            'legacy_build_up_marker:options_json->0->>buildUp',
+            'legacy_build_up_snake_marker:options_json->0->>build_up',
+            'legacy_build_up_group_marker:options_json->0->>buildUpGroup',
+            'legacy_build_up_group_snake_marker:options_json->0->>build_up_group'
+        ].join(', ');
+
+        try {
+            const rows = await fetchAllSupabaseRows(
+                () => state.auth.client
+                    .from('multiple_choice_questions')
+                    .select(slimSelect),
+                { label }
+            );
+            return rows.map(normalizeQuizCatalogMultipleChoiceMetadataRow);
+        } catch (error) {
+            console.warn('Could not use the low-egress multiple-choice catalog query; using the compatibility query instead.', error);
+            return fetchAllSupabaseRows(
+                () => state.auth.client
+                    .from('multiple_choice_questions')
+                    .select('question_id, options_json'),
+                { label: `${label} compatibility fallback` }
+            );
+        }
+    }
+
     async function refreshQuizCatalog(options = {}) {
         const previousQuizId = elements.quizSelector?.value || '';
         const targetQuizId = options.selectQuizId || previousQuizId;
@@ -20737,6 +20986,27 @@ if (elements.openQuizStudioBtn) {
 
         state.auth.session = session || null;
         state.auth.user = session?.user || null;
+
+        // Egress guard: Supabase emits same-user session events (especially
+        // INITIAL_SESSION/SIGNED_IN/TOKEN_REFRESHED) without the library changing.
+        // Those events must update the session, but they must not re-download the
+        // full Quiz Studio catalog or Saved Images payloads. Real user changes and
+        // explicit app write paths still perform their existing refreshes.
+        const isSessionRefreshOnly = sameSignedInUser && (
+            !authEvent
+            || authEvent === 'INITIAL_SESSION'
+            || authEvent === 'SIGNED_IN'
+            || authEvent === 'TOKEN_REFRESHED'
+        );
+        if (isSessionRefreshOnly) {
+            syncImageEditorColorPresetsFromAuth();
+            updateAuthUI();
+            if (state.sourceQuestions.length) {
+                syncQuestionStarButton();
+                updateProgress();
+            }
+            return;
+        }
 
         if (state.auth.user?.id) {
             syncImageEditorColorPresetsFromAuth();
@@ -27007,12 +27277,7 @@ async function loadQuizListFromSupabase(options = {}) {
                         .order('quiz_id', { ascending: true }),
                     { label: 'quiz catalog question rows' }
                 ),
-                fetchAllSupabaseRows(
-                    () => state.auth.client
-                        .from('multiple_choice_questions')
-                        .select('question_id, options_json'),
-                    { label: 'quiz catalog typed-answer metadata rows' }
-                )
+                loadQuizCatalogMultipleChoiceMetadataRows('quiz catalog typed-answer metadata rows')
             ]);
 
             if (foldersError) throw foldersError;

@@ -10885,6 +10885,24 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   font-size: 1.05rem;
 }
 
+.review-mode-zoom-percent {
+  min-width: 58px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  padding: 8px 10px;
+  color: #fff;
+  background: rgba(20, 17, 43, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
 .review-mode-active-title {
   min-width: 0;
   overflow: hidden;
@@ -11258,6 +11276,12 @@ body.review-mode-image-open {
     min-height: 40px;
     padding: 7px 10px;
     font-size: 0.78rem;
+  }
+
+  .review-mode-zoom-percent {
+    min-width: 48px;
+    padding: 7px 6px;
+    font-size: 0.72rem;
   }
 
   .review-mode-close-btn {
@@ -13471,4 +13495,74 @@ body.review-mode-image-open {
 
 .flashcard-side-text li > br:first-child {
   display: none;
+}
+
+/* Phase 22NS8 — global crisp vector connector rendering. */
+[data-vector-connector-layer="true"],
+[data-vector-connector-layer="true"] path,
+[data-vector-connector-layer="true"] circle,
+.flashcard-side-image-connector-layer,
+.flashcard-side-image-connector-layer path,
+.flashcard-side-image-connector-layer circle,
+.flashcard-zoom-image-connector-layer,
+.flashcard-zoom-image-connector-layer path,
+.flashcard-zoom-image-connector-layer circle,
+.diagram-study-connector-layer,
+.diagram-study-connector-layer path,
+.diagram-study-connector-layer circle,
+.review-mode-connector-layer,
+.review-mode-connector-layer path,
+.review-mode-connector-layer circle {
+  shape-rendering: geometricPrecision;
+}
+
+/* Avoid pre-rasterizing the full Review Mode stage so its SVG connector layer can
+   be repainted at the current transform scale instead of stretching a cached bitmap. */
+.review-mode-image-stage {
+  will-change: auto;
+}
+
+/* Diagram Creator connectors and endpoint chrome now live in a real SVG overlay.
+   The overlay is positioned from the transformed canvas bounds rather than being
+   CSS-scaled itself, which keeps the line/contrast strokes vector-sharp at zoom. */
+.studio-image-editor-canvas-wrap {
+  position: relative;
+}
+
+.studio-image-editor-connector-layer,
+.studio-image-editor-label-overlay-canvas {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  transform: none !important;
+  transform-origin: center center;
+  border-radius: 10px;
+}
+
+.studio-image-editor-connector-layer {
+  z-index: 4;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
+}
+
+.studio-image-editor-label-overlay-canvas {
+  z-index: 5;
+  background: transparent;
+}
+
+.studio-image-editor-connector-layer.hidden,
+.studio-image-editor-label-overlay-canvas.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-connector-layer.is-zoom-resetting,
+.studio-image-editor-label-overlay-canvas.is-zoom-resetting {
+  transition: left 160ms ease, top 160ms ease, width 160ms ease, height 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-image-editor-connector-layer.is-zoom-resetting,
+  .studio-image-editor-label-overlay-canvas.is-zoom-resetting {
+    transition: none;
+  }
 }
