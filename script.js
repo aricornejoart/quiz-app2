@@ -36,6 +36,11 @@ MODIFICATION RULES FOR THIS APP
             url: String(window.STUDY_BUNNY_SUPABASE_CONFIG?.url || '').trim(),
             publishableKey: String(window.STUDY_BUNNY_SUPABASE_CONFIG?.publishableKey || '').trim()
         },
+        cloudflareR2: {
+            workerUrl: String(window.STUDY_BUNNY_CLOUDFLARE_R2_CONFIG?.workerUrl || '').trim().replace(/\/$/, ''),
+            providerBucketName: 'cloudflare-r2',
+            signedUrlExpiresIn: 7 * 24 * 60 * 60
+        },
         mediaAssets: {
             bucketName: 'study-bunny-media',
             referencePrefix: 'sb-media:',
@@ -286,6 +291,19 @@ MODIFICATION RULES FOR THIS APP
             studioFlashcardDefinitionImageDrawStrokes: [],
             studioFlashcardTermImageMetadata: {},
             studioFlashcardDefinitionImageMetadata: {},
+            handwrittenFlashcardEnabled: false,
+            handwrittenFlashcardSetupApplied: false,
+            handwrittenFlashcardStyle: { backgroundColor: '#ffffff', gridType: 'none', gridColor: '#94a3b8', gridOpacity: 0.24 },
+            handwrittenFlashcardSide: 'term',
+            handwrittenFlashcardTool: 'pen',
+            handwrittenFlashcardPenColor: '#111827',
+            handwrittenFlashcardBrushSize: 4,
+            handwrittenFlashcardPointer: null,
+            handwrittenFlashcardUndo: new Map(),
+            handwrittenFlashcardRedo: new Map(),
+            handwrittenPendingImageLayout: null,
+            flashcardHandwritingDetailCache: new Map(),
+            flashcardHandwritingDetailPromiseCache: new Map(),
             diagramCreatorSourceDataUrl: '',
             diagramCreatorSourceLabel: '',
             diagramCreatorFileMode: 'single',
@@ -321,6 +339,7 @@ MODIFICATION RULES FOR THIS APP
             },
             editingQuizId: null,
             editingQuestionId: null,
+            editingQuizMode: 'multiple_choice',
             editingQuizType: 'multiple_choice',
             studioQuizQuestions: [],
             pendingInsertAfterQuestionId: null,
@@ -345,6 +364,9 @@ MODIFICATION RULES FOR THIS APP
             studioIncompleteFlashcardQuestionIds: [],
             backupImportPayload: null,
             backupImportFileName: '',
+            jsonQuizImportPayload: null,
+            jsonQuizImportFileName: '',
+            jsonQuizImportAnalysis: null,
             supabaseManagementCache: {
                 classes: null,
                 folders: null,
@@ -711,6 +733,16 @@ MODIFICATION RULES FOR THIS APP
         importTemplateTargetFolderField: document.getElementById('importTemplateTargetFolderField'),
         importTemplateTargetFolderSelect: document.getElementById('importTemplateTargetFolderSelect'),
         importTemplateSheetBtn: document.getElementById('importTemplateSheetBtn'),
+        importJsonQuizFile: document.getElementById('importJsonQuizFile'),
+        importJsonDestinationModeSelect: document.getElementById('importJsonDestinationModeSelect'),
+        importJsonAppendQuizField: document.getElementById('importJsonAppendQuizField'),
+        importJsonAppendQuizSelect: document.getElementById('importJsonAppendQuizSelect'),
+        importJsonQuizNameField: document.getElementById('importJsonQuizNameField'),
+        importJsonQuizNameInput: document.getElementById('importJsonQuizNameInput'),
+        importJsonTargetFolderField: document.getElementById('importJsonTargetFolderField'),
+        importJsonTargetFolderSelect: document.getElementById('importJsonTargetFolderSelect'),
+        importJsonPreview: document.getElementById('importJsonPreview'),
+        importJsonQuizBtn: document.getElementById('importJsonQuizBtn'),
         createFolderName: document.getElementById('createFolderName'),
         createFolderBtn: document.getElementById('createFolderBtn'),
         createQuizClassSelect: document.getElementById('createQuizClassSelect'),
@@ -723,6 +755,9 @@ MODIFICATION RULES FOR THIS APP
         createQuizName: document.getElementById('createQuizName'),
         createQuizDescription: document.getElementById('createQuizDescription'),
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
+        examQuestionTypeControls: document.getElementById('examQuestionTypeControls'),
+        examQuestionTypeSelect: document.getElementById('examQuestionTypeSelect'),
+        examQuestionIssuePanel: document.getElementById('examQuestionIssuePanel'),
         studioQuestionList: document.getElementById('studioQuestionList'),
         studioQuestionSearchInput: document.getElementById('studioQuestionSearchInput'),
         studioQuestionStarredOnly: document.getElementById('studioQuestionStarredOnly'),
@@ -772,6 +807,44 @@ MODIFICATION RULES FOR THIS APP
         goToSharedDiagramSourceBtn: document.getElementById('goToSharedDiagramSourceBtn'),
         diagramSharingStatus: document.getElementById('diagramSharingStatus'),
         flashcardEditorFields: document.getElementById('flashcardEditorFields'),
+        flashcardTypedEditorFields: document.getElementById('flashcardTypedEditorFields'),
+        flashcardHandwrittenToggleRow: document.getElementById('flashcardHandwrittenToggleRow'),
+        flashcardHandwrittenToggle: document.getElementById('flashcardHandwrittenToggle'),
+        flashcardHandwrittenSetupPanel: document.getElementById('flashcardHandwrittenSetupPanel'),
+        flashcardHandwrittenBackgroundColor: document.getElementById('flashcardHandwrittenBackgroundColor'),
+        flashcardHandwrittenGridType: document.getElementById('flashcardHandwrittenGridType'),
+        flashcardHandwrittenGridColor: document.getElementById('flashcardHandwrittenGridColor'),
+        flashcardHandwrittenGridOpacity: document.getElementById('flashcardHandwrittenGridOpacity'),
+        flashcardHandwrittenGridOpacityValue: document.getElementById('flashcardHandwrittenGridOpacityValue'),
+        flashcardHandwrittenSetupSubmitBtn: document.getElementById('flashcardHandwrittenSetupSubmitBtn'),
+        flashcardHandwrittenWorkspace: document.getElementById('flashcardHandwrittenWorkspace'),
+        flashcardHandwrittenCardNumber: document.getElementById('flashcardHandwrittenCardNumber'),
+        flashcardHandwrittenSideSelect: document.getElementById('flashcardHandwrittenSideSelect'),
+        flashcardHandwrittenFlipBtn: document.getElementById('flashcardHandwrittenFlipBtn'),
+        flashcardHandwrittenSideMode: document.getElementById('flashcardHandwrittenSideMode'),
+        flashcardHandwrittenUndoBtn: document.getElementById('flashcardHandwrittenUndoBtn'),
+        flashcardHandwrittenRedoBtn: document.getElementById('flashcardHandwrittenRedoBtn'),
+        flashcardHandwrittenBrushSize: document.getElementById('flashcardHandwrittenBrushSize'),
+        flashcardHandwrittenBrushColor: document.getElementById('flashcardHandwrittenBrushColor'),
+        flashcardHandwrittenSaveColorBtn: document.getElementById('flashcardHandwrittenSaveColorBtn'),
+        flashcardHandwrittenColorPresets: document.getElementById('flashcardHandwrittenColorPresets'),
+        flashcardHandwrittenImageLayout: document.getElementById('flashcardHandwrittenImageLayout'),
+        flashcardHandwrittenAddImageBtn: document.getElementById('flashcardHandwrittenAddImageBtn'),
+        flashcardHandwrittenRemoveImageBtn: document.getElementById('flashcardHandwrittenRemoveImageBtn'),
+        flashcardHandwrittenCard: document.getElementById('flashcardHandwrittenCard'),
+        flashcardHandwrittenGrid: document.getElementById('flashcardHandwrittenGrid'),
+        flashcardHandwrittenTypedEditor: document.getElementById('flashcardHandwrittenTypedEditor'),
+        flashcardHandwrittenCanvas: document.getElementById('flashcardHandwrittenCanvas'),
+        flashcardHandwrittenImageWrap: document.getElementById('flashcardHandwrittenImageWrap'),
+        flashcardHandwrittenImage: document.getElementById('flashcardHandwrittenImage'),
+        flashcardHandwrittenFullImageNote: document.getElementById('flashcardHandwrittenFullImageNote'),
+        flashcardHandwrittenPrevBtn: document.getElementById('flashcardHandwrittenPrevBtn'),
+        flashcardHandwrittenNextBtn: document.getElementById('flashcardHandwrittenNextBtn'),
+        flashcardHandwrittenMoveLeftBtn: document.getElementById('flashcardHandwrittenMoveLeftBtn'),
+        flashcardHandwrittenMoveRightBtn: document.getElementById('flashcardHandwrittenMoveRightBtn'),
+        flashcardHandwrittenGoInput: document.getElementById('flashcardHandwrittenGoInput'),
+        flashcardHandwrittenGoBtn: document.getElementById('flashcardHandwrittenGoBtn'),
+        handwrittenToolButtons: Array.from(document.querySelectorAll('[data-handwritten-tool]')),
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
         createFlashcardTermImageFile: document.getElementById('createFlashcardTermImageFile'),
@@ -2045,7 +2118,70 @@ MODIFICATION RULES FOR THIS APP
         if (/media_assets|study-bunny-media|bucket|storage/i.test(message)) {
             return 'Run the Phase 18 Supabase Storage migration before saving private images.';
         }
-        return message || 'Could not save the image to Supabase Storage.';
+        return message || 'Could not save the image.';
+    }
+
+    function isCloudflareR2Configured() {
+        return !!CONFIG.cloudflareR2.workerUrl;
+    }
+
+    function isCloudflareR2Asset(asset = {}) {
+        return normalizeSheetText(asset?.bucket_name).toLowerCase() === CONFIG.cloudflareR2.providerBucketName;
+    }
+
+    async function getCloudflareR2AccessToken() {
+        const currentToken = normalizeSheetText(state.auth.session?.access_token);
+        if (currentToken) return currentToken;
+        if (!state.auth.client) return '';
+        const { data, error } = await state.auth.client.auth.getSession();
+        if (error) throw error;
+        const session = data?.session || null;
+        if (session) state.auth.session = session;
+        return normalizeSheetText(session?.access_token);
+    }
+
+    async function cloudflareR2Request(path, payload = {}) {
+        if (!isCloudflareR2Configured()) {
+            throw new Error('Cloudflare R2 is not configured yet. Set STUDY_BUNNY_CLOUDFLARE_R2_CONFIG.workerUrl first.');
+        }
+        const accessToken = await getCloudflareR2AccessToken();
+        if (!accessToken) throw new Error('Sign in before accessing private images.');
+        const response = await fetch(`${CONFIG.cloudflareR2.workerUrl}${path}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        const responsePayload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(normalizeSheetText(responsePayload?.error || responsePayload?.message) || `Cloudflare R2 request failed (${response.status}).`);
+        }
+        return responsePayload;
+    }
+
+    async function uploadBlobToCloudflareR2(objectPath, blob, mimeType) {
+        const signed = await cloudflareR2Request('/v1/sign-upload', {
+            objectPath,
+            contentType: mimeType,
+            sizeBytes: blob.size
+        });
+        if (!signed?.url) throw new Error('Cloudflare R2 did not return an upload URL.');
+        const uploadResponse = await fetch(signed.url, {
+            method: 'PUT',
+            headers: { 'Content-Type': mimeType },
+            body: blob
+        });
+        if (!uploadResponse.ok) {
+            throw new Error(`Cloudflare R2 upload failed (${uploadResponse.status}).`);
+        }
+    }
+
+    async function deleteCloudflareR2Objects(objectPaths = []) {
+        const safePaths = Array.from(new Set((objectPaths || []).filter(Boolean)));
+        if (!safePaths.length) return;
+        await cloudflareR2Request('/v1/delete', { objectPaths: safePaths });
     }
 
     async function uploadDataUrlToPrivateMediaAsset(dataUrl, options = {}) {
@@ -2060,18 +2196,20 @@ MODIFICATION RULES FOR THIS APP
         const assetId = createMediaAssetId();
         const fileName = getSafeMediaFileName(options.originalName || options.label || '', mimeType, options.usageContext || 'image');
         const objectPath = `${state.auth.user.id}/${assetId}/${fileName}`;
-        const bucketName = CONFIG.mediaAssets.bucketName;
+        const useCloudflareR2 = isCloudflareR2Configured();
+        const bucketName = useCloudflareR2 ? CONFIG.cloudflareR2.providerBucketName : CONFIG.mediaAssets.bucketName;
 
-        const { error: uploadError } = await state.auth.client.storage
-            .from(bucketName)
-            .upload(objectPath, blob, {
-                contentType: mimeType,
-                cacheControl: '31536000',
-                upsert: false
-            });
-
-        if (uploadError) {
-            throw new Error(getPhase18StorageErrorMessage(uploadError));
+        if (useCloudflareR2) {
+            await uploadBlobToCloudflareR2(objectPath, blob, mimeType);
+        } else {
+            const { error: uploadError } = await state.auth.client.storage
+                .from(bucketName)
+                .upload(objectPath, blob, {
+                    contentType: mimeType,
+                    cacheControl: '31536000',
+                    upsert: false
+                });
+            if (uploadError) throw new Error(getPhase18StorageErrorMessage(uploadError));
         }
 
         const mediaPayload = {
@@ -2092,7 +2230,11 @@ MODIFICATION RULES FOR THIS APP
             .insert(mediaPayload);
 
         if (assetError) {
-            await state.auth.client.storage.from(bucketName).remove([objectPath]);
+            if (useCloudflareR2) {
+                await deleteCloudflareR2Objects([objectPath]).catch(() => {});
+            } else {
+                await state.auth.client.storage.from(bucketName).remove([objectPath]);
+            }
             throw new Error(getPhase18StorageErrorMessage(assetError));
         }
 
@@ -2327,14 +2469,39 @@ MODIFICATION RULES FOR THIS APP
             return resolvedMap;
         }
 
-        const assetsByBucket = new Map();
-        assets.forEach(asset => {
+        const r2Assets = assets.filter(isCloudflareR2Asset);
+        if (r2Assets.length) {
+            for (let offset = 0; offset < r2Assets.length; offset += 100) {
+                const batch = r2Assets.slice(offset, offset + 100);
+                try {
+                    const signed = await cloudflareR2Request('/v1/sign-read', {
+                        objectPaths: batch.map(asset => asset.object_path).filter(Boolean)
+                    });
+                    const urlByPath = new Map((signed?.items || []).map(item => [item.objectPath, item.url]));
+                    batch.forEach(asset => {
+                        const signedUrl = urlByPath.get(asset.object_path) || '';
+                        if (!asset?.id || !signedUrl) return;
+                        const ref = buildSupabaseMediaReference(asset.id);
+                        resolvedMap.set(ref, signedUrl);
+                        setCachedMediaSignedUrl(asset.id, {
+                            url: signedUrl,
+                            expiresAt: now + (CONFIG.cloudflareR2.signedUrlExpiresIn * 1000)
+                        });
+                    });
+                } catch (error) {
+                    console.error('Failed to create Cloudflare R2 signed media URLs:', error);
+                }
+            }
+        }
+
+        const supabaseAssetsByBucket = new Map();
+        assets.filter(asset => !isCloudflareR2Asset(asset)).forEach(asset => {
             const bucketName = asset.bucket_name || CONFIG.mediaAssets.bucketName;
-            if (!assetsByBucket.has(bucketName)) assetsByBucket.set(bucketName, []);
-            assetsByBucket.get(bucketName).push(asset);
+            if (!supabaseAssetsByBucket.has(bucketName)) supabaseAssetsByBucket.set(bucketName, []);
+            supabaseAssetsByBucket.get(bucketName).push(asset);
         });
 
-        for (const [bucketName, bucketAssets] of assetsByBucket.entries()) {
+        for (const [bucketName, bucketAssets] of supabaseAssetsByBucket.entries()) {
             const paths = bucketAssets.map(asset => asset.object_path).filter(Boolean);
             if (!paths.length) continue;
             const { data: signedUrls, error: signedError } = await state.auth.client.storage
@@ -3000,6 +3167,71 @@ MODIFICATION RULES FOR THIS APP
         return getStudioSavedImageAngles(entry).reduce((total, angle) => total + normalizeDiagramLabels(angle.labels || []).length, 0);
     }
 
+    const HANDWRITTEN_FLASHCARD_SCHEMA_VERSION = 1;
+
+    function normalizeHandwritingPoint(point = {}) {
+        return {
+            x: Math.max(0, Math.min(1, Number(point.x) || 0)),
+            y: Math.max(0, Math.min(1, Number(point.y) || 0)),
+            p: Math.max(0.05, Math.min(1, Number(point.p ?? point.pressure ?? 0.5) || 0.5))
+        };
+    }
+
+    function normalizeHandwritingStrokes(value) {
+        if (!Array.isArray(value)) return [];
+        return value.slice(0, 5000).map(stroke => {
+            const points = (Array.isArray(stroke?.points) ? stroke.points : []).slice(0, 5000).map(normalizeHandwritingPoint);
+            if (!points.length) return null;
+            return {
+                color: normalizeEditorHexColor(stroke?.color || '#111827', '#111827'),
+                size: Math.max(1, Math.min(24, Number(stroke?.size) || 4)),
+                points
+            };
+        }).filter(Boolean);
+    }
+
+    function normalizeFlashcardContentMode(value) {
+        return normalizeSheetText(value).toLowerCase() === 'handwritten' ? 'handwritten' : 'typed';
+    }
+
+    function normalizeFlashcardImageLayout(value, hasImage = false) {
+        const normalized = normalizeSheetText(value).toLowerCase();
+        if (!hasImage) return 'none';
+        return normalized === 'full' ? 'full' : 'half';
+    }
+
+    function getDefaultHandwrittenFlashcardStyle() {
+        return { backgroundColor: '#ffffff', gridType: 'none', gridColor: '#94a3b8', gridOpacity: 0.24 };
+    }
+
+    function normalizeHandwrittenFlashcardStyle(value = {}) {
+        const fallback = getDefaultHandwrittenFlashcardStyle();
+        const gridType = ['none','lines','graph','dots'].includes(normalizeSheetText(value.gridType)) ? normalizeSheetText(value.gridType) : fallback.gridType;
+        return {
+            backgroundColor: normalizeEditorHexColor(value.backgroundColor || fallback.backgroundColor, fallback.backgroundColor),
+            gridType,
+            gridColor: normalizeEditorHexColor(value.gridColor || fallback.gridColor, fallback.gridColor),
+            gridOpacity: Math.max(0, Math.min(1, Number(value.gridOpacity ?? fallback.gridOpacity) || 0))
+        };
+    }
+
+    function getHandwrittenFlashcardConfigFromDescription(description = '') {
+        const metadata = parseQuizMetadata(description);
+        const raw = metadata.handwrittenFlashcards && typeof metadata.handwrittenFlashcards === 'object' ? metadata.handwrittenFlashcards : {};
+        return { enabled: raw.enabled === true, style: normalizeHandwrittenFlashcardStyle(raw.style || {}) };
+    }
+
+    function setHandwrittenFlashcardConfigInDescription(description = '', enabled = false, style = {}) {
+        const metadata = getQuizMetadataForWrite(description);
+        if (enabled) {
+            metadata.handwrittenFlashcards = { version: HANDWRITTEN_FLASHCARD_SCHEMA_VERSION, enabled: true, style: normalizeHandwrittenFlashcardStyle(style) };
+        } else {
+            delete metadata.handwrittenFlashcards;
+        }
+        if (!Object.keys(metadata).length) return '';
+        return buildQuizDescriptionFromMetadata(metadata);
+    }
+
     const FLASHCARD_SIDE_META_COMMENT_PREFIX = 'STUDY_BUNNY_FLASHCARD_META:';
 
     function parseStoredFlashcardSideContent(rawHtml = '') {
@@ -3022,7 +3254,9 @@ MODIFICATION RULES FOR THIS APP
             metadata: normalizeDiagramMetadata(meta.metadata || {}),
             imagePresent,
             reuseSignature: normalizeSheetText(meta.reuseSignature || ''),
-            savedImageSignature: normalizeSheetText(meta.savedImageSignature || '')
+            savedImageSignature: normalizeSheetText(meta.savedImageSignature || ''),
+            contentMode: normalizeFlashcardContentMode(meta.contentMode || 'typed'),
+            imageLayout: normalizeFlashcardImageLayout(meta.imageLayout || '', imagePresent !== false && !!meta.imageLayout)
         };
     }
 
@@ -3034,6 +3268,8 @@ MODIFICATION RULES FOR THIS APP
         const imagePresent = options.imagePresent === true ? true : (options.imagePresent === false ? false : undefined);
         const reuseSignature = normalizeSheetText(options.reuseSignature || '');
         const savedImageSignature = normalizeSheetText(options.savedImageSignature || '');
+        const contentMode = normalizeFlashcardContentMode(options.contentMode || parsed.contentMode || 'typed');
+        const imageLayout = normalizeSheetText(options.imageLayout || parsed.imageLayout || '');
         const meta = {};
         if (labels.length) meta.labels = labels;
         if (drawStrokes.length) meta.drawStrokes = drawStrokes;
@@ -3041,8 +3277,40 @@ MODIFICATION RULES FOR THIS APP
         if (imagePresent !== undefined) meta.imagePresent = imagePresent;
         if (reuseSignature) meta.reuseSignature = reuseSignature;
         if (savedImageSignature) meta.savedImageSignature = savedImageSignature;
+        if (contentMode === 'handwritten') meta.contentMode = 'handwritten';
+        if (imageLayout === 'half' || imageLayout === 'full') meta.imageLayout = imageLayout;
         if (!Object.keys(meta).length) return parsed.html;
         return `${parsed.html}<!--${FLASHCARD_SIDE_META_COMMENT_PREFIX}${encodeURIComponent(JSON.stringify(meta))}-->`;
+    }
+
+    const STUDY_BUNNY_IMPORT_ISSUES_COMMENT_PREFIX = 'STUDY_BUNNY_IMPORT_ISSUES:';
+
+    function parseStoredQuestionImportIssues(rawHtml = '') {
+        const raw = String(rawHtml ?? '');
+        let issues = [];
+        const cleanedHtml = raw.replace(/<!--STUDY_BUNNY_IMPORT_ISSUES:([\s\S]*?)-->/g, (_, encoded = '') => {
+            try {
+                const parsed = JSON.parse(decodeURIComponent(encoded));
+                if (Array.isArray(parsed)) {
+                    issues = parsed.map(item => normalizeSheetText(item)).filter(Boolean);
+                }
+            } catch (error) {
+                console.warn('Could not parse imported question issue metadata:', error);
+            }
+            return '';
+        }).trim();
+        return { html: cleanedHtml, issues };
+    }
+
+    function buildStoredQuestionPromptHtml(prompt = '', issues = []) {
+        const baseHtml = buildStoredHtmlFromPlain(prompt);
+        const safeIssues = Array.from(new Set((Array.isArray(issues) ? issues : []).map(item => normalizeSheetText(item)).filter(Boolean)));
+        if (!safeIssues.length) return baseHtml;
+        return `${baseHtml}<!--${STUDY_BUNNY_IMPORT_ISSUES_COMMENT_PREFIX}${encodeURIComponent(JSON.stringify(safeIssues))}-->`;
+    }
+
+    function getStoredQuestionImportIssues(questionRow = {}) {
+        return parseStoredQuestionImportIssues(questionRow?.prompt_html || '').issues;
     }
 
     const STUDY_BUNNY_QUIZ_META_PREFIX = 'STUDY_BUNNY_META:';
@@ -3115,6 +3383,26 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(metadata.quizClassId || metadata.classId);
     }
 
+    function getQuizModeFromDescription(description = '') {
+        const metadata = parseQuizMetadata(description);
+        const mode = normalizeSheetText(metadata.quizMode || metadata.quiz_type || metadata.quizType);
+        return mode === 'exam' ? 'exam' : '';
+    }
+
+    function setQuizModeInDescription(description = '', quizMode = '') {
+        const metadata = getQuizMetadataForWrite(description);
+        const normalizedMode = normalizeSheetText(quizMode);
+        if (normalizedMode === 'exam') {
+            metadata.quizMode = 'exam';
+        } else {
+            delete metadata.quizMode;
+            delete metadata.quiz_type;
+            delete metadata.quizType;
+        }
+        if (!Object.keys(metadata).length) return '';
+        return buildQuizDescriptionFromMetadata(metadata);
+    }
+
     function setQuizClassInDescription(description = '', classId = '') {
         const metadata = getQuizMetadataForWrite(description);
         const normalizedClassId = normalizeSheetText(classId);
@@ -3153,6 +3441,8 @@ MODIFICATION RULES FOR THIS APP
             ? normalizeSheetText(payload.quiz_description)
             : normalizeSheetText(elements.createQuizDescription?.value);
         let nextDescription = applyEditorQuizClassToDescription(existingQuizRow?.description || '', folderId);
+        nextDescription = setQuizModeInDescription(nextDescription, getStudioQuizMode());
+        nextDescription = setHandwrittenFlashcardConfigInDescription(nextDescription, getStudioQuizMode() === 'flashcard' && !!state.auth.handwrittenFlashcardEnabled, state.auth.handwrittenFlashcardStyle);
         nextDescription = setQuizUserDescriptionInDescription(nextDescription, editorDescription);
         const updatePayload = { ...payload, folder_id: folderId, description: nextDescription };
         delete updatePayload.folderId;
@@ -3168,10 +3458,14 @@ MODIFICATION RULES FOR THIS APP
             ? normalizeSheetText(payload.quiz_description)
             : normalizeSheetText(elements.createQuizDescription?.value);
         let storedDescription = applyEditorQuizClassToDescription(payload.description || '', folderId);
+        storedDescription = setQuizModeInDescription(storedDescription, normalizeSheetText(payload.quiz_mode || payload.quizMode) || getStudioQuizMode());
+        storedDescription = setHandwrittenFlashcardConfigInDescription(storedDescription, (normalizeSheetText(payload.quiz_mode || payload.quizMode) || getStudioQuizMode()) === 'flashcard' && !!state.auth.handwrittenFlashcardEnabled, state.auth.handwrittenFlashcardStyle);
         storedDescription = setQuizUserDescriptionInDescription(storedDescription, editorDescription);
         const insertPayload = { ...payload, folder_id: folderId, description: storedDescription };
         delete insertPayload.folderId;
         delete insertPayload.quiz_description;
+        delete insertPayload.quiz_mode;
+        delete insertPayload.quizMode;
         return insertPayload;
     }
 
@@ -3872,17 +4166,31 @@ MODIFICATION RULES FOR THIS APP
             return normalizedValue;
         }
 
-        const bucketName = sourceAsset.bucket_name || CONFIG.mediaAssets.bucketName;
+        const sourceUsesR2 = isCloudflareR2Asset(sourceAsset);
+        const bucketName = sourceUsesR2 ? CONFIG.cloudflareR2.providerBucketName : (sourceAsset.bucket_name || CONFIG.mediaAssets.bucketName);
         const newAssetId = createMediaAssetId();
         const fileName = getSafeMediaFileName(sourceAsset.original_name || '', sourceAsset.mime_type || '', options.usageContext || sourceAsset.usage_context || 'image');
         const newObjectPath = `${state.auth.user.id}/${newAssetId}/${fileName}`;
-        const { error: copyError } = await state.auth.client.storage
-            .from(bucketName)
-            .copy(sourceAsset.object_path, newObjectPath);
 
-        if (copyError) {
-            console.error('Could not copy media asset for duplication:', copyError);
-            return normalizedValue;
+        if (sourceUsesR2) {
+            try {
+                await cloudflareR2Request('/v1/copy', {
+                    sourceObjectPath: sourceAsset.object_path,
+                    destinationObjectPath: newObjectPath,
+                    contentType: sourceAsset.mime_type || 'application/octet-stream'
+                });
+            } catch (error) {
+                console.error('Could not copy Cloudflare R2 media asset for duplication:', error);
+                return normalizedValue;
+            }
+        } else {
+            const { error: copyError } = await state.auth.client.storage
+                .from(bucketName)
+                .copy(sourceAsset.object_path, newObjectPath);
+            if (copyError) {
+                console.error('Could not copy media asset for duplication:', copyError);
+                return normalizedValue;
+            }
         }
 
         const { error: insertError } = await state.auth.client
@@ -3901,7 +4209,11 @@ MODIFICATION RULES FOR THIS APP
             });
 
         if (insertError) {
-            await state.auth.client.storage.from(bucketName).remove([newObjectPath]);
+            if (sourceUsesR2) {
+                await deleteCloudflareR2Objects([newObjectPath]).catch(() => {});
+            } else {
+                await state.auth.client.storage.from(bucketName).remove([newObjectPath]);
+            }
             console.error('Could not save duplicated media asset metadata:', insertError);
             return normalizedValue;
         }
@@ -3982,15 +4294,28 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const assetsByBucket = new Map();
+        const r2Paths = [];
+        const supabaseAssetsByBucket = new Map();
         (assets || []).forEach(asset => {
-            const bucketName = asset.bucket_name || CONFIG.mediaAssets.bucketName;
-            if (!assetsByBucket.has(bucketName)) assetsByBucket.set(bucketName, []);
-            assetsByBucket.get(bucketName).push(asset.object_path);
+            if (isCloudflareR2Asset(asset)) {
+                if (asset.object_path) r2Paths.push(asset.object_path);
+            } else {
+                const bucketName = asset.bucket_name || CONFIG.mediaAssets.bucketName;
+                if (!supabaseAssetsByBucket.has(bucketName)) supabaseAssetsByBucket.set(bucketName, []);
+                supabaseAssetsByBucket.get(bucketName).push(asset.object_path);
+            }
             deleteCachedMediaSignedUrl(asset.id);
         });
 
-        for (const [bucketName, paths] of assetsByBucket.entries()) {
+        if (r2Paths.length) {
+            try {
+                await runWithTransientFetchRetry(() => deleteCloudflareR2Objects(r2Paths), 'Removing Cloudflare R2 media files', { attempts: 2 });
+            } catch (error) {
+                console.error('Could not delete Cloudflare R2 media files:', error);
+            }
+        }
+
+        for (const [bucketName, paths] of supabaseAssetsByBucket.entries()) {
             const safePaths = paths.filter(Boolean);
             if (!safePaths.length) continue;
             const { error: removeError } = await runWithTransientFetchRetry(() => state.auth.client.storage.from(bucketName).remove(safePaths), 'Removing old media files', { attempts: 2 });
@@ -4169,6 +4494,14 @@ MODIFICATION RULES FOR THIS APP
 
 
     function setStudioFlashcardTermImageState(dataUrl = '', label = 'No term image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
+        if (state.auth.handwrittenFlashcardEnabled && normalizeSheetText(dataUrl) && state.auth.handwrittenPendingImageLayout?.side === 'term') {
+            const pending = state.auth.handwrittenPendingImageLayout;
+            const existing = getHandwrittenSideStrokesFromEditorState('term');
+            if (existing.length) setHandwrittenSideState('term', { strokes: [] });
+            setHandwrittenSideState('term', { imageLayout: pending.layout });
+            state.auth.handwrittenPendingImageLayout = null;
+        }
+
         const previousValue = normalizeSheetText(state.auth.studioFlashcardTermImageDataUrl);
         state.auth.studioFlashcardTermImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardTermImageLabel = label;
@@ -4195,9 +4528,18 @@ MODIFICATION RULES FOR THIS APP
             elements.createFlashcardTermImagePickBtn.classList.toggle('has-image', hasImage);
         }
         updateStudioImageEditButton(elements.createFlashcardTermImageEditBtn, state.auth.studioFlashcardTermImageDataUrl);
+        if (state.auth.handwrittenFlashcardEnabled) queueMicrotask(() => renderHandwrittenFlashcardWorkspace());
     }
 
     function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
+        if (state.auth.handwrittenFlashcardEnabled && normalizeSheetText(dataUrl) && state.auth.handwrittenPendingImageLayout?.side === 'definition') {
+            const pending = state.auth.handwrittenPendingImageLayout;
+            const existing = getHandwrittenSideStrokesFromEditorState('definition');
+            if (existing.length) setHandwrittenSideState('definition', { strokes: [] });
+            setHandwrittenSideState('definition', { imageLayout: pending.layout });
+            state.auth.handwrittenPendingImageLayout = null;
+        }
+
         const previousValue = normalizeSheetText(state.auth.studioFlashcardDefinitionImageDataUrl);
         state.auth.studioFlashcardDefinitionImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardDefinitionImageLabel = label;
@@ -4224,6 +4566,7 @@ MODIFICATION RULES FOR THIS APP
             elements.createFlashcardDefinitionImagePickBtn.classList.toggle('has-image', hasImage);
         }
         updateStudioImageEditButton(elements.createFlashcardDefinitionImageEditBtn, state.auth.studioFlashcardDefinitionImageDataUrl);
+        if (state.auth.handwrittenFlashcardEnabled) queueMicrotask(() => renderHandwrittenFlashcardWorkspace());
     }
 
 
@@ -13006,8 +13349,35 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    const EXAM_QUESTION_TYPES = ['multiple_choice', 'typed_answer', 'hierarchy', 'classify'];
+
+    function getStudioQuizMode() {
+        const explicitMode = normalizeSheetText(state.auth.editingQuizMode);
+        if (explicitMode) return explicitMode;
+        const selectedMode = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
+        return selectedMode;
+    }
+
+    function isStudioExamMode() {
+        return getStudioQuizMode() === 'exam';
+    }
+
     function getStudioCurrentQuizType() {
-        return normalizeSheetText(state.auth.editingQuizType || elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
+        const currentType = normalizeSheetText(state.auth.editingQuizType || '');
+        if (isStudioExamMode()) {
+            return EXAM_QUESTION_TYPES.includes(currentType) ? currentType : 'multiple_choice';
+        }
+        return currentType || normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
+    }
+
+    function getExamQuestionTypeLabel(questionType = '') {
+        const labels = {
+            multiple_choice: 'MC',
+            typed_answer: 'Typed',
+            hierarchy: 'Hierarchy',
+            classify: 'Classify'
+        };
+        return labels[normalizeSheetText(questionType)] || 'MC';
     }
 
     function isStudioFlashcardMode() {
@@ -13031,6 +13401,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function isStudioSharedDiagramCapableMode(quizType = getStudioCurrentQuizType()) {
+        if (isStudioExamMode()) return false;
         const normalizedType = normalizeSheetText(quizType || 'multiple_choice') || 'multiple_choice';
         return normalizedType === 'diagrams' || normalizedType === 'typed_answer';
     }
@@ -13075,8 +13446,26 @@ The deletion becomes permanent when you save the diagram.`);
         updateStudioQuestionImagePanelUI();
     }
 
+    function getActiveStudioQuestionImportIssues() {
+        const questionId = normalizeSheetText(state.auth.editingQuestionId);
+        if (!questionId) return [];
+        const row = getStudioQuestionRowById(questionId);
+        return getStoredQuestionImportIssues(row || {});
+    }
+
+    function renderExamQuestionIssuePanel() {
+        if (!elements.examQuestionIssuePanel) return;
+        const issues = isStudioExamMode() ? getActiveStudioQuestionImportIssues() : [];
+        elements.examQuestionIssuePanel.classList.toggle('hidden', !issues.length);
+        elements.examQuestionIssuePanel.innerHTML = issues.length
+            ? `<div class="studio-exam-question-issues-title">! This imported question needs attention</div><ul>${issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul><div class="studio-exam-question-issues-note">Fix the fields below and save the question. The warning will clear after a valid save.</div>`
+            : '';
+    }
+
     function updateStudioEditorTypeUI() {
         const quizType = getStudioCurrentQuizType();
+        const quizMode = getStudioQuizMode();
+        const isExam = quizMode === 'exam';
         const isFlashcard = quizType === 'flashcard';
         const isHierarchy = quizType === 'hierarchy';
         const isClassify = quizType === 'classify';
@@ -13084,6 +13473,12 @@ The deletion becomes permanent when you save the diagram.`);
         const isTypedAnswer = quizType === 'typed_answer';
         const isMultipleChoice = quizType === 'multiple_choice';
         const usesMultipleChoiceOptions = isMultipleChoice || isDiagrams;
+        if (elements.examQuestionTypeControls) elements.examQuestionTypeControls.classList.toggle('hidden', !isExam);
+        if (elements.examQuestionTypeSelect) {
+            elements.examQuestionTypeSelect.value = EXAM_QUESTION_TYPES.includes(quizType) ? quizType : 'multiple_choice';
+            elements.examQuestionTypeSelect.disabled = !isExam || !(state.auth.configured && !!state.auth.user);
+        }
+        renderExamQuestionIssuePanel();
         if (elements.sharedQuestionEditorFields) elements.sharedQuestionEditorFields.classList.toggle('hidden', isFlashcard);
         if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', !usesMultipleChoiceOptions);
         if (elements.typedAnswerEditorFields) elements.typedAnswerEditorFields.classList.toggle('hidden', !isTypedAnswer);
@@ -13097,16 +13492,22 @@ The deletion becomes permanent when you save the diagram.`);
             elements.diagramEditorFields.classList.toggle('studio-diagram-image-preview-fields', isDiagrams || isTypedAnswer);
         }
         if (elements.flashcardEditorFields) elements.flashcardEditorFields.classList.toggle('hidden', !isFlashcard);
+        if (elements.flashcardHandwrittenToggleRow) elements.flashcardHandwrittenToggleRow.classList.toggle('hidden', !isFlashcard);
+        if (elements.flashcardHandwrittenToggle) elements.flashcardHandwrittenToggle.checked = isFlashcard && !!state.auth.handwrittenFlashcardEnabled;
+        if (elements.flashcardHandwrittenSetupPanel) elements.flashcardHandwrittenSetupPanel.classList.toggle('hidden', !isFlashcard || !state.auth.handwrittenFlashcardEnabled || !!state.auth.handwrittenFlashcardSetupApplied);
+        if (elements.flashcardTypedEditorFields) elements.flashcardTypedEditorFields.classList.toggle('hidden', isFlashcard && !!state.auth.handwrittenFlashcardEnabled);
+        if (elements.flashcardHandwrittenWorkspace) elements.flashcardHandwrittenWorkspace.classList.toggle('hidden', !isFlashcard || !state.auth.handwrittenFlashcardEnabled || !state.auth.handwrittenFlashcardSetupApplied);
+        if (isFlashcard && state.auth.handwrittenFlashcardEnabled) renderHandwrittenFlashcardWorkspace();
         updateStudioQuestionImagePanelUI();
         updateDiagramSharingControls();
-        document.querySelector('.studio-diagram-sharing-panel')?.classList.toggle('hidden', !(isDiagrams || isTypedAnswer));
+        document.querySelector('.studio-diagram-sharing-panel')?.classList.toggle('hidden', isExam || !(isDiagrams || isTypedAnswer));
         [elements.addOptionFieldBtn, elements.addOptionInlineBtn, elements.removeOptionFieldBtn].forEach(button => {
             if (button) button.classList.toggle('hidden', !usesMultipleChoiceOptions);
         });
         updateMultipleAnswerEditorControls();
         updateMathChemToolsVisibility(usesMultipleChoiceOptions || isTypedAnswer);
         if (elements.createQuizTypeSelect) {
-            elements.createQuizTypeSelect.value = quizType;
+            elements.createQuizTypeSelect.value = quizMode;
             elements.createQuizTypeSelect.disabled = !!state.auth.editingQuizId || !(state.auth.configured && !!state.auth.user);
         }
     }
@@ -14693,7 +15094,7 @@ The deletion becomes permanent when you save the diagram.`);
             const key = quiz.quizType || 'mixed';
             counts[key] = (counts[key] || 0) + 1;
             return counts;
-        }, { multiple_choice: 0, flashcard: 0, hierarchy: 0, classify: 0, diagrams: 0, typed_answer: 0, mixed: 0 });
+        }, { multiple_choice: 0, exam: 0, flashcard: 0, hierarchy: 0, classify: 0, diagrams: 0, typed_answer: 0, mixed: 0 });
     }
 
 
@@ -14847,6 +15248,7 @@ The deletion becomes permanent when you save the diagram.`);
                 ['Quizzes', quizCount],
                 ['Questions', questionCount],
                 ['Multiple Choice', typeCounts.multiple_choice || 0],
+                ['Exams', typeCounts.exam || 0],
                 ['Flashcards', typeCounts.flashcard || 0],
                 ['Hierarchy', typeCounts.hierarchy || 0],
                 ['Classify', typeCounts.classify || 0],
@@ -15184,7 +15586,10 @@ The deletion becomes permanent when you save the diagram.`);
                     const rows = questionMap.get(quiz.id) || [];
                     const types = rows.map(row => getEffectiveQuestionTypeFromDetail(row.question_type, multipleChoiceMetadataByQuestionId.get(row.id)));
                     const uniqueTypes = Array.from(new Set(types));
-                    const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : (rows.length ? 'mixed' : 'multiple_choice');
+                    const storedQuizMode = getQuizModeFromDescription(quiz.description || '');
+                    const quizType = storedQuizMode === 'exam'
+                        ? 'exam'
+                        : (uniqueTypes.length === 1 ? uniqueTypes[0] : (rows.length ? 'mixed' : 'multiple_choice'));
                     const typeLabelMap = {
                         multiple_choice: 'Multiple choice',
                         flashcard: 'Flashcard',
@@ -15192,6 +15597,7 @@ The deletion becomes permanent when you save the diagram.`);
                         classify: 'Classify',
                         diagrams: 'Diagrams',
                         typed_answer: 'Typed Answer',
+                        exam: 'Exam',
                         mixed: 'Mixed types'
                     };
                     const hasBuildUpStrings = rows.some(row => {
@@ -15343,16 +15749,22 @@ The deletion becomes permanent when you save the diagram.`);
         populateSelectWithSupabaseFolderTargets(elements.importTargetFolderSelect, 'Use or create source folder name');
         populateSelectWithSupabaseFolderTargets(elements.importEntireFolderTargetSelect, 'Use or create source folder name');
         populateSelectWithSupabaseFolderTargets(elements.importTemplateTargetFolderSelect, 'No folder');
+        populateSelectWithSupabaseFolderTargets(elements.importJsonTargetFolderSelect, 'No folder');
         populateSelectWithSupabaseQuizTargets(elements.importSourceAppendQuizSelect, 'Choose existing quiz');
         populateSelectWithSupabaseQuizTargets(elements.importTemplateAppendQuizSelect, 'Choose existing quiz');
+        populateSelectWithSupabaseQuizTargets(elements.importJsonAppendQuizSelect, 'Choose existing quiz');
 
         const sourceAppendMode = isImportAppendMode(elements.importSourceDestinationModeSelect);
         const templateAppendMode = isImportAppendMode(elements.importTemplateDestinationModeSelect);
+        const jsonAppendMode = isImportAppendMode(elements.importJsonDestinationModeSelect);
         elements.importSourceAppendQuizField?.classList.toggle('hidden', !sourceAppendMode);
         elements.importSourceTargetFolderField?.classList.toggle('hidden', sourceAppendMode);
         elements.importTemplateAppendQuizField?.classList.toggle('hidden', !templateAppendMode);
         elements.importTemplateQuizNameField?.classList.toggle('hidden', templateAppendMode);
         elements.importTemplateTargetFolderField?.classList.toggle('hidden', templateAppendMode);
+        elements.importJsonAppendQuizField?.classList.toggle('hidden', !jsonAppendMode);
+        elements.importJsonQuizNameField?.classList.toggle('hidden', jsonAppendMode);
+        elements.importJsonTargetFolderField?.classList.toggle('hidden', jsonAppendMode);
 
         if (elements.importSourceQuizSelect) {
             const selectedFolder = elements.importSourceFolderSelect?.value || '';
@@ -15407,6 +15819,11 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.importTemplateTargetFolderSelect) {
             elements.importTemplateTargetFolderSelect.disabled = !creatorEnabled || templateAppendMode;
         }
+        if (elements.importJsonQuizFile) elements.importJsonQuizFile.disabled = !creatorEnabled;
+        if (elements.importJsonDestinationModeSelect) elements.importJsonDestinationModeSelect.disabled = !creatorEnabled;
+        if (elements.importJsonAppendQuizSelect) elements.importJsonAppendQuizSelect.disabled = !creatorEnabled || !jsonAppendMode || !state.auth.managedQuizzes.length;
+        if (elements.importJsonQuizNameInput) elements.importJsonQuizNameInput.disabled = !creatorEnabled || jsonAppendMode;
+        if (elements.importJsonTargetFolderSelect) elements.importJsonTargetFolderSelect.disabled = !creatorEnabled || jsonAppendMode;
 
         if (elements.importSourceQuizBtn) {
             const hasAppendTarget = !sourceAppendMode || !!normalizeSheetText(elements.importSourceAppendQuizSelect?.value);
@@ -15426,6 +15843,13 @@ The deletion becomes permanent when you save the diagram.`);
             const hasAppendTarget = !templateAppendMode || !!normalizeSheetText(elements.importTemplateAppendQuizSelect?.value);
             elements.importTemplateSheetBtn.textContent = templateAppendMode ? 'Add Questions to Quiz' : 'Import Sheet Template';
             elements.importTemplateSheetBtn.disabled = !(creatorEnabled && hasSheetInput && hasTabInput && hasAppendTarget);
+        }
+        if (elements.importJsonQuizBtn) {
+            const hasJson = !!state.auth.jsonQuizImportAnalysis?.questions?.length;
+            const hasAppendTarget = !jsonAppendMode || !!normalizeSheetText(elements.importJsonAppendQuizSelect?.value);
+            const hasQuizName = jsonAppendMode || !!normalizeSheetText(elements.importJsonQuizNameInput?.value);
+            elements.importJsonQuizBtn.textContent = jsonAppendMode ? 'Add JSON Questions to Quiz' : 'Import JSON Quiz';
+            elements.importJsonQuizBtn.disabled = !(creatorEnabled && hasJson && hasAppendTarget && hasQuizName);
         }
     }
 
@@ -16608,7 +17032,13 @@ The deletion becomes permanent when you save the diagram.`);
             definitionImageLabels: getStudioFlashcardImageLabelsSnapshot(row, 'definition'),
             definitionImageDrawStrokes: getStudioFlashcardImageDrawStrokesSnapshot(row, 'definition'),
             definitionImageMetadata: getStudioFlashcardImageMetadataSnapshot(row, 'definition'),
-            definitionImageSavedSignature: normalizeSheetText(row.definition_image_saved_signature || '')
+            definitionImageSavedSignature: normalizeSheetText(row.definition_image_saved_signature || ''),
+            termContentMode: normalizeFlashcardContentMode(row.term_content_mode || 'typed'),
+            definitionContentMode: normalizeFlashcardContentMode(row.definition_content_mode || 'typed'),
+            termImageLayout: normalizeFlashcardImageLayout(row.term_image_layout, !!normalizeSheetText(row.term_image_url)),
+            definitionImageLayout: normalizeFlashcardImageLayout(row.definition_image_layout, !!normalizeSheetText(row.definition_image_url)),
+            termHandwriting: normalizeHandwritingStrokes(row.term_handwriting || []),
+            definitionHandwriting: normalizeHandwritingStrokes(row.definition_handwriting || [])
         };
     }
 
@@ -17184,6 +17614,12 @@ The deletion becomes permanent when you save the diagram.`);
             definition_image_labels: normalizeDiagramLabels(state.auth.studioFlashcardDefinitionImageLabels || []),
             definition_image_draw_strokes: cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []),
             definition_image_metadata: normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {}),
+            term_content_mode: getHandwrittenSideModeFromEditorState('term'),
+            definition_content_mode: getHandwrittenSideModeFromEditorState('definition'),
+            term_image_layout: getHandwrittenSideImageLayoutFromEditorState('term'),
+            definition_image_layout: getHandwrittenSideImageLayoutFromEditorState('definition'),
+            term_handwriting: getHandwrittenSideStrokesFromEditorState('term'),
+            definition_handwriting: getHandwrittenSideStrokesFromEditorState('definition'),
             sort_order: Number.MAX_SAFE_INTEGER,
             is_local_draft: true
         };
@@ -17325,6 +17761,11 @@ The deletion becomes permanent when you save the diagram.`);
 
     function applyStudioQuestionDraft(draft) {
         if (!draft) return;
+        if (isStudioExamMode() && EXAM_QUESTION_TYPES.includes(normalizeSheetText(draft.questionType))) {
+            state.auth.editingQuizType = normalizeSheetText(draft.questionType);
+            if (elements.examQuestionTypeSelect) elements.examQuestionTypeSelect.value = state.auth.editingQuizType;
+            updateStudioEditorTypeUI();
+        }
         if (elements.createQuestionPrompt) elements.createQuestionPrompt.value = draft.prompt || '';
         state.auth.studioQuestionImagePanelOpen = false;
         state.auth.expandedClassifyCategoryImageRows.clear();
@@ -17432,8 +17873,14 @@ The deletion becomes permanent when you save the diagram.`);
             const definitionImageMetadata = normalizeDiagramMetadata(row.definition_image_metadata || {});
             const termSavedImageSignature = normalizeSheetText(row.term_image_saved_signature || row.termImageSavedSignature || '');
             const definitionSavedImageSignature = normalizeSheetText(row.definition_image_saved_signature || row.definitionImageSavedSignature || '');
-            const storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!termImage, savedImageSignature: termSavedImageSignature });
-            const storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!definitionImage, savedImageSignature: definitionSavedImageSignature });
+            const termContentMode = normalizeFlashcardContentMode(row.term_content_mode || row.termContentMode || (state.auth.handwrittenFlashcardEnabled ? 'handwritten' : 'typed'));
+            const definitionContentMode = normalizeFlashcardContentMode(row.definition_content_mode || row.definitionContentMode || (state.auth.handwrittenFlashcardEnabled ? 'handwritten' : 'typed'));
+            const termHandwriting = normalizeHandwritingStrokes(row.term_handwriting || row.termHandwriting || []);
+            const definitionHandwriting = normalizeHandwritingStrokes(row.definition_handwriting || row.definitionHandwriting || []);
+            const termImageLayout = normalizeFlashcardImageLayout(row.term_image_layout || row.termImageLayout, !!termImage);
+            const definitionImageLayout = normalizeFlashcardImageLayout(row.definition_image_layout || row.definitionImageLayout, !!definitionImage);
+            const storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!termImage, savedImageSignature: termSavedImageSignature, contentMode: termContentMode, imageLayout: termImageLayout });
+            const storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!definitionImage, savedImageSignature: definitionSavedImageSignature, contentMode: definitionContentMode, imageLayout: definitionImageLayout });
             const termReusableEntry = termImage ? normalizeStudioSavedImageEntry({
                 imageValue: termImage,
                 imageOnlyValue: termImage,
@@ -17450,8 +17897,10 @@ The deletion becomes permanent when you save the diagram.`);
                 labels: definitionImageLabels,
                 drawStrokes: definitionImageDrawStrokes
             }) : null;
-            if (!hasFlashcardSideContent(term, termHtml, termImage) || !hasFlashcardSideContent(definition, definitionHtml, definitionImage)) {
-                throw new Error('Each flashcard side needs text or an image before saving.');
+            const termHasHandwriting = termContentMode === 'handwritten' && termHandwriting.length > 0;
+            const definitionHasHandwriting = definitionContentMode === 'handwritten' && definitionHandwriting.length > 0;
+            if ((!hasFlashcardSideContent(term, termHtml, termImage) && !termHasHandwriting) || (!hasFlashcardSideContent(definition, definitionHtml, definitionImage) && !definitionHasHandwriting)) {
+                throw new Error('Each flashcard side needs typed text, handwriting, or an image before saving.');
             }
             return {
                 localId: row.id,
@@ -17479,6 +17928,12 @@ The deletion becomes permanent when you save the diagram.`);
                 definitionImageMetadata,
                 definitionReuseEnabled: !definitionSavedImageSignature && !!(definitionReusableEntry && isStudioFlashcardImageReuseEnabled(row.id, 'definition', definitionReusableEntry)),
                 definitionSavedImageSignature,
+                termContentMode,
+                definitionContentMode,
+                termHandwriting,
+                definitionHandwriting,
+                termImageLayout,
+                definitionImageLayout,
                 sortOrder: identity.sortOrder
             };
         });
@@ -17586,13 +18041,14 @@ The deletion becomes permanent when you save the diagram.`);
                 : '';
             return {
                 question_id: item.questionId,
-                term_html: buildStoredFlashcardSideContent(item.row.termHtml, { labels: termLabels, drawStrokes: item.row.termImageDrawStrokes || [], metadata: item.row.termImageMetadata || {}, imagePresent: !!item.savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: item.row.termSavedImageSignature }),
-                definition_html: buildStoredFlashcardSideContent(item.row.definitionHtml, { labels: definitionLabels, drawStrokes: item.row.definitionImageDrawStrokes || [], metadata: item.row.definitionImageMetadata || {}, imagePresent: !!item.savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: item.row.definitionSavedImageSignature }),
+                term_html: buildStoredFlashcardSideContent(item.row.termHtml, { labels: termLabels, drawStrokes: item.row.termImageDrawStrokes || [], metadata: item.row.termImageMetadata || {}, imagePresent: !!item.savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: item.row.termSavedImageSignature, contentMode: item.row.termContentMode, imageLayout: item.row.termImageLayout }),
+                definition_html: buildStoredFlashcardSideContent(item.row.definitionHtml, { labels: definitionLabels, drawStrokes: item.row.definitionImageDrawStrokes || [], metadata: item.row.definitionImageMetadata || {}, imagePresent: !!item.savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: item.row.definitionSavedImageSignature, contentMode: item.row.definitionContentMode, imageLayout: item.row.definitionImageLayout }),
                 term_plain: item.row.term,
                 definition_plain: item.row.definition,
                 ...(normalizeBuildUpValue(item.row.buildUp || item.row.build_up) ? { build_up: normalizeBuildUpValue(item.row.buildUp || item.row.build_up) } : {}),
                 term_image_url: item.savedTermImage || '',
-                definition_image_url: item.savedDefinitionImage || ''
+                definition_image_url: item.savedDefinitionImage || '',
+                ...(state.auth.handwrittenFlashcardEnabled ? { term_handwriting: item.row.termHandwriting, definition_handwriting: item.row.definitionHandwriting } : {})
             };
         });
 
@@ -17604,6 +18060,9 @@ The deletion becomes permanent when you save the diagram.`);
         const detailResult = await runWithTransientFetchRetry(() => state.auth.client
             .from('flashcard_questions')
             .upsert(detailPayload, { onConflict: 'question_id' }), 'Saving new flashcard detail records', { attempts: 2 });
+        if (detailResult.error && state.auth.handwrittenFlashcardEnabled && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(detailResult.error?.message || detailResult.error))) {
+            throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql before saving handwritten flashcards. Regular typed flashcards are unaffected.');
+        }
         if (detailResult.error) throwFlashcardBuildUpMigrationErrorIfNeeded(detailResult.error);
 
         // Reuse now publishes a shared Saved Image entry at toggle time.
@@ -17766,13 +18225,21 @@ The deletion becomes permanent when you save the diagram.`);
         const definition = normalizeSheetText(draft.definition || '');
         const termHtml = sanitizeLearningResourcesHtml(draft.termHtml || '') || buildStoredHtmlFromPlain(term);
         const definitionHtml = sanitizeLearningResourcesHtml(draft.definitionHtml || '') || buildStoredHtmlFromPlain(definition);
-        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: draft.termImageLabels || [], drawStrokes: draft.termImageDrawStrokes || [], metadata: draft.termImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.termImage) });
-        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: draft.definitionImageLabels || [], drawStrokes: draft.definitionImageDrawStrokes || [], metadata: draft.definitionImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.definitionImage) });
+        const termContentMode = normalizeFlashcardContentMode(draft.termContentMode || row?.term_content_mode || 'typed');
+        const definitionContentMode = normalizeFlashcardContentMode(draft.definitionContentMode || row?.definition_content_mode || 'typed');
+        const termHandwriting = normalizeHandwritingStrokes(draft.termHandwriting || row?.term_handwriting || []);
+        const definitionHandwriting = normalizeHandwritingStrokes(draft.definitionHandwriting || row?.definition_handwriting || []);
+        const termImageLayout = normalizeFlashcardImageLayout(draft.termImageLayout || row?.term_image_layout, !!normalizeSheetText(draft.termImage));
+        const definitionImageLayout = normalizeFlashcardImageLayout(draft.definitionImageLayout || row?.definition_image_layout, !!normalizeSheetText(draft.definitionImage));
+        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: draft.termImageLabels || [], drawStrokes: draft.termImageDrawStrokes || [], metadata: draft.termImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.termImage), contentMode: termContentMode, imageLayout: termImageLayout });
+        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: draft.definitionImageLabels || [], drawStrokes: draft.definitionImageDrawStrokes || [], metadata: draft.definitionImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.definitionImage), contentMode: definitionContentMode, imageLayout: definitionImageLayout });
         const learningResourcesHtml = sanitizeLearningResourcesHtml(draft.learningResourcesHtml || '');
 
         if (!quizId) throw new Error('Save or open a flashcard quiz before updating cards.');
-        if (!hasFlashcardSideContent(term, termHtml, draft.termImage)) throw new Error('Add term text or a term image first.');
-        if (!hasFlashcardSideContent(definition, definitionHtml, draft.definitionImage)) throw new Error('Add definition text or a definition image first.');
+        const termHasHandwriting = termContentMode === 'handwritten' && termHandwriting.length > 0;
+        const definitionHasHandwriting = definitionContentMode === 'handwritten' && definitionHandwriting.length > 0;
+        if (!hasFlashcardSideContent(term, termHtml, draft.termImage) && !termHasHandwriting) throw new Error('Add front text, handwriting, or an image first.');
+        if (!hasFlashcardSideContent(definition, definitionHtml, draft.definitionImage) && !definitionHasHandwriting) throw new Error('Add back text, handwriting, or an image first.');
 
         const previousLearningResourcesImage = normalizeSheetText(row?.learning_resources_image_url);
         const previousTermImage = normalizeSheetText(row?.term_image_url);
@@ -17860,8 +18327,8 @@ The deletion becomes permanent when you save the diagram.`);
         }) : null;
         const termReuseSignature = termReuseEnabled && savedTermReuseEntry ? getStudioSavedImageSignature(savedTermReuseEntry) : '';
         const definitionReuseSignature = definitionReuseEnabled && savedDefinitionReuseEntry ? getStudioSavedImageSignature(savedDefinitionReuseEntry) : '';
-        storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: termSavedImageSignature });
-        storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: definitionSavedImageSignature });
+        storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: termSavedImageSignature, contentMode: termContentMode, imageLayout: termImageLayout });
+        storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: definitionSavedImageSignature, contentMode: definitionContentMode, imageLayout: definitionImageLayout });
 
         const questionPayload = {
             prompt_html: termHtml,
@@ -17889,8 +18356,12 @@ The deletion becomes permanent when you save the diagram.`);
             definition_plain: definition,
             ...(getStudioQuestionBuildUpValue(row) ? { build_up: getStudioQuestionBuildUpValue(row) } : {}),
             term_image_url: savedTermImage || '',
-            definition_image_url: savedDefinitionImage || ''
+            definition_image_url: savedDefinitionImage || '',
+            ...(state.auth.handwrittenFlashcardEnabled ? { term_handwriting: termHandwriting, definition_handwriting: definitionHandwriting } : {})
         }, { onConflict: 'question_id' }), 'Saving flashcard detail record', { attempts: 2 });
+        if (detailResult.error && state.auth.handwrittenFlashcardEnabled && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(detailResult.error?.message || detailResult.error))) {
+            throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql before saving handwritten flashcards. Regular typed flashcards are unaffected.');
+        }
         if (detailResult.error) throwFlashcardBuildUpMigrationErrorIfNeeded(detailResult.error);
 
         const previousRefs = new Set();
@@ -17950,6 +18421,13 @@ The deletion becomes permanent when you save the diagram.`);
             row.definition_image_reuse_signature = definitionReuseSignature;
             row.term_image_saved_signature = termSavedImageSignature;
             row.definition_image_saved_signature = definitionSavedImageSignature;
+            row.term_content_mode = termContentMode;
+            row.definition_content_mode = definitionContentMode;
+            row.term_image_layout = termImageLayout;
+            row.definition_image_layout = definitionImageLayout;
+            row.term_handwriting = termHandwriting;
+            row.definition_handwriting = definitionHandwriting;
+            row.flashcard_handwriting_deferred = false;
             row.flashcard_images_deferred = false;
         }
 
@@ -18497,7 +18975,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editingType = getStudioCurrentQuizType();
         const activeBuildUpString = normalizeBuildUpValue(state.auth.studioActiveBuildUpString || '');
         const focusedBuildUpString = normalizeBuildUpValue(state.auth.studioFocusedBuildUpString || '');
-        const supportsBuildUpEditing = isBuildUpCapableQuestionType(editingType);
+        const supportsBuildUpEditing = !isStudioExamMode() && isBuildUpCapableQuestionType(editingType);
         const buildUpEditActive = supportsBuildUpEditing && !!activeBuildUpString;
         let buildUpFocusActive = !buildUpEditActive && supportsBuildUpEditing && !!focusedBuildUpString;
         if (activeBuildUpString && !supportsBuildUpEditing) {
@@ -18630,6 +19108,13 @@ The deletion becomes permanent when you save the diagram.`);
             const starBadgeHtml = isStarredRow
                 ? '<span class="studio-question-list-star" title="Starred question" aria-label="Starred question">★</span>'
                 : '';
+            const importIssues = getStoredQuestionImportIssues(questionRow);
+            const examTypeBadgeHtml = isStudioExamMode()
+                ? `<span class="studio-exam-question-type-badge">${escapeHtml(getExamQuestionTypeLabel(questionType))}</span>`
+                : '';
+            const importIssueBadgeHtml = importIssues.length
+                ? `<span class="studio-question-issue-badge" title="${escapeHtml(importIssues.join(' • '))}" aria-label="This question has ${importIssues.length} import ${importIssues.length === 1 ? 'issue' : 'issues'}">!</span>`
+                : '';
             const isBuildUpQuestionRow = supportsBuildUpEditing && isBuildUpCapableQuestionType(questionType) && !isPendingRow && !isLocalFlashcardRow;
             const isActiveBuildUpMember = buildUpEditActive && isSameBuildUpString(questionBuildUpValue, activeBuildUpString);
             const isFocusedBuildUpMember = buildUpFocusActive && isSameBuildUpString(questionBuildUpValue, focusedBuildUpString);
@@ -18684,6 +19169,7 @@ The deletion becomes permanent when you save the diagram.`);
                         data-studio-question-id="${escapeHtml(questionRow.id)}"
                         aria-pressed="${isActive ? 'true' : 'false'}"
                       >
+                        ${examTypeBadgeHtml}${importIssueBadgeHtml}
                         <span class="studio-question-label">${escapeHtml(previewLabel)}</span>
                         ${sharedDiagramSourceBadge}
                       </button>
@@ -18774,6 +19260,194 @@ The deletion becomes permanent when you save the diagram.`);
         elements.studioQuestionList.innerHTML = `${rowsHtml}${addTailHtml}`;
         autosizeStudioFlashcardInlineTextareas();
         updateStudioQuestionNavigationUI();
+    }
+
+    function isIPhoneDevice() {
+        return /iPhone/i.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints === 1);
+    }
+
+    function syncHandwrittenFlashcardSetupControls() {
+        const style = normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {});
+        state.auth.handwrittenFlashcardStyle = style;
+        if (elements.flashcardHandwrittenBackgroundColor) elements.flashcardHandwrittenBackgroundColor.value = style.backgroundColor;
+        if (elements.flashcardHandwrittenGridType) elements.flashcardHandwrittenGridType.value = style.gridType;
+        if (elements.flashcardHandwrittenGridColor) elements.flashcardHandwrittenGridColor.value = style.gridColor;
+        if (elements.flashcardHandwrittenGridOpacity) elements.flashcardHandwrittenGridOpacity.value = String(Math.round(style.gridOpacity * 100));
+        if (elements.flashcardHandwrittenGridOpacityValue) elements.flashcardHandwrittenGridOpacityValue.textContent = `${Math.round(style.gridOpacity * 100)}%`;
+    }
+
+    function getCurrentHandwrittenFlashcardRow() {
+        const id = normalizeSheetText(state.auth.editingQuestionId);
+        if (id) return state.auth.studioQuizQuestions.find(row => normalizeSheetText(row?.id) === id) || null;
+        return getStudioPendingFlashcardRow?.() || null;
+    }
+
+    function getHandwrittenSideKey(side = state.auth.handwrittenFlashcardSide) { return side === 'definition' ? 'definition' : 'term'; }
+    function getHandwrittenSideModeFromEditorState(side = 'term') {
+        const row = getCurrentHandwrittenFlashcardRow();
+        const key = getHandwrittenSideKey(side);
+        return normalizeFlashcardContentMode(row?.[`${key}_content_mode`] || (state.auth.handwrittenFlashcardEnabled ? 'handwritten' : 'typed'));
+    }
+    function getHandwrittenSideImageLayoutFromEditorState(side = 'term') {
+        const row = getCurrentHandwrittenFlashcardRow();
+        const key = getHandwrittenSideKey(side);
+        return normalizeFlashcardImageLayout(row?.[`${key}_image_layout`], !!normalizeSheetText(row?.[`${key}_image_url`]));
+    }
+    function getHandwrittenSideStrokesFromEditorState(side = 'term') {
+        const row = getCurrentHandwrittenFlashcardRow();
+        const key = getHandwrittenSideKey(side);
+        return normalizeHandwritingStrokes(row?.[`${key}_handwriting`] || []);
+    }
+    function setHandwrittenSideState(side = 'term', patch = {}) {
+        const row = getCurrentHandwrittenFlashcardRow();
+        if (!row) return;
+        const key = getHandwrittenSideKey(side);
+        if (patch.mode !== undefined) row[`${key}_content_mode`] = normalizeFlashcardContentMode(patch.mode);
+        if (patch.imageLayout !== undefined) row[`${key}_image_layout`] = normalizeFlashcardImageLayout(patch.imageLayout, !!normalizeSheetText(row[`${key}_image_url`]));
+        if (patch.strokes !== undefined) row[`${key}_handwriting`] = normalizeHandwritingStrokes(patch.strokes);
+        if (!isStudioLocalFlashcardId(row.id) && row.id !== STUDIO_PENDING_NEW_FLASHCARD_ID) {
+            const draft = getStudioFlashcardListDraft(row);
+            if (draft) state.auth.studioQuestionDrafts.set(row.id, draft);
+        }
+        setStudioDirtyState(true);
+    }
+
+    function getHandwrittenUndoKey(side = state.auth.handwrittenFlashcardSide) {
+        return `${normalizeSheetText(state.auth.editingQuestionId || STUDIO_PENDING_NEW_FLASHCARD_ID)}:${getHandwrittenSideKey(side)}`;
+    }
+    function pushHandwrittenUndo(side = state.auth.handwrittenFlashcardSide) {
+        const key = getHandwrittenUndoKey(side);
+        const stack = state.auth.handwrittenFlashcardUndo.get(key) || [];
+        stack.push(getHandwrittenSideStrokesFromEditorState(side));
+        if (stack.length > 50) stack.shift();
+        state.auth.handwrittenFlashcardUndo.set(key, stack);
+        state.auth.handwrittenFlashcardRedo.set(key, []);
+    }
+
+    function renderHandwrittenFlashcardColorPresets() {
+        if (!elements.flashcardHandwrittenColorPresets) return;
+        const colors = normalizeImageEditorColorPresetList(state.auth.diagramColorPresets || []);
+        const active = normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827').toLowerCase();
+        elements.flashcardHandwrittenColorPresets.innerHTML = colors.map(color => `<span><button type="button" class="studio-handwritten-color-preset ${color===active?'is-active':''}" data-handwritten-color="${color}" style="--preset-color:${color}" title="Use ${color.toUpperCase()}"></button><button type="button" class="studio-handwritten-color-preset-delete" data-handwritten-color-delete="${color}" title="Delete saved color">×</button></span>`).join('');
+    }
+
+    function drawHandwrittenEditorCanvas() {
+        renderHandwritingStrokesToCanvas(elements.flashcardHandwrittenCanvas, getHandwrittenSideStrokesFromEditorState());
+    }
+
+    function renderHandwrittenFlashcardWorkspace() {
+        if (!elements.flashcardHandwrittenWorkspace || !state.auth.handwrittenFlashcardEnabled) return;
+        const row = getCurrentHandwrittenFlashcardRow();
+        const side = getHandwrittenSideKey();
+        const style = normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {});
+        const mode = getHandwrittenSideModeFromEditorState(side);
+        const imageValue = normalizeSheetText(row?.[`${side}_image_url`] || (side === 'definition' ? state.auth.studioFlashcardDefinitionImageDataUrl : state.auth.studioFlashcardTermImageDataUrl));
+        const layout = normalizeFlashcardImageLayout(row?.[`${side}_image_layout`], !!imageValue);
+        const rows = (state.auth.studioQuizQuestions || []).filter(item => normalizeSheetText(item?.question_type || 'flashcard') === 'flashcard');
+        const index = Math.max(0, rows.findIndex(item => normalizeSheetText(item.id) === normalizeSheetText(row?.id)));
+        if (elements.flashcardHandwrittenCardNumber) elements.flashcardHandwrittenCardNumber.textContent = `Card ${rows.length ? index+1 : 1} / ${Math.max(1, rows.length)}`;
+        if (elements.flashcardHandwrittenSideSelect) elements.flashcardHandwrittenSideSelect.value = side;
+        if (elements.flashcardHandwrittenSideMode) elements.flashcardHandwrittenSideMode.value = mode;
+        if (elements.flashcardHandwrittenBrushSize) elements.flashcardHandwrittenBrushSize.value = String(state.auth.handwrittenFlashcardBrushSize || 4);
+        if (elements.flashcardHandwrittenBrushColor) elements.flashcardHandwrittenBrushColor.value = normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827');
+        if (elements.flashcardHandwrittenImageLayout) elements.flashcardHandwrittenImageLayout.value = layout === 'full' ? 'full' : 'half';
+        const card = elements.flashcardHandwrittenCard;
+        if (card) {
+            card.style.setProperty('--hand-card-bg', style.backgroundColor);
+            const rgb=style.backgroundColor.replace('#',''); const r=parseInt(rgb.slice(0,2),16),g=parseInt(rgb.slice(2,4),16),b=parseInt(rgb.slice(4,6),16);
+            card.style.setProperty('--hand-card-text', ((r*299+g*587+b*114)/1000)<138 ? '#ffffff' : '#111827');
+            card.style.setProperty('--hand-grid-color', style.gridColor);
+            card.style.setProperty('--hand-grid-opacity', String(style.gridOpacity));
+            card.classList.remove('grid-lines','grid-graph','grid-dots','has-half-image','has-full-image');
+            if (style.gridType !== 'none') card.classList.add(`grid-${style.gridType}`);
+            if (imageValue && layout === 'full') card.classList.add('has-full-image');
+            else if (imageValue) card.classList.add('has-half-image');
+        }
+        const typedEditor = elements.flashcardHandwrittenTypedEditor;
+        if (typedEditor) {
+            typedEditor.classList.toggle('hidden', mode !== 'typed' || (imageValue && layout === 'full'));
+            const html = side === 'definition' ? getFlashcardDefinitionEditorHtml() : getFlashcardTermEditorHtml();
+            if (document.activeElement !== typedEditor && typedEditor.innerHTML !== html) typedEditor.innerHTML = html;
+        }
+        if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', mode !== 'handwritten' || (imageValue && layout === 'full'));
+        if (elements.flashcardHandwrittenImageWrap) elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
+        if (elements.flashcardHandwrittenFullImageNote) elements.flashcardHandwrittenFullImageNote.classList.toggle('hidden', !(imageValue && layout === 'full'));
+        if (elements.flashcardHandwrittenImage && imageValue) setImageElementSourceWithMediaResolution(elements.flashcardHandwrittenImage, imageValue);
+        if (elements.flashcardHandwrittenRemoveImageBtn) elements.flashcardHandwrittenRemoveImageBtn.disabled = !imageValue;
+        elements.handwrittenToolButtons?.forEach(btn => btn.classList.toggle('active', btn.dataset.handwrittenTool === state.auth.handwrittenFlashcardTool));
+        renderHandwrittenFlashcardColorPresets();
+        requestAnimationFrame(drawHandwrittenEditorCanvas);
+    }
+
+    function syncHandwrittenTypedEditorToBase() {
+        const editor = elements.flashcardHandwrittenTypedEditor;
+        if (!editor || !state.auth.handwrittenFlashcardEnabled) return;
+        const side = getHandwrittenSideKey();
+        if (getHandwrittenSideModeFromEditorState(side) !== 'typed') return;
+        if (side === 'definition') setFlashcardDefinitionEditorHtml(editor.innerHTML, editor.innerText || '');
+        else setFlashcardTermEditorHtml(editor.innerHTML, editor.innerText || '');
+        const row = getCurrentHandwrittenFlashcardRow();
+        if (row) {
+            if (side === 'definition') { row.definition_html = editor.innerHTML; row.definition_plain = editor.innerText || ''; }
+            else { row.term_html = editor.innerHTML; row.term_plain = editor.innerText || ''; row.prompt_plain = editor.innerText || ''; }
+        }
+        setStudioDirtyState(true);
+    }
+
+    function getHandwrittenCanvasPoint(event) {
+        const canvas = elements.flashcardHandwrittenCanvas;
+        const rect = canvas.getBoundingClientRect();
+        return { x: Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width))), y: Math.max(0,Math.min(1,(event.clientY-rect.top)/Math.max(1,rect.height))), p: Math.max(.05,Math.min(1, Number(event.pressure)||.5)) };
+    }
+
+    function findNearestHandwritingStroke(strokes, point, threshold=.045) {
+        let best=-1,bestDist=Infinity;
+        strokes.forEach((stroke,i)=>stroke.points.forEach(p=>{const d=Math.hypot(p.x-point.x,p.y-point.y);if(d<bestDist){bestDist=d;best=i;}}));
+        return bestDist<=threshold?best:-1;
+    }
+
+    function handleHandwrittenPointerDown(event) {
+        if (!state.auth.handwrittenFlashcardEnabled || getHandwrittenSideModeFromEditorState() !== 'handwritten') return;
+        const row=getCurrentHandwrittenFlashcardRow(); const side=getHandwrittenSideKey(); const image=normalizeSheetText(row?.[`${side}_image_url`]);
+        if (image && getHandwrittenSideImageLayoutFromEditorState(side)==='full') return;
+        event.preventDefault(); elements.flashcardHandwrittenCanvas?.setPointerCapture?.(event.pointerId);
+        pushHandwrittenUndo(side);
+        const point=getHandwrittenCanvasPoint(event); const strokes=getHandwrittenSideStrokesFromEditorState(side); const tool=state.auth.handwrittenFlashcardTool;
+        if (tool==='eraser') {
+            const idx=findNearestHandwritingStroke(strokes,point,.06); if(idx>=0){strokes.splice(idx,1);setHandwrittenSideState(side,{strokes});drawHandwrittenEditorCanvas();}
+            state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId}; return;
+        }
+        if (tool==='move') {
+            const idx=findNearestHandwritingStroke(strokes,point,.07); state.auth.handwrittenFlashcardPointer={tool:'move',pointerId:event.pointerId,index:idx,last:point,strokes}; return;
+        }
+        const stroke={color:normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor||'#111827','#111827'),size:Number(state.auth.handwrittenFlashcardBrushSize)||4,points:[point]};
+        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,stroke,strokes}; drawHandwrittenEditorCanvas();
+    }
+    function handleHandwrittenPointerMove(event) {
+        const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault();
+        const side=getHandwrittenSideKey(); const point=getHandwrittenCanvasPoint(event);
+        if(drag.tool==='pen'){drag.stroke.points.push(point);setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas();}
+        else if(drag.tool==='eraser'){const strokes=getHandwrittenSideStrokesFromEditorState(side);const idx=findNearestHandwritingStroke(strokes,point,.06);if(idx>=0){strokes.splice(idx,1);setHandwrittenSideState(side,{strokes});drawHandwrittenEditorCanvas();}}
+        else if(drag.tool==='move'&&drag.index>=0){const dx=point.x-drag.last.x,dy=point.y-drag.last.y;const stroke=drag.strokes[drag.index];stroke.points=stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}));drag.last=point;setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas();}
+    }
+    function handleHandwrittenPointerUp(event){const drag=state.auth.handwrittenFlashcardPointer;if(!drag||drag.pointerId!==event.pointerId)return;state.auth.handwrittenFlashcardPointer=null;cacheCurrentStudioQuestionDraft();}
+
+    function undoHandwrittenStroke() { const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardUndo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const prev=stack.pop(); const redo=state.auth.handwrittenFlashcardRedo.get(key)||[]; redo.push(current); state.auth.handwrittenFlashcardRedo.set(key,redo); state.auth.handwrittenFlashcardUndo.set(key,stack); setHandwrittenSideState(side,{strokes:prev}); renderHandwrittenFlashcardWorkspace(); }
+    function redoHandwrittenStroke() { const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardRedo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const next=stack.pop(); const undo=state.auth.handwrittenFlashcardUndo.get(key)||[]; undo.push(current); state.auth.handwrittenFlashcardUndo.set(key,undo); state.auth.handwrittenFlashcardRedo.set(key,stack); setHandwrittenSideState(side,{strokes:next}); renderHandwrittenFlashcardWorkspace(); }
+
+    async function navigateHandwrittenFlashcard(delta=0, absolute=null) {
+        syncHandwrittenTypedEditorToBase(); cacheCurrentStudioQuestionDraft();
+        const rows=(state.auth.studioQuizQuestions||[]).filter(row=>normalizeSheetText(row?.question_type||'flashcard')==='flashcard'); if(!rows.length)return;
+        let index=rows.findIndex(row=>normalizeSheetText(row.id)===normalizeSheetText(state.auth.editingQuestionId)); if(index<0)index=0;
+        const targetIndex=absolute!==null?Math.max(0,Math.min(rows.length-1,Number(absolute)||0)):Math.max(0,Math.min(rows.length-1,index+delta));
+        const target=rows[targetIndex]; if(!target)return;
+        await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true}); state.auth.handwrittenFlashcardSide='term'; renderHandwrittenFlashcardWorkspace();
+    }
+
+    async function moveCurrentHandwrittenFlashcard(delta=0) {
+        const rows=(state.auth.studioQuizQuestions||[]).filter(row=>normalizeSheetText(row?.question_type||'flashcard')==='flashcard');
+        const id=normalizeSheetText(state.auth.editingQuestionId); const index=rows.findIndex(row=>normalizeSheetText(row.id)===id); if(index<0)return;
+        const next=Math.max(0,Math.min(rows.length-1,index+delta)); if(next===index)return; await moveStudioQuestionToPosition(id,next+1); renderHandwrittenFlashcardWorkspace();
     }
 
     function clearStudioQuestionInputs(options = {}) {
@@ -18902,6 +19576,13 @@ The deletion becomes permanent when you save the diagram.`);
                 definition_image_reuse_signature: parsedDefinitionSide.reuseSignature,
                 term_image_saved_signature: parsedTermSide.savedImageSignature,
                 definition_image_saved_signature: parsedDefinitionSide.savedImageSignature,
+                term_content_mode: parsedTermSide.contentMode,
+                definition_content_mode: parsedDefinitionSide.contentMode,
+                term_image_layout: normalizeFlashcardImageLayout(parsedTermSide.imageLayout, !!normalizeSheetText(flashcardDetail.term_image_url)),
+                definition_image_layout: normalizeFlashcardImageLayout(parsedDefinitionSide.imageLayout, !!normalizeSheetText(flashcardDetail.definition_image_url)),
+                term_handwriting: null,
+                definition_handwriting: null,
+                flashcard_handwriting_deferred: parsedTermSide.contentMode === 'handwritten' || parsedDefinitionSide.contentMode === 'handwritten',
                 flashcard_images_deferred: false,
                 term_image_labels: parsedTermSide.labels,
                 definition_image_labels: parsedDefinitionSide.labels,
@@ -19003,6 +19684,10 @@ The deletion becomes permanent when you save the diagram.`);
             preloadedMultipleChoiceDetailRow = await loadMultipleChoiceDetailByQuestionId(questionId);
             state.auth.editingQuizType = getEffectiveQuestionTypeFromDetail(state.auth.editingQuizType, preloadedMultipleChoiceDetailRow);
         }
+        if (isStudioExamMode()) {
+            if (!EXAM_QUESTION_TYPES.includes(state.auth.editingQuizType)) state.auth.editingQuizType = 'multiple_choice';
+            if (elements.examQuestionTypeSelect) elements.examQuestionTypeSelect.value = state.auth.editingQuizType;
+        }
         state.auth.expandedOptionImageRows.clear();
         state.auth.expandedFlashcardImageRows.clear();
         state.auth.expandedClassifyCategoryImageRows.clear();
@@ -19039,6 +19724,16 @@ The deletion becomes permanent when you save the diagram.`);
                 studioRow.definition_image_reuse_signature = parsedDefinitionSide.reuseSignature;
                 studioRow.term_image_saved_signature = parsedTermSide.savedImageSignature;
                 studioRow.definition_image_saved_signature = parsedDefinitionSide.savedImageSignature;
+                studioRow.term_content_mode = parsedTermSide.contentMode;
+                studioRow.definition_content_mode = parsedDefinitionSide.contentMode;
+                studioRow.term_image_layout = normalizeFlashcardImageLayout(parsedTermSide.imageLayout, !!normalizeSheetText(detailRow.term_image_url));
+                studioRow.definition_image_layout = normalizeFlashcardImageLayout(parsedDefinitionSide.imageLayout, !!normalizeSheetText(detailRow.definition_image_url));
+                if (state.auth.handwrittenFlashcardEnabled && (parsedTermSide.contentMode === 'handwritten' || parsedDefinitionSide.contentMode === 'handwritten')) {
+                    const handwritingDetail = await loadFlashcardHandwritingDetailByQuestionId(questionId);
+                    studioRow.term_handwriting = normalizeHandwritingStrokes(handwritingDetail?.term_handwriting || []);
+                    studioRow.definition_handwriting = normalizeHandwritingStrokes(handwritingDetail?.definition_handwriting || []);
+                    studioRow.flashcard_handwriting_deferred = false;
+                }
                 studioRow.flashcard_images_deferred = false;
             }
             setFlashcardTermEditorHtml(parsedTermSide.html, detailRow.term_plain);
@@ -19067,6 +19762,7 @@ The deletion becomes permanent when you save the diagram.`);
             renderStudioHierarchyFields(Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })));
             renderStudioDiagramLabels([]);
             if (elements.createCorrectOptionSelect) elements.createCorrectOptionSelect.value = '1';
+            renderHandwrittenFlashcardWorkspace();
         } else if (state.auth.editingQuizType === 'hierarchy') {
             const detailRow = await loadHierarchyDetailByQuestionId(questionId);
             if (!detailRow) {
@@ -19237,10 +19933,28 @@ The deletion becomes permanent when you save the diagram.`);
                 elements.studioQuestionSearchInput.value = '';
             }
         }
+        if (isStudioExamMode()) {
+            let inheritedType = 'multiple_choice';
+            const sourceRow = validInsertAfterQuestionId
+                ? state.auth.studioQuizQuestions.find(question => question.id === validInsertAfterQuestionId)
+                : state.auth.studioQuizQuestions[state.auth.studioQuizQuestions.length - 1];
+            if (sourceRow) {
+                const storedType = normalizeSheetText(sourceRow.question_type || 'multiple_choice');
+                inheritedType = EXAM_QUESTION_TYPES.includes(storedType) ? storedType : 'multiple_choice';
+                if (storedType === 'diagrams') {
+                    const draft = state.auth.studioQuestionDrafts.get(sourceRow.id);
+                    if (draft?.questionType === 'typed_answer') inheritedType = 'typed_answer';
+                }
+            } else if (EXAM_QUESTION_TYPES.includes(getStudioCurrentQuizType())) {
+                inheritedType = getStudioCurrentQuizType();
+            }
+            state.auth.editingQuizType = inheritedType;
+            if (elements.examQuestionTypeSelect) elements.examQuestionTypeSelect.value = inheritedType;
+        }
         clearStudioQuestionInputs({ keepPendingInsert: !!validInsertAfterQuestionId, keepPendingDraft: getStudioCurrentQuizType() === 'flashcard' });
         state.auth.pendingInsertAfterQuestionId = validInsertAfterQuestionId;
         state.auth.studioPendingNewQuestionRow = getStudioCurrentQuizType() === 'flashcard'
-            ? { id: STUDIO_PENDING_NEW_FLASHCARD_ID, question_type: 'flashcard', prompt_plain: '', term_plain: '', term_html: '', definition_plain: '', definition_html: '' }
+            ? { id: STUDIO_PENDING_NEW_FLASHCARD_ID, question_type: 'flashcard', prompt_plain: '', term_plain: '', term_html: '', definition_plain: '', definition_html: '', term_content_mode: state.auth.handwrittenFlashcardEnabled ? 'handwritten' : 'typed', definition_content_mode: state.auth.handwrittenFlashcardEnabled ? 'handwritten' : 'typed', term_image_layout: 'none', definition_image_layout: 'none', term_handwriting: [], definition_handwriting: [] }
             : null;
         renderStudioQuestionList();
         updateCreateQuizModeUI();
@@ -19595,6 +20309,27 @@ The deletion becomes permanent when you save the diagram.`);
             .in('question_id', questionIds);
         if (fallback.error) throw fallback.error;
         return (fallback.data || []).map(row => ({ ...row, build_up: '' }));
+    }
+
+
+    async function loadFlashcardHandwritingDetailsByQuestionIdsForBackup(questionIds) {
+        const safeIds = Array.from(new Set((Array.isArray(questionIds) ? questionIds : [])
+            .map(normalizeSheetText)
+            .filter(Boolean)));
+        if (!state.auth.client || !safeIds.length) return [];
+        const { data, error } = await state.auth.client
+            .from('flashcard_questions')
+            .select('question_id, term_handwriting, definition_handwriting')
+            .in('question_id', safeIds);
+        if (!error) {
+            return (data || []).map(row => ({
+                question_id: row.question_id,
+                term_handwriting: normalizeHandwritingStrokes(row.term_handwriting || []),
+                definition_handwriting: normalizeHandwritingStrokes(row.definition_handwriting || [])
+            }));
+        }
+        if (/term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) return [];
+        throw error;
     }
 
     async function loadManagedFlashcardBuildUpRows() {
@@ -19990,9 +20725,13 @@ if (elements.openQuizStudioBtn) {
         setEditorInlineFolderCreatorOpen(false);
 
         state.auth.editingQuizId = null;
-        state.auth.editingQuizType = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
+        state.auth.editingQuizMode = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
+        state.auth.editingQuizType = state.auth.editingQuizMode === 'exam' ? 'multiple_choice' : state.auth.editingQuizMode;
         if (elements.createQuizTypeSelect) {
-            elements.createQuizTypeSelect.value = state.auth.editingQuizType;
+            elements.createQuizTypeSelect.value = state.auth.editingQuizMode;
+        }
+        if (elements.examQuestionTypeSelect) {
+            elements.examQuestionTypeSelect.value = state.auth.editingQuizType;
         }
         state.auth.studioQuizQuestions = [];
         state.auth.studioIncompleteFlashcardQuestionIds = [];
@@ -20038,7 +20777,7 @@ if (elements.openQuizStudioBtn) {
             description: normalizeSheetText(elements.createQuizDescription?.value).slice(0, QUIZ_DESCRIPTION_MAX_LENGTH),
             folderId,
             classId: getDirectEditorQuizClassIdForFolder(folderId),
-            quizType: getStudioCurrentQuizType()
+            quizType: getStudioQuizMode()
         };
     }
 
@@ -20196,7 +20935,7 @@ if (elements.openQuizStudioBtn) {
         }
 
         if (state.auth.editingQuizId) {
-            await updateQuizShellFromEditor(state.auth.editingQuizId, { folder_id: folderId, name, quiz_description: description });
+            await updateQuizShellFromEditor(state.auth.editingQuizId, { folder_id: folderId, name, quiz_description: description, quiz_mode: quizType });
             await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: elements.quizSelector?.value === `sb:${state.auth.editingQuizId}` });
             return state.auth.editingQuizId;
@@ -20215,6 +20954,7 @@ if (elements.openQuizStudioBtn) {
                 name,
                 description: '',
                 quiz_description: description,
+                quiz_mode: quizType,
                 sort_order: quizSortOrder,
                 is_archived: false
             }))
@@ -20223,10 +20963,14 @@ if (elements.openQuizStudioBtn) {
         if (error) throw error;
 
         state.auth.editingQuizId = data.id;
-        state.auth.editingQuizType = quizType;
+        state.auth.editingQuizMode = quizType;
+        state.auth.editingQuizType = quizType === 'exam' ? 'multiple_choice' : quizType;
         state.auth.pendingInsertAfterQuestionId = null;
         if (elements.createQuizTypeSelect) {
             elements.createQuizTypeSelect.value = quizType;
+        }
+        if (elements.examQuestionTypeSelect) {
+            elements.examQuestionTypeSelect.value = state.auth.editingQuizType;
         }
 
         await refreshStudioManagementData({ force: true });
@@ -20752,19 +21496,25 @@ if (elements.openQuizStudioBtn) {
             ...(questionIdsByType.diagrams || []),
             ...(questionIdsByType.typed_answer || [])
         ];
-        const [multipleChoiceDetails, flashcardDetails, hierarchyDetails, classifyDetails, questionStateRows] = await Promise.all([
+        const [multipleChoiceDetails, flashcardDetails, flashcardHandwritingDetails, hierarchyDetails, classifyDetails, questionStateRows] = await Promise.all([
             loadMultipleChoiceDetailsByQuestionIds(multipleChoiceBackupIds),
             loadFlashcardDetailsByQuestionIds(questionIdsByType.flashcard || []),
+            loadFlashcardHandwritingDetailsByQuestionIdsForBackup(questionIdsByType.flashcard || []),
             loadHierarchyDetailsByQuestionIds(questionIdsByType.hierarchy || []),
             loadClassifyDetailsByQuestionIds(questionIdsByType.classify || []),
             loadQuestionStateRowsForBackup(questionIds)
         ]);
+        const handwritingBackupMap = new Map((flashcardHandwritingDetails || []).map(row => [row.question_id, row]));
+        const flashcardDetailsWithHandwriting = (flashcardDetails || []).map(row => ({
+            ...row,
+            ...(handwritingBackupMap.get(row.question_id) || {})
+        }));
 
         const detailMaps = {
             multiple_choice: new Map((multipleChoiceDetails || []).map(row => [row.question_id, row])),
             diagrams: new Map((multipleChoiceDetails || []).map(row => [row.question_id, row])),
             typed_answer: new Map((multipleChoiceDetails || []).map(row => [row.question_id, row])),
-            flashcard: new Map((flashcardDetails || []).map(row => [row.question_id, row])),
+            flashcard: new Map((flashcardDetailsWithHandwriting || []).map(row => [row.question_id, row])),
             hierarchy: new Map((hierarchyDetails || []).map(row => [row.question_id, row])),
             classify: new Map((classifyDetails || []).map(row => [row.question_id, row]))
         };
@@ -21220,7 +21970,7 @@ if (elements.openQuizStudioBtn) {
     async function insertBackupFlashcardDetail(quizId, questionId, question = {}, detail = {}) {
         const termImageUrl = await restoreBackupMediaValue(detail.term_image_url, { quizId, questionId, usageContext: 'term_image_url' });
         const definitionImageUrl = await restoreBackupMediaValue(detail.definition_image_url, { quizId, questionId, usageContext: 'definition_image_url' });
-        const { error } = await state.auth.client.from('flashcard_questions').insert({
+        const payload = {
             question_id: questionId,
             term_html: normalizeSheetText(detail.term_html || question.prompt_html),
             definition_html: normalizeSheetText(detail.definition_html),
@@ -21228,8 +21978,21 @@ if (elements.openQuizStudioBtn) {
             definition_plain: normalizeSheetText(detail.definition_plain),
             ...(normalizeBuildUpValue(detail.build_up) ? { build_up: normalizeBuildUpValue(detail.build_up) } : {}),
             term_image_url: termImageUrl || '',
-            definition_image_url: definitionImageUrl || ''
-        });
+            definition_image_url: definitionImageUrl || '',
+            ...(Array.isArray(detail.term_handwriting) ? { term_handwriting: normalizeHandwritingStrokes(detail.term_handwriting) } : {}),
+            ...(Array.isArray(detail.definition_handwriting) ? { definition_handwriting: normalizeHandwritingStrokes(detail.definition_handwriting) } : {})
+        };
+        let { error } = await state.auth.client.from('flashcard_questions').insert(payload);
+        if (error && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) {
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.term_handwriting;
+            delete fallbackPayload.definition_handwriting;
+            const fallback = await state.auth.client.from('flashcard_questions').insert(fallbackPayload);
+            error = fallback.error;
+            if (!error && (Array.isArray(detail.term_handwriting) || Array.isArray(detail.definition_handwriting))) {
+                console.warn('Handwritten flashcard strokes were not restored because the Phase 23B migration has not been run.');
+            }
+        }
         if (error) throwFlashcardBuildUpMigrationErrorIfNeeded(error);
     }
 
@@ -22831,7 +23594,7 @@ if (elements.openQuizStudioBtn) {
             }
 
             if (managedQuiz.quizType === 'mixed') {
-                setCreatorStatus('Editing is currently limited to single-type Supabase quizzes.', 'error');
+                setCreatorStatus('This legacy mixed quiz is not marked as an Exam. Convert or recreate it as an Exam before editing mixed question types.', 'error');
                 return;
             }
 
@@ -22848,7 +23611,13 @@ if (elements.openQuizStudioBtn) {
 
             state.auth.editingQuizId = quizRow.id;
             state.auth.pendingInsertAfterQuestionId = null;
-            state.auth.editingQuizType = managedQuiz.quizType || 'multiple_choice';
+            state.auth.editingQuizMode = managedQuiz.quizType || getQuizModeFromDescription(quizRow.description || '') || 'multiple_choice';
+            state.auth.editingQuizType = state.auth.editingQuizMode === 'exam' ? 'multiple_choice' : state.auth.editingQuizMode;
+            const handwrittenConfig = getHandwrittenFlashcardConfigFromDescription(quizRow.description || '');
+            state.auth.handwrittenFlashcardEnabled = state.auth.editingQuizMode === 'flashcard' && handwrittenConfig.enabled;
+            state.auth.handwrittenFlashcardStyle = handwrittenConfig.style;
+            state.auth.handwrittenFlashcardSetupApplied = state.auth.handwrittenFlashcardEnabled;
+            syncHandwrittenFlashcardSetupControls();
             setStudioDiagramSharingState({
                 ...getDiagramSharingFromDescription(quizRow.description || ''),
                 questionOverride: false
@@ -22867,7 +23636,7 @@ if (elements.openQuizStudioBtn) {
             });
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
             if (elements.createQuizDescription) elements.createQuizDescription.value = getQuizUserDescriptionFromDescription(quizRow.description || '');
-            if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizType;
+            if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizMode;
 
             let questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
             const incompleteFlashcardQuestionIds = Array.from(new Set(state.auth.studioIncompleteFlashcardQuestionIds || []));
@@ -22891,8 +23660,10 @@ if (elements.openQuizStudioBtn) {
                     questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
                 }
             }
-            await ensureSharedDiagramSourceQuestionForRows(quizRow.id, questionRows);
-            await repairStudioSharedDiagramSourceImageOwnership(quizRow.id, questionRows);
+            if (!isStudioExamMode()) {
+                await ensureSharedDiagramSourceQuestionForRows(quizRow.id, questionRows);
+                await repairStudioSharedDiagramSourceImageOwnership(quizRow.id, questionRows);
+            }
             const repairedSharing = state.auth.studioDiagramSharing || createDefaultDiagramSharingState();
             const repairedSourceQuestionId = getDiagramSharingSourceQuestionId(repairedSharing);
             const repairedSourceRow = repairedSourceQuestionId
@@ -22931,7 +23702,7 @@ if (elements.openQuizStudioBtn) {
             updateCreateQuizModeUI();
             openQuizStudioPage('editor');
             recordStudioQuizActivity(quizRow.id, 'edited').catch(err => console.warn(err));
-            const nextItemTypeLabel = state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'classify question' : (state.auth.editingQuizType === 'diagrams' ? 'diagram question' : 'question')));
+            const nextItemTypeLabel = isStudioExamMode() ? 'Exam question' : (state.auth.editingQuizType === 'flashcard' ? 'flashcard' : (state.auth.editingQuizType === 'hierarchy' ? 'hierarchy question' : (state.auth.editingQuizType === 'classify' ? 'classify question' : (state.auth.editingQuizType === 'diagrams' ? 'diagram question' : 'question'))));
             const remainingIncompleteCount = (state.auth.studioIncompleteFlashcardQuestionIds || []).length;
             const baseLoadStatus = targetQuestionId ? 'Quiz loaded into the editor.' : `Quiz loaded. Add your first ${nextItemTypeLabel} below.`;
             setCreatorStatus(
@@ -23017,13 +23788,16 @@ if (elements.openQuizStudioBtn) {
         if (mediaUpdateError) throw mediaUpdateError;
 
         if (questionRow.question_type === 'flashcard') {
-            const detail = await loadFlashcardDetailByQuestionId(sourceQuestionId);
+            const [detail, handwritingDetail] = await Promise.all([
+                loadFlashcardDetailByQuestionId(sourceQuestionId),
+                loadFlashcardHandwritingDetailByQuestionId(sourceQuestionId).catch(() => null)
+            ]);
             if (!detail) throw new Error('Could not load the source flashcard details.');
             const clonedFlashcardMedia = await cloneMediaRefsInObject({
                 term_image_url: detail.term_image_url || '',
                 definition_image_url: detail.definition_image_url || ''
             }, { quizId: targetQuizId, questionId: newQuestionId });
-            const { error } = await state.auth.client.from('flashcard_questions').insert({
+            const duplicatePayload = {
                 question_id: newQuestionId,
                 term_html: detail.term_html || '',
                 definition_html: detail.definition_html || '',
@@ -23031,8 +23805,20 @@ if (elements.openQuizStudioBtn) {
                 definition_plain: detail.definition_plain || '',
                 ...(normalizeBuildUpValue(detail.build_up) ? { build_up: normalizeBuildUpValue(detail.build_up) } : {}),
                 term_image_url: clonedFlashcardMedia.term_image_url || '',
-                definition_image_url: clonedFlashcardMedia.definition_image_url || ''
-            });
+                definition_image_url: clonedFlashcardMedia.definition_image_url || '',
+                ...(handwritingDetail ? {
+                    term_handwriting: normalizeHandwritingStrokes(handwritingDetail.term_handwriting || []),
+                    definition_handwriting: normalizeHandwritingStrokes(handwritingDetail.definition_handwriting || [])
+                } : {})
+            };
+            let { error } = await state.auth.client.from('flashcard_questions').insert(duplicatePayload);
+            if (error && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) {
+                const fallbackPayload = { ...duplicatePayload };
+                delete fallbackPayload.term_handwriting;
+                delete fallbackPayload.definition_handwriting;
+                const fallback = await state.auth.client.from('flashcard_questions').insert(fallbackPayload);
+                error = fallback.error;
+            }
             if (error) throwFlashcardBuildUpMigrationErrorIfNeeded(error);
             return newQuestionId;
         }
@@ -23615,6 +24401,7 @@ if (elements.openQuizStudioBtn) {
             classify: 'Classify',
             diagrams: 'Diagrams',
             typed_answer: 'Typed Answer',
+            exam: 'Exam',
             mixed: 'Mixed types'
         };
         return labels[quizType] || normalizeSheetText(quizType).replace(/_/g, ' ') || 'Unknown type';
@@ -23640,29 +24427,27 @@ if (elements.openQuizStudioBtn) {
             throw new Error('Could not find that existing quiz. Refresh Quiz Studio and try again.');
         }
 
-        const [rows, multipleChoiceRows] = await Promise.all([
-            fetchAllSupabaseRows(
-                () => state.auth.client
-                    .from('questions')
-                    .select('id, question_type, sort_order')
-                    .eq('quiz_id', normalizedQuizId)
-                    .order('sort_order', { ascending: true }),
-                { label: 'append target question rows' }
-            ),
-            fetchAllSupabaseRows(
-                () => state.auth.client
-                    .from('multiple_choice_questions')
-                    .select('question_id, options_json'),
-                { label: 'append target multiple-choice metadata rows' }
-            )
-        ]);
+        const rows = await fetchAllSupabaseRows(
+            () => state.auth.client
+                .from('questions')
+                .select('id, question_type, sort_order')
+                .eq('quiz_id', normalizedQuizId)
+                .order('sort_order', { ascending: true }),
+            { label: 'append target question rows' }
+        );
         const questionRows = Array.isArray(rows) ? rows : [];
+        const mcQuestionIds = questionRows.filter(row => ['multiple_choice', 'diagrams', 'typed_answer'].includes(normalizeSheetText(row.question_type))).map(row => row.id).filter(Boolean);
+        const multipleChoiceRows = mcQuestionIds.length
+            ? await loadMultipleChoiceDetailsByQuestionIds(mcQuestionIds)
+            : [];
         const multipleChoiceMetadataByQuestionId = new Map((multipleChoiceRows || []).map(row => [row.question_id, row]));
         const types = questionRows.map(row => getEffectiveQuestionTypeFromDetail(row.question_type || 'multiple_choice', multipleChoiceMetadataByQuestionId.get(row.id)));
         const uniqueTypes = Array.from(new Set(types));
-        const quizType = uniqueTypes.length === 1
-            ? uniqueTypes[0]
-            : (questionRows.length ? 'mixed' : (managedQuiz.quizType || 'multiple_choice'));
+        const quizType = managedQuiz.quizType === 'exam'
+            ? 'exam'
+            : (uniqueTypes.length === 1
+                ? uniqueTypes[0]
+                : (questionRows.length ? 'mixed' : (managedQuiz.quizType || 'multiple_choice')));
         const maxSortOrder = questionRows.reduce((maxValue, row, index) => {
             const sortOrder = Number(row.sort_order);
             return Math.max(maxValue, Number.isFinite(sortOrder) ? sortOrder : index);
@@ -23683,7 +24468,16 @@ if (elements.openQuizStudioBtn) {
             throw new Error('Choose the existing quiz you want to add questions to.');
         }
         if (appendContext.quizType === 'mixed') {
-            throw new Error(`Cannot add questions to "${appendContext.quizName}" because it already contains mixed question types.`);
+            throw new Error(`Cannot add questions to "${appendContext.quizName}" because it is a legacy mixed quiz that is not marked as an Exam.`);
+        }
+        if (appendContext.quizType === 'exam') {
+            if (sourceQuizType !== 'exam' && !EXAM_QUESTION_TYPES.includes(sourceQuizType)) {
+                throw new Error(`${getImportQuizTypeLabel(sourceQuizType)} questions are not supported inside Exam yet.`);
+            }
+            return;
+        }
+        if (sourceQuizType === 'exam') {
+            throw new Error(`An Exam can only be appended to another Exam.`);
         }
         if (appendContext.questionCount > 0 && appendContext.quizType !== sourceQuizType) {
             throw new Error(`Cannot add ${getImportQuizTypeLabel(sourceQuizType)} questions to "${appendContext.quizName}" because that quiz is ${getImportQuizTypeLabel(appendContext.quizType)}.`);
@@ -23775,8 +24569,8 @@ if (elements.openQuizStudioBtn) {
             .from('questions')
             .insert({
                 quiz_id: quizId,
-                question_type: 'multiple_choice',
-                prompt_html: buildStoredHtmlFromPlain(question.question),
+                question_type: getQuestionTypeForImport(question) === 'diagrams' ? 'diagrams' : 'multiple_choice',
+                prompt_html: buildStoredQuestionPromptHtml(question.question, question.importIssues),
                 prompt_plain: normalizeSheetText(question.question),
                 image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
@@ -23805,7 +24599,11 @@ if (elements.openQuizStudioBtn) {
         const correctIndex = options.findIndex(option => option === correctAnswer);
         const optionPayload = options.map((optionText, index) => ({ text: optionText, explanation_html: buildStoredHtmlFromPlain(explanations[index] || '') }));
         const allowMultipleAnswers = !!question.allowMultipleAnswers || correctAnswers.length > 1;
-        const optionsJsonPayload = buildMultipleChoiceOptionsJsonPayload(optionPayload, question.buildUp, { allowMultipleAnswers, correctAnswers });
+        let optionsJsonPayload = buildMultipleChoiceOptionsJsonPayload(optionPayload, question.buildUp, { allowMultipleAnswers, correctAnswers });
+        if (getQuestionTypeForImport(question) === 'diagrams') {
+            const baseOptionsObject = Array.isArray(optionsJsonPayload) ? { options: optionsJsonPayload } : { ...(optionsJsonPayload || {}) };
+            optionsJsonPayload = { ...baseOptionsObject, diagramLabels: normalizeDiagramLabels(question.diagramLabels || question.diagram_labels || []) };
+        }
         const detailPayload = {
             question_id: questionId,
             correct_answer: correctAnswer,
@@ -23831,6 +24629,53 @@ if (elements.openQuizStudioBtn) {
         }
     }
 
+    async function importTypedAnswerQuestionToSupabase(quizId, question, sortOrder) {
+        const prompt = normalizeSheetText(question.question);
+        const acceptedAnswers = normalizeTypedAnswerVariants(question.acceptedAnswers || question.variants || [question.correct]);
+        const { data, error } = await state.auth.client
+            .from('questions')
+            .insert({
+                quiz_id: quizId,
+                question_type: getStoredQuestionTypeForStudioType('typed_answer'),
+                prompt_html: buildStoredQuestionPromptHtml(prompt, question.importIssues),
+                prompt_plain: prompt,
+                image_url: '',
+                learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
+                learning_resources_image_url: '',
+                sort_order: sortOrder
+            })
+            .select('id')
+            .single();
+        if (error) throw error;
+        const questionId = data?.id;
+        const savedSharedMedia = await savePrivateMediaValues({
+            image_url: normalizeSheetText(question.image),
+            learning_resources_image_url: normalizeSheetText(question.learningResourcesImage)
+        }, { quizId, questionId });
+        const { error: mediaUpdateError } = await state.auth.client.from('questions').update({
+            image_url: savedSharedMedia.image_url || '',
+            learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
+        }).eq('id', questionId);
+        if (mediaUpdateError) throw mediaUpdateError;
+        const optionsJson = buildTypedAnswerOptionsJsonPayload(acceptedAnswers, question.diagramLabels || []);
+        const detailPayload = {
+            question_id: questionId,
+            correct_answer: acceptedAnswers[0] || '',
+            correct_explanation_html: buildStoredHtmlFromPlain(question.correctExplanation || ''),
+            options_json: optionsJson,
+            option_1_text: '',
+            option_1_explanation_html: '',
+            option_2_text: '',
+            option_2_explanation_html: '',
+            option_3_text: '',
+            option_3_explanation_html: '',
+            option_4_text: '',
+            option_4_explanation_html: ''
+        };
+        const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
+        if (detailError) throw detailError;
+    }
+
     async function importFlashcardQuestionToSupabase(quizId, question, sortOrder) {
         const term = normalizeSheetText(question.termText);
         const definition = normalizeSheetText(question.definitionText);
@@ -23839,7 +24684,7 @@ if (elements.openQuizStudioBtn) {
             .insert({
                 quiz_id: quizId,
                 question_type: 'flashcard',
-                prompt_html: buildStoredHtmlFromPlain(term),
+                prompt_html: buildStoredQuestionPromptHtml(term, question.importIssues),
                 prompt_plain: term,
                 image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
@@ -23880,7 +24725,7 @@ if (elements.openQuizStudioBtn) {
             .insert({
                 quiz_id: quizId,
                 question_type: 'hierarchy',
-                prompt_html: buildStoredHtmlFromPlain(question.question),
+                prompt_html: buildStoredQuestionPromptHtml(question.question, question.importIssues),
                 prompt_plain: normalizeSheetText(question.question),
                 image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
@@ -23915,7 +24760,7 @@ if (elements.openQuizStudioBtn) {
             .insert({
                 quiz_id: quizId,
                 question_type: 'classify',
-                prompt_html: buildStoredHtmlFromPlain(question.question),
+                prompt_html: buildStoredQuestionPromptHtml(question.question, question.importIssues),
                 prompt_plain: normalizeSheetText(question.question),
                 image_url: '',
                 learning_resources_html: buildStoredHtmlFromPlain(question.learningResources),
@@ -23976,6 +24821,8 @@ if (elements.openQuizStudioBtn) {
                 await importHierarchyQuestionToSupabase(quizId, question, sortOrder);
             } else if (questionType === 'classify') {
                 await importClassifyQuestionToSupabase(quizId, question, sortOrder);
+            } else if (questionType === 'typed_answer') {
+                await importTypedAnswerQuestionToSupabase(quizId, question, sortOrder);
             } else {
                 await importMultipleChoiceQuestionToSupabase(quizId, question, sortOrder);
             }
@@ -24055,6 +24902,369 @@ if (elements.openQuizStudioBtn) {
             onProgress: progress => onProgress?.({ ...progress, quizName: descriptor.name })
         });
         return { quizId: quizRow.id, quizName: descriptor.name, questionCount: sourceQuestions.length, quizType, folderId };
+    }
+
+
+    function normalizeJsonQuizQuestionType(value = '') {
+        const key = normalizeSheetText(value).toLowerCase().replace(/[\s-]+/g, '_');
+        const aliases = {
+            mc: 'multiple_choice',
+            mcq: 'multiple_choice',
+            multiplechoice: 'multiple_choice',
+            multiple_choice: 'multiple_choice',
+            typed: 'typed_answer',
+            typedanswer: 'typed_answer',
+            typed_answer: 'typed_answer',
+            hierarchy: 'hierarchy',
+            classify: 'classify',
+            classification: 'classify',
+            flashcard: 'flashcard',
+            flashcards: 'flashcard',
+            diagram: 'diagrams',
+            diagrams: 'diagrams'
+        };
+        return aliases[key] || aliases[key.replace(/_/g, '')] || '';
+    }
+
+    function normalizeJsonQuizMode(value = '') {
+        const key = normalizeSheetText(value).toLowerCase().replace(/[\s-]+/g, '_');
+        if (key === 'exam') return 'exam';
+        return normalizeJsonQuizQuestionType(key);
+    }
+
+    function normalizeJsonClassifications(raw = []) {
+        if (Array.isArray(raw)) {
+            return raw.map((entry, index) => {
+                if (typeof entry === 'string') return { id: `class_${index + 1}`, label: normalizeSheetText(entry), imageUrl: '' };
+                return {
+                    id: normalizeSheetText(entry?.id || entry?.value || `class_${index + 1}`),
+                    label: normalizeSheetText(entry?.label || entry?.name || entry?.text),
+                    imageUrl: normalizeSheetText(entry?.imageUrl || entry?.image_url)
+                };
+            });
+        }
+        if (raw && typeof raw === 'object') {
+            return Object.keys(raw).map((key, index) => ({ id: normalizeSheetText(key || `class_${index + 1}`), label: normalizeSheetText(key), imageUrl: '' }));
+        }
+        return [];
+    }
+
+    function normalizeJsonClassifyItems(rawQuestion = {}, classifications = []) {
+        const rawItems = rawQuestion.items || rawQuestion.classifyItems || rawQuestion.classify_items;
+        if (Array.isArray(rawItems)) {
+            return rawItems.map((item, index) => ({
+                kind: normalizeSheetText(item?.kind || (item?.imageUrl || item?.image_url ? 'image' : 'text')) || 'text',
+                raw: normalizeSheetText(item?.raw || item?.text || item?.label || `item_${index + 1}`),
+                text: normalizeSheetText(item?.text || item?.raw || item?.label),
+                imageUrl: normalizeSheetText(item?.imageUrl || item?.image_url),
+                dragLabel: normalizeSheetText(item?.dragLabel || item?.drag_label || item?.text || item?.raw || item?.label),
+                ariaLabel: normalizeSheetText(item?.ariaLabel || item?.aria_label),
+                correctClassificationId: normalizeSheetText(item?.correctClassificationId || item?.classificationId || item?.categoryId || item?.correct_classification_id)
+            }));
+        }
+        const categoriesObject = rawQuestion.categories;
+        if (categoriesObject && typeof categoriesObject === 'object' && !Array.isArray(categoriesObject)) {
+            const items = [];
+            Object.entries(categoriesObject).forEach(([categoryLabel, values], categoryIndex) => {
+                const matched = classifications.find(item => item.label === categoryLabel || item.id === categoryLabel);
+                const categoryId = matched?.id || `class_${categoryIndex + 1}`;
+                (Array.isArray(values) ? values : []).forEach((value, itemIndex) => {
+                    const text = typeof value === 'string' ? value : (value?.text || value?.raw || value?.label || '');
+                    items.push({ kind: 'text', raw: normalizeSheetText(text || `item_${itemIndex + 1}`), text: normalizeSheetText(text), imageUrl: '', dragLabel: normalizeSheetText(text), ariaLabel: '', correctClassificationId: categoryId });
+                });
+            });
+            return items;
+        }
+        return [];
+    }
+
+    function normalizeJsonQuizQuestion(rawQuestion = {}, index = 0, overallMode = '') {
+        const issues = [];
+        let questionType = normalizeJsonQuizQuestionType(rawQuestion.questionType || rawQuestion.question_type || rawQuestion.type);
+        if (!questionType) {
+            questionType = overallMode === 'exam' ? 'multiple_choice' : (overallMode || 'multiple_choice');
+            issues.push('Question Type is missing or unsupported; defaulted to Multiple Choice.');
+        }
+        if (overallMode === 'exam' && !EXAM_QUESTION_TYPES.includes(questionType)) {
+            issues.push(`${getImportQuizTypeLabel(questionType)} is not supported inside Exam; defaulted to Multiple Choice.`);
+            questionType = 'multiple_choice';
+        }
+
+        const prompt = normalizeSheetText(rawQuestion.question || rawQuestion.prompt || rawQuestion.promptText || rawQuestion.prompt_plain);
+        const learningResources = normalizeSheetText(rawQuestion.learningResources || rawQuestion.learning_resources || rawQuestion.explanationResources);
+        const image = normalizeSheetText(rawQuestion.image || rawQuestion.imageUrl || rawQuestion.image_url);
+        const learningResourcesImage = normalizeSheetText(rawQuestion.learningResourcesImage || rawQuestion.learning_resources_image || rawQuestion.learning_resources_image_url);
+        const base = { type: questionType.replace(/_/g, ' '), questionType, question: prompt, learningResources, image, learningResourcesImage, importIssues: issues };
+
+        if (questionType === 'flashcard') {
+            base.type = 'flashcard';
+            base.termText = normalizeSheetText(rawQuestion.termText || rawQuestion.term || rawQuestion.front);
+            base.definitionText = normalizeSheetText(rawQuestion.definitionText || rawQuestion.definition || rawQuestion.back);
+            base.termImage = normalizeSheetText(rawQuestion.termImage || rawQuestion.frontImage);
+            base.definitionImage = normalizeSheetText(rawQuestion.definitionImage || rawQuestion.backImage);
+            base.buildUp = normalizeBuildUpValue(rawQuestion.buildUp || rawQuestion.build_up);
+            if (!base.termText && !base.termImage) issues.push('Flashcard term/front is empty.');
+            if (!base.definitionText && !base.definitionImage) issues.push('Flashcard definition/back is empty.');
+            return base;
+        }
+
+        if (!prompt) issues.push('Question prompt is empty.');
+
+        if (questionType === 'typed_answer') {
+            base.type = 'typed_answer';
+            base.acceptedAnswers = normalizeTypedAnswerVariants(rawQuestion.acceptedAnswers || rawQuestion.accepted_answers || rawQuestion.variants || [rawQuestion.correctAnswer || rawQuestion.correct]);
+            base.correct = base.acceptedAnswers[0] || '';
+            base.correctExplanation = normalizeSheetText(rawQuestion.correctExplanation || rawQuestion.correct_explanation || rawQuestion.explanation);
+            base.diagramLabels = normalizeDiagramLabels(rawQuestion.diagramLabels || rawQuestion.diagram_labels || []);
+            if (!base.acceptedAnswers.length) issues.push('Typed Answer has no accepted answer.');
+            return base;
+        }
+
+        if (questionType === 'hierarchy') {
+            base.type = 'hierarchy';
+            const rawItems = Array.isArray(rawQuestion.items) ? rawQuestion.items : (Array.isArray(rawQuestion.options) ? rawQuestion.options : []);
+            base.options = rawItems.map(item => normalizeSheetText(typeof item === 'string' ? item : (item?.text || item?.label || item?.value))).filter(Boolean);
+            const suppliedOrder = Array.isArray(rawQuestion.correctOrder || rawQuestion.correct_order) ? (rawQuestion.correctOrder || rawQuestion.correct_order) : [];
+            base.correctOrder = suppliedOrder.length ? suppliedOrder.map(Number) : base.options.map((_, itemIndex) => itemIndex + 1);
+            if (base.options.length < 2) issues.push('Hierarchy needs at least 2 items.');
+            if (base.correctOrder.length !== base.options.length) issues.push('Hierarchy correct order must contain one position for every item.');
+            const validPositions = base.correctOrder.every(value => Number.isInteger(value) && value >= 1 && value <= base.options.length);
+            if (!validPositions || new Set(base.correctOrder).size !== base.correctOrder.length) issues.push('Hierarchy correct-order positions must be unique whole numbers within the item range.');
+            return base;
+        }
+
+        if (questionType === 'classify') {
+            base.type = 'classify';
+            let classifications = normalizeJsonClassifications(rawQuestion.classifications || rawQuestion.classes || rawQuestion.categories || []);
+            if (!classifications.length && rawQuestion.categories && typeof rawQuestion.categories === 'object' && !Array.isArray(rawQuestion.categories)) {
+                classifications = Object.keys(rawQuestion.categories).map((label, classIndex) => ({ id: `class_${classIndex + 1}`, label: normalizeSheetText(label), imageUrl: '' }));
+            }
+            base.classifications = classifications;
+            base.items = normalizeJsonClassifyItems(rawQuestion, classifications);
+            const classIds = new Set(classifications.map(item => normalizeSheetText(item.id)).filter(Boolean));
+            if (!classifications.length) issues.push('Classify has no classifications/categories.');
+            if (!base.items.length) issues.push('Classify has no items.');
+            if (classifications.some(item => !normalizeSheetText(item.id) || (!normalizeSheetText(item.label) && !normalizeSheetText(item.imageUrl)))) issues.push('Every classification needs an ID and a label or image.');
+            const invalidItems = base.items.filter(item => !classIds.has(normalizeSheetText(item.correctClassificationId)));
+            if (invalidItems.length) issues.push(`${invalidItems.length} classify ${invalidItems.length === 1 ? 'item has' : 'items have'} a missing or invalid classification.`);
+            return base;
+        }
+
+        base.type = questionType === 'diagrams' ? 'diagrams' : 'multiple choice';
+        base.diagramLabels = normalizeDiagramLabels(rawQuestion.diagramLabels || rawQuestion.diagram_labels || []);
+        const rawOptions = Array.isArray(rawQuestion.options) ? rawQuestion.options : [];
+        base.options = rawOptions.map(option => normalizeSheetText(typeof option === 'string' ? option : (option?.text || option?.label || option?.value))).filter(Boolean);
+        base.explanations = rawOptions.map(option => typeof option === 'object' ? normalizeSheetText(option?.explanation || option?.feedback) : '');
+        let correctAnswers = rawQuestion.correctAnswers || rawQuestion.correct_answers;
+        if (!Array.isArray(correctAnswers)) correctAnswers = [rawQuestion.correctAnswer ?? rawQuestion.correct ?? rawQuestion.answer].filter(value => value !== undefined && value !== null);
+        correctAnswers = correctAnswers.map(value => {
+            if (Number.isInteger(Number(value)) && String(value).trim() !== '') {
+                const oneBased = Number(value);
+                if (oneBased >= 1 && oneBased <= base.options.length) return base.options[oneBased - 1];
+            }
+            return normalizeSheetText(value);
+        }).filter(Boolean);
+        base.correctAnswers = Array.from(new Set(correctAnswers));
+        base.correct = base.correctAnswers[0] || '';
+        base.allowMultipleAnswers = !!(rawQuestion.allowMultipleAnswers ?? rawQuestion.allow_multiple_answers) || base.correctAnswers.length > 1;
+        base.buildUp = normalizeBuildUpValue(rawQuestion.buildUp || rawQuestion.build_up);
+        if (base.options.length < 2) issues.push('Multiple Choice needs at least 2 filled options.');
+        if (!base.correctAnswers.length) issues.push('Multiple Choice has no correct answer.');
+        const missingCorrect = base.correctAnswers.filter(answer => !base.options.includes(answer));
+        if (missingCorrect.length) issues.push('One or more correct answers do not exactly match an option.');
+        if (new Set(base.options.map(value => value.toLocaleLowerCase())).size !== base.options.length) issues.push('Multiple Choice contains duplicate options.');
+        return base;
+    }
+
+    function analyzeJsonQuizPayload(payload = {}) {
+        const rawQuestions = Array.isArray(payload) ? payload : (Array.isArray(payload?.questions) ? payload.questions : []);
+        if (!rawQuestions.length) throw new Error('This JSON file does not contain a non-empty questions array.');
+        let requestedMode = Array.isArray(payload) ? '' : normalizeJsonQuizMode(payload.quizType || payload.quiz_type || payload.type || payload.mode);
+        let provisionalMode = requestedMode || 'multiple_choice';
+        let questions = rawQuestions.map((question, index) => normalizeJsonQuizQuestion(question || {}, index, provisionalMode));
+        const uniqueTypes = Array.from(new Set(questions.map(question => question.questionType)));
+        let quizType = requestedMode;
+        if (!quizType) quizType = uniqueTypes.length > 1 ? 'exam' : (uniqueTypes[0] || 'multiple_choice');
+        if (quizType !== 'exam' && uniqueTypes.some(type => type !== quizType)) {
+            quizType = 'exam';
+            questions = rawQuestions.map((question, index) => normalizeJsonQuizQuestion(question || {}, index, 'exam'));
+        }
+        if (quizType === 'exam') {
+            questions = rawQuestions.map((question, index) => normalizeJsonQuizQuestion(question || {}, index, 'exam'));
+        }
+        const counts = questions.reduce((map, question) => {
+            map[question.questionType] = (map[question.questionType] || 0) + 1;
+            return map;
+        }, {});
+        const problemQuestions = questions.map((question, index) => ({ number: index + 1, type: question.questionType, issues: question.importIssues || [] })).filter(item => item.issues.length);
+        return {
+            format: Array.isArray(payload) ? '' : normalizeSheetText(payload.format),
+            version: Array.isArray(payload) ? 1 : Number(payload.version || 1),
+            title: Array.isArray(payload) ? '' : normalizeSheetText(payload.title || payload.name),
+            quizType,
+            questions,
+            counts,
+            problemQuestions
+        };
+    }
+
+    function renderJsonQuizImportPreview() {
+        if (!elements.importJsonPreview) return;
+        const analysis = state.auth.jsonQuizImportAnalysis;
+        if (!analysis) {
+            elements.importJsonPreview.innerHTML = '<span>Choose a Study Bunny quiz JSON file to preview it locally before importing.</span>';
+            elements.importJsonPreview.classList.remove('is-error', 'is-success');
+            return;
+        }
+        const typeSummary = Object.entries(analysis.counts).map(([type, count]) => `${count} ${getImportQuizTypeLabel(type)}`).join(' · ');
+        const issueCount = analysis.problemQuestions.length;
+        const issuesHtml = issueCount
+            ? `<details class="json-import-issues" open><summary>${issueCount} ${issueCount === 1 ? 'question needs' : 'questions need'} attention</summary><div class="json-import-issue-list">${analysis.problemQuestions.map(item => `<div><strong>Q${item.number} · ${escapeHtml(getImportQuizTypeLabel(item.type))}</strong><ul>${item.issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul></div>`).join('')}</div></details>`
+            : '<div class="json-import-valid">No question issues detected.</div>';
+        elements.importJsonPreview.innerHTML = `<div><strong>${escapeHtml(getImportQuizTypeLabel(analysis.quizType))}</strong> · ${analysis.questions.length} ${analysis.questions.length === 1 ? 'question' : 'questions'}${typeSummary ? ` · ${escapeHtml(typeSummary)}` : ''}</div>${issuesHtml}`;
+        elements.importJsonPreview.classList.toggle('is-success', !issueCount);
+        elements.importJsonPreview.classList.remove('is-error');
+    }
+
+    async function readAndPreviewJsonQuizFile() {
+        const file = elements.importJsonQuizFile?.files?.[0];
+        state.auth.jsonQuizImportPayload = null;
+        state.auth.jsonQuizImportAnalysis = null;
+        state.auth.jsonQuizImportFileName = file?.name || '';
+        if (!file) {
+            renderJsonQuizImportPreview();
+            renderGoogleSheetsImportControls();
+            return null;
+        }
+        let payload;
+        try {
+            payload = JSON.parse(await file.text());
+        } catch (error) {
+            if (elements.importJsonPreview) {
+                elements.importJsonPreview.textContent = `JSON syntax error: ${error.message}`;
+                elements.importJsonPreview.classList.add('is-error');
+                elements.importJsonPreview.classList.remove('is-success');
+            }
+            renderGoogleSheetsImportControls();
+            throw new Error(`Could not parse this JSON file. ${error.message}`);
+        }
+        const analysis = analyzeJsonQuizPayload(payload);
+        state.auth.jsonQuizImportPayload = payload;
+        state.auth.jsonQuizImportAnalysis = analysis;
+        if (elements.importJsonQuizNameInput && !normalizeSheetText(elements.importJsonQuizNameInput.value)) {
+            elements.importJsonQuizNameInput.value = analysis.title || file.name.replace(/\.json$/i, '');
+        }
+        renderJsonQuizImportPreview();
+        renderGoogleSheetsImportControls();
+        return analysis;
+    }
+
+    function updateLocalManagementCacheAfterJsonImport(result = {}) {
+        const quizId = normalizeSheetText(result.quizId);
+        if (!quizId) return;
+        const folder = state.auth.supabaseFolders.find(item => item.id === result.folderId) || null;
+        const typeLabel = getImportQuizTypeLabel(result.quizType);
+        const existingIndex = state.auth.managedQuizzes.findIndex(quiz => quiz.id === quizId);
+        if (existingIndex >= 0) {
+            state.auth.managedQuizzes[existingIndex] = {
+                ...state.auth.managedQuizzes[existingIndex],
+                quizType: result.quizType || state.auth.managedQuizzes[existingIndex].quizType,
+                typeLabel,
+                questionCount: Number(result.totalQuestionCount ?? result.questionCount ?? state.auth.managedQuizzes[existingIndex].questionCount)
+            };
+        } else {
+            state.auth.managedQuizzes.push({
+                id: quizId,
+                name: result.quizName,
+                folderId: result.folderId || '',
+                folderName: folder ? normalizeFolderName(folder.name) : '',
+                classId: normalizeSheetText(folder?.classId),
+                className: '',
+                questionCount: Number(result.questionCount || 0),
+                isArchived: false,
+                questionIds: [],
+                quizType: result.quizType || 'multiple_choice',
+                typeLabel,
+                hasBuildUpStrings: false,
+                sortOrder: Number(result.sortOrder || 0),
+                updatedAt: new Date().toISOString(),
+                firstQuestionId: ''
+            });
+        }
+        const managedCache = getSupabaseManagementCacheEntry('managedQuizzes') || {};
+        setSupabaseManagementCacheEntry('managedQuizzes', {
+            ...managedCache,
+            managedQuizzes: state.auth.managedQuizzes,
+            quizChallengeAchievements: cloneQuizChallengeAchievementMap(state.auth.quizChallengeAchievements),
+            quizChallengeUnavailable: !!state.auth.quizChallengeUnavailable,
+            studioActivity: cloneStudioActivityCache(state.auth.studioActivity)
+        });
+        setSupabaseManagementCacheEntry('quizList', { quizList: buildSupabaseQuizDescriptorsFromManagedQuizzes() });
+        renderQuizManagementList();
+        renderStudioHomeDashboard();
+        renderGoogleSheetsImportControls();
+    }
+
+    async function importJsonQuizToSupabase() {
+        if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before importing JSON quizzes.');
+        const analysis = state.auth.jsonQuizImportAnalysis;
+        if (!analysis?.questions?.length) throw new Error('Choose and preview a valid JSON quiz file first.');
+        const appendMode = isImportAppendMode(elements.importJsonDestinationModeSelect);
+        let quizId = '';
+        let quizName = '';
+        let folderId = '';
+        let startSortOrder = 0;
+        let totalQuestionCount = analysis.questions.length;
+        let resultQuizType = analysis.quizType;
+        let sortOrder = 0;
+
+        if (appendMode) {
+            const appendContext = await getImportAppendTargetContext(elements.importJsonAppendQuizSelect?.value);
+            validateImportAppendTarget(appendContext, analysis.quizType);
+            quizId = appendContext.quizId;
+            quizName = appendContext.quizName;
+            folderId = appendContext.folderId;
+            startSortOrder = appendContext.maxSortOrder + 1;
+            totalQuestionCount = appendContext.questionCount + analysis.questions.length;
+            resultQuizType = appendContext.quizType === 'exam' ? 'exam' : analysis.quizType;
+        } else {
+            quizName = normalizeSheetText(elements.importJsonQuizNameInput?.value) || analysis.title || state.auth.jsonQuizImportFileName.replace(/\.json$/i, '') || 'Imported Quiz';
+            folderId = normalizeSheetText(elements.importJsonTargetFolderSelect?.value);
+            sortOrder = state.auth.managedQuizzes.filter(quiz => (quiz.folderId || '') === (folderId || '')).reduce((maxValue, quiz) => Math.max(maxValue, Number(quiz.sortOrder ?? 0)), -1) + 1;
+            const description = setQuizModeInDescription('', analysis.quizType);
+            const { data: quizRow, error: quizError } = await state.auth.client.from('quizzes').insert({
+                user_id: state.auth.user.id,
+                folder_id: folderId || null,
+                name: quizName,
+                description,
+                sort_order: sortOrder,
+                is_archived: false
+            }).select('id').single();
+            if (quizError) throw quizError;
+            quizId = quizRow.id;
+        }
+
+        const operationLabel = appendMode ? `Adding JSON questions to ${quizName}` : `Importing ${quizName}`;
+        await importGoogleSheetsQuestionsToSupabaseQuiz(quizId, analysis.questions, {
+            startSortOrder,
+            onProgress: progress => setImportProgressFromEvent(operationLabel, progress)
+        });
+        const result = {
+            quizId,
+            quizName,
+            folderId,
+            quizType: resultQuizType,
+            questionCount: analysis.questions.length,
+            totalQuestionCount,
+            appended: appendMode,
+            sortOrder
+        };
+        updateLocalManagementCacheAfterJsonImport(result);
+        await refreshQuizCatalog({ selectQuizId: `sb:${quizId}` });
+        renderJsonQuizImportPreview();
+        const issueCount = analysis.problemQuestions.length;
+        setCreatorStatus(`${appendMode ? 'JSON questions added' : 'JSON quiz imported'}: ${analysis.questions.length} questions${issueCount ? `; ${issueCount} ${issueCount === 1 ? 'question needs' : 'questions need'} attention and will show ! in the question list` : '; no issues detected'}.`, issueCount ? 'neutral' : 'success');
+        return result;
     }
 
 
@@ -27708,7 +28918,7 @@ async function loadQuizListFromSupabase(options = {}) {
                     .order('name', { ascending: true }),
                 state.auth.client
                     .from('quizzes')
-                    .select('id, folder_id, name, sort_order, is_archived')
+                    .select('id, folder_id, name, description, sort_order, is_archived')
                     .eq('is_archived', false)
                     .order('sort_order', { ascending: true })
                     .order('name', { ascending: true }),
@@ -27745,7 +28955,8 @@ async function loadQuizListFromSupabase(options = {}) {
                     const types = (quizTypeMap.get(quiz.id) || [])
                         .map(type => normalizeSheetText(type || 'multiple_choice') || 'multiple_choice');
                     const uniqueTypes = Array.from(new Set(types));
-                    const quizType = uniqueTypes.length === 1 ? uniqueTypes[0] : 'mixed';
+                    const storedQuizMode = getQuizModeFromDescription(quiz.description || '');
+                    const quizType = storedQuizMode === 'exam' ? 'exam' : (uniqueTypes.length === 1 ? uniqueTypes[0] : 'mixed');
                     const folder = folderMap.get(quiz.folder_id) || null;
                     return {
                         id: `sb:${quiz.id}`,
@@ -27773,6 +28984,161 @@ async function loadQuizListFromSupabase(options = {}) {
         console.error('Failed to load Supabase quiz list:', error);
         return [];
     }
+}
+
+
+async function buildExamQuestionsFromSupabaseRows(rows, quizDescriptor, quizName, markLoad) {
+    const unresolvedIssueRows = (rows || []).filter(row => getStoredQuestionImportIssues(row).length);
+    if (unresolvedIssueRows.length) {
+        const preview = unresolvedIssueRows.slice(0, 5).map((row, index) => {
+            const rowIndex = rows.findIndex(item => item.id === row.id);
+            return `Q${rowIndex + 1}: ${getStoredQuestionImportIssues(row).join('; ')}`;
+        }).join(' | ');
+        const remainder = unresolvedIssueRows.length > 5 ? ` (+${unresolvedIssueRows.length - 5} more)` : '';
+        throw createStudyLoadDiagnosticError(`"${quizName}" has ${unresolvedIssueRows.length} imported ${unresolvedIssueRows.length === 1 ? 'question' : 'questions'} that need attention before study mode can begin. ${preview}${remainder}`);
+    }
+
+    const mcRows = [];
+    const hierarchyRows = [];
+    const classifyRows = [];
+    (rows || []).forEach(row => {
+        const storedType = normalizeSheetText(row?.question_type || 'multiple_choice') || 'multiple_choice';
+        if (storedType === 'hierarchy') hierarchyRows.push(row);
+        else if (storedType === 'classify') classifyRows.push(row);
+        else mcRows.push(row);
+    });
+
+    const [mcDetails, hierarchyDetails, classifyDetails] = await Promise.all([
+        mcRows.length ? loadMultipleChoiceDetailsByQuestionIds(mcRows.map(row => row.id)) : Promise.resolve([]),
+        hierarchyRows.length ? loadHierarchyDetailsByQuestionIds(hierarchyRows.map(row => row.id)) : Promise.resolve([]),
+        classifyRows.length ? loadClassifyDetailsByQuestionIds(classifyRows.map(row => row.id)) : Promise.resolve([])
+    ]);
+    markLoad('Exam question details');
+
+    const mcMap = new Map((mcDetails || []).map(row => [row.question_id, row]));
+    const hierarchyMap = new Map((hierarchyDetails || []).map(row => [row.question_id, row]));
+    const classifyMap = new Map((classifyDetails || []).map(row => [row.question_id, row]));
+    const sourceQuizId = normalizeSheetText(quizDescriptor.sourceQuizId);
+
+    const questions = (rows || []).map(row => {
+        const storedType = normalizeSheetText(row?.question_type || 'multiple_choice') || 'multiple_choice';
+        if (storedType === 'hierarchy') {
+            const detail = hierarchyMap.get(row.id);
+            if (!detail) throw createStudyLoadDiagnosticError(`Exam question is missing its hierarchy details in "${quizName}".`);
+            const itemDrafts = getHierarchyDraftsFromDetailRow(detail);
+            const options = itemDrafts.map(item => normalizeSheetText(item.text));
+            const correctOrder = itemDrafts
+                .map((draft, index) => ({ position: Number(draft.position || index + 1), originalIndex: index + 1 }))
+                .sort((a, b) => a.position - b.position)
+                .map(item => item.originalIndex);
+            return {
+                id: `q_${state.questionIdCounter++}`,
+                sourceQuestionId: row.id,
+                sourceQuizId,
+                type: 'hierarchy',
+                examMode: true,
+                question: getStoredTextForDisplay(row.prompt_plain, parseStoredQuestionImportIssues(row.prompt_html).html),
+                options,
+                correctOrder,
+                image: normalizeSheetText(row.image_url),
+                learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
+                learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+            };
+        }
+        if (storedType === 'classify') {
+            const detail = classifyMap.get(row.id);
+            if (!detail) throw createStudyLoadDiagnosticError(`Exam question is missing its classify details in "${quizName}".`);
+            const items = Array.isArray(detail.items_json) ? detail.items_json.map(item => ({
+                kind: normalizeSheetText(item?.kind || (item?.imageUrl ? 'image' : 'text')) || 'text',
+                raw: normalizeSheetText(item?.raw || item?.text),
+                imageUrl: normalizeSheetText(item?.imageUrl),
+                text: normalizeSheetText(item?.text || item?.raw),
+                dragLabel: normalizeSheetText(item?.dragLabel || item?.text || item?.raw || 'Image item'),
+                ariaLabel: normalizeSheetText(item?.ariaLabel || `Classify item ${item?.text || item?.raw || 'image'}`),
+                correctClassificationId: normalizeSheetText(item?.correctClassificationId)
+            })) : [];
+            const classifications = Array.isArray(detail.classifications_json) ? detail.classifications_json.map(classification => ({
+                label: normalizeSheetText(classification?.label),
+                imageUrl: normalizeSheetText(classification?.imageUrl),
+                id: normalizeSheetText(classification?.id)
+            })).filter(classification => classification.id && (classification.label || classification.imageUrl)) : [];
+            return {
+                id: `q_${state.questionIdCounter++}`,
+                sourceQuestionId: row.id,
+                sourceQuizId,
+                type: 'classify',
+                examMode: true,
+                question: getStoredTextForDisplay(row.prompt_plain, parseStoredQuestionImportIssues(row.prompt_html).html),
+                items,
+                classifications,
+                image: normalizeSheetText(row.image_url),
+                learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
+                learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+            };
+        }
+
+        const detail = mcMap.get(row.id);
+        if (!detail) throw createStudyLoadDiagnosticError(`Exam question is missing its multiple-choice/typed-answer details in "${quizName}".`);
+        const effectiveType = getEffectiveQuestionTypeFromDetail(storedType, detail);
+        if (effectiveType === 'typed_answer') {
+            const acceptedAnswers = getTypedAnswerVariantsFromDetailRow(detail);
+            return {
+                id: `q_${state.questionIdCounter++}`,
+                sourceQuestionId: row.id,
+                sourceQuizId,
+                type: 'typed answer',
+                examMode: true,
+                question: getStoredTextForDisplay(row.prompt_plain, parseStoredQuestionImportIssues(row.prompt_html).html),
+                acceptedAnswers,
+                correct: normalizeSheetText(detail.correct_answer) || acceptedAnswers[0] || '',
+                correctExplanation: getStoredTextForDisplay('', detail.correct_explanation_html),
+                image: normalizeSheetText(row.image_url),
+                diagramLabels: getDiagramLabelsFromDetailRow(detail),
+                learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+                learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
+                learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+            };
+        }
+
+        const optionDrafts = getMultipleChoiceDraftsFromDetailRow(detail);
+        const options = optionDrafts.map(draft => draft.text);
+        const optionImages = optionDrafts.map(draft => normalizeSheetText(draft.imageUrl));
+        const answerValues = optionDrafts.map(getOptionAnswerValue);
+        const explanations = optionDrafts.map(draft => draft.explanation);
+        const correctAnswer = normalizeSheetText(detail.correct_answer);
+        const correctAnswers = getMultipleChoiceCorrectAnswersFromDetailRow(detail);
+        const correctIndex = answerValues.findIndex(value => value === correctAnswer);
+        if (correctIndex >= 0 && !explanations[correctIndex]) explanations[correctIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
+        correctAnswers.forEach(answer => {
+            const answerIndex = answerValues.findIndex(value => value === answer);
+            if (answerIndex >= 0 && !explanations[answerIndex]) explanations[answerIndex] = getStoredTextForDisplay('', detail.correct_explanation_html);
+        });
+        return {
+            id: `q_${state.questionIdCounter++}`,
+            sourceQuestionId: row.id,
+            sourceQuizId,
+            type: 'multiple choice',
+            examMode: true,
+            question: getStoredTextForDisplay(row.prompt_plain, parseStoredQuestionImportIssues(row.prompt_html).html),
+            options,
+            optionImages,
+            correct: correctAnswer,
+            correctAnswers: correctAnswers.length ? correctAnswers : (correctAnswer ? [correctAnswer] : []),
+            allowMultipleAnswers: getAllowMultipleAnswersFromDetailRow(detail),
+            explanations,
+            buildUp: '',
+            image: normalizeSheetText(row.image_url),
+            diagramLabels: getQuestionImageLabelsFromDetailRow(detail),
+            learningResources: getStoredTextForDisplay('', row.learning_resources_html),
+            learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
+            learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
+        };
+    });
+
+    if (!questions.length) throw createStudyLoadDiagnosticError(`No usable Exam questions were built for "${quizName}".`);
+    return resolveSupabaseMediaReferencesForStudyLoad(questions, `Exam "${quizName}"`);
 }
 
 async function loadQuestionsFromSupabase(quizDescriptor) {
@@ -27805,6 +29171,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         markLoad('question rows');
 
         const diagramSharing = getDiagramSharingFromDescription(quizRow?.description || '');
+        const handwrittenFlashcardConfig = getHandwrittenFlashcardConfigFromDescription(quizRow?.description || '');
         const rows = questionRows || [];
         const questionIds = rows.map(row => row.id).filter(Boolean);
         if (!questionIds.length) {
@@ -27812,14 +29179,21 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         }
 
         const rowTypes = Array.from(new Set(rows.map(row => normalizeSheetText(row?.question_type || 'multiple_choice') || 'multiple_choice')));
-        if (rowTypes.length > 1) {
-            throw createStudyLoadDiagnosticError(`"${quizName}" has mixed question types (${rowTypes.join(', ')}). Study mode expects one quiz type per quiz.`);
+        const storedQuizMode = getQuizModeFromDescription(quizRow?.description || '');
+        let quizType = storedQuizMode === 'exam'
+            ? 'exam'
+            : normalizeSheetText(quizDescriptor.quizType || rowTypes[0] || 'multiple_choice');
+        if (rowTypes.length > 1 && quizType !== 'exam') {
+            throw createStudyLoadDiagnosticError(`"${quizName}" has mixed question types (${rowTypes.join(', ')}), but it is not marked as an Exam.`);
         }
 
-        let quizType = normalizeSheetText(quizDescriptor.quizType || rowTypes[0] || 'multiple_choice');
-        const supportedTypes = new Set(['multiple_choice', 'flashcard', 'hierarchy', 'classify', 'diagrams', 'typed_answer']);
+        const supportedTypes = new Set(['multiple_choice', 'flashcard', 'hierarchy', 'classify', 'diagrams', 'typed_answer', 'exam']);
         if (!supportedTypes.has(quizType)) {
             throw createStudyLoadDiagnosticError(`"${quizName}" uses unsupported question type "${quizType}".`);
+        }
+
+        if (quizType === 'exam') {
+            return buildExamQuestionsFromSupabaseRows(rows, quizDescriptor, quizName, markLoad);
         }
 
         const sharedDiagramSourceQuestionId = getDiagramSharingSourceQuestionId(diagramSharing);
@@ -27865,6 +29239,15 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     definitionImageDrawStrokes: parsedDefinitionSide.drawStrokes,
                     termImageSavedSignature: parsedTermSide.savedImageSignature,
                     definitionImageSavedSignature: parsedDefinitionSide.savedImageSignature,
+                    termContentMode: parsedTermSide.contentMode,
+                    definitionContentMode: parsedDefinitionSide.contentMode,
+                    termImageLayout: normalizeFlashcardImageLayout(parsedTermSide.imageLayout, !!normalizeSheetText(detail.term_image_url)),
+                    definitionImageLayout: normalizeFlashcardImageLayout(parsedDefinitionSide.imageLayout, !!normalizeSheetText(detail.definition_image_url)),
+                    termHandwriting: [],
+                    definitionHandwriting: [],
+                    flashcardHandwritingDeferred: handwrittenFlashcardConfig.enabled && (parsedTermSide.contentMode === 'handwritten' || parsedDefinitionSide.contentMode === 'handwritten'),
+                    handwrittenQuizEnabled: handwrittenFlashcardConfig.enabled,
+                    handwrittenFlashcardStyle: handwrittenFlashcardConfig.style,
                     learningResources: getStoredTextForDisplay('', row.learning_resources_html),
                     learningResourcesHtml: normalizeSheetText(row.learning_resources_html),
                     learningResourcesImage: normalizeSheetText(row.learning_resources_image_url)
@@ -30018,6 +31401,11 @@ function getFlashcardSideData(q, side) {
             imageUrl: normalizeSheetText(q.definitionImage),
             imageLabels: normalizeDiagramLabels(q.definitionImageLabels || []),
             imageDrawStrokes: cloneImageEditorDrawStrokes(q.definitionImageDrawStrokes || []),
+            contentMode: normalizeFlashcardContentMode(q.definitionContentMode || 'typed'),
+            handwritingStrokes: normalizeHandwritingStrokes(q.definitionHandwriting || []),
+            imageLayout: normalizeFlashcardImageLayout(q.definitionImageLayout, !!normalizeSheetText(q.definitionImage)),
+            flashcardStyle: normalizeHandwrittenFlashcardStyle(q.handwrittenFlashcardStyle || {}),
+            handwrittenQuizEnabled: !!q.handwrittenQuizEnabled,
             labelDisplayMode: 'normal'
         };
     }
@@ -30029,13 +31417,18 @@ function getFlashcardSideData(q, side) {
         imageUrl: normalizeSheetText(q.termImage),
         imageLabels: normalizeDiagramLabels(q.termImageLabels || []),
         imageDrawStrokes: cloneImageEditorDrawStrokes(q.termImageDrawStrokes || []),
+        contentMode: normalizeFlashcardContentMode(q.termContentMode || 'typed'),
+        handwritingStrokes: normalizeHandwritingStrokes(q.termHandwriting || []),
+        imageLayout: normalizeFlashcardImageLayout(q.termImageLayout, !!normalizeSheetText(q.termImage)),
+        flashcardStyle: normalizeHandwrittenFlashcardStyle(q.handwrittenFlashcardStyle || {}),
+        handwrittenQuizEnabled: !!q.handwrittenQuizEnabled,
         labelDisplayMode: 'normal'
     };
 }
 
 function flashcardSideHasUserContent(sideData = {}) {
     const safeHtml = sanitizeLearningResourcesHtml(sideData.html || '');
-    return !!(htmlToDisplayText(safeHtml) || normalizeSheetText(sideData.text) || normalizeSheetText(sideData.imageUrl));
+    return !!(htmlToDisplayText(safeHtml) || normalizeSheetText(sideData.text) || normalizeSheetText(sideData.imageUrl) || normalizeHandwritingStrokes(sideData.handwritingStrokes || []).length);
 }
 
 function getFlashcardSideImageLabelsForMode(labels = [], mode = 'normal') {
@@ -30074,9 +31467,97 @@ function toggleFlashcardFlip() {
     }
 }
 
+function renderHandwritingStrokesToCanvas(canvas, strokes = []) {
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width || canvas.clientWidth || 1));
+    const height = Math.max(1, Math.round(rect.height || canvas.clientHeight || 1));
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,width,height);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    normalizeHandwritingStrokes(strokes).forEach(stroke => {
+        const points = stroke.points;
+        if (!points.length) return;
+        ctx.strokeStyle = stroke.color;
+        if (points.length === 1) {
+            ctx.beginPath();
+            ctx.arc(points[0].x*width, points[0].y*height, Math.max(.6, stroke.size*(.35+points[0].p*.85))/2, 0, Math.PI*2);
+            ctx.fillStyle = stroke.color; ctx.fill(); return;
+        }
+        for (let i=1;i<points.length;i+=1) {
+            const a=points[i-1], b=points[i];
+            ctx.beginPath();
+            ctx.moveTo(a.x*width,a.y*height);
+            ctx.lineTo(b.x*width,b.y*height);
+            ctx.lineWidth=Math.max(.8,stroke.size*(.35+((a.p+b.p)/2)*.85));
+            ctx.stroke();
+        }
+    });
+}
+
+async function loadFlashcardHandwritingDetailByQuestionId(questionId = '') {
+    const safeId = normalizeSheetText(questionId);
+    if (!safeId || !state.auth.client) return null;
+    if (!(state.auth.flashcardHandwritingDetailCache instanceof Map)) state.auth.flashcardHandwritingDetailCache = new Map();
+    if (!(state.auth.flashcardHandwritingDetailPromiseCache instanceof Map)) state.auth.flashcardHandwritingDetailPromiseCache = new Map();
+    if (state.auth.flashcardHandwritingDetailCache.has(safeId)) return state.auth.flashcardHandwritingDetailCache.get(safeId);
+    if (state.auth.flashcardHandwritingDetailPromiseCache.has(safeId)) return state.auth.flashcardHandwritingDetailPromiseCache.get(safeId);
+    const promise = state.auth.client.from('flashcard_questions').select('question_id, term_handwriting, definition_handwriting').eq('question_id', safeId).maybeSingle()
+        .then(({data,error}) => {
+            if (error) {
+                if (/term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) {
+                    throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql to use handwritten flashcards.');
+                }
+                throw error;
+            }
+            const row = data ? { ...data, term_handwriting: normalizeHandwritingStrokes(data.term_handwriting || []), definition_handwriting: normalizeHandwritingStrokes(data.definition_handwriting || []) } : null;
+            if (row) state.auth.flashcardHandwritingDetailCache.set(safeId, row);
+            return row;
+        }).finally(() => state.auth.flashcardHandwritingDetailPromiseCache.delete(safeId));
+    state.auth.flashcardHandwritingDetailPromiseCache.set(safeId, promise);
+    return promise;
+}
+
+function queueFlashcardLazyHandwritingHydration(question = {}) {
+    if (!question?.flashcardHandwritingDeferred) return;
+    const sourceQuestionId = normalizeSheetText(question.sourceQuestionId);
+    if (!sourceQuestionId) { question.flashcardHandwritingDeferred = false; return; }
+    loadFlashcardHandwritingDetailByQuestionId(sourceQuestionId).then(detail => {
+        question.termHandwriting = normalizeHandwritingStrokes(detail?.term_handwriting || []);
+        question.definitionHandwriting = normalizeHandwritingStrokes(detail?.definition_handwriting || []);
+        question.flashcardHandwritingDeferred = false;
+        if (state.questionQueue[state.currentIndex] === question && !state.questionAnswered && !isQuizFinished()) showQuestion();
+    }).catch(error => { question.flashcardHandwritingDeferred = false; console.error('Could not lazy-load handwritten flashcard data:', error); });
+}
+
+function applyFlashcardFaceStyle(face, sideData = {}) {
+    const style = normalizeHandwrittenFlashcardStyle(sideData.flashcardStyle || {});
+    face.classList.add('handwritten-flashcard-face');
+    face.style.setProperty('--hand-card-bg', style.backgroundColor);
+    const rgb = style.backgroundColor.replace('#','');
+    const r=parseInt(rgb.slice(0,2),16), g=parseInt(rgb.slice(2,4),16), b=parseInt(rgb.slice(4,6),16);
+    face.style.setProperty('--hand-card-text', ((r*299+g*587+b*114)/1000) < 138 ? '#ffffff' : '#111827');
+    face.style.setProperty('--hand-grid-color', style.gridColor);
+    face.style.setProperty('--hand-grid-opacity', String(style.gridOpacity));
+    face.classList.remove('grid-lines','grid-graph','grid-dots');
+    if (style.gridType !== 'none') face.classList.add(`grid-${style.gridType}`);
+    const grid = document.createElement('div');
+    grid.className = 'flashcard-handwritten-grid';
+    face.appendChild(grid);
+}
+
 function buildFlashcardFace(sideData, faceClass) {
     const face = document.createElement('div');
     face.className = `flashcard-face ${faceClass}`;
+    const handwrittenMode = normalizeFlashcardContentMode(sideData.contentMode || 'typed') === 'handwritten';
+    if (sideData.handwrittenQuizEnabled || handwrittenMode) applyFlashcardFaceStyle(face, sideData);
 
     const content = document.createElement('div');
     content.className = 'flashcard-side-content';
@@ -30090,7 +31571,24 @@ function buildFlashcardFace(sideData, faceClass) {
     const hasImage = !!sideData.imageUrl;
     const displayImageLabels = getFlashcardSideImageLabelsForMode(imageLabels, sideData.labelDisplayMode || 'normal');
 
-    if (hasText && hasImage) {
+    const imageLayout = normalizeFlashcardImageLayout(sideData.imageLayout, hasImage);
+    const fullImageOnly = !!(sideData.handwrittenQuizEnabled && hasImage && imageLayout === 'full');
+    if (fullImageOnly) {
+        content.classList.add('handwriting-full-image', 'image-only');
+    } else if (handwrittenMode) {
+        if (hasImage && imageLayout === 'full') content.classList.add('handwriting-full-image', 'image-only');
+        else if (hasImage) content.classList.add('handwriting-half');
+        else content.classList.add('text-only');
+        if (!(hasImage && imageLayout === 'full')) {
+            const handwritingArea = document.createElement('div');
+            handwritingArea.className = 'flashcard-handwriting-area';
+            const handwritingCanvas = document.createElement('canvas');
+            handwritingCanvas.className = 'flashcard-handwriting-canvas';
+            handwritingArea.appendChild(handwritingCanvas);
+            content.appendChild(handwritingArea);
+            requestAnimationFrame(() => renderHandwritingStrokesToCanvas(handwritingCanvas, sideData.handwritingStrokes || []));
+        }
+    } else if (hasText && hasImage) {
         content.classList.add('split');
     } else if (hasText) {
         content.classList.add('text-only');
@@ -30100,7 +31598,7 @@ function buildFlashcardFace(sideData, faceClass) {
         content.classList.add('text-only');
     }
 
-    if (hasText) {
+    if (hasText && !handwrittenMode && !fullImageOnly) {
         const text = document.createElement('div');
         text.className = 'flashcard-side-text';
         if (hasGeneratedLabelAnswers) {
@@ -30820,6 +32318,7 @@ function showFlashcard(q) {
     elements.questionContainer.appendChild(container);
 
     queueFlashcardLazyImageHydration(q);
+    queueFlashcardLazyHandwritingHydration(q);
     enableFlashcardGesture(
         card,
         () => gradeFlashcard(true, { animationDelayMs: 195 }),
@@ -31206,7 +32705,7 @@ function showClassifyCategoriesDraggable(q) {
     const categoryPlacements = new Map();
     const progressLockedCorrectCategoryIds = new Set();
     const progressWrongCategoryIds = new Set();
-    const shouldUseProgressClassifyRetry = () => isProgressMode() && !isAnswerFeedbackHidden();
+    const shouldUseProgressClassifyRetry = () => isProgressMode() && !isAnswerFeedbackHidden() && !q.examMode;
     let selectedClassificationId = null;
     let suppressCategoryClickId = null;
     let progressClassifyNeedsRevision = false;
@@ -31749,7 +33248,7 @@ function showClassify(q) {
     const placements = new Map();
     const progressLockedCorrectKeys = new Set();
     const progressWrongKeys = new Set();
-    const shouldUseProgressClassifyRetry = () => isProgressMode() && !isAnswerFeedbackHidden();
+    const shouldUseProgressClassifyRetry = () => isProgressMode() && !isAnswerFeedbackHidden() && !q.examMode;
     let selectedItemKey = null;
     let suppressClickRuntimeKey = null;
     let progressClassifyNeedsRevision = false;
@@ -34263,11 +35762,37 @@ if (elements.createClassifyItemsContainer) {
 if (elements.createQuizTypeSelect) {
     elements.createQuizTypeSelect.addEventListener('change', () => {
         if (state.auth.editingQuizId) {
-            elements.createQuizTypeSelect.value = state.auth.editingQuizType;
+            elements.createQuizTypeSelect.value = getStudioQuizMode();
             return;
         }
-        state.auth.editingQuizType = normalizeSheetText(elements.createQuizTypeSelect.value || 'multiple_choice') || 'multiple_choice';
+        state.auth.editingQuizMode = normalizeSheetText(elements.createQuizTypeSelect.value || 'multiple_choice') || 'multiple_choice';
+        state.auth.editingQuizType = state.auth.editingQuizMode === 'exam' ? 'multiple_choice' : state.auth.editingQuizMode;
+        if (elements.examQuestionTypeSelect) elements.examQuestionTypeSelect.value = state.auth.editingQuizType;
+        clearStudioQuestionInputs();
         updateCreateQuizModeUI();
+    });
+}
+
+if (elements.examQuestionTypeSelect) {
+    elements.examQuestionTypeSelect.addEventListener('change', () => {
+        if (!isStudioExamMode()) return;
+        const nextType = normalizeSheetText(elements.examQuestionTypeSelect.value || 'multiple_choice') || 'multiple_choice';
+        if (!EXAM_QUESTION_TYPES.includes(nextType)) {
+            elements.examQuestionTypeSelect.value = getStudioCurrentQuizType();
+            return;
+        }
+        if (nextType === getStudioCurrentQuizType()) return;
+        if (state.auth.studioHasUnsavedChanges && state.auth.editingQuestionId) {
+            cacheCurrentStudioQuestionDraft();
+        }
+        state.auth.editingQuizType = nextType;
+        const currentRow = getStudioQuestionRowById(state.auth.editingQuestionId);
+        if (currentRow) currentRow.question_type = nextType;
+        const cachedDraft = state.auth.editingQuestionId ? state.auth.studioQuestionDrafts.get(state.auth.editingQuestionId) : null;
+        if (cachedDraft) cachedDraft.questionType = nextType;
+        updateStudioEditorTypeUI();
+        renderStudioQuestionList();
+        setStudioDirtyState(true);
     });
 }
 
@@ -36408,6 +37933,24 @@ if (elements.importTemplateSheetBtn) {
     });
 }
 
+if (elements.importJsonQuizFile) {
+    elements.importJsonQuizFile.addEventListener('change', () => {
+        readAndPreviewJsonQuizFile().catch(err => {
+            console.error(err);
+            setCreatorStatus(err.message || 'Could not preview that JSON quiz.', 'error');
+        });
+    });
+}
+
+if (elements.importJsonQuizBtn) {
+    elements.importJsonQuizBtn.addEventListener('click', () => {
+        importJsonQuizToSupabase().catch(err => {
+            console.error(err);
+            setCreatorStatus(err.message || 'Could not import that JSON quiz.', 'error');
+        });
+    });
+}
+
 [
     elements.importSourceDestinationModeSelect,
     elements.importSourceAppendQuizSelect,
@@ -36415,7 +37958,11 @@ if (elements.importTemplateSheetBtn) {
     elements.importTemplateTabInput,
     elements.importTemplateDestinationModeSelect,
     elements.importTemplateAppendQuizSelect,
-    elements.importTemplateTargetFolderSelect
+    elements.importTemplateTargetFolderSelect,
+    elements.importJsonDestinationModeSelect,
+    elements.importJsonAppendQuizSelect,
+    elements.importJsonQuizNameInput,
+    elements.importJsonTargetFolderSelect
 ].forEach(el => {
     if (!el) return;
     const eventName = el.tagName === 'SELECT' ? 'change' : 'input';
@@ -36859,6 +38406,110 @@ elements.questionImage.onclick = function () {
     this.classList.remove('zoomed');
     openFlashcardImageOverlay(src, this.alt || 'Question image', { diagramLabels });
 };
+
+    // Phase 23B handwritten flashcard bindings. Kept feature-scoped so regular typed flashcards retain their existing event path.
+    elements.flashcardHandwrittenToggle?.addEventListener('change', () => {
+        if (elements.flashcardHandwrittenToggle.checked && isIPhoneDevice()) {
+            elements.flashcardHandwrittenToggle.checked = false;
+            state.auth.handwrittenFlashcardEnabled = false;
+            setCreatorStatus('Handwritten flashcard editing is not available on iPhone. iPhone can still study handwritten flashcards.', 'error');
+            updateStudioEditorTypeUI();
+            return;
+        }
+        state.auth.handwrittenFlashcardEnabled = !!elements.flashcardHandwrittenToggle.checked;
+        state.auth.handwrittenFlashcardSetupApplied = false;
+        if (!state.auth.handwrittenFlashcardEnabled) state.auth.handwrittenFlashcardStyle = normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {});
+        syncHandwrittenFlashcardSetupControls();
+        setStudioDirtyState(true);
+        updateStudioEditorTypeUI();
+    });
+    [elements.flashcardHandwrittenBackgroundColor,elements.flashcardHandwrittenGridType,elements.flashcardHandwrittenGridColor,elements.flashcardHandwrittenGridOpacity].forEach(control => control?.addEventListener('input', () => {
+        state.auth.handwrittenFlashcardStyle = normalizeHandwrittenFlashcardStyle({
+            backgroundColor: elements.flashcardHandwrittenBackgroundColor?.value,
+            gridType: elements.flashcardHandwrittenGridType?.value,
+            gridColor: elements.flashcardHandwrittenGridColor?.value,
+            gridOpacity: Number(elements.flashcardHandwrittenGridOpacity?.value || 0)/100
+        });
+        syncHandwrittenFlashcardSetupControls();
+        renderHandwrittenFlashcardWorkspace();
+        setStudioDirtyState(true);
+    }));
+    elements.flashcardHandwrittenSetupSubmitBtn?.addEventListener('click', () => {
+        state.auth.handwrittenFlashcardSetupApplied = true;
+        const row=getCurrentHandwrittenFlashcardRow();
+        if (row) {
+            if (!row.term_content_mode) row.term_content_mode='handwritten';
+            if (!row.definition_content_mode) row.definition_content_mode='handwritten';
+        }
+        updateStudioEditorTypeUI();
+        renderHandwrittenFlashcardWorkspace();
+        elements.flashcardHandwrittenCard?.focus();
+    });
+    elements.flashcardHandwrittenSideSelect?.addEventListener('change', () => { syncHandwrittenTypedEditorToBase(); state.auth.handwrittenFlashcardSide=getHandwrittenSideKey(elements.flashcardHandwrittenSideSelect.value); renderHandwrittenFlashcardWorkspace(); });
+    elements.flashcardHandwrittenFlipBtn?.addEventListener('click', () => { syncHandwrittenTypedEditorToBase(); state.auth.handwrittenFlashcardSide=state.auth.handwrittenFlashcardSide==='definition'?'term':'definition'; renderHandwrittenFlashcardWorkspace(); });
+    elements.flashcardHandwrittenSideMode?.addEventListener('change', () => {
+        const side=getHandwrittenSideKey(), next=normalizeFlashcardContentMode(elements.flashcardHandwrittenSideMode.value), prev=getHandwrittenSideModeFromEditorState(side);
+        if (next===prev)return;
+        const row=getCurrentHandwrittenFlashcardRow();
+        const hasTyped=side==='definition'?!!htmlToDisplayText(getFlashcardDefinitionEditorHtml()):!!htmlToDisplayText(getFlashcardTermEditorHtml());
+        const hasInk=getHandwrittenSideStrokesFromEditorState(side).length>0;
+        if ((next==='typed'&&hasInk)||(next==='handwritten'&&hasTyped)) {
+            if (!window.confirm(`Changing this side to ${next==='typed'?'Typed':'Handwritten'} will remove the existing ${next==='typed'?'handwriting':'typed text'} on this side. Continue?`)) { elements.flashcardHandwrittenSideMode.value=prev; return; }
+        }
+        pushHandwrittenUndo(side);
+        if(next==='typed') setHandwrittenSideState(side,{mode:'typed',strokes:[]});
+        else {
+            setHandwrittenSideState(side,{mode:'handwritten'});
+            if(side==='definition') setFlashcardDefinitionEditorHtml('',''); else setFlashcardTermEditorHtml('','');
+            if(row){ if(side==='definition'){row.definition_html='';row.definition_plain='';}else{row.term_html='';row.term_plain='';row.prompt_plain='';} }
+        }
+        renderHandwrittenFlashcardWorkspace();
+    });
+    elements.handwrittenToolButtons?.forEach(btn=>btn.addEventListener('click',()=>{state.auth.handwrittenFlashcardTool=btn.dataset.handwrittenTool||'pen';renderHandwrittenFlashcardWorkspace();}));
+    elements.flashcardHandwrittenBrushSize?.addEventListener('input',()=>{state.auth.handwrittenFlashcardBrushSize=Math.max(1,Math.min(24,Number(elements.flashcardHandwrittenBrushSize.value)||4));});
+    elements.flashcardHandwrittenBrushColor?.addEventListener('input',()=>{state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(elements.flashcardHandwrittenBrushColor.value,'#111827');renderHandwrittenFlashcardColorPresets();});
+    elements.flashcardHandwrittenSaveColorBtn?.addEventListener('click',()=>{saveImageEditorColorPreset(state.auth.handwrittenFlashcardPenColor);renderHandwrittenFlashcardColorPresets();});
+    elements.flashcardHandwrittenColorPresets?.addEventListener('click',event=>{const use=event.target.closest('[data-handwritten-color]');if(use){state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(use.dataset.handwrittenColor,'#111827');if(elements.flashcardHandwrittenBrushColor)elements.flashcardHandwrittenBrushColor.value=state.auth.handwrittenFlashcardPenColor;renderHandwrittenFlashcardColorPresets();return;}const del=event.target.closest('[data-handwritten-color-delete]');if(del){deleteImageEditorColorPreset(del.dataset.handwrittenColorDelete);renderHandwrittenFlashcardColorPresets();}});
+    elements.flashcardHandwrittenUndoBtn?.addEventListener('click',undoHandwrittenStroke);
+    elements.flashcardHandwrittenRedoBtn?.addEventListener('click',redoHandwrittenStroke);
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointerdown',handleHandwrittenPointerDown);
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointermove',handleHandwrittenPointerMove);
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointerup',handleHandwrittenPointerUp);
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointercancel',handleHandwrittenPointerUp);
+    elements.flashcardHandwrittenTypedEditor?.addEventListener('input',syncHandwrittenTypedEditorToBase);
+    elements.flashcardHandwrittenAddImageBtn?.addEventListener('click',()=>{
+        const side=getHandwrittenSideKey(); const layout=elements.flashcardHandwrittenImageLayout?.value==='full'?'full':'half';
+        const existingInk=getHandwrittenSideStrokesFromEditorState(side);
+        if(existingInk.length && !window.confirm(`Adding a ${layout==='full'?'full-card':'half-card'} image will erase the handwriting already on this side. Continue?`)) return;
+        state.auth.handwrittenPendingImageLayout={side,layout};
+        const fileInput=side==='definition'?elements.createFlashcardDefinitionImageFile:elements.createFlashcardTermImageFile;
+        openStudioFlashcardImagePicker({kind:side==='definition'?'flashcard-definition':'flashcard-term'},fileInput);
+    });
+    elements.flashcardHandwrittenRemoveImageBtn?.addEventListener('click',()=>{
+        const side=getHandwrittenSideKey(); if(side==='definition') setStudioFlashcardDefinitionImageState('','No definition image selected.'); else setStudioFlashcardTermImageState('','No term image selected.');
+        setHandwrittenSideState(side,{imageLayout:'none'}); renderHandwrittenFlashcardWorkspace();
+    });
+    elements.flashcardHandwrittenPrevBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(-1));
+    elements.flashcardHandwrittenNextBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(1));
+    elements.flashcardHandwrittenMoveLeftBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(-1));
+    elements.flashcardHandwrittenMoveRightBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(1));
+    elements.flashcardHandwrittenGoBtn?.addEventListener('click',()=>{const n=Math.max(1,Number(elements.flashcardHandwrittenGoInput?.value)||1);navigateHandwrittenFlashcard(0,n-1);});
+    elements.flashcardHandwrittenGoInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();elements.flashcardHandwrittenGoBtn?.click();}});
+    window.addEventListener('keydown',event=>{
+        if(!state.auth.handwrittenFlashcardEnabled||!state.auth.handwrittenFlashcardSetupApplied||elements.flashcardHandwrittenWorkspace?.classList.contains('hidden'))return;
+        const tag=event.target?.tagName?.toLowerCase(); if(event.target?.isContentEditable||['input','textarea','select'].includes(tag))return;
+        if(event.code==='Space'){event.preventDefault();elements.flashcardHandwrittenFlipBtn?.click();}
+        else if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.shiftKey?redoHandwrittenStroke():undoHandwrittenStroke();}
+    });
+    window.addEventListener('resize',()=>{if(state.auth.handwrittenFlashcardEnabled)requestAnimationFrame(drawHandwrittenEditorCanvas);});
+
+    elements.createQuizTypeSelect?.addEventListener('change', () => {
+        const type=normalizeSheetText(elements.createQuizTypeSelect.value);
+        if(type!=='flashcard'){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;}
+        else if(!state.auth.editingQuizId){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;state.auth.handwrittenFlashcardStyle=getDefaultHandwrittenFlashcardStyle();syncHandwrittenFlashcardSetupControls();}
+        updateStudioEditorTypeUI();
+    });
+
 })();
 
 

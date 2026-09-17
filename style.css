@@ -13566,3 +13566,132 @@ body.review-mode-image-open {
     transition: none;
   }
 }
+
+/* Phase 23A: Exam mixed-question mode + JSON import validation */
+.studio-exam-question-type-row {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.studio-exam-question-type-field {
+    min-width: 220px;
+    max-width: 360px;
+}
+
+.studio-exam-question-issues {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid currentColor;
+    border-radius: 10px;
+}
+
+.studio-exam-question-issues strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.studio-exam-question-issues ul,
+.json-import-issue-list ul {
+    margin: 6px 0 0 20px;
+    padding: 0;
+}
+
+.studio-exam-question-type-badge,
+.studio-question-issue-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: 22px;
+    padding: 2px 7px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-right: 7px;
+}
+
+.studio-question-issue-badge {
+    min-width: 22px;
+    padding-inline: 6px;
+    font-size: 0.82rem;
+}
+
+.studio-json-import-preview {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--border-color, rgba(127, 127, 127, 0.35));
+    border-radius: 10px;
+    line-height: 1.45;
+}
+
+.json-import-issues {
+    margin-top: 10px;
+}
+
+.json-import-issue-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 8px;
+    max-height: 320px;
+    overflow: auto;
+}
+
+.json-import-valid {
+    margin-top: 8px;
+    font-weight: 700;
+}
+
+
+/* ================= PHASE 23B: HANDWRITTEN FLASHCARDS ================= */
+.studio-handwritten-toggle-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:-2px; margin-bottom:12px; }
+.studio-toggle-label { display:inline-flex; align-items:center; gap:8px; font-weight:800; }
+.studio-toggle-label input { width:18px; height:18px; accent-color:var(--color-accent, #7c6cff); }
+.studio-handwritten-toggle-note { color:var(--color-text-muted, #a8a5c3); font-size:.9rem; }
+.studio-handwritten-setup { border:1px solid rgba(167,139,250,.35); border-radius:16px; padding:14px; margin:0 0 16px; background:rgba(37,31,62,.45); }
+.studio-handwritten-setup-grid { display:grid; grid-template-columns:repeat(4,minmax(130px,1fr)); gap:12px; align-items:end; }
+.studio-handwritten-setup input[type="color"] { min-height:42px; width:100%; padding:4px; border-radius:10px; }
+.studio-handwritten-setup input[type="range"] { width:100%; }
+.studio-handwritten-workspace { display:grid; gap:12px; }
+.studio-handwritten-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px; border:1px solid rgba(167,139,250,.28); border-radius:14px; background:rgba(28,24,48,.76); }
+.studio-handwritten-toolbar .active { box-shadow:0 0 0 2px rgba(124,108,255,.7) inset; }
+.studio-handwritten-inline-control { display:inline-flex; align-items:center; gap:6px; font-size:.86rem; }
+.studio-handwritten-inline-control select, .studio-handwritten-inline-control input[type="range"] { max-width:128px; }
+.studio-handwritten-color-presets { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+.studio-handwritten-color-preset { width:25px; height:25px; border-radius:50%; border:2px solid rgba(255,255,255,.48); background:var(--preset-color); cursor:pointer; padding:0; }
+.studio-handwritten-color-preset.is-active { outline:2px solid #fff; outline-offset:2px; }
+.studio-handwritten-color-preset-delete { border:0; background:transparent; color:#c9c6df; cursor:pointer; padding:0 2px; font-size:16px; }
+.studio-handwritten-card { position:relative; width:min(100%, 820px); aspect-ratio: 16 / 10; margin:0 auto; overflow:hidden; border-radius:24px; border:2px solid rgba(114,94,188,.55); box-shadow:0 14px 38px rgba(0,0,0,.28); background:var(--hand-card-bg,#fff); touch-action:none; }
+.studio-handwritten-grid { position:absolute; inset:0; pointer-events:none; z-index:0; opacity:var(--hand-grid-opacity,.24); }
+.studio-handwritten-card.grid-lines .studio-handwritten-grid { background-image:linear-gradient(to bottom, transparent 31px, var(--hand-grid-color,#94a3b8) 32px); background-size:100% 32px; }
+.studio-handwritten-card.grid-graph .studio-handwritten-grid { background-image:linear-gradient(to right, var(--hand-grid-color,#94a3b8) 1px, transparent 1px),linear-gradient(to bottom, var(--hand-grid-color,#94a3b8) 1px, transparent 1px); background-size:32px 32px; }
+.studio-handwritten-card.grid-dots .studio-handwritten-grid { background-image:radial-gradient(circle, var(--hand-grid-color,#94a3b8) 1.2px, transparent 1.4px); background-size:24px 24px; }
+.studio-handwritten-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:2; touch-action:none; }
+.studio-handwritten-card.has-half-image .studio-handwritten-canvas, .studio-handwritten-card.has-half-image .studio-handwritten-typed-editor { right:50%; width:50%; }
+.studio-handwritten-card.has-full-image .studio-handwritten-canvas, .studio-handwritten-card.has-full-image .studio-handwritten-typed-editor { display:none !important; }
+.studio-handwritten-typed-editor { position:absolute; inset:0; z-index:3; padding:8%; color:var(--hand-card-text,#111827); overflow:auto; outline:none; font-size:clamp(18px,3vw,34px); line-height:1.35; white-space:pre-wrap; }
+.studio-handwritten-typed-editor:empty::before { content:attr(data-placeholder); color:rgba(100,116,139,.72); }
+.studio-handwritten-image-wrap { position:absolute; top:0; right:0; bottom:0; width:50%; z-index:1; background:#111; }
+.studio-handwritten-card.has-full-image .studio-handwritten-image-wrap { width:100%; left:0; }
+.studio-handwritten-image-wrap img { width:100%; height:100%; object-fit:contain; display:block; }
+.studio-handwritten-full-image-note { position:absolute; z-index:5; left:50%; bottom:14px; transform:translateX(-50%); padding:6px 10px; border-radius:999px; background:rgba(0,0,0,.68); color:#fff; font-size:.82rem; pointer-events:none; }
+.studio-handwritten-navigation { display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap; }
+.studio-handwritten-nav-divider { width:1px; height:28px; background:rgba(167,139,250,.3); margin:0 4px; }
+.studio-handwritten-go { display:inline-flex; align-items:center; gap:6px; }
+.studio-handwritten-go input { width:78px; }
+.flashcard-face.handwritten-flashcard-face { background:var(--hand-card-bg,#fff); color:var(--hand-card-text,#111827); overflow:hidden; }
+.flashcard-handwritten-grid { position:absolute; inset:0; z-index:0; pointer-events:none; opacity:var(--hand-grid-opacity,.24); }
+.flashcard-face.grid-lines .flashcard-handwritten-grid { background-image:linear-gradient(to bottom, transparent 31px, var(--hand-grid-color,#94a3b8) 32px); background-size:100% 32px; }
+.flashcard-face.grid-graph .flashcard-handwritten-grid { background-image:linear-gradient(to right, var(--hand-grid-color,#94a3b8) 1px, transparent 1px),linear-gradient(to bottom, var(--hand-grid-color,#94a3b8) 1px, transparent 1px); background-size:32px 32px; }
+.flashcard-face.grid-dots .flashcard-handwritten-grid { background-image:radial-gradient(circle, var(--hand-grid-color,#94a3b8) 1.2px, transparent 1.4px); background-size:24px 24px; }
+.flashcard-handwriting-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; }
+.flashcard-side-content.handwriting-half { display:grid; grid-template-columns:1fr 1fr; padding:0; gap:0; }
+.flashcard-side-content.handwriting-half .flashcard-handwriting-area { position:relative; min-width:0; min-height:0; }
+.flashcard-side-content.handwriting-half .flashcard-side-image-wrap { width:100%; min-width:0; min-height:0; }
+.flashcard-side-content.handwriting-full-image { padding:0; }
+.flashcard-handwriting-area { position:relative; width:100%; height:100%; z-index:1; }
+@media (max-width: 760px) { .studio-handwritten-setup-grid { grid-template-columns:1fr 1fr; } .studio-handwritten-toolbar { align-items:flex-start; } }
+@media (max-width: 520px) { .studio-handwritten-setup-grid { grid-template-columns:1fr; } }

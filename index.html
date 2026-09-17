@@ -35,9 +35,18 @@ MODIFICATION RULES FOR THIS APP
       url: "https://bvjqreqlogkiohqslfpx.supabase.co",
       publishableKey: "sb_publishable_sAnZN4SIRkft7_khEMGz-w_PhXlu9DZ"
     };
+
+    /*
+      Cloudflare R2 private-media bridge. After deploying the included Worker,
+      paste its workers.dev/custom-domain URL here. Leave blank to keep the
+      existing Supabase Storage path as a safe fallback.
+    */
+    window.STUDY_BUNNY_CLOUDFLARE_R2_CONFIG = window.STUDY_BUNNY_CLOUDFLARE_R2_CONFIG || {
+      workerUrl: ""
+    };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=22ns8" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23b" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -50,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=22ns8-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23b-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1125,6 +1134,46 @@ MODIFICATION RULES FOR THIS APP
 
                     <button id="importTemplateSheetBtn" type="button" class="auth-action-btn">Import Sheet Template</button>
                   </section>
+
+                  <section class="creator-subsection quiz-studio-panel">
+                    <div class="creator-subsection-title">Import Study Bunny JSON Quiz</div>
+                    <div class="creator-note">Import a Study Bunny quiz JSON file. Exam files can mix Multiple Choice, Typed Answer, Hierarchy, and Classify questions. Questions with content issues are still imported and marked with an exclamation point in the Exam question list so they can be repaired in Quiz Editor.</div>
+
+                    <label class="auth-field">
+                      <span>JSON file</span>
+                      <input id="importJsonQuizFile" type="file" accept="application/json,.json">
+                    </label>
+
+                    <label class="auth-field">
+                      <span>Import destination</span>
+                      <select id="importJsonDestinationModeSelect">
+                        <option value="new">Create new quiz</option>
+                        <option value="append">Add to existing quiz</option>
+                      </select>
+                    </label>
+
+                    <label id="importJsonAppendQuizField" class="auth-field hidden">
+                      <span>Existing quiz to add questions to</span>
+                      <select id="importJsonAppendQuizSelect">
+                        <option value="">Choose existing quiz</option>
+                      </select>
+                    </label>
+
+                    <label id="importJsonQuizNameField" class="auth-field">
+                      <span>Quiz name in Supabase</span>
+                      <input id="importJsonQuizNameInput" type="text" placeholder="Quiz name">
+                    </label>
+
+                    <label id="importJsonTargetFolderField" class="auth-field">
+                      <span>Destination folder</span>
+                      <select id="importJsonTargetFolderSelect">
+                        <option value="">No folder</option>
+                      </select>
+                    </label>
+
+                    <div id="importJsonPreview" class="studio-json-import-preview">Choose a JSON quiz file to preview it.</div>
+                    <button id="importJsonQuizBtn" type="button" class="auth-action-btn" disabled>Import JSON Quiz</button>
+                  </section>
                 </div>
               </section>
 
@@ -1171,6 +1220,7 @@ MODIFICATION RULES FOR THIS APP
                     <span>Quiz type</span>
                     <select id="createQuizTypeSelect">
                       <option value="multiple_choice">Multiple Choice</option>
+                      <option value="exam">Exam</option>
                       <option value="flashcard">Flashcard</option>
                       <option value="hierarchy">Hierarchy</option>
                       <option value="classify">Classify</option>
@@ -1178,6 +1228,26 @@ MODIFICATION RULES FOR THIS APP
                       <option value="typed_answer">Typed Answer</option>
                     </select>
                   </label>
+
+                  <div id="flashcardHandwrittenToggleRow" class="studio-handwritten-toggle-row hidden">
+                    <label class="studio-toggle-label">
+                      <input id="flashcardHandwrittenToggle" type="checkbox">
+                      <span>Handwritten</span>
+                    </label>
+                    <span class="studio-handwritten-toggle-note">Windows, Mac, and iPad editing. iPhone can study handwritten cards.</span>
+                  </div>
+
+                  <div id="flashcardHandwrittenSetupPanel" class="studio-handwritten-setup hidden">
+                    <div class="creator-subsection-title studio-inline-title">Handwritten flashcard appearance</div>
+                    <div class="studio-handwritten-setup-grid">
+                      <label class="auth-field"><span>Card background</span><input id="flashcardHandwrittenBackgroundColor" type="color" value="#ffffff"></label>
+                      <label class="auth-field"><span>Grid</span><select id="flashcardHandwrittenGridType"><option value="none">None</option><option value="lines">Ruled lines</option><option value="graph">Graph</option><option value="dots">Dots</option></select></label>
+                      <label class="auth-field"><span>Grid color</span><input id="flashcardHandwrittenGridColor" type="color" value="#94a3b8"></label>
+                      <label class="auth-field"><span>Grid transparency</span><input id="flashcardHandwrittenGridOpacity" type="range" min="0" max="100" value="24"><strong id="flashcardHandwrittenGridOpacityValue">24%</strong></label>
+                    </div>
+                    <div class="creator-note">These appearance settings apply to every flashcard in this quiz and are shown the same way in Study Mode.</div>
+                    <button id="flashcardHandwrittenSetupSubmitBtn" type="button" class="auth-action-btn auth-primary-btn">Use Handwritten Editor</button>
+                  </div>
 
                   <div class="studio-question-list-panel">
                     <div class="studio-question-list-header">
@@ -1385,6 +1455,21 @@ MODIFICATION RULES FOR THIS APP
                     </div>
                   </div>
 
+                  <div id="examQuestionTypeControls" class="studio-editor-type-fields hidden">
+                    <div class="studio-exam-question-type-row">
+                      <label class="auth-field studio-exam-question-type-field">
+                        <span>Question Type</span>
+                        <select id="examQuestionTypeSelect">
+                          <option value="multiple_choice">Multiple Choice</option>
+                          <option value="typed_answer">Typed Answer</option>
+                          <option value="hierarchy">Hierarchy</option>
+                          <option value="classify">Classify</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div id="examQuestionIssuePanel" class="studio-exam-question-issues hidden" role="status" aria-live="polite"></div>
+                  </div>
+
                   <div id="typedAnswerEditorFields" class="studio-editor-type-fields hidden">
                     <div id="typedAnswerVariantFieldsContainer" class="studio-options-grid typed-answer-variant-grid"></div>
                     <div class="studio-option-inline-add-row">
@@ -1460,6 +1545,7 @@ MODIFICATION RULES FOR THIS APP
                   </div>
 
                   <div id="flashcardEditorFields" class="studio-editor-type-fields hidden">
+                    <div id="flashcardTypedEditorFields">
                     <div class="auth-field studio-rich-text-field studio-flashcard-rich-text-field">
                       <span>Flashcard text styling</span>
                       <div id="flashcardRichToolbar" class="studio-rich-toolbar" aria-label="Flashcard formatting toolbar">
@@ -1551,6 +1637,46 @@ MODIFICATION RULES FOR THIS APP
                       <div id="createFlashcardDefinitionImageName" class="studio-file-name">No definition image selected.</div>
                       <button id="createFlashcardDefinitionImageEditBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-edit-btn hidden">Edit Image</button>
                       <button id="createFlashcardDefinitionImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
+                    </div>
+                    </div>
+
+                    <div id="flashcardHandwrittenWorkspace" class="studio-handwritten-workspace hidden">
+                      <div class="studio-handwritten-toolbar">
+                        <strong id="flashcardHandwrittenCardNumber">Card 1 / 1</strong>
+                        <select id="flashcardHandwrittenSideSelect" aria-label="Flashcard side"><option value="term">Front</option><option value="definition">Back</option></select>
+                        <button id="flashcardHandwrittenFlipBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Flip card (Space)">Flip</button>
+                        <label class="studio-handwritten-inline-control"><span>Side content</span><select id="flashcardHandwrittenSideMode"><option value="handwritten">Handwritten</option><option value="typed">Typed</option></select></label>
+                        <button type="button" class="auth-action-btn auth-secondary-btn active" data-handwritten-tool="pen">Pen</button>
+                        <button type="button" class="auth-action-btn auth-secondary-btn" data-handwritten-tool="eraser">Eraser</button>
+                        <button type="button" class="auth-action-btn auth-secondary-btn" data-handwritten-tool="move">Move</button>
+                        <button id="flashcardHandwrittenUndoBtn" type="button" class="auth-action-btn auth-secondary-btn">Undo</button>
+                        <button id="flashcardHandwrittenRedoBtn" type="button" class="auth-action-btn auth-secondary-btn">Redo</button>
+                        <label class="studio-handwritten-inline-control"><span>Size</span><input id="flashcardHandwrittenBrushSize" type="range" min="1" max="24" step="1" value="4"></label>
+                        <label class="studio-handwritten-inline-control"><span>Color</span><input id="flashcardHandwrittenBrushColor" type="color" value="#111827"></label>
+                        <button id="flashcardHandwrittenSaveColorBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Save current color preset">+ Color</button>
+                        <div id="flashcardHandwrittenColorPresets" class="studio-handwritten-color-presets" aria-label="Saved brush colors"></div>
+                        <label class="studio-handwritten-inline-control"><span>Image</span><select id="flashcardHandwrittenImageLayout"><option value="half">Half (right)</option><option value="full">Full card</option></select></label>
+                        <button id="flashcardHandwrittenAddImageBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Image</button>
+                        <button id="flashcardHandwrittenRemoveImageBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Image</button>
+                      </div>
+
+                      <div id="flashcardHandwrittenCard" class="studio-handwritten-card" tabindex="0" aria-label="Editable flashcard">
+                        <div id="flashcardHandwrittenGrid" class="studio-handwritten-grid"></div>
+                        <div id="flashcardHandwrittenTypedEditor" class="studio-handwritten-typed-editor hidden" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Type this side of the flashcard"></div>
+                        <canvas id="flashcardHandwrittenCanvas" class="studio-handwritten-canvas"></canvas>
+                        <div id="flashcardHandwrittenImageWrap" class="studio-handwritten-image-wrap hidden"><img id="flashcardHandwrittenImage" alt="Flashcard image"></div>
+                        <div id="flashcardHandwrittenFullImageNote" class="studio-handwritten-full-image-note hidden">Full image side — drawing is disabled.</div>
+                      </div>
+
+                      <div class="studio-handwritten-navigation">
+                        <button id="flashcardHandwrittenPrevBtn" type="button" class="auth-action-btn auth-secondary-btn">Previous</button>
+                        <button id="flashcardHandwrittenNextBtn" type="button" class="auth-action-btn auth-secondary-btn">Next</button>
+                        <span class="studio-handwritten-nav-divider"></span>
+                        <button id="flashcardHandwrittenMoveLeftBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Left</button>
+                        <button id="flashcardHandwrittenMoveRightBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Right</button>
+                        <label class="studio-handwritten-go"><span>Go to</span><input id="flashcardHandwrittenGoInput" type="number" min="1" step="1"><button id="flashcardHandwrittenGoBtn" type="button" class="auth-action-btn auth-secondary-btn">Go</button></label>
+                      </div>
+                      <div class="creator-note">Space flips the card when you are not typing. Half images always stay on the right; handwriting remains on the left.</div>
                     </div>
                   </div>
 
@@ -2105,6 +2231,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=22ns8"></script>
+  <script src="script.js?v=23b"></script>
 </body>
 </html>
