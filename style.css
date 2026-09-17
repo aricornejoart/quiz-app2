@@ -13666,6 +13666,15 @@ body.review-mode-image-open {
 .studio-handwritten-setup input[type="color"] { min-height:42px; width:100%; padding:4px; border-radius:10px; }
 .studio-handwritten-setup input[type="range"] { width:100%; }
 .studio-handwritten-workspace { display:grid; gap:12px; }
+/* Phase 23B.10: suppress native selection/callout across Quiz Studio while a
+   handwritten side is active so Apple Pencil/Scribble cannot jump to nearby text. */
+#quizStudioEditorSection.study-bunny-handwriting-no-select,
+#quizStudioEditorSection.study-bunny-handwriting-no-select *:not(input):not(textarea):not(select):not(option) {
+  -webkit-user-select:none !important;
+  user-select:none !important;
+  -webkit-touch-callout:none !important;
+}
+
 /* Phase 23B.9: while the visible side is handwritten, prevent iPad Safari from
    turning a lifted-Pencil / next-stroke sequence into native text selection in
    the card controls below it. Buttons and inputs remain clickable. */

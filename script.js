@@ -13555,6 +13555,9 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardTypedEditorFields) elements.flashcardTypedEditorFields.classList.toggle('hidden', isFlashcard && !!state.auth.handwrittenFlashcardEnabled);
         if (elements.flashcardHandwrittenWorkspace) elements.flashcardHandwrittenWorkspace.classList.toggle('hidden', !isFlashcard || !state.auth.handwrittenFlashcardEnabled || !state.auth.handwrittenFlashcardSetupApplied);
         const handwrittenEditorActive = isFlashcard && !!state.auth.handwrittenFlashcardEnabled;
+        if (!handwrittenEditorActive || !state.auth.handwrittenFlashcardSetupApplied) {
+            document.getElementById('quizStudioEditorSection')?.classList.remove('study-bunny-handwriting-no-select');
+        }
         if (elements.studioQuestionListPanel) elements.studioQuestionListPanel.classList.toggle('hidden', handwrittenEditorActive);
         if (elements.studioEditorQuickToolbar) elements.studioEditorQuickToolbar.classList.toggle('hidden', handwrittenEditorActive);
         if (elements.studioEditorBottomActions) elements.studioEditorBottomActions.classList.toggle('hidden', handwrittenEditorActive);
@@ -19568,6 +19571,7 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const handwritingInputActive = mode === 'handwritten' && !(imageValue && layout === 'full');
         if (elements.flashcardHandwrittenWorkspace) elements.flashcardHandwrittenWorkspace.classList.toggle('is-handwriting-active', handwritingInputActive);
+        syncHandwrittenDocumentSelectionGuard();
         if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', !handwritingInputActive);
         if (elements.flashcardHandwrittenImageWrap) elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
         if (elements.flashcardHandwrittenFullImageNote) elements.flashcardHandwrittenFullImageNote.classList.toggle('hidden', !(imageValue && layout === 'full'));
@@ -19652,7 +19656,8 @@ The deletion becomes permanent when you save the diagram.`);
         // Clear any stale Safari selection before a new Pencil/mouse stroke begins.
         // This affects only the handwritten canvas; Typed mode keeps normal text selection.
         if (pointerType === 'pen' || pointerType === 'mouse') {
-            try { window.getSelection?.()?.removeAllRanges?.(); } catch (_) {}
+            if (pointerType === 'pen') state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
+            clearHandwrittenDocumentSelection();
         }
         const row=getCurrentHandwrittenFlashcardRow(); const side=getHandwrittenSideKey(); const image=normalizeSheetText(row?.[`${side}_image_url`]);
         if (image && getHandwrittenSideImageLayoutFromEditorState(side)==='full') return;
@@ -19697,6 +19702,10 @@ The deletion becomes permanent when you save the diagram.`);
         event.stopPropagation();
         try { elements.flashcardHandwrittenCanvas?.releasePointerCapture?.(event.pointerId); } catch (_) {}
         state.auth.handwrittenFlashcardPointer = null;
+        if (normalizeSheetText(event.pointerType).toLowerCase() === 'pen') {
+            state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
+            clearHandwrittenDocumentSelection();
+        }
 
         // Phase 23B.9: do not rebuild Quiz Studio after every Pencil-up. The
         // handwritten row/draft is already updated continuously by setHandwrittenSideState().
@@ -39020,6 +39029,37 @@ elements.questionImage.onclick = function () {
         }
     }
 
+    // Phase 23B.10: iPad Safari can hand Apple Pencil/palm contact to native
+    // selection/Scribble outside the canvas between separate letters. Protect the
+    // whole Quiz Studio document while a handwritten side is active.
+    function isHandwrittenDocumentGuardActive() {
+        if (!isIPadLikeDevice()) return false;
+        if (!state.auth.handwrittenFlashcardEnabled || !state.auth.handwrittenFlashcardSetupApplied) return false;
+        if (elements.flashcardHandwrittenWorkspace?.classList.contains('hidden')) return false;
+        if (getHandwrittenSideModeFromEditorState() !== 'handwritten') return false;
+        const row = getCurrentHandwrittenFlashcardRow();
+        const side = getHandwrittenSideKey();
+        const imageValue = normalizeSheetText(row?.[`${side}_image_url`]);
+        return !(imageValue && getHandwrittenSideImageLayoutFromEditorState(side) === 'full');
+    }
+
+    function syncHandwrittenDocumentSelectionGuard() {
+        const active = isHandwrittenDocumentGuardActive();
+        document.getElementById('quizStudioEditorSection')?.classList.toggle('study-bunny-handwriting-no-select', active);
+        if (!active) state.auth.handwrittenPencilSelectionGuardUntil = 0;
+    }
+
+    function isHandwrittenInteractiveControlTarget(target) {
+        return !!target?.closest?.('button, input, textarea, select, option, a, [role="button"]');
+    }
+
+    function clearHandwrittenDocumentSelection() {
+        try {
+            const selection = window.getSelection?.();
+            if (selection && selection.rangeCount) selection.removeAllRanges();
+        } catch (_) {}
+    }
+
     // Phase 23B handwritten flashcard bindings. Kept feature-scoped so regular typed flashcards retain their existing event path.
     elements.flashcardHandwrittenToggle?.addEventListener('change', () => {
         if (!elements.flashcardHandwrittenToggle.checked && hasCreatedHandwrittenFlashcardContent()) {
@@ -39107,6 +39147,45 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenCanvas?.addEventListener('pointercancel',handleHandwrittenPointerUp,{capture:true,passive:false});
     ['selectstart','dragstart','contextmenu'].forEach(eventName => {
         elements.flashcardHandwrittenWorkspace?.addEventListener(eventName, suppressHandwrittenWorkspaceNativeSelection, {capture:true,passive:false});
+    });
+
+    // Phase 23B.10: document-level guard for iPad Pencil/Scribble leakage.
+    document.addEventListener('selectstart', event => {
+        if (!isHandwrittenDocumentGuardActive()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        clearHandwrittenDocumentSelection();
+    }, {capture:true,passive:false});
+    document.addEventListener('selectionchange', () => {
+        if (!isHandwrittenDocumentGuardActive()) return;
+        clearHandwrittenDocumentSelection();
+    });
+    document.addEventListener('pointerdown', event => {
+        if (!isHandwrittenDocumentGuardActive()) return;
+        const pointerType = normalizeSheetText(event.pointerType).toLowerCase();
+        if (pointerType === 'pen') {
+            state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
+            clearHandwrittenDocumentSelection();
+            if (!event.target?.closest?.('#flashcardHandwrittenCanvas') && !isHandwrittenInteractiveControlTarget(event.target)) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            return;
+        }
+        if (pointerType === 'touch' && !isHandwrittenInteractiveControlTarget(event.target)) {
+            event.preventDefault();
+            clearHandwrittenDocumentSelection();
+        }
+    }, {capture:true,passive:false});
+    ['mousedown','mouseup'].forEach(eventName => {
+        document.addEventListener(eventName, event => {
+            if (!isHandwrittenDocumentGuardActive()) return;
+            if ((state.auth.handwrittenPencilSelectionGuardUntil || 0) < performance.now()) return;
+            if (isHandwrittenInteractiveControlTarget(event.target)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            clearHandwrittenDocumentSelection();
+        }, {capture:true,passive:false});
     });
     // Phase 23B.8: suppress Safari/iPadOS selection, callout and drag gestures only
     // while the current side is Handwritten. Typed sides retain normal selection/caret behavior.
