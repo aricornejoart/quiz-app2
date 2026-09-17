@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23b" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23b3" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23b-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23b3-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1249,7 +1249,7 @@ MODIFICATION RULES FOR THIS APP
                     <button id="flashcardHandwrittenSetupSubmitBtn" type="button" class="auth-action-btn auth-primary-btn">Use Handwritten Editor</button>
                   </div>
 
-                  <div class="studio-question-list-panel">
+                  <div id="studioQuestionListPanel" class="studio-question-list-panel">
                     <div class="studio-question-list-header">
                       <div class="studio-question-list-title-wrap">
                         <div class="creator-subsection-title studio-inline-title">Questions</div>
@@ -1301,7 +1301,7 @@ MODIFICATION RULES FOR THIS APP
                       </div>
                     </div>
                   </div>
-                  <div class="studio-options-toolbar studio-editor-quick-toolbar">
+                  <div id="studioEditorQuickToolbar" class="studio-options-toolbar studio-editor-quick-toolbar">
                     <div class="studio-options-toolbar-actions">
                       <button id="studioPrevQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Previous Question</button>
                       <button id="studioNextQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Next Question</button>
@@ -1747,7 +1747,7 @@ MODIFICATION RULES FOR THIS APP
                     <button id="createLearningResourcesImageClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-clear-btn">Clear</button>
                   </div>
 
-                  <div class="studio-editor-actions">
+                  <div id="studioEditorBottomActions" class="studio-editor-actions">
                     <button id="studioPrevQuestionBottomBtn" type="button" class="auth-action-btn auth-secondary-btn">Previous Question</button>
                     <button id="studioNextQuestionBottomBtn" type="button" class="auth-action-btn auth-secondary-btn">Next Question</button>
                     <button id="studioAddQuestionBottomBtn" type="button" class="auth-action-btn auth-secondary-btn">New Question</button>
@@ -2231,6 +2231,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23b"></script>
+  <script src="script.js?v=23b3"></script>
 </body>
 </html>

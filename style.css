@@ -8580,6 +8580,16 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   height: auto;
   overflow: hidden;
   padding: 8px;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.flashcard-image-viewport.is-pinch-zoomed {
+  cursor: grab;
+}
+
+.flashcard-image-viewport.is-pinch-panning {
+  cursor: grabbing;
 }
 
 .flashcard-zoom-image-wrap {
@@ -13695,3 +13705,7 @@ body.review-mode-image-open {
 .flashcard-handwriting-area { position:relative; width:100%; height:100%; z-index:1; }
 @media (max-width: 760px) { .studio-handwritten-setup-grid { grid-template-columns:1fr 1fr; } .studio-handwritten-toolbar { align-items:flex-start; } }
 @media (max-width: 520px) { .studio-handwritten-setup-grid { grid-template-columns:1fr; } }
+
+/* Phase 23B.2 handwritten editor guardrails */
+.studio-handwritten-toggle-row.is-locked .studio-toggle-label { opacity:.58; }
+.studio-handwritten-toggle-row.is-locked input:disabled { cursor:not-allowed; }

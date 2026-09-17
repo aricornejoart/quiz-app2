@@ -292,6 +292,7 @@ MODIFICATION RULES FOR THIS APP
             studioFlashcardTermImageMetadata: {},
             studioFlashcardDefinitionImageMetadata: {},
             handwrittenFlashcardEnabled: false,
+            handwrittenFlashcardPersistedEnabled: false,
             handwrittenFlashcardSetupApplied: false,
             handwrittenFlashcardStyle: { backgroundColor: '#ffffff', gridType: 'none', gridColor: '#94a3b8', gridOpacity: 0.24 },
             handwrittenFlashcardSide: 'term',
@@ -759,6 +760,9 @@ MODIFICATION RULES FOR THIS APP
         examQuestionTypeSelect: document.getElementById('examQuestionTypeSelect'),
         examQuestionIssuePanel: document.getElementById('examQuestionIssuePanel'),
         studioQuestionList: document.getElementById('studioQuestionList'),
+        studioQuestionListPanel: document.getElementById('studioQuestionListPanel'),
+        studioEditorQuickToolbar: document.getElementById('studioEditorQuickToolbar'),
+        studioEditorBottomActions: document.getElementById('studioEditorBottomActions'),
         studioQuestionSearchInput: document.getElementById('studioQuestionSearchInput'),
         studioQuestionStarredOnly: document.getElementById('studioQuestionStarredOnly'),
         studioQuestionJumpInput: document.getElementById('studioQuestionJumpInput'),
@@ -3449,6 +3453,7 @@ MODIFICATION RULES FOR THIS APP
         delete updatePayload.quiz_description;
         const { error } = await state.auth.client.from('quizzes').update(updatePayload).eq('id', normalizedQuizId);
         if (error) throw error;
+        state.auth.handwrittenFlashcardPersistedEnabled = getStudioQuizMode() === 'flashcard' && !!state.auth.handwrittenFlashcardEnabled;
         return nextDescription;
     }
 
@@ -4505,6 +4510,10 @@ MODIFICATION RULES FOR THIS APP
         const previousValue = normalizeSheetText(state.auth.studioFlashcardTermImageDataUrl);
         state.auth.studioFlashcardTermImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardTermImageLabel = label;
+        if (state.auth.handwrittenFlashcardEnabled) {
+            const row = getCurrentHandwrittenFlashcardRow();
+            if (row) row.term_image_url = state.auth.studioFlashcardTermImageDataUrl;
+        }
         if (labels !== undefined) {
             state.auth.studioFlashcardTermImageLabels = normalizeDiagramLabels(labels || []);
         } else if (!state.auth.studioFlashcardTermImageDataUrl || state.auth.studioFlashcardTermImageDataUrl !== previousValue) {
@@ -4543,6 +4552,10 @@ MODIFICATION RULES FOR THIS APP
         const previousValue = normalizeSheetText(state.auth.studioFlashcardDefinitionImageDataUrl);
         state.auth.studioFlashcardDefinitionImageDataUrl = normalizeSheetText(dataUrl);
         state.auth.studioFlashcardDefinitionImageLabel = label;
+        if (state.auth.handwrittenFlashcardEnabled) {
+            const row = getCurrentHandwrittenFlashcardRow();
+            if (row) row.definition_image_url = state.auth.studioFlashcardDefinitionImageDataUrl;
+        }
         if (labels !== undefined) {
             state.auth.studioFlashcardDefinitionImageLabels = normalizeDiagramLabels(labels || []);
         } else if (!state.auth.studioFlashcardDefinitionImageDataUrl || state.auth.studioFlashcardDefinitionImageDataUrl !== previousValue) {
@@ -13462,6 +13475,49 @@ The deletion becomes permanent when you save the diagram.`);
             : '';
     }
 
+    function getHandwrittenWorkspaceRows() {
+        const rows = typeof getStudioListRowsWithPendingDraft === 'function'
+            ? getStudioListRowsWithPendingDraft()
+            : [...(state.auth.studioQuizQuestions || [])];
+        return rows.filter(row => normalizeSheetText(row?.question_type || 'flashcard') === 'flashcard');
+    }
+
+    function hasHandwrittenFlashcardSideContent(row = {}, side = 'term') {
+        const key = getHandwrittenSideKey(side);
+        const typedText = normalizeSheetText(row?.[`${key}_plain`] || '');
+        const typedHtml = htmlToDisplayText(row?.[`${key}_html`] || '');
+        const imageValue = normalizeSheetText(row?.[`${key}_image_url`] || '');
+        const strokes = normalizeHandwritingStrokes(row?.[`${key}_handwriting`] || []);
+        return !!(typedText || typedHtml || imageValue || strokes.length);
+    }
+
+    function hasCreatedHandwrittenFlashcardContent() {
+        if (!state.auth.handwrittenFlashcardEnabled) return false;
+        const rows = getHandwrittenWorkspaceRows();
+        if (state.auth.handwrittenFlashcardPersistedEnabled) return true;
+        return rows.some(row => {
+            const hasHandwrittenMode = normalizeFlashcardContentMode(row?.term_content_mode || 'typed') === 'handwritten'
+                || normalizeFlashcardContentMode(row?.definition_content_mode || 'typed') === 'handwritten';
+            return hasHandwrittenMode && (hasHandwrittenFlashcardSideContent(row, 'term') || hasHandwrittenFlashcardSideContent(row, 'definition'));
+        });
+    }
+
+    function syncHandwrittenFlashcardToggleLock() {
+        if (!elements.flashcardHandwrittenToggle) return;
+        const locked = getStudioCurrentQuizType() === 'flashcard'
+            && !!state.auth.handwrittenFlashcardEnabled
+            && hasCreatedHandwrittenFlashcardContent();
+        elements.flashcardHandwrittenToggle.disabled = locked;
+        elements.flashcardHandwrittenToggleRow?.classList.toggle('is-locked', locked);
+        elements.flashcardHandwrittenToggle.title = locked
+            ? 'Handwritten mode is locked after the first handwritten flashcard is created.'
+            : '';
+        const note = elements.flashcardHandwrittenToggleRow?.querySelector('.studio-handwritten-toggle-note');
+        if (note) note.textContent = locked
+            ? 'Handwritten mode is locked for this quiz after card creation. iPhone can still study handwritten cards.'
+            : 'Windows, Mac, and iPad editing. iPhone can study handwritten cards.';
+    }
+
     function updateStudioEditorTypeUI() {
         const quizType = getStudioCurrentQuizType();
         const quizMode = getStudioQuizMode();
@@ -13497,6 +13553,13 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardHandwrittenSetupPanel) elements.flashcardHandwrittenSetupPanel.classList.toggle('hidden', !isFlashcard || !state.auth.handwrittenFlashcardEnabled || !!state.auth.handwrittenFlashcardSetupApplied);
         if (elements.flashcardTypedEditorFields) elements.flashcardTypedEditorFields.classList.toggle('hidden', isFlashcard && !!state.auth.handwrittenFlashcardEnabled);
         if (elements.flashcardHandwrittenWorkspace) elements.flashcardHandwrittenWorkspace.classList.toggle('hidden', !isFlashcard || !state.auth.handwrittenFlashcardEnabled || !state.auth.handwrittenFlashcardSetupApplied);
+        const handwrittenEditorActive = isFlashcard && !!state.auth.handwrittenFlashcardEnabled;
+        if (elements.studioQuestionListPanel) elements.studioQuestionListPanel.classList.toggle('hidden', handwrittenEditorActive);
+        if (elements.studioEditorQuickToolbar) elements.studioEditorQuickToolbar.classList.toggle('hidden', handwrittenEditorActive);
+        if (elements.studioEditorBottomActions) elements.studioEditorBottomActions.classList.toggle('hidden', handwrittenEditorActive);
+        if (elements.studioQuestionPositionLabel) elements.studioQuestionPositionLabel.classList.toggle('hidden', handwrittenEditorActive);
+        if (elements.createQuizBtn) elements.createQuizBtn.classList.toggle('hidden', handwrittenEditorActive);
+        syncHandwrittenFlashcardToggleLock();
         if (isFlashcard && state.auth.handwrittenFlashcardEnabled) renderHandwrittenFlashcardWorkspace();
         updateStudioQuestionImagePanelUI();
         updateDiagramSharingControls();
@@ -17033,12 +17096,12 @@ The deletion becomes permanent when you save the diagram.`);
             definitionImageDrawStrokes: getStudioFlashcardImageDrawStrokesSnapshot(row, 'definition'),
             definitionImageMetadata: getStudioFlashcardImageMetadataSnapshot(row, 'definition'),
             definitionImageSavedSignature: normalizeSheetText(row.definition_image_saved_signature || ''),
-            termContentMode: normalizeFlashcardContentMode(row.term_content_mode || 'typed'),
-            definitionContentMode: normalizeFlashcardContentMode(row.definition_content_mode || 'typed'),
-            termImageLayout: normalizeFlashcardImageLayout(row.term_image_layout, !!normalizeSheetText(row.term_image_url)),
-            definitionImageLayout: normalizeFlashcardImageLayout(row.definition_image_layout, !!normalizeSheetText(row.definition_image_url)),
-            termHandwriting: normalizeHandwritingStrokes(row.term_handwriting || []),
-            definitionHandwriting: normalizeHandwritingStrokes(row.definition_handwriting || [])
+            termContentMode: normalizeFlashcardContentMode(existingDraft.termContentMode ?? row.term_content_mode ?? 'typed'),
+            definitionContentMode: normalizeFlashcardContentMode(existingDraft.definitionContentMode ?? row.definition_content_mode ?? 'typed'),
+            termImageLayout: normalizeFlashcardImageLayout(existingDraft.termImageLayout ?? row.term_image_layout, !!normalizeSheetText(termImage.value || row.term_image_url)),
+            definitionImageLayout: normalizeFlashcardImageLayout(existingDraft.definitionImageLayout ?? row.definition_image_layout, !!normalizeSheetText(definitionImage.value || row.definition_image_url)),
+            termHandwriting: normalizeHandwritingStrokes(existingDraft.termHandwriting ?? row.term_handwriting ?? []),
+            definitionHandwriting: normalizeHandwritingStrokes(existingDraft.definitionHandwriting ?? row.definition_handwriting ?? [])
         };
     }
 
@@ -17713,6 +17776,14 @@ The deletion becomes permanent when you save the diagram.`);
             draft.definitionImageLabels = normalizeDiagramLabels(state.auth.studioFlashcardDefinitionImageLabels || []);
             draft.definitionImageDrawStrokes = cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []);
             draft.definitionImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {});
+            if (state.auth.handwrittenFlashcardEnabled) {
+                draft.termContentMode = getHandwrittenSideModeFromEditorState('term');
+                draft.definitionContentMode = getHandwrittenSideModeFromEditorState('definition');
+                draft.termImageLayout = getHandwrittenSideImageLayoutFromEditorState('term');
+                draft.definitionImageLayout = getHandwrittenSideImageLayoutFromEditorState('definition');
+                draft.termHandwriting = getHandwrittenSideStrokesFromEditorState('term');
+                draft.definitionHandwriting = getHandwrittenSideStrokesFromEditorState('definition');
+            }
         } else if (questionType === 'hierarchy') {
             draft.hierarchyDrafts = getStudioHierarchyDraftsFromDOM();
         } else if (questionType === 'classify') {
@@ -17779,6 +17850,18 @@ The deletion becomes permanent when you save the diagram.`);
             setFlashcardDefinitionEditorHtml(draft.definitionHtml || '', draft.definition || '');
             setStudioFlashcardTermImageState(draft.termImage || '', draft.termImageLabel || (draft.termImage ? 'Existing term image saved.' : 'No term image selected.'), draft.termImageLabels || [], draft.termImageDrawStrokes || [], draft.termImageMetadata || {});
             setStudioFlashcardDefinitionImageState(draft.definitionImage || '', draft.definitionImageLabel || (draft.definitionImage ? 'Existing definition image saved.' : 'No definition image selected.'), draft.definitionImageLabels || [], draft.definitionImageDrawStrokes || [], draft.definitionImageMetadata || {});
+            if (state.auth.handwrittenFlashcardEnabled) {
+                const row = getStudioQuestionRowById(draft.questionId);
+                if (row) {
+                    row.term_content_mode = normalizeFlashcardContentMode(draft.termContentMode ?? row.term_content_mode ?? 'handwritten');
+                    row.definition_content_mode = normalizeFlashcardContentMode(draft.definitionContentMode ?? row.definition_content_mode ?? 'handwritten');
+                    row.term_image_layout = normalizeFlashcardImageLayout(draft.termImageLayout ?? row.term_image_layout, !!normalizeSheetText(draft.termImage || row.term_image_url));
+                    row.definition_image_layout = normalizeFlashcardImageLayout(draft.definitionImageLayout ?? row.definition_image_layout, !!normalizeSheetText(draft.definitionImage || row.definition_image_url));
+                    row.term_handwriting = normalizeHandwritingStrokes(draft.termHandwriting ?? row.term_handwriting ?? []);
+                    row.definition_handwriting = normalizeHandwritingStrokes(draft.definitionHandwriting ?? row.definition_handwriting ?? []);
+                }
+                renderHandwrittenFlashcardWorkspace();
+            }
         } else if (draft.questionType === 'hierarchy') {
             renderStudioHierarchyFields(draft.hierarchyDrafts || null);
         } else if (draft.questionType === 'classify') {
@@ -18533,7 +18616,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function getStudioPendingFlashcardRow() {
-        if (!state.auth.editingQuizId || getStudioCurrentQuizType() !== 'flashcard') return null;
+        if (getStudioCurrentQuizType() !== 'flashcard') return null;
         const row = state.auth.studioPendingNewQuestionRow;
         if (!row || row.question_type !== 'flashcard') return null;
         return row;
@@ -18554,8 +18637,12 @@ The deletion becomes permanent when you save the diagram.`);
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
         const learningResources = getLearningResourcesEditorPlain();
+        const termInk = state.auth.handwrittenFlashcardEnabled ? getHandwrittenSideStrokesFromEditorState('term').length : 0;
+        const definitionInk = state.auth.handwrittenFlashcardEnabled ? getHandwrittenSideStrokesFromEditorState('definition').length : 0;
         return !term
             && !definition
+            && !termInk
+            && !definitionInk
             && !learningResources
             && !state.auth.studioFlashcardTermImageDataUrl
             && !state.auth.studioFlashcardDefinitionImageDataUrl
@@ -19279,7 +19366,26 @@ The deletion becomes permanent when you save the diagram.`);
     function getCurrentHandwrittenFlashcardRow() {
         const id = normalizeSheetText(state.auth.editingQuestionId);
         if (id) return state.auth.studioQuizQuestions.find(row => normalizeSheetText(row?.id) === id) || null;
-        return getStudioPendingFlashcardRow?.() || null;
+        let pending = getStudioPendingFlashcardRow?.() || null;
+        if (!pending && state.auth.handwrittenFlashcardEnabled && getStudioCurrentQuizType() === 'flashcard') {
+            pending = {
+                id: STUDIO_PENDING_NEW_FLASHCARD_ID,
+                question_type: 'flashcard',
+                prompt_plain: '',
+                term_plain: '',
+                term_html: '',
+                definition_plain: '',
+                definition_html: '',
+                term_content_mode: 'handwritten',
+                definition_content_mode: 'handwritten',
+                term_image_layout: 'none',
+                definition_image_layout: 'none',
+                term_handwriting: [],
+                definition_handwriting: []
+            };
+            state.auth.studioPendingNewQuestionRow = pending;
+        }
+        return pending;
     }
 
     function getHandwrittenSideKey(side = state.auth.handwrittenFlashcardSide) { return side === 'definition' ? 'definition' : 'term'; }
@@ -19302,14 +19408,19 @@ The deletion becomes permanent when you save the diagram.`);
         const row = getCurrentHandwrittenFlashcardRow();
         if (!row) return;
         const key = getHandwrittenSideKey(side);
+        const activeImageValue = key === 'definition'
+            ? normalizeSheetText(row.definition_image_url || state.auth.studioFlashcardDefinitionImageDataUrl)
+            : normalizeSheetText(row.term_image_url || state.auth.studioFlashcardTermImageDataUrl);
+        const pendingImageForSide = state.auth.handwrittenPendingImageLayout?.side === key;
         if (patch.mode !== undefined) row[`${key}_content_mode`] = normalizeFlashcardContentMode(patch.mode);
-        if (patch.imageLayout !== undefined) row[`${key}_image_layout`] = normalizeFlashcardImageLayout(patch.imageLayout, !!normalizeSheetText(row[`${key}_image_url`]));
+        if (patch.imageLayout !== undefined) row[`${key}_image_layout`] = normalizeFlashcardImageLayout(patch.imageLayout, !!activeImageValue || pendingImageForSide);
         if (patch.strokes !== undefined) row[`${key}_handwriting`] = normalizeHandwritingStrokes(patch.strokes);
         if (!isStudioLocalFlashcardId(row.id) && row.id !== STUDIO_PENDING_NEW_FLASHCARD_ID) {
             const draft = getStudioFlashcardListDraft(row);
             if (draft) state.auth.studioQuestionDrafts.set(row.id, draft);
         }
         setStudioDirtyState(true);
+        if (state.auth.handwrittenFlashcardEnabled) syncHandwrittenFlashcardToggleLock();
     }
 
     function getHandwrittenUndoKey(side = state.auth.handwrittenFlashcardSide) {
@@ -19331,8 +19442,32 @@ The deletion becomes permanent when you save the diagram.`);
         elements.flashcardHandwrittenColorPresets.innerHTML = colors.map(color => `<span><button type="button" class="studio-handwritten-color-preset ${color===active?'is-active':''}" data-handwritten-color="${color}" style="--preset-color:${color}" title="Use ${color.toUpperCase()}"></button><button type="button" class="studio-handwritten-color-preset-delete" data-handwritten-color-delete="${color}" title="Delete saved color">×</button></span>`).join('');
     }
 
-    function drawHandwrittenEditorCanvas() {
-        renderHandwritingStrokesToCanvas(elements.flashcardHandwrittenCanvas, getHandwrittenSideStrokesFromEditorState());
+    function drawHandwrittenEditorCanvas(side = state.auth.handwrittenFlashcardSide) {
+        renderHandwritingStrokesToCanvas(elements.flashcardHandwrittenCanvas, getHandwrittenSideStrokesFromEditorState(getHandwrittenSideKey(side)));
+    }
+
+    function clearHandwrittenEditorCanvasPixels() {
+        const canvas = elements.flashcardHandwrittenCanvas;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.setTransform(1,0,0,1,0,0);
+            ctx.clearRect(0,0,canvas.width || 1,canvas.height || 1);
+        }
+    }
+
+    function switchHandwrittenFlashcardSide(nextSide = 'term') {
+        syncHandwrittenTypedEditorToBase();
+        state.auth.handwrittenFlashcardPointer = null;
+        // A newly shown side should always be immediately ready to write. This also
+        // prevents an eraser/move gesture from leaking across a Flip action.
+        state.auth.handwrittenFlashcardTool = 'pen';
+        state.auth.handwrittenFlashcardSide = getHandwrittenSideKey(nextSide);
+        const row = getCurrentHandwrittenFlashcardRow();
+        const side = state.auth.handwrittenFlashcardSide;
+        if (row && !normalizeSheetText(row[`${side}_content_mode`])) row[`${side}_content_mode`] = 'handwritten';
+        clearHandwrittenEditorCanvasPixels();
+        renderHandwrittenFlashcardWorkspace();
     }
 
     function renderHandwrittenFlashcardWorkspace() {
@@ -19343,8 +19478,9 @@ The deletion becomes permanent when you save the diagram.`);
         const mode = getHandwrittenSideModeFromEditorState(side);
         const imageValue = normalizeSheetText(row?.[`${side}_image_url`] || (side === 'definition' ? state.auth.studioFlashcardDefinitionImageDataUrl : state.auth.studioFlashcardTermImageDataUrl));
         const layout = normalizeFlashcardImageLayout(row?.[`${side}_image_layout`], !!imageValue);
-        const rows = (state.auth.studioQuizQuestions || []).filter(item => normalizeSheetText(item?.question_type || 'flashcard') === 'flashcard');
-        const index = Math.max(0, rows.findIndex(item => normalizeSheetText(item.id) === normalizeSheetText(row?.id)));
+        const rows = getHandwrittenWorkspaceRows();
+        const rawIndex = rows.findIndex(item => normalizeSheetText(item.id) === normalizeSheetText(row?.id));
+        const index = rawIndex >= 0 ? rawIndex : 0;
         if (elements.flashcardHandwrittenCardNumber) elements.flashcardHandwrittenCardNumber.textContent = `Card ${rows.length ? index+1 : 1} / ${Math.max(1, rows.length)}`;
         if (elements.flashcardHandwrittenSideSelect) elements.flashcardHandwrittenSideSelect.value = side;
         if (elements.flashcardHandwrittenSideMode) elements.flashcardHandwrittenSideMode.value = mode;
@@ -19376,7 +19512,12 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardHandwrittenRemoveImageBtn) elements.flashcardHandwrittenRemoveImageBtn.disabled = !imageValue;
         elements.handwrittenToolButtons?.forEach(btn => btn.classList.toggle('active', btn.dataset.handwrittenTool === state.auth.handwrittenFlashcardTool));
         renderHandwrittenFlashcardColorPresets();
-        requestAnimationFrame(drawHandwrittenEditorCanvas);
+        if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.dataset.flashcardSide = side;
+        drawHandwrittenEditorCanvas(side);
+        requestAnimationFrame(() => {
+            if (getHandwrittenSideKey() === side) drawHandwrittenEditorCanvas(side);
+        });
+        syncHandwrittenFlashcardToggleLock();
     }
 
     function syncHandwrittenTypedEditorToBase() {
@@ -19406,6 +19547,34 @@ The deletion becomes permanent when you save the diagram.`);
         return bestDist<=threshold?best:-1;
     }
 
+    function distancePointToSegment(point, a, b) {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        if (!dx && !dy) return Math.hypot(point.x - a.x, point.y - a.y);
+        const t = Math.max(0, Math.min(1, ((point.x-a.x)*dx + (point.y-a.y)*dy) / (dx*dx + dy*dy)));
+        return Math.hypot(point.x - (a.x + t*dx), point.y - (a.y + t*dy));
+    }
+
+    function eraseHandwritingAtPoint(strokes = [], point, threshold = .04) {
+        const output = [];
+        normalizeHandwritingStrokes(strokes).forEach(stroke => {
+            const points = stroke.points || [];
+            if (!points.length) return;
+            let chunk = [];
+            const flush = () => {
+                if (chunk.length) output.push({ color: stroke.color, size: stroke.size, points: chunk });
+                chunk = [];
+            };
+            points.forEach((p, index) => {
+                const nearPoint = Math.hypot(p.x-point.x, p.y-point.y) <= threshold;
+                const crossesEraser = index > 0 && distancePointToSegment(point, points[index-1], p) <= threshold;
+                if (nearPoint || crossesEraser) flush();
+                else chunk.push({ ...p });
+            });
+            flush();
+        });
+        return output;
+    }
+
     function handleHandwrittenPointerDown(event) {
         if (!state.auth.handwrittenFlashcardEnabled || getHandwrittenSideModeFromEditorState() !== 'handwritten') return;
         const row=getCurrentHandwrittenFlashcardRow(); const side=getHandwrittenSideKey(); const image=normalizeSheetText(row?.[`${side}_image_url`]);
@@ -19414,37 +19583,132 @@ The deletion becomes permanent when you save the diagram.`);
         pushHandwrittenUndo(side);
         const point=getHandwrittenCanvasPoint(event); const strokes=getHandwrittenSideStrokesFromEditorState(side); const tool=state.auth.handwrittenFlashcardTool;
         if (tool==='eraser') {
-            const idx=findNearestHandwritingStroke(strokes,point,.06); if(idx>=0){strokes.splice(idx,1);setHandwrittenSideState(side,{strokes});drawHandwrittenEditorCanvas();}
-            state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId}; return;
+            const erased=eraseHandwritingAtPoint(strokes,point,.045);
+            setHandwrittenSideState(side,{strokes:erased});
+            drawHandwrittenEditorCanvas(side);
+            state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId,side}; return;
         }
         if (tool==='move') {
-            const idx=findNearestHandwritingStroke(strokes,point,.07); state.auth.handwrittenFlashcardPointer={tool:'move',pointerId:event.pointerId,index:idx,last:point,strokes}; return;
+            const idx=findNearestHandwritingStroke(strokes,point,.07); state.auth.handwrittenFlashcardPointer={tool:'move',pointerId:event.pointerId,side,index:idx,last:point,strokes}; return;
         }
         const stroke={color:normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor||'#111827','#111827'),size:Number(state.auth.handwrittenFlashcardBrushSize)||4,points:[point]};
-        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,stroke,strokes}; drawHandwrittenEditorCanvas();
+        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes}; drawHandwrittenEditorCanvas(side);
     }
     function handleHandwrittenPointerMove(event) {
         const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault();
-        const side=getHandwrittenSideKey(); const point=getHandwrittenCanvasPoint(event);
-        if(drag.tool==='pen'){drag.stroke.points.push(point);setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas();}
-        else if(drag.tool==='eraser'){const strokes=getHandwrittenSideStrokesFromEditorState(side);const idx=findNearestHandwritingStroke(strokes,point,.06);if(idx>=0){strokes.splice(idx,1);setHandwrittenSideState(side,{strokes});drawHandwrittenEditorCanvas();}}
-        else if(drag.tool==='move'&&drag.index>=0){const dx=point.x-drag.last.x,dy=point.y-drag.last.y;const stroke=drag.strokes[drag.index];stroke.points=stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}));drag.last=point;setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas();}
+        const side=getHandwrittenSideKey(drag.side || state.auth.handwrittenFlashcardSide);
+        if (side !== getHandwrittenSideKey()) return;
+        const point=getHandwrittenCanvasPoint(event);
+        if(drag.tool==='pen'){drag.stroke.points.push(point);setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
+        else if(drag.tool==='eraser'){const strokes=getHandwrittenSideStrokesFromEditorState(side);const erased=eraseHandwritingAtPoint(strokes,point,.045);setHandwrittenSideState(side,{strokes:erased});drawHandwrittenEditorCanvas(side);}
+        else if(drag.tool==='move'&&drag.index>=0){const dx=point.x-drag.last.x,dy=point.y-drag.last.y;const stroke=drag.strokes[drag.index];stroke.points=stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}));drag.last=point;setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
     }
-    function handleHandwrittenPointerUp(event){const drag=state.auth.handwrittenFlashcardPointer;if(!drag||drag.pointerId!==event.pointerId)return;state.auth.handwrittenFlashcardPointer=null;cacheCurrentStudioQuestionDraft();}
+    function handleHandwrittenPointerUp(event) {
+        const drag = state.auth.handwrittenFlashcardPointer;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        state.auth.handwrittenFlashcardPointer = null;
+
+        // Do not promote a brand-new pending card merely because a pen/eraser
+        // gesture ended. Promotion belongs to explicit navigation/save actions.
+        // Otherwise the next toolbar click/Flip would create a fresh pending row
+        // and make the just-drawn strokes appear to have been deleted.
+        if (normalizeSheetText(state.auth.editingQuestionId)) {
+            cacheCurrentStudioQuestionDraft();
+        } else {
+            setStudioDirtyState(true);
+            updateStudioUnsavedChangesIndicator();
+        }
+    }
 
     function undoHandwrittenStroke() { const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardUndo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const prev=stack.pop(); const redo=state.auth.handwrittenFlashcardRedo.get(key)||[]; redo.push(current); state.auth.handwrittenFlashcardRedo.set(key,redo); state.auth.handwrittenFlashcardUndo.set(key,stack); setHandwrittenSideState(side,{strokes:prev}); renderHandwrittenFlashcardWorkspace(); }
     function redoHandwrittenStroke() { const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardRedo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const next=stack.pop(); const undo=state.auth.handwrittenFlashcardUndo.get(key)||[]; undo.push(current); state.auth.handwrittenFlashcardUndo.set(key,undo); state.auth.handwrittenFlashcardRedo.set(key,stack); setHandwrittenSideState(side,{strokes:next}); renderHandwrittenFlashcardWorkspace(); }
 
+    async function persistCurrentHandwrittenCardBeforeNavigation() {
+        syncHandwrittenTypedEditorToBase();
+        const row = getCurrentHandwrittenFlashcardRow();
+        const isPending = normalizeSheetText(row?.id) === STUDIO_PENDING_NEW_FLASHCARD_ID;
+        const hasContent = !!row && (hasHandwrittenFlashcardSideContent(row,'term') || hasHandwrittenFlashcardSideContent(row,'definition'));
+        if (isPending && !hasContent) return true;
+        cacheCurrentStudioQuestionDraft();
+        if (!state.auth.editingQuizId || state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts() || isStudioLocalFlashcardId(state.auth.editingQuestionId)) {
+            await handleSaveStudioEditorChanges();
+        }
+        return true;
+    }
+
+    async function beginBlankHandwrittenFlashcard() {
+        await beginStudioNewQuestion(null, { keepNewQuestionInList: true, suppressAutoFocus: true });
+        const row = getCurrentHandwrittenFlashcardRow();
+        if (row) {
+            row.term_content_mode = 'handwritten';
+            row.definition_content_mode = 'handwritten';
+            row.term_handwriting = [];
+            row.definition_handwriting = [];
+            row.term_image_layout = 'none';
+            row.definition_image_layout = 'none';
+        }
+        state.auth.handwrittenFlashcardSide = 'term';
+        state.auth.handwrittenFlashcardPointer = null;
+        state.auth.handwrittenFlashcardTool = 'pen';
+        clearHandwrittenEditorCanvasPixels();
+        renderHandwrittenFlashcardWorkspace();
+    }
+
     async function navigateHandwrittenFlashcard(delta=0, absolute=null) {
-        syncHandwrittenTypedEditorToBase(); cacheCurrentStudioQuestionDraft();
-        const rows=(state.auth.studioQuizQuestions||[]).filter(row=>normalizeSheetText(row?.question_type||'flashcard')==='flashcard'); if(!rows.length)return;
-        let index=rows.findIndex(row=>normalizeSheetText(row.id)===normalizeSheetText(state.auth.editingQuestionId)); if(index<0)index=0;
-        const targetIndex=absolute!==null?Math.max(0,Math.min(rows.length-1,Number(absolute)||0)):Math.max(0,Math.min(rows.length-1,index+delta));
+        const currentRow = getCurrentHandwrittenFlashcardRow();
+        const currentIsPending = normalizeSheetText(currentRow?.id) === STUDIO_PENDING_NEW_FLASHCARD_ID;
+        const currentHasContent = !!currentRow && (hasHandwrittenFlashcardSideContent(currentRow,'term') || hasHandwrittenFlashcardSideContent(currentRow,'definition'));
+        if (!(currentIsPending && !currentHasContent)) await persistCurrentHandwrittenCardBeforeNavigation();
+
+        const rows = getHandwrittenWorkspaceRows();
+        let index = rows.findIndex(row => normalizeSheetText(row.id) === normalizeSheetText(getCurrentHandwrittenFlashcardRow()?.id || state.auth.editingQuestionId));
+        if (index < 0) index = Math.max(0, rows.length - 1);
+
+        if (absolute !== null) {
+            const targetIndex = Math.max(0, Math.min(rows.length-1, Number(absolute)||0));
+            const target = rows[targetIndex];
+            if (!target) return;
+            if (normalizeSheetText(target.id) === STUDIO_PENDING_NEW_FLASHCARD_ID) {
+                state.auth.editingQuestionId = null;
+                state.auth.handwrittenFlashcardSide = 'term';
+                state.auth.handwrittenFlashcardTool = 'pen';
+                clearHandwrittenEditorCanvasPixels();
+                renderHandwrittenFlashcardWorkspace();
+                return;
+            }
+            await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true});
+            state.auth.handwrittenFlashcardSide='term';
+            state.auth.handwrittenFlashcardTool='pen';
+            clearHandwrittenEditorCanvasPixels();
+            renderHandwrittenFlashcardWorkspace();
+            return;
+        }
+
+        if (delta > 0 && index >= rows.length - 1) {
+            if (currentIsPending && !currentHasContent) return;
+            await beginBlankHandwrittenFlashcard();
+            return;
+        }
+
+        const targetIndex = Math.max(0, Math.min(rows.length-1,index+delta));
         const target=rows[targetIndex]; if(!target)return;
-        await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true}); state.auth.handwrittenFlashcardSide='term'; renderHandwrittenFlashcardWorkspace();
+        if (normalizeSheetText(target.id) === STUDIO_PENDING_NEW_FLASHCARD_ID) {
+            state.auth.editingQuestionId = null;
+            state.auth.handwrittenFlashcardSide='term';
+            state.auth.handwrittenFlashcardTool='pen';
+            clearHandwrittenEditorCanvasPixels();
+            renderHandwrittenFlashcardWorkspace();
+            return;
+        }
+        await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true});
+        state.auth.handwrittenFlashcardSide='term';
+        state.auth.handwrittenFlashcardTool='pen';
+        clearHandwrittenEditorCanvasPixels();
+        renderHandwrittenFlashcardWorkspace();
     }
 
     async function moveCurrentHandwrittenFlashcard(delta=0) {
+        await persistCurrentHandwrittenCardBeforeNavigation();
         const rows=(state.auth.studioQuizQuestions||[]).filter(row=>normalizeSheetText(row?.question_type||'flashcard')==='flashcard');
         const id=normalizeSheetText(state.auth.editingQuestionId); const index=rows.findIndex(row=>normalizeSheetText(row.id)===id); if(index<0)return;
         const next=Math.max(0,Math.min(rows.length-1,index+delta)); if(next===index)return; await moveStudioQuestionToPosition(id,next+1); renderHandwrittenFlashcardWorkspace();
@@ -20725,6 +20989,7 @@ if (elements.openQuizStudioBtn) {
         setEditorInlineFolderCreatorOpen(false);
 
         state.auth.editingQuizId = null;
+        state.auth.handwrittenFlashcardPersistedEnabled = false;
         state.auth.editingQuizMode = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
         state.auth.editingQuizType = state.auth.editingQuizMode === 'exam' ? 'multiple_choice' : state.auth.editingQuizMode;
         if (elements.createQuizTypeSelect) {
@@ -20811,8 +21076,12 @@ if (elements.openQuizStudioBtn) {
         const hasQuestionImage = !!normalizeSheetText(state.auth.studioQuestionImageDataUrl) && !questionImageIsBlankForNewSharedQuestion;
 
         if (quizType === 'flashcard') {
+            const termInk = state.auth.handwrittenFlashcardEnabled ? getHandwrittenSideStrokesFromEditorState('term').length : 0;
+            const definitionInk = state.auth.handwrittenFlashcardEnabled ? getHandwrittenSideStrokesFromEditorState('definition').length : 0;
             return !normalizeSheetText(elements.createFlashcardTerm?.value)
                 && !normalizeSheetText(elements.createFlashcardDefinition?.value)
+                && !termInk
+                && !definitionInk
                 && !normalizeSheetText(state.auth.studioFlashcardTermImageDataUrl)
                 && !normalizeSheetText(state.auth.studioFlashcardDefinitionImageDataUrl)
                 && !hasLearningResources;
@@ -20864,6 +21133,10 @@ if (elements.openQuizStudioBtn) {
         const quizType = getStudioCurrentQuizType();
 
         if (quizType === 'flashcard') {
+            if (state.auth.handwrittenFlashcardEnabled) {
+                const row = getCurrentHandwrittenFlashcardRow();
+                return !!row && hasHandwrittenFlashcardSideContent(row,'term') && hasHandwrittenFlashcardSideContent(row,'definition');
+            }
             return !!normalizeSheetText(elements.createFlashcardTerm?.value)
                 && !!normalizeSheetText(elements.createFlashcardDefinition?.value);
         }
@@ -20963,6 +21236,7 @@ if (elements.openQuizStudioBtn) {
         if (error) throw error;
 
         state.auth.editingQuizId = data.id;
+        state.auth.handwrittenFlashcardPersistedEnabled = quizType === 'flashcard' && !!state.auth.handwrittenFlashcardEnabled;
         state.auth.editingQuizMode = quizType;
         state.auth.editingQuizType = quizType === 'exam' ? 'multiple_choice' : quizType;
         state.auth.pendingInsertAfterQuestionId = null;
@@ -23030,21 +23304,31 @@ if (elements.openQuizStudioBtn) {
 
     async function handleSaveFlashcardQuiz() {
         if (!state.auth.client || !state.auth.user?.id) return void setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
+        if (state.auth.handwrittenFlashcardEnabled) syncHandwrittenTypedEditorToBase();
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         const term = normalizeSheetText(elements.createFlashcardTerm?.value);
         const definition = normalizeSheetText(elements.createFlashcardDefinition?.value);
         const termHtml = getFlashcardTermEditorHtml() || buildStoredHtmlFromPlain(term);
         const definitionHtml = getFlashcardDefinitionEditorHtml() || buildStoredHtmlFromPlain(definition);
-        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: state.auth.studioFlashcardTermImageLabels || [], drawStrokes: state.auth.studioFlashcardTermImageDrawStrokes || [], metadata: state.auth.studioFlashcardTermImageMetadata || {}, imagePresent: !!state.auth.studioFlashcardTermImageDataUrl });
-        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: state.auth.studioFlashcardDefinitionImageLabels || [], drawStrokes: state.auth.studioFlashcardDefinitionImageDrawStrokes || [], metadata: state.auth.studioFlashcardDefinitionImageMetadata || {}, imagePresent: !!state.auth.studioFlashcardDefinitionImageDataUrl });
+        const handwrittenRow = state.auth.handwrittenFlashcardEnabled ? getCurrentHandwrittenFlashcardRow() : null;
+        const termContentMode = state.auth.handwrittenFlashcardEnabled ? normalizeFlashcardContentMode(handwrittenRow?.term_content_mode || 'handwritten') : 'typed';
+        const definitionContentMode = state.auth.handwrittenFlashcardEnabled ? normalizeFlashcardContentMode(handwrittenRow?.definition_content_mode || 'handwritten') : 'typed';
+        const termHandwriting = state.auth.handwrittenFlashcardEnabled ? normalizeHandwritingStrokes(handwrittenRow?.term_handwriting || []) : [];
+        const definitionHandwriting = state.auth.handwrittenFlashcardEnabled ? normalizeHandwritingStrokes(handwrittenRow?.definition_handwriting || []) : [];
         const learningResourcesHtml = getLearningResourcesEditorHtml();
         const learningResources = getLearningResourcesEditorPlain();
         const termImageValue = state.auth.studioFlashcardTermImageDataUrl || '';
         const definitionImageValue = state.auth.studioFlashcardDefinitionImageDataUrl || '';
+        const termImageLayout = state.auth.handwrittenFlashcardEnabled ? normalizeFlashcardImageLayout(handwrittenRow?.term_image_layout, !!termImageValue) : 'none';
+        const definitionImageLayout = state.auth.handwrittenFlashcardEnabled ? normalizeFlashcardImageLayout(handwrittenRow?.definition_image_layout, !!definitionImageValue) : 'none';
+        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: state.auth.studioFlashcardTermImageLabels || [], drawStrokes: state.auth.studioFlashcardTermImageDrawStrokes || [], metadata: state.auth.studioFlashcardTermImageMetadata || {}, imagePresent: !!termImageValue, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: termContentMode, imageLayout: termImageLayout } : {}) });
+        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: state.auth.studioFlashcardDefinitionImageLabels || [], drawStrokes: state.auth.studioFlashcardDefinitionImageDrawStrokes || [], metadata: state.auth.studioFlashcardDefinitionImageMetadata || {}, imagePresent: !!definitionImageValue, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: definitionContentMode, imageLayout: definitionImageLayout } : {}) });
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
-        if (!hasFlashcardSideContent(term, termHtml, termImageValue)) return void setCreatorStatus('Add term text or a term image first.', 'error');
-        if (!hasFlashcardSideContent(definition, definitionHtml, definitionImageValue)) return void setCreatorStatus('Add definition text or a definition image first.', 'error');
+        const termHasHandwriting = termContentMode === 'handwritten' && termHandwriting.length > 0;
+        const definitionHasHandwriting = definitionContentMode === 'handwritten' && definitionHandwriting.length > 0;
+        if (!hasFlashcardSideContent(term, termHtml, termImageValue) && !termHasHandwriting) return void setCreatorStatus('Add front text, handwriting, or an image first.', 'error');
+        if (!hasFlashcardSideContent(definition, definitionHtml, definitionImageValue) && !definitionHasHandwriting) return void setCreatorStatus('Add back text, handwriting, or an image first.', 'error');
         const isEditingQuiz = !!state.auth.editingQuizId;
         const isEditingQuestion = !!state.auth.editingQuestionId && !isStudioLocalFlashcardId(state.auth.editingQuestionId);
         setCreatorStatus(!isEditingQuiz ? 'Creating flashcard quiz...' : (isEditingQuestion ? 'Saving flashcard changes...' : 'Adding flashcard to quiz...'));
@@ -23088,8 +23372,8 @@ if (elements.openQuizStudioBtn) {
             const definitionImageDrawStrokes = cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []);
             const termImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardTermImageMetadata || {});
             const definitionImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {});
-            storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedFlashcardMedia.term_image_url });
-            storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedFlashcardMedia.definition_image_url });
+            storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedFlashcardMedia.term_image_url, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: termContentMode, imageLayout: normalizeFlashcardImageLayout(termImageLayout, !!savedFlashcardMedia.term_image_url) } : {}) });
+            storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedFlashcardMedia.definition_image_url, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: definitionContentMode, imageLayout: normalizeFlashcardImageLayout(definitionImageLayout, !!savedFlashcardMedia.definition_image_url) } : {}) });
             const savedQuestionRow = state.auth.studioQuizQuestions.find(row => normalizeSheetText(row?.id) === normalizeSheetText(questionId));
             const savedBuildUp = getStudioQuestionBuildUpValue(savedQuestionRow);
             const detailPayload = {
@@ -23100,9 +23384,13 @@ if (elements.openQuizStudioBtn) {
                 definition_plain: definition,
                 ...(savedBuildUp ? { build_up: savedBuildUp } : {}),
                 term_image_url: savedFlashcardMedia.term_image_url || '',
-                definition_image_url: savedFlashcardMedia.definition_image_url || ''
+                definition_image_url: savedFlashcardMedia.definition_image_url || '',
+                ...(state.auth.handwrittenFlashcardEnabled ? { term_handwriting: termHandwriting, definition_handwriting: definitionHandwriting } : {})
             };
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
+            if (detailError && state.auth.handwrittenFlashcardEnabled && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(detailError.message || detailError))) {
+                throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql before saving handwritten flashcards. Regular typed flashcards are unaffected.');
+            }
             if (detailError) throwFlashcardBuildUpMigrationErrorIfNeeded(detailError);
             await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, ...savedFlashcardMedia });
             if (!isEditingQuestion) {
@@ -23615,6 +23903,7 @@ if (elements.openQuizStudioBtn) {
             state.auth.editingQuizType = state.auth.editingQuizMode === 'exam' ? 'multiple_choice' : state.auth.editingQuizMode;
             const handwrittenConfig = getHandwrittenFlashcardConfigFromDescription(quizRow.description || '');
             state.auth.handwrittenFlashcardEnabled = state.auth.editingQuizMode === 'flashcard' && handwrittenConfig.enabled;
+            state.auth.handwrittenFlashcardPersistedEnabled = state.auth.handwrittenFlashcardEnabled;
             state.auth.handwrittenFlashcardStyle = handwrittenConfig.style;
             state.auth.handwrittenFlashcardSetupApplied = state.auth.handwrittenFlashcardEnabled;
             syncHandwrittenFlashcardSetupControls();
@@ -28289,6 +28578,8 @@ function queueFlashcardZoomOverlayLabelSync() {
 function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
     if (!src || !elements.flashcardImageOverlay || !elements.flashcardZoomImage || state.learningResourcesOverlayOpen) return;
 
+    resetFlashcardImageGestureZoom();
+    bindFlashcardImagePinchZoom();
     if (!elements.flashcardZoomImageWrap && elements.flashcardZoomImage.parentElement) {
         elements.flashcardZoomImageWrap = elements.flashcardZoomImage.parentElement;
     }
@@ -28333,6 +28624,7 @@ function openFlashcardImageOverlay(src, alt = 'Flashcard image', options = {}) {
 function closeFlashcardImageOverlay() {
     if (!elements.flashcardImageOverlay || !elements.flashcardZoomImage) return;
 
+    resetFlashcardImageGestureZoom();
     elements.flashcardImageOverlay.classList.add('hidden');
     elements.flashcardImageOverlay.setAttribute('aria-hidden', 'true');
     elements.flashcardZoomImage.src = '';
@@ -28344,6 +28636,112 @@ function closeFlashcardImageOverlay() {
     state.flashcardImageZoomOpen = false;
     syncBodyScrollLock();
     updateNavigationButtons();
+}
+
+const flashcardImageGesturePointers = new Map();
+let flashcardImagePinchGesture = null;
+let flashcardImagePanGesture = null;
+let flashcardImageZoomScale = 1;
+let flashcardImageZoomX = 0;
+let flashcardImageZoomY = 0;
+const FLASHCARD_IMAGE_MAX_ZOOM = 5;
+
+function applyFlashcardImageGestureTransform() {
+    const wrap = elements.flashcardZoomImageWrap;
+    if (!wrap) return;
+    const scale = Math.max(1, Math.min(FLASHCARD_IMAGE_MAX_ZOOM, Number(flashcardImageZoomScale) || 1));
+    flashcardImageZoomScale = scale;
+    if (scale <= 1.001) {
+        flashcardImageZoomX = 0;
+        flashcardImageZoomY = 0;
+    }
+    wrap.style.transformOrigin = 'center center';
+    wrap.style.transform = `translate3d(${flashcardImageZoomX}px, ${flashcardImageZoomY}px, 0) scale(${scale})`;
+    elements.flashcardImageViewport?.classList.toggle('is-pinch-zoomed', scale > 1.001);
+}
+
+function resetFlashcardImageGestureZoom() {
+    flashcardImageGesturePointers.clear();
+    flashcardImagePinchGesture = null;
+    flashcardImagePanGesture = null;
+    flashcardImageZoomScale = 1;
+    flashcardImageZoomX = 0;
+    flashcardImageZoomY = 0;
+    if (elements.flashcardZoomImageWrap) {
+        elements.flashcardZoomImageWrap.style.removeProperty('transform');
+        elements.flashcardZoomImageWrap.style.removeProperty('transform-origin');
+    }
+    elements.flashcardImageViewport?.classList.remove('is-pinch-zoomed','is-pinch-panning');
+}
+
+function getFlashcardImageTouchPointers() {
+    return Array.from(flashcardImageGesturePointers.values()).filter(pointer => pointer.pointerType === 'touch');
+}
+
+function beginFlashcardImagePinch() {
+    const touches = getFlashcardImageTouchPointers();
+    if (touches.length < 2) return false;
+    const [a,b] = touches;
+    flashcardImagePinchGesture = {
+        ids:[a.pointerId,b.pointerId],
+        startDistance:Math.max(1,Math.hypot(b.x-a.x,b.y-a.y)),
+        startScale:flashcardImageZoomScale,
+        startMid:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},
+        startX:flashcardImageZoomX,
+        startY:flashcardImageZoomY
+    };
+    flashcardImagePanGesture = null;
+    return true;
+}
+
+function bindFlashcardImagePinchZoom() {
+    const viewport = elements.flashcardImageViewport;
+    if (!viewport || viewport.dataset.pinchZoomBound === 'true') return;
+    viewport.dataset.pinchZoomBound = 'true';
+    viewport.addEventListener('pointerdown', event => {
+        if (!state.flashcardImageZoomOpen || event.pointerType !== 'touch' || event.target?.closest?.('[data-flashcard-label-toggle]')) return;
+        flashcardImageGesturePointers.set(event.pointerId,{pointerId:event.pointerId,pointerType:event.pointerType,x:event.clientX,y:event.clientY});
+        try { viewport.setPointerCapture?.(event.pointerId); } catch (_) {}
+        if (getFlashcardImageTouchPointers().length >= 2) beginFlashcardImagePinch();
+        else if (flashcardImageZoomScale > 1.001) {
+            flashcardImagePanGesture={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,baseX:flashcardImageZoomX,baseY:flashcardImageZoomY};
+        }
+    }, {passive:false});
+    viewport.addEventListener('pointermove', event => {
+        const pointer=flashcardImageGesturePointers.get(event.pointerId); if(!pointer)return;
+        pointer.x=event.clientX; pointer.y=event.clientY;
+        if (flashcardImagePinchGesture) {
+            const touches=getFlashcardImageTouchPointers();
+            const a=touches.find(item=>item.pointerId===flashcardImagePinchGesture.ids[0]);
+            const b=touches.find(item=>item.pointerId===flashcardImagePinchGesture.ids[1]);
+            if(!a||!b)return;
+            event.preventDefault();
+            const distance=Math.max(1,Math.hypot(b.x-a.x,b.y-a.y));
+            const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+            flashcardImageZoomScale=Math.max(1,Math.min(FLASHCARD_IMAGE_MAX_ZOOM,flashcardImagePinchGesture.startScale*(distance/flashcardImagePinchGesture.startDistance)));
+            flashcardImageZoomX=flashcardImagePinchGesture.startX+(mid.x-flashcardImagePinchGesture.startMid.x);
+            flashcardImageZoomY=flashcardImagePinchGesture.startY+(mid.y-flashcardImagePinchGesture.startMid.y);
+            applyFlashcardImageGestureTransform();
+        } else if (flashcardImagePanGesture?.pointerId===event.pointerId && flashcardImageZoomScale>1.001) {
+            event.preventDefault();
+            flashcardImageZoomX=flashcardImagePanGesture.baseX+(event.clientX-flashcardImagePanGesture.startX);
+            flashcardImageZoomY=flashcardImagePanGesture.baseY+(event.clientY-flashcardImagePanGesture.startY);
+            viewport.classList.add('is-pinch-panning');
+            applyFlashcardImageGestureTransform();
+        }
+    }, {passive:false});
+    const end = event => {
+        flashcardImageGesturePointers.delete(event.pointerId);
+        if (flashcardImagePinchGesture?.ids.includes(event.pointerId)) flashcardImagePinchGesture=null;
+        if (flashcardImagePanGesture?.pointerId===event.pointerId) flashcardImagePanGesture=null;
+        viewport.classList.remove('is-pinch-panning');
+        const touches=getFlashcardImageTouchPointers();
+        if(touches.length>=2) beginFlashcardImagePinch();
+        else if(touches.length===1 && flashcardImageZoomScale>1.001){const p=touches[0];flashcardImagePanGesture={pointerId:p.pointerId,startX:p.x,startY:p.y,baseX:flashcardImageZoomX,baseY:flashcardImageZoomY};}
+        if(flashcardImageZoomScale<=1.001) resetFlashcardImageGestureZoom();
+    };
+    viewport.addEventListener('pointerup',end);
+    viewport.addEventListener('pointercancel',end);
 }
 
 function createOptionImageZoomButton(src, alt = 'Option image') {
@@ -38409,6 +38807,13 @@ elements.questionImage.onclick = function () {
 
     // Phase 23B handwritten flashcard bindings. Kept feature-scoped so regular typed flashcards retain their existing event path.
     elements.flashcardHandwrittenToggle?.addEventListener('change', () => {
+        if (!elements.flashcardHandwrittenToggle.checked && hasCreatedHandwrittenFlashcardContent()) {
+            elements.flashcardHandwrittenToggle.checked = true;
+            state.auth.handwrittenFlashcardEnabled = true;
+            syncHandwrittenFlashcardToggleLock();
+            setCreatorStatus('Handwritten mode is locked after the first handwritten flashcard is created.', 'neutral');
+            return;
+        }
         if (elements.flashcardHandwrittenToggle.checked && isIPhoneDevice()) {
             elements.flashcardHandwrittenToggle.checked = false;
             state.auth.handwrittenFlashcardEnabled = false;
@@ -38445,8 +38850,8 @@ elements.questionImage.onclick = function () {
         renderHandwrittenFlashcardWorkspace();
         elements.flashcardHandwrittenCard?.focus();
     });
-    elements.flashcardHandwrittenSideSelect?.addEventListener('change', () => { syncHandwrittenTypedEditorToBase(); state.auth.handwrittenFlashcardSide=getHandwrittenSideKey(elements.flashcardHandwrittenSideSelect.value); renderHandwrittenFlashcardWorkspace(); });
-    elements.flashcardHandwrittenFlipBtn?.addEventListener('click', () => { syncHandwrittenTypedEditorToBase(); state.auth.handwrittenFlashcardSide=state.auth.handwrittenFlashcardSide==='definition'?'term':'definition'; renderHandwrittenFlashcardWorkspace(); });
+    elements.flashcardHandwrittenSideSelect?.addEventListener('change', () => switchHandwrittenFlashcardSide(elements.flashcardHandwrittenSideSelect.value));
+    elements.flashcardHandwrittenFlipBtn?.addEventListener('click', () => switchHandwrittenFlashcardSide(state.auth.handwrittenFlashcardSide==='definition'?'term':'definition'));
     elements.flashcardHandwrittenSideMode?.addEventListener('change', () => {
         const side=getHandwrittenSideKey(), next=normalizeFlashcardContentMode(elements.flashcardHandwrittenSideMode.value), prev=getHandwrittenSideModeFromEditorState(side);
         if (next===prev)return;
@@ -38465,7 +38870,14 @@ elements.questionImage.onclick = function () {
         }
         renderHandwrittenFlashcardWorkspace();
     });
-    elements.handwrittenToolButtons?.forEach(btn=>btn.addEventListener('click',()=>{state.auth.handwrittenFlashcardTool=btn.dataset.handwrittenTool||'pen';renderHandwrittenFlashcardWorkspace();}));
+    elements.handwrittenToolButtons?.forEach(btn => btn.addEventListener('click', event => {
+        event.preventDefault();
+        // Finish/cancel any in-progress pointer gesture before changing tools so an
+        // iPad Pencil gesture cannot continue under the newly selected tool.
+        state.auth.handwrittenFlashcardPointer = null;
+        state.auth.handwrittenFlashcardTool = btn.dataset.handwrittenTool || 'pen';
+        renderHandwrittenFlashcardWorkspace();
+    }));
     elements.flashcardHandwrittenBrushSize?.addEventListener('input',()=>{state.auth.handwrittenFlashcardBrushSize=Math.max(1,Math.min(24,Number(elements.flashcardHandwrittenBrushSize.value)||4));});
     elements.flashcardHandwrittenBrushColor?.addEventListener('input',()=>{state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(elements.flashcardHandwrittenBrushColor.value,'#111827');renderHandwrittenFlashcardColorPresets();});
     elements.flashcardHandwrittenSaveColorBtn?.addEventListener('click',()=>{saveImageEditorColorPreset(state.auth.handwrittenFlashcardPenColor);renderHandwrittenFlashcardColorPresets();});
@@ -38477,6 +38889,26 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenCanvas?.addEventListener('pointerup',handleHandwrittenPointerUp);
     elements.flashcardHandwrittenCanvas?.addEventListener('pointercancel',handleHandwrittenPointerUp);
     elements.flashcardHandwrittenTypedEditor?.addEventListener('input',syncHandwrittenTypedEditorToBase);
+    elements.flashcardHandwrittenImageLayout?.addEventListener('change',()=>{
+        const side=getHandwrittenSideKey();
+        const layout=elements.flashcardHandwrittenImageLayout?.value==='full'?'full':'half';
+        const row=getCurrentHandwrittenFlashcardRow();
+        const imageValue=side==='definition'
+            ? normalizeSheetText(row?.definition_image_url || state.auth.studioFlashcardDefinitionImageDataUrl)
+            : normalizeSheetText(row?.term_image_url || state.auth.studioFlashcardTermImageDataUrl);
+        if (!imageValue) return;
+        const existingInk=getHandwrittenSideStrokesFromEditorState(side);
+        if(layout==='full' && existingInk.length){
+            if(!window.confirm('Changing to Full card will erase the handwriting on this side because drawing is disabled over a full-card image. Continue?')){
+                elements.flashcardHandwrittenImageLayout.value=getHandwrittenSideImageLayoutFromEditorState(side)==='full'?'full':'half';
+                return;
+            }
+            setHandwrittenSideState(side,{strokes:[]});
+        }
+        setHandwrittenSideState(side,{imageLayout:layout});
+        renderHandwrittenFlashcardWorkspace();
+        cacheCurrentStudioQuestionDraft();
+    });
     elements.flashcardHandwrittenAddImageBtn?.addEventListener('click',()=>{
         const side=getHandwrittenSideKey(); const layout=elements.flashcardHandwrittenImageLayout?.value==='full'?'full':'half';
         const existingInk=getHandwrittenSideStrokesFromEditorState(side);
@@ -38489,11 +38921,11 @@ elements.questionImage.onclick = function () {
         const side=getHandwrittenSideKey(); if(side==='definition') setStudioFlashcardDefinitionImageState('','No definition image selected.'); else setStudioFlashcardTermImageState('','No term image selected.');
         setHandwrittenSideState(side,{imageLayout:'none'}); renderHandwrittenFlashcardWorkspace();
     });
-    elements.flashcardHandwrittenPrevBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(-1));
-    elements.flashcardHandwrittenNextBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(1));
-    elements.flashcardHandwrittenMoveLeftBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(-1));
-    elements.flashcardHandwrittenMoveRightBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(1));
-    elements.flashcardHandwrittenGoBtn?.addEventListener('click',()=>{const n=Math.max(1,Number(elements.flashcardHandwrittenGoInput?.value)||1);navigateHandwrittenFlashcard(0,n-1);});
+    elements.flashcardHandwrittenPrevBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not open the previous card.','error');}));
+    elements.flashcardHandwrittenNextBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not save/open the next card.','error');}));
+    elements.flashcardHandwrittenMoveLeftBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not move this card.','error');}));
+    elements.flashcardHandwrittenMoveRightBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not move this card.','error');}));
+    elements.flashcardHandwrittenGoBtn?.addEventListener('click',()=>{const n=Math.max(1,Number(elements.flashcardHandwrittenGoInput?.value)||1);navigateHandwrittenFlashcard(0,n-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not open that card.','error');});});
     elements.flashcardHandwrittenGoInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();elements.flashcardHandwrittenGoBtn?.click();}});
     window.addEventListener('keydown',event=>{
         if(!state.auth.handwrittenFlashcardEnabled||!state.auth.handwrittenFlashcardSetupApplied||elements.flashcardHandwrittenWorkspace?.classList.contains('hidden'))return;
@@ -38501,12 +38933,12 @@ elements.questionImage.onclick = function () {
         if(event.code==='Space'){event.preventDefault();elements.flashcardHandwrittenFlipBtn?.click();}
         else if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.shiftKey?redoHandwrittenStroke():undoHandwrittenStroke();}
     });
-    window.addEventListener('resize',()=>{if(state.auth.handwrittenFlashcardEnabled)requestAnimationFrame(drawHandwrittenEditorCanvas);});
+    window.addEventListener('resize',()=>{if(state.auth.handwrittenFlashcardEnabled){const side=getHandwrittenSideKey();requestAnimationFrame(()=>drawHandwrittenEditorCanvas(side));}});
 
     elements.createQuizTypeSelect?.addEventListener('change', () => {
         const type=normalizeSheetText(elements.createQuizTypeSelect.value);
-        if(type!=='flashcard'){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;}
-        else if(!state.auth.editingQuizId){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;state.auth.handwrittenFlashcardStyle=getDefaultHandwrittenFlashcardStyle();syncHandwrittenFlashcardSetupControls();}
+        if(type!=='flashcard'){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardPersistedEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;}
+        else if(!state.auth.editingQuizId){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardPersistedEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;state.auth.handwrittenFlashcardStyle=getDefaultHandwrittenFlashcardStyle();syncHandwrittenFlashcardSetupControls();}
         updateStudioEditorTypeUI();
     });
 
