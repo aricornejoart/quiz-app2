@@ -13666,6 +13666,19 @@ body.review-mode-image-open {
 .studio-handwritten-setup input[type="color"] { min-height:42px; width:100%; padding:4px; border-radius:10px; }
 .studio-handwritten-setup input[type="range"] { width:100%; }
 .studio-handwritten-workspace { display:grid; gap:12px; }
+/* Phase 23B.9: while the visible side is handwritten, prevent iPad Safari from
+   turning a lifted-Pencil / next-stroke sequence into native text selection in
+   the card controls below it. Buttons and inputs remain clickable. */
+.studio-handwritten-workspace.is-handwriting-active,
+.studio-handwritten-workspace.is-handwriting-active *:not(input):not(textarea):not(select):not(option) {
+  -webkit-user-select:none !important;
+  user-select:none !important;
+  -webkit-touch-callout:none !important;
+}
+.studio-handwritten-workspace.is-handwriting-active .studio-handwritten-card,
+.studio-handwritten-workspace.is-handwriting-active .studio-handwritten-canvas {
+  touch-action:none;
+}
 .studio-handwritten-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px; border:1px solid rgba(167,139,250,.28); border-radius:14px; background:rgba(28,24,48,.76); }
 .studio-handwritten-toolbar .active { box-shadow:0 0 0 2px rgba(124,108,255,.7) inset; }
 .studio-handwritten-inline-control { display:inline-flex; align-items:center; gap:6px; font-size:.86rem; }

@@ -19566,7 +19566,9 @@ The deletion becomes permanent when you save the diagram.`);
             const html = side === 'definition' ? getFlashcardDefinitionEditorHtml() : getFlashcardTermEditorHtml();
             if (document.activeElement !== typedEditor && typedEditor.innerHTML !== html) typedEditor.innerHTML = html;
         }
-        if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', mode !== 'handwritten' || (imageValue && layout === 'full'));
+        const handwritingInputActive = mode === 'handwritten' && !(imageValue && layout === 'full');
+        if (elements.flashcardHandwrittenWorkspace) elements.flashcardHandwrittenWorkspace.classList.toggle('is-handwriting-active', handwritingInputActive);
+        if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', !handwritingInputActive);
         if (elements.flashcardHandwrittenImageWrap) elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
         if (elements.flashcardHandwrittenFullImageNote) elements.flashcardHandwrittenFullImageNote.classList.toggle('hidden', !(imageValue && layout === 'full'));
         if (elements.flashcardHandwrittenImage && imageValue) setImageElementSourceWithMediaResolution(elements.flashcardHandwrittenImage, imageValue);
@@ -19654,7 +19656,9 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const row=getCurrentHandwrittenFlashcardRow(); const side=getHandwrittenSideKey(); const image=normalizeSheetText(row?.[`${side}_image_url`]);
         if (image && getHandwrittenSideImageLayoutFromEditorState(side)==='full') return;
-        event.preventDefault(); elements.flashcardHandwrittenCanvas?.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+        event.stopPropagation();
+        elements.flashcardHandwrittenCanvas?.setPointerCapture?.(event.pointerId);
         pushHandwrittenUndo(side);
         const point=getHandwrittenCanvasPoint(event); const strokes=getHandwrittenSideStrokesFromEditorState(side); const tool=state.auth.handwrittenFlashcardTool;
         if (tool==='eraser') {
@@ -19674,7 +19678,7 @@ The deletion becomes permanent when you save the diagram.`);
             if (state.auth.handwrittenFlashcardEnabled && getHandwrittenSideModeFromEditorState() === 'handwritten') event.preventDefault();
             return;
         }
-        const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault();
+        const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault(); event.stopPropagation();
         const side=getHandwrittenSideKey(drag.side || state.auth.handwrittenFlashcardSide);
         if (side !== getHandwrittenSideKey()) return;
         const point=getHandwrittenCanvasPoint(event);
@@ -19689,18 +19693,17 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const drag = state.auth.handwrittenFlashcardPointer;
         if (!drag || drag.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        try { elements.flashcardHandwrittenCanvas?.releasePointerCapture?.(event.pointerId); } catch (_) {}
         state.auth.handwrittenFlashcardPointer = null;
 
-        // Do not promote a brand-new pending card merely because a pen/eraser
-        // gesture ended. Promotion belongs to explicit navigation/save actions.
-        // Otherwise the next toolbar click/Flip would create a fresh pending row
-        // and make the just-drawn strokes appear to have been deleted.
-        if (normalizeSheetText(state.auth.editingQuestionId)) {
-            cacheCurrentStudioQuestionDraft();
-        } else {
-            setStudioDirtyState(true);
-            updateStudioUnsavedChangesIndicator();
-        }
+        // Phase 23B.9: do not rebuild Quiz Studio after every Pencil-up. The
+        // handwritten row/draft is already updated continuously by setHandwrittenSideState().
+        // Re-rendering between separate letters was giving iPad Safari a chance to
+        // fall back into native selection before the next Pencil-down.
+        setStudioDirtyState(true);
+        updateStudioUnsavedChangesIndicator();
     }
 
     function undoHandwrittenStroke() { const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardUndo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const prev=stack.pop(); const redo=state.auth.handwrittenFlashcardRedo.get(key)||[]; redo.push(current); state.auth.handwrittenFlashcardRedo.set(key,redo); state.auth.handwrittenFlashcardUndo.set(key,stack); setHandwrittenSideState(side,{strokes:prev}); renderHandwrittenFlashcardWorkspace(); }
@@ -38992,6 +38995,31 @@ elements.questionImage.onclick = function () {
     openFlashcardImageOverlay(src, this.alt || 'Question image', { diagramLabels });
 };
 
+    function shouldSuppressHandwrittenWorkspaceNativeSelection(event) {
+        if (!state.auth.handwrittenFlashcardEnabled || !state.auth.handwrittenFlashcardSetupApplied) return false;
+        if (elements.flashcardHandwrittenWorkspace?.classList.contains('hidden')) return false;
+        if (getHandwrittenSideModeFromEditorState() !== 'handwritten') return false;
+        const row = getCurrentHandwrittenFlashcardRow();
+        const side = getHandwrittenSideKey();
+        const imageValue = normalizeSheetText(row?.[`${side}_image_url`]);
+        if (imageValue && getHandwrittenSideImageLayoutFromEditorState(side) === 'full') return false;
+        // Typed editor is hidden in this state, but keep the exemption explicit so
+        // future mixed-mode changes cannot accidentally break normal text editing.
+        if (event?.target?.closest?.('#flashcardHandwrittenTypedEditor, input, textarea, select, option')) return false;
+        return true;
+    }
+
+    function suppressHandwrittenWorkspaceNativeSelection(event) {
+        if (!shouldSuppressHandwrittenWorkspaceNativeSelection(event)) return;
+        event.preventDefault();
+        if (event.type === 'selectstart' || event.type === 'dragstart' || event.type === 'contextmenu') {
+            event.stopPropagation();
+        }
+        if (event.type === 'selectstart') {
+            try { window.getSelection?.()?.removeAllRanges?.(); } catch (_) {}
+        }
+    }
+
     // Phase 23B handwritten flashcard bindings. Kept feature-scoped so regular typed flashcards retain their existing event path.
     elements.flashcardHandwrittenToggle?.addEventListener('change', () => {
         if (!elements.flashcardHandwrittenToggle.checked && hasCreatedHandwrittenFlashcardContent()) {
@@ -39071,10 +39099,15 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenColorPresets?.addEventListener('click',event=>{const use=event.target.closest('[data-handwritten-color]');if(use){state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(use.dataset.handwrittenColor,'#111827');if(elements.flashcardHandwrittenBrushColor)elements.flashcardHandwrittenBrushColor.value=state.auth.handwrittenFlashcardPenColor;renderHandwrittenFlashcardColorPresets();return;}const del=event.target.closest('[data-handwritten-color-delete]');if(del){deleteImageEditorColorPreset(del.dataset.handwrittenColorDelete);renderHandwrittenFlashcardColorPresets();}});
     elements.flashcardHandwrittenUndoBtn?.addEventListener('click',undoHandwrittenStroke);
     elements.flashcardHandwrittenRedoBtn?.addEventListener('click',redoHandwrittenStroke);
-    elements.flashcardHandwrittenCanvas?.addEventListener('pointerdown',handleHandwrittenPointerDown);
-    elements.flashcardHandwrittenCanvas?.addEventListener('pointermove',handleHandwrittenPointerMove);
-    elements.flashcardHandwrittenCanvas?.addEventListener('pointerup',handleHandwrittenPointerUp);
-    elements.flashcardHandwrittenCanvas?.addEventListener('pointercancel',handleHandwrittenPointerUp);
+    // Capture Pencil input as early as possible on iPad. passive:false is required
+    // for preventDefault() to reliably suppress Safari's compatibility selection path.
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointerdown',handleHandwrittenPointerDown,{capture:true,passive:false});
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointermove',handleHandwrittenPointerMove,{capture:true,passive:false});
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointerup',handleHandwrittenPointerUp,{capture:true,passive:false});
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointercancel',handleHandwrittenPointerUp,{capture:true,passive:false});
+    ['selectstart','dragstart','contextmenu'].forEach(eventName => {
+        elements.flashcardHandwrittenWorkspace?.addEventListener(eventName, suppressHandwrittenWorkspaceNativeSelection, {capture:true,passive:false});
+    });
     // Phase 23B.8: suppress Safari/iPadOS selection, callout and drag gestures only
     // while the current side is Handwritten. Typed sides retain normal selection/caret behavior.
     const suppressHandwrittenNativeSelection = event => {
