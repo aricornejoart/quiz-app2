@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23b6" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23b8" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23b6-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23b8-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1674,6 +1674,7 @@ MODIFICATION RULES FOR THIS APP
                         <span class="studio-handwritten-nav-divider"></span>
                         <button id="flashcardHandwrittenMoveLeftBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Left</button>
                         <button id="flashcardHandwrittenMoveRightBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Right</button>
+                        <button id="flashcardHandwrittenDeleteBtn" type="button" class="auth-action-btn auth-secondary-btn">Delete Card</button>
                         <label class="studio-handwritten-go"><span>Go to</span><input id="flashcardHandwrittenGoInput" type="number" min="1" step="1"><button id="flashcardHandwrittenGoBtn" type="button" class="auth-action-btn auth-secondary-btn">Go</button></label>
                       </div>
                       <div class="creator-note">Space flips the card when you are not typing. Half images always stay on the right; handwriting remains on the left.</div>
@@ -2231,6 +2232,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23b6"></script>
+  <script src="script.js?v=23b8"></script>
 </body>
 </html>

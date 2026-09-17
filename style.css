@@ -13675,6 +13675,13 @@ body.review-mode-image-open {
 .studio-handwritten-color-preset.is-active { outline:2px solid #fff; outline-offset:2px; }
 .studio-handwritten-color-preset-delete { border:0; background:transparent; color:#c9c6df; cursor:pointer; padding:0 2px; font-size:16px; }
 .studio-handwritten-card { position:relative; width:min(100%, 820px); aspect-ratio: 16 / 10; margin:0 auto; overflow:hidden; border-radius:24px; border:2px solid rgba(114,94,188,.55); box-shadow:0 14px 38px rgba(0,0,0,.28); background:var(--hand-card-bg,#fff); touch-action:none; }
+.studio-handwritten-card.is-handwritten-input,
+.studio-handwritten-card.is-handwritten-input .studio-handwritten-canvas {
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+  -webkit-user-drag:none;
+}
 .studio-handwritten-grid { position:absolute; inset:0; pointer-events:none; z-index:0; opacity:var(--hand-grid-opacity,.24); }
 .studio-handwritten-card.grid-lines .studio-handwritten-grid { background-image:linear-gradient(to bottom, transparent 31px, var(--hand-grid-color,#94a3b8) 32px); background-size:100% 32px; }
 .studio-handwritten-card.grid-graph .studio-handwritten-grid { background-image:linear-gradient(to right, var(--hand-grid-color,#94a3b8) 1px, transparent 1px),linear-gradient(to bottom, var(--hand-grid-color,#94a3b8) 1px, transparent 1px); background-size:32px 32px; }
