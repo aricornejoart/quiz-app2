@@ -13558,7 +13558,10 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.studioEditorQuickToolbar) elements.studioEditorQuickToolbar.classList.toggle('hidden', handwrittenEditorActive);
         if (elements.studioEditorBottomActions) elements.studioEditorBottomActions.classList.toggle('hidden', handwrittenEditorActive);
         if (elements.studioQuestionPositionLabel) elements.studioQuestionPositionLabel.classList.toggle('hidden', handwrittenEditorActive);
-        if (elements.createQuizBtn) elements.createQuizBtn.classList.toggle('hidden', handwrittenEditorActive);
+        // Phase 23B.4: keep the primary top Save Changes button visible in
+        // Handwritten mode. The legacy question-list/bottom controls remain hidden,
+        // but saving handwritten card drafts should be an explicit user action.
+        if (elements.createQuizBtn) elements.createQuizBtn.classList.remove('hidden');
         syncHandwrittenFlashcardToggleLock();
         if (isFlashcard && state.auth.handwrittenFlashcardEnabled) renderHandwrittenFlashcardWorkspace();
         updateStudioQuestionImagePanelUI();
@@ -17924,6 +17927,23 @@ The deletion becomes permanent when you save the diagram.`);
         return true;
     }
 
+    function getSupabaseErrorMessage(error) {
+        return normalizeSheetText(error?.message || error?.details || error?.hint || error || '');
+    }
+
+    function isMissingHandwritingColumnsError(error) {
+        const message = getSupabaseErrorMessage(error);
+        if (!message) return false;
+        const namesHandwritingColumn = /term_handwriting|definition_handwriting/i.test(message);
+        const describesMissingSchema = /schema cache|could not find|does not exist|unknown column|column .*not found/i.test(message);
+        return namesHandwritingColumn && describesMissingSchema;
+    }
+
+    function throwHandwritingMigrationErrorIfNeeded(error) {
+        if (!isMissingHandwritingColumnsError(error)) return false;
+        throw new Error('Supabase cannot see the handwritten flashcard columns yet. If you already ran SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql, run the Phase 23B.4 schema-cache refresh SQL once, then reload Study Bunny.');
+    }
+
     async function saveStudioLocalFlashcardDraftRows(sourceRows = getStudioLocalFlashcardRows(), orderRows = state.auth.studioQuizQuestions, options = {}) {
         const localRows = (sourceRows || []).filter(row => isStudioLocalFlashcardId(row?.id));
         if (!localRows.length) return [];
@@ -17940,7 +17960,22 @@ The deletion becomes permanent when you save the diagram.`);
 
         let nextSortOrder = await getNextQuestionSortOrder(quizId);
         const preparedRows = localRows.map(row => {
-            const identity = getStudioLocalFlashcardSaveIdentity(row.id, nextSortOrder);
+            // Phase 23B.5: keep the proven typed-flashcard local-draft ID path unchanged,
+            // but let Supabase generate IDs for brand-new handwritten cards. This avoids
+            // assuming the questions.id database type/insert policy in the handwriting path.
+            let identity;
+            if (state.auth.handwrittenFlashcardEnabled) {
+                if (!(state.auth.studioLocalFlashcardSaveIdentities instanceof Map)) {
+                    state.auth.studioLocalFlashcardSaveIdentities = new Map();
+                }
+                identity = state.auth.studioLocalFlashcardSaveIdentities.get(normalizeSheetText(row.id)) || {
+                    questionId: '',
+                    sortOrder: Number.isFinite(Number(nextSortOrder)) ? Number(nextSortOrder) : 0
+                };
+                state.auth.studioLocalFlashcardSaveIdentities.set(normalizeSheetText(row.id), identity);
+            } else {
+                identity = getStudioLocalFlashcardSaveIdentity(row.id, nextSortOrder);
+            }
             nextSortOrder = Math.max(nextSortOrder, Number(identity.sortOrder || 0) + 1);
             const term = normalizeSheetText(row.term_plain || row.prompt_plain);
             const definition = normalizeSheetText(row.definition_plain);
@@ -18021,8 +18056,10 @@ The deletion becomes permanent when you save the diagram.`);
             };
         });
 
+        const useDatabaseGeneratedHandwrittenIds = state.auth.handwrittenFlashcardEnabled
+            && preparedRows.every(row => !normalizeSheetText(row.questionId));
         const insertPayload = preparedRows.map(row => ({
-            id: row.questionId,
+            ...(useDatabaseGeneratedHandwrittenIds ? {} : { id: row.questionId }),
             quiz_id: quizId,
             question_type: 'flashcard',
             prompt_html: row.termHtml,
@@ -18033,12 +18070,28 @@ The deletion becomes permanent when you save the diagram.`);
             sort_order: row.sortOrder
         }));
 
-        const { data: insertedRows, error: insertError } = await runWithTransientFetchRetry(() => state.auth.client
-            .from('questions')
-            .upsert(insertPayload, { onConflict: 'id' })
-            .select('id, sort_order'), 'Saving new flashcard rows', { attempts: 2 });
+        const { data: insertedRows, error: insertError } = await runWithTransientFetchRetry(() => {
+            const query = state.auth.client.from('questions');
+            return (useDatabaseGeneratedHandwrittenIds
+                ? query.insert(insertPayload)
+                : query.upsert(insertPayload, { onConflict: 'id' }))
+                .select('id, sort_order');
+        }, 'Saving new flashcard rows', { attempts: 2 });
 
         if (insertError) throw insertError;
+
+        if (useDatabaseGeneratedHandwrittenIds) {
+            const returnedBySortOrder = new Map((insertedRows || []).map(row => [Number(row?.sort_order), normalizeSheetText(row?.id)]));
+            preparedRows.forEach(row => {
+                const savedId = returnedBySortOrder.get(Number(row.sortOrder)) || '';
+                if (!savedId) throw new Error('Supabase saved a new handwritten card but did not return its question ID.');
+                row.questionId = savedId;
+                state.auth.studioLocalFlashcardSaveIdentities.set(normalizeSheetText(row.localId), {
+                    questionId: savedId,
+                    sortOrder: row.sortOrder
+                });
+            });
+        }
 
         const savedQuestionIdSet = new Set((insertedRows || []).map(row => normalizeSheetText(row?.id)).filter(Boolean));
         if (preparedRows.some(row => !savedQuestionIdSet.has(normalizeSheetText(row.questionId)))) {
@@ -18143,9 +18196,7 @@ The deletion becomes permanent when you save the diagram.`);
         const detailResult = await runWithTransientFetchRetry(() => state.auth.client
             .from('flashcard_questions')
             .upsert(detailPayload, { onConflict: 'question_id' }), 'Saving new flashcard detail records', { attempts: 2 });
-        if (detailResult.error && state.auth.handwrittenFlashcardEnabled && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(detailResult.error?.message || detailResult.error))) {
-            throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql before saving handwritten flashcards. Regular typed flashcards are unaffected.');
-        }
+        if (detailResult.error && state.auth.handwrittenFlashcardEnabled) throwHandwritingMigrationErrorIfNeeded(detailResult.error);
         if (detailResult.error) throwFlashcardBuildUpMigrationErrorIfNeeded(detailResult.error);
 
         // Reuse now publishes a shared Saved Image entry at toggle time.
@@ -18442,9 +18493,7 @@ The deletion becomes permanent when you save the diagram.`);
             definition_image_url: savedDefinitionImage || '',
             ...(state.auth.handwrittenFlashcardEnabled ? { term_handwriting: termHandwriting, definition_handwriting: definitionHandwriting } : {})
         }, { onConflict: 'question_id' }), 'Saving flashcard detail record', { attempts: 2 });
-        if (detailResult.error && state.auth.handwrittenFlashcardEnabled && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(detailResult.error?.message || detailResult.error))) {
-            throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql before saving handwritten flashcards. Regular typed flashcards are unaffected.');
-        }
+        if (detailResult.error && state.auth.handwrittenFlashcardEnabled) throwHandwritingMigrationErrorIfNeeded(detailResult.error);
         if (detailResult.error) throwFlashcardBuildUpMigrationErrorIfNeeded(detailResult.error);
 
         const previousRefs = new Set();
@@ -19577,6 +19626,10 @@ The deletion becomes permanent when you save the diagram.`);
 
     function handleHandwrittenPointerDown(event) {
         if (!state.auth.handwrittenFlashcardEnabled || getHandwrittenSideModeFromEditorState() !== 'handwritten') return;
+        // Phase 23B.5: fingers/palms may still tap toolbar controls and use Study Mode
+        // pinch zoom, but touch pointers never create/edit handwriting on the canvas.
+        // Apple Pencil reports pointerType='pen'; desktop mice remain supported.
+        if (normalizeSheetText(event.pointerType).toLowerCase() === 'touch') return;
         const row=getCurrentHandwrittenFlashcardRow(); const side=getHandwrittenSideKey(); const image=normalizeSheetText(row?.[`${side}_image_url`]);
         if (image && getHandwrittenSideImageLayoutFromEditorState(side)==='full') return;
         event.preventDefault(); elements.flashcardHandwrittenCanvas?.setPointerCapture?.(event.pointerId);
@@ -19595,6 +19648,7 @@ The deletion becomes permanent when you save the diagram.`);
         strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes}; drawHandwrittenEditorCanvas(side);
     }
     function handleHandwrittenPointerMove(event) {
+        if (normalizeSheetText(event.pointerType).toLowerCase() === 'touch') return;
         const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault();
         const side=getHandwrittenSideKey(drag.side || state.auth.handwrittenFlashcardSide);
         if (side !== getHandwrittenSideKey()) return;
@@ -19604,6 +19658,7 @@ The deletion becomes permanent when you save the diagram.`);
         else if(drag.tool==='move'&&drag.index>=0){const dx=point.x-drag.last.x,dy=point.y-drag.last.y;const stroke=drag.strokes[drag.index];stroke.points=stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}));drag.last=point;setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
     }
     function handleHandwrittenPointerUp(event) {
+        if (normalizeSheetText(event.pointerType).toLowerCase() === 'touch') return;
         const drag = state.auth.handwrittenFlashcardPointer;
         if (!drag || drag.pointerId !== event.pointerId) return;
         state.auth.handwrittenFlashcardPointer = null;
@@ -19629,10 +19684,20 @@ The deletion becomes permanent when you save the diagram.`);
         const isPending = normalizeSheetText(row?.id) === STUDIO_PENDING_NEW_FLASHCARD_ID;
         const hasContent = !!row && (hasHandwrittenFlashcardSideContent(row,'term') || hasHandwrittenFlashcardSideContent(row,'definition'));
         if (isPending && !hasContent) return true;
-        cacheCurrentStudioQuestionDraft();
-        if (!state.auth.editingQuizId || state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts() || isStudioLocalFlashcardId(state.auth.editingQuestionId)) {
-            await handleSaveStudioEditorChanges();
+
+        // Phase 23B.4: handwritten Next / Previous / Go To are editor navigation,
+        // not database-save commands. Preserve the current card as a local draft
+        // and let the restored top Save Changes button perform the Supabase write.
+        // This also avoids a Supabase write every time the user changes cards.
+        if (isStudioLocalFlashcardId(state.auth.editingQuestionId)) {
+            syncLocalFlashcardDraftFromEditor();
+        } else if (!state.auth.editingQuestionId && getStudioPendingFlashcardRow()) {
+            promotePendingFlashcardToLocalDraft();
+        } else if (state.auth.editingQuestionId) {
+            cacheCurrentStudioQuestionDraft();
         }
+        setStudioDirtyState(true);
+        updateStudioUnsavedChangesIndicator();
         return true;
     }
 
@@ -20592,7 +20657,7 @@ The deletion becomes permanent when you save the diagram.`);
                 definition_handwriting: normalizeHandwritingStrokes(row.definition_handwriting || [])
             }));
         }
-        if (/term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) return [];
+        if (isMissingHandwritingColumnsError(error)) return [];
         throw error;
     }
 
@@ -22257,7 +22322,7 @@ if (elements.openQuizStudioBtn) {
             ...(Array.isArray(detail.definition_handwriting) ? { definition_handwriting: normalizeHandwritingStrokes(detail.definition_handwriting) } : {})
         };
         let { error } = await state.auth.client.from('flashcard_questions').insert(payload);
-        if (error && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) {
+        if (error && isMissingHandwritingColumnsError(error)) {
             const fallbackPayload = { ...payload };
             delete fallbackPayload.term_handwriting;
             delete fallbackPayload.definition_handwriting;
@@ -23388,9 +23453,7 @@ if (elements.openQuizStudioBtn) {
                 ...(state.auth.handwrittenFlashcardEnabled ? { term_handwriting: termHandwriting, definition_handwriting: definitionHandwriting } : {})
             };
             const { error: detailError } = await state.auth.client.from('flashcard_questions').upsert(detailPayload, { onConflict: 'question_id' });
-            if (detailError && state.auth.handwrittenFlashcardEnabled && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(detailError.message || detailError))) {
-                throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql before saving handwritten flashcards. Regular typed flashcards are unaffected.');
-            }
+            if (detailError && state.auth.handwrittenFlashcardEnabled) throwHandwritingMigrationErrorIfNeeded(detailError);
             if (detailError) throwFlashcardBuildUpMigrationErrorIfNeeded(detailError);
             await deleteReplacedMediaReferences(previousMediaRefs, { ...savedSharedMedia, ...savedFlashcardMedia });
             if (!isEditingQuestion) {
@@ -24101,7 +24164,7 @@ if (elements.openQuizStudioBtn) {
                 } : {})
             };
             let { error } = await state.auth.client.from('flashcard_questions').insert(duplicatePayload);
-            if (error && /term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) {
+            if (error && isMissingHandwritingColumnsError(error)) {
                 const fallbackPayload = { ...duplicatePayload };
                 delete fallbackPayload.term_handwriting;
                 delete fallbackPayload.definition_handwriting;
@@ -31910,8 +31973,8 @@ async function loadFlashcardHandwritingDetailByQuestionId(questionId = '') {
     const promise = state.auth.client.from('flashcard_questions').select('question_id, term_handwriting, definition_handwriting').eq('question_id', safeId).maybeSingle()
         .then(({data,error}) => {
             if (error) {
-                if (/term_handwriting|definition_handwriting|column|schema cache/i.test(String(error.message || error))) {
-                    throw new Error('Run SUPABASE_PHASE23B_HANDWRITTEN_FLASHCARDS_MIGRATION.sql to use handwritten flashcards.');
+                if (isMissingHandwritingColumnsError(error)) {
+                    throw new Error('Supabase cannot see the handwritten flashcard columns yet. If you already ran the Phase 23B migration, run the Phase 23B.4 schema-cache refresh SQL once, then reload Study Bunny.');
                 }
                 throw error;
             }
@@ -32088,7 +32151,7 @@ function buildFlashcardFace(sideData, faceClass) {
         queueFlashcardImageOverlaySync(face);
     }
 
-    if (!hasText && !hasImage) {
+    if (!flashcardSideHasUserContent(sideData)) {
         const empty = document.createElement('div');
         empty.className = 'flashcard-placeholder';
         empty.innerText = 'No content on this side.';
@@ -36194,11 +36257,17 @@ if (elements.examQuestionTypeSelect) {
     });
 }
 
+function getStudioExplicitSaveErrorMessage(error) {
+    const message = getSupabaseErrorMessage(error);
+    if (message) return message;
+    return 'Could not save the quiz.';
+}
+
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
         handleSaveStudioEditorChanges().catch(err => {
             console.error(err);
-            setCreatorStatus('Could not save the quiz.', 'error');
+            setCreatorStatus(getStudioExplicitSaveErrorMessage(err), 'error');
         });
     });
 }
@@ -36207,7 +36276,7 @@ if (elements.studioEditorActionSaveBtn) {
     elements.studioEditorActionSaveBtn.addEventListener('click', () => {
         handleSaveStudioEditorChanges().catch(err => {
             console.error(err);
-            setCreatorStatus('Could not save the quiz.', 'error');
+            setCreatorStatus(getStudioExplicitSaveErrorMessage(err), 'error');
         });
     });
 }
