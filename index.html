@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23b11" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23b15" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23b11-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23b15-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1252,7 +1252,7 @@ MODIFICATION RULES FOR THIS APP
                   <div id="studioQuestionListPanel" class="studio-question-list-panel">
                     <div class="studio-question-list-header">
                       <div class="studio-question-list-title-wrap">
-                        <div class="creator-subsection-title studio-inline-title">Questions</div>
+                        <div id="studioQuestionListTitle" class="creator-subsection-title studio-inline-title">Questions</div>
                         <div id="studioUnsavedChangesIndicator" class="studio-unsaved-indicator hidden">Unsaved changes</div>
                       </div>
                     </div>
@@ -2257,6 +2257,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23b11"></script>
+  <script src="script.js?v=23b15"></script>
 </body>
 </html>

@@ -13785,3 +13785,315 @@ body.review-mode-image-open {
 .studio-handwritten-side-toggle {
   margin-left:4px;
 }
+
+/* Phase 23B.12 — performance-friendly handwritten flashcard list navigation. */
+.studio-handwritten-editor-layout {
+  display:grid;
+  grid-template-columns:minmax(230px, 275px) minmax(0, 1fr);
+  gap:14px;
+  align-items:start;
+}
+
+.studio-handwritten-editor-main {
+  display:grid;
+  gap:12px;
+  min-width:0;
+}
+
+.studio-handwritten-card-list-panel {
+  position:sticky;
+  top:12px;
+  min-width:0;
+  padding:10px;
+  border:1px solid rgba(167,139,250,.30);
+  border-radius:16px;
+  background:rgba(28,24,48,.78);
+  box-shadow:0 12px 30px rgba(0,0,0,.18);
+}
+
+.studio-handwritten-card-list-header {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.studio-handwritten-card-list-header > div {
+  display:grid;
+  gap:2px;
+}
+
+.studio-handwritten-card-list-count,
+.studio-handwritten-card-list-hint {
+  color:var(--color-text-muted, #a8a5c3);
+  font-size:.76rem;
+}
+
+.studio-handwritten-card-list-hint {
+  max-width:92px;
+  text-align:right;
+  line-height:1.25;
+}
+
+.studio-handwritten-card-list {
+  display:grid;
+  gap:0;
+  max-height:min(650px, calc(100vh - 220px));
+  overflow:auto;
+  padding:2px 3px 8px 2px;
+  overscroll-behavior:contain;
+}
+
+.studio-handwritten-list-card-block {
+  min-width:0;
+}
+
+.studio-handwritten-list-card {
+  display:grid;
+  grid-template-columns:32px minmax(0, 1fr);
+  gap:8px;
+  padding:8px;
+  border:1px solid rgba(167,139,250,.20);
+  border-radius:13px;
+  background:rgba(255,255,255,.035);
+  transition:border-color 120ms ease, background 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.studio-handwritten-list-card:hover {
+  border-color:rgba(167,139,250,.48);
+  background:rgba(124,108,255,.08);
+}
+
+.studio-handwritten-list-card.active {
+  border-color:#8a7dff;
+  background:rgba(124,108,255,.14);
+  box-shadow:0 0 0 2px rgba(138,125,255,.16);
+}
+
+.studio-handwritten-list-drag-handle {
+  align-self:stretch;
+  min-height:54px;
+  padding:0;
+  border:1px solid rgba(167,139,250,.28);
+  border-radius:10px;
+  background:rgba(255,255,255,.035);
+  color:var(--color-text-main, #f7f4ff);
+  font-size:1.35rem;
+  line-height:1;
+  cursor:grab;
+  touch-action:none;
+}
+
+.studio-handwritten-list-drag-handle:active:not(:disabled) {
+  cursor:grabbing;
+}
+
+.studio-handwritten-list-drag-handle:disabled {
+  opacity:.36;
+  cursor:not-allowed;
+}
+
+.studio-handwritten-list-open {
+  display:grid;
+  gap:6px;
+  min-width:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+
+.studio-handwritten-list-card-number {
+  font-size:.82rem;
+  font-weight:850;
+  color:var(--color-text-main, #f7f4ff);
+}
+
+.studio-handwritten-list-placeholder-pair {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:5px;
+}
+
+.studio-handwritten-list-placeholder-face {
+  aspect-ratio:16 / 10;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  border:1px solid rgba(167,139,250,.24);
+  border-radius:7px;
+  background:rgba(255,255,255,.045);
+  color:var(--color-text-muted, #a8a5c3);
+  font-size:.62rem;
+  font-weight:750;
+}
+
+.studio-handwritten-list-placeholder-face svg {
+  width:16px;
+  height:16px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.studio-handwritten-list-position {
+  grid-column:1 / -1;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+  padding-top:6px;
+  border-top:1px solid rgba(167,139,250,.12);
+}
+
+.studio-handwritten-list-position label {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  color:var(--color-text-muted, #a8a5c3);
+  font-size:.72rem;
+}
+
+.studio-handwritten-list-position input {
+  width:54px;
+  min-height:32px;
+  padding:4px 6px;
+}
+
+.studio-handwritten-list-position-go {
+  min-height:32px;
+  padding:4px 9px;
+  font-size:.74rem;
+}
+
+.studio-handwritten-list-insert {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:28px;
+  position:relative;
+}
+
+.studio-handwritten-list-insert::before,
+.studio-handwritten-list-insert::after {
+  content:"";
+  height:1px;
+  flex:1;
+  background:rgba(167,139,250,.16);
+}
+
+.studio-handwritten-list-insert button {
+  margin:4px 6px;
+  padding:3px 8px;
+  border:1px dashed rgba(167,139,250,.36);
+  border-radius:999px;
+  background:rgba(124,108,255,.055);
+  color:var(--color-text-muted, #a8a5c3);
+  font-size:.68rem;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.studio-handwritten-list-insert button:hover,
+.studio-handwritten-list-insert button:focus-visible {
+  border-color:rgba(167,139,250,.72);
+  background:rgba(124,108,255,.15);
+  color:var(--color-text-main, #f7f4ff);
+}
+
+.studio-handwritten-list-empty {
+  display:grid;
+  justify-items:center;
+  gap:10px;
+  padding:18px 8px;
+  color:var(--color-text-muted, #a8a5c3);
+  text-align:center;
+}
+
+.studio-handwritten-list-card-block.is-drag-source {
+  opacity:.28;
+}
+
+.studio-handwritten-list-card-block.is-drag-target .studio-handwritten-list-card {
+  border-color:#a99cff;
+  box-shadow:0 -3px 0 rgba(169,156,255,.85), 0 0 0 2px rgba(169,156,255,.12);
+}
+
+body.studio-handwritten-list-dragging {
+  user-select:none;
+  cursor:grabbing;
+}
+
+.studio-handwritten-list-drag-ghost {
+  position:fixed;
+  z-index:10020;
+  pointer-events:none;
+  opacity:.94;
+  transform:scale(1.01);
+  box-shadow:0 18px 38px rgba(0,0,0,.42), 0 0 0 2px rgba(159,144,255,.18);
+}
+
+@media (max-width: 980px) {
+  .studio-handwritten-editor-layout {
+    grid-template-columns:1fr;
+  }
+  .studio-handwritten-card-list-panel {
+    position:static;
+  }
+  .studio-handwritten-card-list {
+    max-height:290px;
+  }
+}
+
+
+/* Phase 23B.13 — handwritten cards reuse the regular flashcard list above the canvas. */
+.studio-handwritten-question-list-preview {
+  width:100%;
+  min-width:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+
+.studio-handwritten-question-list-preview:focus-visible {
+  outline:2px solid #9f90ff;
+  outline-offset:3px;
+  border-radius:10px;
+}
+
+.studio-handwritten-question-list-fields .studio-handwritten-list-placeholder-face {
+  min-height:58px;
+  aspect-ratio:auto;
+  flex-direction:row;
+  gap:8px;
+  border-color:rgba(167,139,250,.30);
+  background:rgba(255,255,255,.045);
+  font-size:.78rem;
+}
+
+.studio-handwritten-question-list-fields .studio-handwritten-list-placeholder-face svg {
+  width:20px;
+  height:20px;
+}
+
+.studio-handwritten-question-list-preview:hover .studio-handwritten-list-placeholder-face {
+  border-color:rgba(167,139,250,.60);
+  background:rgba(124,108,255,.10);
+}
+
+@media (max-width:900px) {
+  .studio-handwritten-question-list-fields {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
