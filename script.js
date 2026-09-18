@@ -19545,11 +19545,13 @@ The deletion becomes permanent when you save the diagram.`);
         const rawIndex = rows.findIndex(item => normalizeSheetText(item.id) === normalizeSheetText(row?.id));
         const index = rawIndex >= 0 ? rawIndex : 0;
         if (elements.flashcardHandwrittenCardNumber) elements.flashcardHandwrittenCardNumber.textContent = `Card ${rows.length ? index+1 : 1} / ${Math.max(1, rows.length)}`;
-        if (elements.flashcardHandwrittenSideSelect) elements.flashcardHandwrittenSideSelect.value = side;
-        if (elements.flashcardHandwrittenSideMode) elements.flashcardHandwrittenSideMode.value = mode;
+        if (elements.flashcardHandwrittenMoveLeftBtn) elements.flashcardHandwrittenMoveLeftBtn.disabled = !rows.length || index <= 0;
+        if (elements.flashcardHandwrittenMoveRightBtn) elements.flashcardHandwrittenMoveRightBtn.disabled = !rows.length || index >= rows.length - 1;
+        if (elements.flashcardHandwrittenSideSelect) elements.flashcardHandwrittenSideSelect.checked = side === 'definition';
+        if (elements.flashcardHandwrittenSideMode) elements.flashcardHandwrittenSideMode.checked = mode === 'typed';
         if (elements.flashcardHandwrittenBrushSize) elements.flashcardHandwrittenBrushSize.value = String(state.auth.handwrittenFlashcardBrushSize || 4);
         if (elements.flashcardHandwrittenBrushColor) elements.flashcardHandwrittenBrushColor.value = normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827');
-        if (elements.flashcardHandwrittenImageLayout) elements.flashcardHandwrittenImageLayout.value = layout === 'full' ? 'full' : 'half';
+        if (elements.flashcardHandwrittenImageLayout) elements.flashcardHandwrittenImageLayout.checked = layout === 'full';
         const card = elements.flashcardHandwrittenCard;
         if (card) {
             card.style.setProperty('--hand-card-bg', style.backgroundColor);
@@ -19813,10 +19815,55 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     async function moveCurrentHandwrittenFlashcard(delta=0) {
+        if (!delta) return;
+        syncHandwrittenTypedEditorToBase();
+
+        // Phase 23B.11: preserve the live handwriting row while reordering. The generic
+        // Quiz Studio reorder path reloads the slim flashcard list afterward; handwriting
+        // is intentionally lazy-loaded, so that reload used to replace the live row with
+        // a row that did not contain its stroke arrays. Handwritten reordering now moves
+        // the existing row objects in memory and only updates sort_order in Supabase.
+        const localIdsBefore = new Set(getStudioLocalFlashcardRows().map(row => normalizeSheetText(row.id)));
+        const rowBefore = getCurrentHandwrittenFlashcardRow();
+        const wasPending = normalizeSheetText(rowBefore?.id) === STUDIO_PENDING_NEW_FLASHCARD_ID;
         await persistCurrentHandwrittenCardBeforeNavigation();
-        const rows=(state.auth.studioQuizQuestions||[]).filter(row=>normalizeSheetText(row?.question_type||'flashcard')==='flashcard');
-        const id=normalizeSheetText(state.auth.editingQuestionId); const index=rows.findIndex(row=>normalizeSheetText(row.id)===id); if(index<0)return;
-        const next=Math.max(0,Math.min(rows.length-1,index+delta)); if(next===index)return; await moveStudioQuestionToPosition(id,next+1); renderHandwrittenFlashcardWorkspace();
+
+        let id = normalizeSheetText(state.auth.editingQuestionId);
+        if (!id && wasPending) {
+            const promoted = getStudioLocalFlashcardRows().find(row => !localIdsBefore.has(normalizeSheetText(row.id)));
+            if (promoted) {
+                id = normalizeSheetText(promoted.id);
+                state.auth.editingQuestionId = id;
+            }
+        }
+        if (!id) return;
+
+        const rows = state.auth.studioQuizQuestions || [];
+        const currentIndex = rows.findIndex(row => normalizeSheetText(row?.id) === id);
+        if (currentIndex < 0) return;
+        const targetIndex = Math.max(0, Math.min(rows.length - 1, currentIndex + Number(delta || 0)));
+        if (targetIndex === currentIndex) {
+            renderHandwrittenFlashcardWorkspace();
+            return;
+        }
+
+        const [movingRow] = rows.splice(currentIndex, 1);
+        rows.splice(targetIndex, 0, movingRow);
+        rows.forEach((row, index) => { row.sort_order = index; });
+
+        const hasLocalDrafts = rows.some(row => isStudioLocalFlashcardId(row?.id));
+        if (!hasLocalDrafts && state.auth.client && state.auth.editingQuizId) {
+            const orderedIds = rows.map(row => normalizeSheetText(row?.id)).filter(Boolean);
+            await reorderStudioQuizQuestionIds(orderedIds);
+        } else {
+            // Local cards are saved later by Save Changes. Their save path already uses
+            // the in-memory order snapshot and will publish the complete final ordering.
+            setStudioDirtyState(true);
+            updateStudioUnsavedChangesIndicator();
+        }
+
+        renderHandwrittenFlashcardWorkspace();
+        setCreatorStatus(`Card moved ${delta < 0 ? 'left' : 'right'}.`, 'success');
     }
 
     async function deleteCurrentHandwrittenFlashcard() {
@@ -39050,7 +39097,7 @@ elements.questionImage.onclick = function () {
     }
 
     function isHandwrittenInteractiveControlTarget(target) {
-        return !!target?.closest?.('button, input, textarea, select, option, a, [role="button"]');
+        return !!target?.closest?.('button, input, textarea, select, option, label, a, [role="button"], [role="switch"], .toggle-switch');
     }
 
     function clearHandwrittenDocumentSelection() {
@@ -39105,16 +39152,16 @@ elements.questionImage.onclick = function () {
         renderHandwrittenFlashcardWorkspace();
         elements.flashcardHandwrittenCard?.focus();
     });
-    elements.flashcardHandwrittenSideSelect?.addEventListener('change', () => switchHandwrittenFlashcardSide(elements.flashcardHandwrittenSideSelect.value));
+    elements.flashcardHandwrittenSideSelect?.addEventListener('change', () => switchHandwrittenFlashcardSide(elements.flashcardHandwrittenSideSelect.checked ? 'definition' : 'term'));
     elements.flashcardHandwrittenFlipBtn?.addEventListener('click', () => switchHandwrittenFlashcardSide(state.auth.handwrittenFlashcardSide==='definition'?'term':'definition'));
     elements.flashcardHandwrittenSideMode?.addEventListener('change', () => {
-        const side=getHandwrittenSideKey(), next=normalizeFlashcardContentMode(elements.flashcardHandwrittenSideMode.value), prev=getHandwrittenSideModeFromEditorState(side);
+        const side=getHandwrittenSideKey(), next=elements.flashcardHandwrittenSideMode.checked?'typed':'handwritten', prev=getHandwrittenSideModeFromEditorState(side);
         if (next===prev)return;
         const row=getCurrentHandwrittenFlashcardRow();
         const hasTyped=side==='definition'?!!htmlToDisplayText(getFlashcardDefinitionEditorHtml()):!!htmlToDisplayText(getFlashcardTermEditorHtml());
         const hasInk=getHandwrittenSideStrokesFromEditorState(side).length>0;
         if ((next==='typed'&&hasInk)||(next==='handwritten'&&hasTyped)) {
-            if (!window.confirm(`Changing this side to ${next==='typed'?'Typed':'Handwritten'} will remove the existing ${next==='typed'?'handwriting':'typed text'} on this side. Continue?`)) { elements.flashcardHandwrittenSideMode.value=prev; return; }
+            if (!window.confirm(`Changing this side to ${next==='typed'?'Typed':'Handwritten'} will remove the existing ${next==='typed'?'handwriting':'typed text'} on this side. Continue?`)) { elements.flashcardHandwrittenSideMode.checked=prev==='typed'; return; }
         }
         pushHandwrittenUndo(side);
         if(next==='typed') setHandwrittenSideState(side,{mode:'typed',strokes:[]});
@@ -39199,7 +39246,7 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenTypedEditor?.addEventListener('input',syncHandwrittenTypedEditorToBase);
     elements.flashcardHandwrittenImageLayout?.addEventListener('change',()=>{
         const side=getHandwrittenSideKey();
-        const layout=elements.flashcardHandwrittenImageLayout?.value==='full'?'full':'half';
+        const layout=elements.flashcardHandwrittenImageLayout?.checked?'full':'half';
         const row=getCurrentHandwrittenFlashcardRow();
         const imageValue=side==='definition'
             ? normalizeSheetText(row?.definition_image_url || state.auth.studioFlashcardDefinitionImageDataUrl)
@@ -39208,7 +39255,7 @@ elements.questionImage.onclick = function () {
         const existingInk=getHandwrittenSideStrokesFromEditorState(side);
         if(layout==='full' && existingInk.length){
             if(!window.confirm('Changing to Full card will erase the handwriting on this side because drawing is disabled over a full-card image. Continue?')){
-                elements.flashcardHandwrittenImageLayout.value=getHandwrittenSideImageLayoutFromEditorState(side)==='full'?'full':'half';
+                elements.flashcardHandwrittenImageLayout.checked=getHandwrittenSideImageLayoutFromEditorState(side)==='full';
                 return;
             }
             setHandwrittenSideState(side,{strokes:[]});
@@ -39218,7 +39265,7 @@ elements.questionImage.onclick = function () {
         cacheCurrentStudioQuestionDraft();
     });
     elements.flashcardHandwrittenAddImageBtn?.addEventListener('click',()=>{
-        const side=getHandwrittenSideKey(); const layout=elements.flashcardHandwrittenImageLayout?.value==='full'?'full':'half';
+        const side=getHandwrittenSideKey(); const layout=elements.flashcardHandwrittenImageLayout?.checked?'full':'half';
         const existingInk=getHandwrittenSideStrokesFromEditorState(side);
         if(existingInk.length && !window.confirm(`Adding a ${layout==='full'?'full-card':'half-card'} image will erase the handwriting already on this side. Continue?`)) return;
         state.auth.handwrittenPendingImageLayout={side,layout};
