@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23d6" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23d5" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23d6-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23d5-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1654,7 +1654,7 @@ MODIFICATION RULES FOR THIS APP
                         </button>
                         <button id="flashcardHandwrittenUndoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Undo" title="Undo">↶</button>
                         <button id="flashcardHandwrittenRedoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Redo" title="Redo">↷</button>
-                        <button id="flashcardHandwrittenSizeBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn studio-handwritten-size-trigger" aria-label="Brush and eraser settings" title="Brush and eraser settings">
+                        <button id="flashcardHandwrittenSizeBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn studio-handwritten-size-trigger" aria-label="Stroke thickness" title="Stroke thickness">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"></path></svg>
                         </button>
                         <div id="flashcardHandwrittenColorPresets" class="studio-handwritten-color-presets" aria-label="Saved brush colors"></div>
@@ -1683,20 +1683,9 @@ MODIFICATION RULES FOR THIS APP
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5"></path><path d="M16 3h5v5"></path><path d="M8 21H3v-5"></path><path d="M16 21h5v-5"></path></svg>
                         </button>
 
-                        <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Brush and eraser settings">
+                        <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Stroke thickness">
                           <div class="studio-handwritten-popover-title"><strong id="flashcardHandwrittenSizeLabel">Pen thickness</strong><span id="flashcardHandwrittenSizeValue">1.1 mm</span></div>
                           <input id="flashcardHandwrittenBrushSize" type="range" min="0.5" max="8" step="0.1" value="1.1" aria-label="Stroke thickness in millimeters">
-                          <div class="studio-handwritten-smoothing-row">
-                            <span>Smoothing</span>
-                            <label class="toggle-switch" for="flashcardHandwrittenSmoothingToggle" aria-label="Toggle handwriting smoothing">
-                              <input id="flashcardHandwrittenSmoothingToggle" type="checkbox" role="switch" checked>
-                              <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
-                            </label>
-                          </div>
-                          <div id="flashcardHandwrittenSmoothingStrengthWrap" class="studio-handwritten-smoothing-strength">
-                            <div class="studio-handwritten-popover-title"><span>Strength</span><span id="flashcardHandwrittenSmoothingValue">65%</span></div>
-                            <input id="flashcardHandwrittenSmoothingStrength" type="range" min="0" max="100" step="5" value="65" aria-label="Handwriting smoothing strength">
-                          </div>
                         </div>
                         <div id="flashcardHandwrittenColorPopover" class="studio-handwritten-floating-popover studio-handwritten-color-popover hidden" role="dialog" aria-label="Choose brush color">
                           <input id="flashcardHandwrittenBrushColor" type="color" value="#111827" aria-label="Choose color">
@@ -2296,6 +2285,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23d6"></script>
+  <script src="script.js?v=23d5"></script>
 </body>
 </html>

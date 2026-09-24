@@ -302,8 +302,6 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardBrushSize: 4,
             handwrittenFlashcardPenSizeMm: 1.1,
             handwrittenFlashcardEraserSizeMm: 5,
-            handwrittenFlashcardSmoothingEnabled: true,
-            handwrittenFlashcardSmoothingStrength: 65,
             handwrittenFlashcardToolPrefsUserId: '',
             handwrittenFlashcardFocusMode: false,
             handwrittenFlashcardColorPopoverMode: '',
@@ -851,10 +849,6 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenSizeLabel: document.getElementById('flashcardHandwrittenSizeLabel'),
         flashcardHandwrittenSizeValue: document.getElementById('flashcardHandwrittenSizeValue'),
         flashcardHandwrittenBrushSize: document.getElementById('flashcardHandwrittenBrushSize'),
-        flashcardHandwrittenSmoothingToggle: document.getElementById('flashcardHandwrittenSmoothingToggle'),
-        flashcardHandwrittenSmoothingStrength: document.getElementById('flashcardHandwrittenSmoothingStrength'),
-        flashcardHandwrittenSmoothingValue: document.getElementById('flashcardHandwrittenSmoothingValue'),
-        flashcardHandwrittenSmoothingStrengthWrap: document.getElementById('flashcardHandwrittenSmoothingStrengthWrap'),
         flashcardHandwrittenBrushColor: document.getElementById('flashcardHandwrittenBrushColor'),
         flashcardHandwrittenColorPopover: document.getElementById('flashcardHandwrittenColorPopover'),
         flashcardHandwrittenColorPopoverActionBtn: document.getElementById('flashcardHandwrittenColorPopoverActionBtn'),
@@ -19888,8 +19882,6 @@ The deletion becomes permanent when you save the diagram.`);
             const stored = raw ? JSON.parse(raw) : {};
             state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(stored.penSizeMm, 1.1);
             state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(stored.eraserSizeMm, 5, 1, 12);
-            state.auth.handwrittenFlashcardSmoothingEnabled = stored.smoothingEnabled !== false;
-            state.auth.handwrittenFlashcardSmoothingStrength = Math.round(Math.max(0, Math.min(100, Number.isFinite(Number(stored.smoothingStrength)) ? Number(stored.smoothingStrength) : 65)));
             if (/^#[0-9a-f]{6}$/i.test(String(stored.penColor || ''))) {
                 state.auth.handwrittenFlashcardPenColor = normalizeEditorHexColor(stored.penColor, '#111827');
             }
@@ -19904,8 +19896,6 @@ The deletion becomes permanent when you save the diagram.`);
             window.localStorage?.setItem(getHandwrittenToolPrefsStorageKey(), JSON.stringify({
                 penSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardPenSizeMm, 1.1),
                 eraserSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12),
-                smoothingEnabled: state.auth.handwrittenFlashcardSmoothingEnabled !== false,
-                smoothingStrength: Math.round(Math.max(0, Math.min(100, Number(state.auth.handwrittenFlashcardSmoothingStrength) || 0))),
                 penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827')
             }));
         } catch (error) {
@@ -20019,15 +20009,6 @@ The deletion becomes permanent when you save the diagram.`);
         }
         if (elements.flashcardHandwrittenSizeLabel) elements.flashcardHandwrittenSizeLabel.textContent = eraser ? 'Eraser size' : 'Pen thickness';
         if (elements.flashcardHandwrittenSizeValue) elements.flashcardHandwrittenSizeValue.textContent = `${value.toFixed(1)} mm`;
-        const smoothingEnabled = state.auth.handwrittenFlashcardSmoothingEnabled !== false;
-        const smoothingStrength = Math.round(Math.max(0, Math.min(100, Number(state.auth.handwrittenFlashcardSmoothingStrength) || 0)));
-        if (elements.flashcardHandwrittenSmoothingToggle) elements.flashcardHandwrittenSmoothingToggle.checked = smoothingEnabled;
-        if (elements.flashcardHandwrittenSmoothingStrength) {
-            elements.flashcardHandwrittenSmoothingStrength.value = String(smoothingStrength);
-            elements.flashcardHandwrittenSmoothingStrength.disabled = !smoothingEnabled;
-        }
-        if (elements.flashcardHandwrittenSmoothingValue) elements.flashcardHandwrittenSmoothingValue.textContent = `${smoothingStrength}%`;
-        elements.flashcardHandwrittenSmoothingStrengthWrap?.classList.toggle('is-disabled', !smoothingEnabled);
         if (elements.flashcardHandwrittenSizeBtn) {
             elements.flashcardHandwrittenSizeBtn.disabled = move;
             elements.flashcardHandwrittenSizeBtn.title = move ? 'Choose Pen or Eraser to change thickness' : (eraser ? 'Eraser size' : 'Pen thickness');
@@ -20262,54 +20243,6 @@ The deletion becomes permanent when you save the diagram.`);
         return { x: Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width))), y: Math.max(0,Math.min(1,(event.clientY-rect.top)/Math.max(1,rect.height))), p: Math.max(.05,Math.min(1, Number(event.pressure)||.5)) };
     }
 
-    function getHandwrittenPointerSamples(event) {
-        if (!event) return [];
-        try {
-            const samples = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
-            return samples?.length ? samples : [event];
-        } catch (_) {
-            return [event];
-        }
-    }
-
-    function getHandwrittenSmoothingStrength() {
-        if (state.auth.handwrittenFlashcardSmoothingEnabled === false) return 0;
-        return Math.max(0, Math.min(1, (Number(state.auth.handwrittenFlashcardSmoothingStrength) || 0) / 100));
-    }
-
-    function smoothHandwrittenInputPoint(drag, rawPoint, options = {}) {
-        const strength = getHandwrittenSmoothingStrength();
-        if (!drag || !rawPoint || strength <= 0) {
-            if (drag) drag.smoothedPoint = rawPoint;
-            return rawPoint;
-        }
-        const previous = drag.smoothedPoint || rawPoint;
-        if (!drag.smoothedPoint) {
-            drag.smoothedPoint = rawPoint;
-            return rawPoint;
-        }
-        const distance = Math.hypot(rawPoint.x - previous.x, rawPoint.y - previous.y);
-        let alpha = 1 - (strength * .82);
-        // Quick movements need a little more catch-up so smoothing stays responsive.
-        alpha = Math.max(alpha, Math.min(.82, .22 + distance * 16));
-        if (options.finish) alpha = Math.max(alpha, .82);
-        const point = {
-            x: previous.x + (rawPoint.x - previous.x) * alpha,
-            y: previous.y + (rawPoint.y - previous.y) * alpha,
-            p: previous.p + (rawPoint.p - previous.p) * Math.max(alpha, .42)
-        };
-        drag.smoothedPoint = point;
-        return point;
-    }
-
-    function appendHandwrittenStrokePoint(stroke, point) {
-        if (!stroke || !point) return false;
-        const last = stroke.points?.[stroke.points.length - 1];
-        if (last && Math.hypot(point.x - last.x, point.y - last.y) < .00012 && Math.abs(point.p - last.p) < .015) return false;
-        stroke.points.push(point);
-        return true;
-    }
-
     function findNearestHandwritingStroke(strokes, point, threshold=.045) {
         let best=-1,bestDist=Infinity;
         strokes.forEach((stroke,i)=>stroke.points.forEach(p=>{const d=Math.hypot(p.x-point.x,p.y-point.y);if(d<bestDist){bestDist=d;best=i;}}));
@@ -20373,13 +20306,13 @@ The deletion becomes permanent when you save the diagram.`);
             const erased=eraseHandwritingAtPoint(strokes,point,getHandwrittenEraserThreshold());
             setHandwrittenSideState(side,{strokes:erased});
             drawHandwrittenEditorCanvas(side);
-            state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId,side,smoothedPoint:point}; return;
+            state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId,side}; return;
         }
         if (tool==='move') {
             const idx=findNearestHandwritingStroke(strokes,point,.07); state.auth.handwrittenFlashcardPointer={tool:'move',pointerId:event.pointerId,side,index:idx,last:point,strokes}; return;
         }
         const stroke={color:normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor||'#111827','#111827'),size:handwrittenMmToStrokeSize(state.auth.handwrittenFlashcardPenSizeMm),points:[point]};
-        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes,smoothedPoint:point}; drawHandwrittenEditorCanvas(side);
+        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes}; drawHandwrittenEditorCanvas(side);
     }
     function handleHandwrittenPointerMove(event) {
         if (normalizeSheetText(event.pointerType).toLowerCase() === 'touch') {
@@ -20390,24 +20323,9 @@ The deletion becomes permanent when you save the diagram.`);
         const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault(); event.stopPropagation();
         const side=getHandwrittenSideKey(drag.side || state.auth.handwrittenFlashcardSide);
         if (side !== getHandwrittenSideKey()) return;
-        const pointerSamples = getHandwrittenPointerSamples(event);
         const point=getHandwrittenCanvasPoint(event);
-        if(drag.tool==='pen'){
-            let changed=false;
-            pointerSamples.forEach(sample => {
-                const smoothPoint=smoothHandwrittenInputPoint(drag,getHandwrittenCanvasPoint(sample));
-                changed=appendHandwrittenStrokePoint(drag.stroke,smoothPoint)||changed;
-            });
-            if(changed){setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
-        }
-        else if(drag.tool==='eraser'){
-            let strokes=getHandwrittenSideStrokesFromEditorState(side);
-            pointerSamples.forEach(sample => {
-                const smoothPoint=smoothHandwrittenInputPoint(drag,getHandwrittenCanvasPoint(sample));
-                strokes=eraseHandwritingAtPoint(strokes,smoothPoint,getHandwrittenEraserThreshold());
-            });
-            setHandwrittenSideState(side,{strokes});drawHandwrittenEditorCanvas(side);
-        }
+        if(drag.tool==='pen'){drag.stroke.points.push(point);setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
+        else if(drag.tool==='eraser'){const strokes=getHandwrittenSideStrokesFromEditorState(side);const erased=eraseHandwritingAtPoint(strokes,point,getHandwrittenEraserThreshold());setHandwrittenSideState(side,{strokes:erased});drawHandwrittenEditorCanvas(side);}
         else if(drag.tool==='move'&&drag.index>=0){const dx=point.x-drag.last.x,dy=point.y-drag.last.y;const stroke=drag.strokes[drag.index];stroke.points=stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}));drag.last=point;setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
     }
     function handleHandwrittenPointerUp(event) {
@@ -20420,17 +20338,6 @@ The deletion becomes permanent when you save the diagram.`);
         updateHandwrittenToolSizeIndicator(event);
         event.preventDefault();
         event.stopPropagation();
-        if (event.type !== 'pointercancel' && (drag.tool === 'pen' || drag.tool === 'eraser')) {
-            const finalPoint = smoothHandwrittenInputPoint(drag, getHandwrittenCanvasPoint(event), { finish: true });
-            if (drag.tool === 'pen') {
-                if (appendHandwrittenStrokePoint(drag.stroke, finalPoint)) setHandwrittenSideState(getHandwrittenSideKey(drag.side), { strokes: drag.strokes });
-            } else {
-                const eraseSide = getHandwrittenSideKey(drag.side);
-                const erased = eraseHandwritingAtPoint(getHandwrittenSideStrokesFromEditorState(eraseSide), finalPoint, getHandwrittenEraserThreshold());
-                setHandwrittenSideState(eraseSide, { strokes: erased });
-            }
-            drawHandwrittenEditorCanvas(getHandwrittenSideKey(drag.side));
-        }
         try { elements.flashcardHandwrittenCanvas?.releasePointerCapture?.(event.pointerId); } catch (_) {}
         state.auth.handwrittenFlashcardPointer = null;
         if (event.type === 'pointercancel') hideHandwrittenToolSizeIndicator();
@@ -40504,16 +40411,6 @@ elements.questionImage.onclick = function () {
         const value = Number(elements.flashcardHandwrittenBrushSize.value);
         if (state.auth.handwrittenFlashcardTool === 'eraser') state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(value, 5, 1, 12);
         else state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(value, 1.1);
-        syncHandwrittenSizeControls();
-        persistHandwrittenToolPrefs();
-    });
-    elements.flashcardHandwrittenSmoothingToggle?.addEventListener('change',()=>{
-        state.auth.handwrittenFlashcardSmoothingEnabled = !!elements.flashcardHandwrittenSmoothingToggle.checked;
-        syncHandwrittenSizeControls();
-        persistHandwrittenToolPrefs();
-    });
-    elements.flashcardHandwrittenSmoothingStrength?.addEventListener('input',()=>{
-        state.auth.handwrittenFlashcardSmoothingStrength = Math.round(Math.max(0, Math.min(100, Number(elements.flashcardHandwrittenSmoothingStrength.value) || 0)));
         syncHandwrittenSizeControls();
         persistHandwrittenToolPrefs();
     });

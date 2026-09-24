@@ -14497,32 +14497,3 @@ body.studio-handwritten-focus-open {
 .studio-handwritten-card:not(.is-handwritten-input) .studio-handwritten-tool-indicator {
   display: none !important;
 }
-
-/* Phase 23D.6 — GoodNotes-style handwriting smoothing controls. */
-.studio-handwritten-smoothing-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(167, 139, 250, .18);
-  color: #f4f1ff;
-  font-size: .82rem;
-  font-weight: 700;
-}
-
-.studio-handwritten-smoothing-strength {
-  margin-top: 10px;
-  transition: opacity .16s ease;
-}
-
-.studio-handwritten-smoothing-strength.is-disabled {
-  opacity: .42;
-}
-
-#flashcardHandwrittenSmoothingStrength {
-  display: block;
-  width: 100%;
-  margin: 9px 0 1px;
-}
