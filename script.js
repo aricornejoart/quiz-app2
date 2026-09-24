@@ -20114,6 +20114,39 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    function isHandwrittenTouchFocusLayout() {
+        return !!window.matchMedia?.('(hover: none) and (pointer: coarse) and (max-width: 1400px)').matches;
+    }
+
+    function positionHandwrittenFocusNavigation() {
+        const navigation = elements.flashcardHandwrittenFocusNavigation;
+        const card = elements.flashcardHandwrittenCard;
+        if (!navigation) return;
+        navigation.style.removeProperty('position');
+        navigation.style.removeProperty('left');
+        navigation.style.removeProperty('top');
+        navigation.style.removeProperty('bottom');
+        navigation.style.removeProperty('margin');
+        if (!state.auth.handwrittenFlashcardFocusMode || !card || !isHandwrittenTouchFocusLayout()) {
+            navigation.style.removeProperty('transform');
+            return;
+        }
+        navigation.style.removeProperty('transform');
+        const cardRect = card.getBoundingClientRect();
+        const navRect = navigation.getBoundingClientRect();
+        const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+        const safeBottom = 12;
+        const idealTop = Math.round(cardRect.bottom + 15);
+        const safeTop = Math.max(0, Math.floor(viewportHeight - navRect.height - safeBottom));
+        const targetTop = Math.min(idealTop, safeTop);
+        const translateY = Math.round(targetTop - navRect.top);
+        navigation.style.transform = `translateY(${translateY}px)`;
+    }
+
+    function queueHandwrittenFocusNavigationPosition() {
+        requestAnimationFrame(() => requestAnimationFrame(positionHandwrittenFocusNavigation));
+    }
+
     function setHandwrittenFlashcardFocusMode(enabled) {
         const next = !!enabled && state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied;
         state.auth.handwrittenFlashcardFocusMode = next;
@@ -20129,6 +20162,7 @@ The deletion becomes permanent when you save the diagram.`);
         requestAnimationFrame(() => {
             renderHandwrittenFlashcardWorkspace();
             drawHandwrittenEditorCanvas(getHandwrittenSideKey());
+            queueHandwrittenFocusNavigationPosition();
         });
     }
 
@@ -20223,6 +20257,7 @@ The deletion becomes permanent when you save the diagram.`);
         drawHandwrittenEditorCanvas(side);
         requestAnimationFrame(() => {
             if (getHandwrittenSideKey() === side) drawHandwrittenEditorCanvas(side);
+            if (state.auth.handwrittenFlashcardFocusMode) queueHandwrittenFocusNavigationPosition();
         });
         syncHandwrittenFlashcardToggleLock();
     }
@@ -40555,6 +40590,15 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenFocusFrontBtn?.addEventListener('click',()=>switchHandwrittenFlashcardSide('term'));
     elements.flashcardHandwrittenFocusBackBtn?.addEventListener('click',()=>switchHandwrittenFlashcardSide('definition'));
     elements.flashcardHandwrittenFocusDeleteBtn?.addEventListener('click',()=>elements.flashcardHandwrittenDeleteBtn?.click());
+    window.addEventListener('resize', () => {
+        if (state.auth.handwrittenFlashcardFocusMode) queueHandwrittenFocusNavigationPosition();
+    });
+    window.visualViewport?.addEventListener('resize', () => {
+        if (state.auth.handwrittenFlashcardFocusMode) queueHandwrittenFocusNavigationPosition();
+    });
+    window.addEventListener('orientationchange', () => {
+        if (state.auth.handwrittenFlashcardFocusMode) setTimeout(queueHandwrittenFocusNavigationPosition, 80);
+    });
     elements.flashcardHandwrittenCardList?.addEventListener('click', event => {
         const openButton = event.target.closest('[data-handwritten-list-open-id]');
         if (openButton) {
