@@ -29,6 +29,7 @@ MODIFICATION RULES FOR THIS APP
         hideAnswerFeedbackStorageKey: 'studyBunnyHideAnswerFeedbackSettingsV1',
         globalShuffleAnswersStorageKey: 'studyBunnyGlobalShuffleAnswersSettingsV1',
         diagramColorPresetsStorageKey: 'studyBunnyDiagramColorPresetsV1',
+        handwrittenToolPrefsStorageKey: 'studyBunnyHandwritingToolPrefsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
         dataSource: 'google_sheets',
@@ -299,7 +300,16 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardTool: 'pen',
             handwrittenFlashcardPenColor: '#111827',
             handwrittenFlashcardBrushSize: 4,
+            handwrittenFlashcardPenSizeMm: 1.1,
+            handwrittenFlashcardEraserSizeMm: 5,
+            handwrittenFlashcardSmoothingEnabled: true,
+            handwrittenFlashcardSmoothingStrength: 65,
+            handwrittenFlashcardToolPrefsUserId: '',
+            handwrittenFlashcardFocusMode: false,
+            handwrittenFlashcardColorPopoverMode: '',
+            handwrittenFlashcardEditingColorPreset: '',
             handwrittenFlashcardPointer: null,
+            handwrittenFlashcardToolIndicatorPointer: null,
             handwrittenFlashcardUndo: new Map(),
             handwrittenFlashcardRedo: new Map(),
             handwrittenPendingImageLayout: null,
@@ -495,6 +505,7 @@ MODIFICATION RULES FOR THIS APP
                 metadataPanelOpen: false,
                 labelInfoEnabled: false,
                 labelInfoPanelOpen: false,
+                labelInfoExpandedIndex: null,
                 activeConnectorLabelIndex: null,
                 connectorStylePickerLabelIndex: null,
                 pendingConnectorStyle: 'straight',
@@ -835,8 +846,19 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenSideMode: document.getElementById('flashcardHandwrittenSideMode'),
         flashcardHandwrittenUndoBtn: document.getElementById('flashcardHandwrittenUndoBtn'),
         flashcardHandwrittenRedoBtn: document.getElementById('flashcardHandwrittenRedoBtn'),
+        flashcardHandwrittenSizeBtn: document.getElementById('flashcardHandwrittenSizeBtn'),
+        flashcardHandwrittenSizePopover: document.getElementById('flashcardHandwrittenSizePopover'),
+        flashcardHandwrittenSizeLabel: document.getElementById('flashcardHandwrittenSizeLabel'),
+        flashcardHandwrittenSizeValue: document.getElementById('flashcardHandwrittenSizeValue'),
         flashcardHandwrittenBrushSize: document.getElementById('flashcardHandwrittenBrushSize'),
+        flashcardHandwrittenSmoothingToggle: document.getElementById('flashcardHandwrittenSmoothingToggle'),
+        flashcardHandwrittenSmoothingStrength: document.getElementById('flashcardHandwrittenSmoothingStrength'),
+        flashcardHandwrittenSmoothingValue: document.getElementById('flashcardHandwrittenSmoothingValue'),
+        flashcardHandwrittenSmoothingStrengthWrap: document.getElementById('flashcardHandwrittenSmoothingStrengthWrap'),
         flashcardHandwrittenBrushColor: document.getElementById('flashcardHandwrittenBrushColor'),
+        flashcardHandwrittenColorPopover: document.getElementById('flashcardHandwrittenColorPopover'),
+        flashcardHandwrittenColorPopoverActionBtn: document.getElementById('flashcardHandwrittenColorPopoverActionBtn'),
+        flashcardHandwrittenColorPopoverDeleteBtn: document.getElementById('flashcardHandwrittenColorPopoverDeleteBtn'),
         flashcardHandwrittenSaveColorBtn: document.getElementById('flashcardHandwrittenSaveColorBtn'),
         flashcardHandwrittenColorPresets: document.getElementById('flashcardHandwrittenColorPresets'),
         flashcardHandwrittenImageLayout: document.getElementById('flashcardHandwrittenImageLayout'),
@@ -846,6 +868,7 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenGrid: document.getElementById('flashcardHandwrittenGrid'),
         flashcardHandwrittenTypedEditor: document.getElementById('flashcardHandwrittenTypedEditor'),
         flashcardHandwrittenCanvas: document.getElementById('flashcardHandwrittenCanvas'),
+        flashcardHandwrittenToolIndicator: document.getElementById('flashcardHandwrittenToolIndicator'),
         flashcardHandwrittenImageWrap: document.getElementById('flashcardHandwrittenImageWrap'),
         flashcardHandwrittenImage: document.getElementById('flashcardHandwrittenImage'),
         flashcardHandwrittenFullImageNote: document.getElementById('flashcardHandwrittenFullImageNote'),
@@ -856,6 +879,14 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenDeleteBtn: document.getElementById('flashcardHandwrittenDeleteBtn'),
         flashcardHandwrittenGoInput: document.getElementById('flashcardHandwrittenGoInput'),
         flashcardHandwrittenGoBtn: document.getElementById('flashcardHandwrittenGoBtn'),
+        flashcardHandwrittenFocusBtn: document.getElementById('flashcardHandwrittenFocusBtn'),
+        flashcardHandwrittenFocusNavigation: document.getElementById('flashcardHandwrittenFocusNavigation'),
+        flashcardHandwrittenFocusCardNumber: document.getElementById('flashcardHandwrittenFocusCardNumber'),
+        flashcardHandwrittenFocusPrevBtn: document.getElementById('flashcardHandwrittenFocusPrevBtn'),
+        flashcardHandwrittenFocusNextBtn: document.getElementById('flashcardHandwrittenFocusNextBtn'),
+        flashcardHandwrittenFocusFrontBtn: document.getElementById('flashcardHandwrittenFocusFrontBtn'),
+        flashcardHandwrittenFocusBackBtn: document.getElementById('flashcardHandwrittenFocusBackBtn'),
+        flashcardHandwrittenFocusDeleteBtn: document.getElementById('flashcardHandwrittenFocusDeleteBtn'),
         handwrittenToolButtons: Array.from(document.querySelectorAll('[data-handwritten-tool]')),
         createFlashcardTerm: document.getElementById('createFlashcardTerm'),
         createFlashcardDefinition: document.getElementById('createFlashcardDefinition'),
@@ -2895,13 +2926,82 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    const DIAGRAM_LABEL_INFO_CATEGORY_LIMIT = 24;
+    const DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX = 80;
+    const DIAGRAM_LABEL_INFO_CATEGORY_BODY_MAX = 2000;
+
+    function normalizeDiagramLabelInfoBody(value = '') {
+        return String(value ?? '')
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .slice(0, DIAGRAM_LABEL_INFO_CATEGORY_BODY_MAX);
+    }
+
+    function normalizeDiagramLabelInfoCategories(source = {}) {
+        const isArraySource = Array.isArray(source);
+        const rawCategories = isArraySource
+            ? source
+            : (Array.isArray(source?.infoCategories)
+                ? source.infoCategories
+                : (Array.isArray(source?.labelInfoCategories)
+                    ? source.labelInfoCategories
+                    : (Array.isArray(source?.categories) ? source.categories : [])));
+        let categories = rawCategories.slice(0, DIAGRAM_LABEL_INFO_CATEGORY_LIMIT).map((category, index) => {
+            if (typeof category === 'string') {
+                return {
+                    name: index === 0 ? 'Information' : '',
+                    body: normalizeDiagramLabelInfoBody(category)
+                };
+            }
+            const item = category && typeof category === 'object' ? category : {};
+            return {
+                name: displayMathChemTextForEditor(normalizeSheetText(item.name ?? item.category ?? item.title ?? '')).slice(0, DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX),
+                body: normalizeDiagramLabelInfoBody(item.body ?? item.value ?? item.text ?? item.description ?? '')
+            };
+        });
+        if (!categories.length && !isArraySource) {
+            const legacyDescription = normalizeDiagramLabelInfoBody(source?.description ?? source?.labelDescription ?? source?.information ?? source?.info ?? '');
+            if (legacyDescription) categories = [{ name: 'Information', body: legacyDescription }];
+        }
+        return categories;
+    }
+
+    function getDiagramLabelVisibleInfoCategories(label = {}) {
+        return normalizeDiagramLabelInfoCategories(label).filter(category => normalizeSheetText(category.body));
+    }
+
+    function buildDiagramLabelLegacyDescription(categories = [], fallback = '') {
+        const visible = normalizeDiagramLabelInfoCategories(categories)
+            .filter(category => normalizeSheetText(category.body));
+        if (visible.length === 1 && (normalizeSheetText(visible[0].name) || 'Information').toLowerCase() === 'information') {
+            return visible[0].body;
+        }
+        const lines = visible.map(category => `${normalizeSheetText(category.name) || 'Information'}: ${category.body}`);
+        if (lines.length) return lines.join('\n').slice(0, DIAGRAM_LABEL_INFO_CATEGORY_LIMIT * (DIAGRAM_LABEL_INFO_CATEGORY_BODY_MAX + DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX + 4));
+        return normalizeDiagramLabelInfoBody(fallback);
+    }
+
+    function setDiagramLabelInfoCategories(label = {}, categories = []) {
+        if (!label || typeof label !== 'object') return label;
+        const normalized = normalizeDiagramLabelInfoCategories(categories);
+        label.infoCategories = normalized.map(category => ({ ...category }));
+        label.description = buildDiagramLabelLegacyDescription(normalized, '');
+        return label;
+    }
+
     function normalizeDiagramLabels(labels = []) {
         const source = Array.isArray(labels) ? labels : [];
         return source.map((label, index) => {
             const connector = normalizeDiagramConnector(label?.connector || label?.connectorLine || null);
+            const infoCategories = normalizeDiagramLabelInfoCategories(label || {});
+            const description = buildDiagramLabelLegacyDescription(
+                infoCategories,
+                label?.description || label?.labelDescription || label?.information || label?.info || ''
+            );
             return {
                 label: displayMathChemTextForEditor(normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index))) || getDiagramLabelName(index),
-                description: normalizeSheetText(label?.description || label?.labelDescription || label?.information || label?.info || '').slice(0, 2000),
+                description,
+                ...(infoCategories.length ? { infoCategories } : {}),
                 x: Math.min(100, Math.max(0, Number(label?.x ?? label?.left ?? 50) || 50)),
                 y: Math.min(100, Math.max(0, Number(label?.y ?? label?.top ?? 50) || 50)),
                 ...(connector ? { connector } : {})
@@ -4682,7 +4782,8 @@ MODIFICATION RULES FOR THIS APP
             drawStrokes: cloneImageEditorDrawStrokes(firstAngle?.drawStrokes || entry.drawStrokes || entry.strokes || []),
             metadata: normalizeDiagramMetadata(entry.metadata || entry.diagramMetadata || {}),
             createdAt: normalizeSheetText(entry.createdAt) || new Date().toISOString(),
-            updatedAt: normalizeSheetText(entry.updatedAt) || new Date().toISOString()
+            updatedAt: normalizeSheetText(entry.updatedAt) || new Date().toISOString(),
+            lastOpenedAt: normalizeSheetText(entry.lastOpenedAt || entry.last_opened_at || '')
         };
         Object.defineProperty(result, '__multiAngleNormalized', { value: true, enumerable: false, configurable: true });
         if (isMultiAngle) {
@@ -7336,10 +7437,33 @@ The deletion becomes permanent when you save the diagram.`);
         });
     }
 
+    function getReviewModeEntryRecentTimestamp(entry = {}) {
+        const opened = Date.parse(normalizeSheetText(entry.lastOpenedAt || '')) || 0;
+        const updated = Date.parse(normalizeSheetText(entry.updatedAt || '')) || 0;
+        const created = Date.parse(normalizeSheetText(entry.createdAt || '')) || 0;
+        return Math.max(opened, updated, created);
+    }
+
+    function markStudioSavedImageOpened(entryId = '') {
+        const targetId = normalizeSheetText(entryId);
+        if (!targetId) return;
+        const now = new Date().toISOString();
+        const stampList = list => (Array.isArray(list) ? list : []).map(entry => {
+            const normalized = normalizeStudioSavedImageEntry(entry);
+            if (!normalized) return null;
+            return normalized.id === targetId ? normalizeStudioSavedImageEntry({ ...normalized, lastOpenedAt: now }) : normalized;
+        }).filter(Boolean);
+        state.auth.studioSavedImageMemoryLibrary = stampList(state.auth.studioSavedImageMemoryLibrary || []);
+        const local = stampList(loadStudioSavedImageLibrary());
+        saveStudioSavedImageLibrary(local);
+    }
+
     function renderReviewModeLibrary() {
         if (!elements.reviewModeImageGrid) return;
         const allEntries = getStudioSavedImageLibraryForPicker();
-        const entries = filterReviewModeEntries(allEntries);
+        const entries = filterReviewModeEntries(allEntries)
+            .slice()
+            .sort((a, b) => getReviewModeEntryRecentTimestamp(b) - getReviewModeEntryRecentTimestamp(a));
         if (elements.reviewModeSearchCount) {
             elements.reviewModeSearchCount.textContent = `${entries.length} of ${allEntries.length} saved image${allEntries.length === 1 ? '' : 's'}`;
         }
@@ -7441,7 +7565,7 @@ The deletion becomes permanent when you save the diagram.`);
     function applyReviewModeShortcutDockPosition() {
         const dock = elements.reviewModeShortcutDock;
         const viewport = elements.reviewModeImageViewport;
-        if (!dock || !viewport || !getReviewModeState().overlayOpen) return;
+        if (!dock || !viewport || !getReviewModeState().overlayOpen || !getReviewModeState().shortcutDockVisible) return;
         const review = getReviewModeState();
         const margin = 10;
         const viewportWidth = Math.max(1, viewport.clientWidth);
@@ -7479,11 +7603,13 @@ The deletion becomes permanent when you save the diagram.`);
         const dock = elements.reviewModeShortcutDock;
         if (!dock) return;
         dock.dataset.edge = review.shortcutDockEdge;
-        dock.classList.toggle('is-collapsed', !review.shortcutDockVisible);
-        dock.setAttribute('aria-hidden', review.overlayOpen ? 'false' : 'true');
-        elements.reviewModeShortcutActions?.classList.toggle('hidden', !review.shortcutDockVisible);
-        elements.reviewModeShortcutGrip?.classList.toggle('hidden', !review.shortcutDockVisible);
-        elements.reviewModeShortcutShowBtn?.classList.toggle('hidden', review.shortcutDockVisible);
+        const dockShown = !!(review.overlayOpen && review.shortcutDockVisible);
+        dock.classList.toggle('hidden', !dockShown);
+        dock.classList.remove('is-collapsed');
+        dock.setAttribute('aria-hidden', dockShown ? 'false' : 'true');
+        elements.reviewModeShortcutActions?.classList.toggle('hidden', !dockShown);
+        elements.reviewModeShortcutGrip?.classList.toggle('hidden', !dockShown);
+        elements.reviewModeShortcutShowBtn?.classList.add('hidden');
         if (elements.reviewModeShortcutColorBtn) {
             elements.reviewModeShortcutColorBtn.textContent = review.showDrawData ? 'Color On' : 'Color Off';
             elements.reviewModeShortcutColorBtn.classList.toggle('is-active', review.showDrawData);
@@ -8687,6 +8813,17 @@ The deletion becomes permanent when you save the diagram.`);
             .forEach(stroke => renderImageEditorStroke(ctx, { ...stroke, visible: true }));
     }
 
+    function renderReviewModeLabelInformation(item = {}, visible = false) {
+        if (!visible) return '';
+        const categories = getDiagramLabelVisibleInfoCategories(item);
+        if (!categories.length) return '';
+        return `<span class="review-mode-label-description review-mode-label-info-rows">${categories.map(category => {
+            const categoryName = renderMathChemTextToHtml(normalizeSheetText(category.name) || 'Information');
+            const bodyHtml = String(category.body || '').split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>');
+            return `<span class="review-mode-label-info-row"><strong class="review-mode-label-info-category">${categoryName}:</strong><span class="review-mode-label-info-body">${bodyHtml}</span></span>`;
+        }).join('')}</span>`;
+    }
+
     function renderReviewModeLabels() {
         const entry = getActiveReviewModeEntry();
         const layer = elements.reviewModeLabelLayer;
@@ -8718,14 +8855,12 @@ The deletion becomes permanent when you save the diagram.`);
                 return;
             }
             const isRevealed = review.miniQuiz.answerRevealed;
-            const description = normalizeSheetText(item.description || '');
-            const showDescription = !!(isRevealed && review.includeLabelDescriptions && description);
+            const infoCategories = getDiagramLabelVisibleInfoCategories(item);
+            const showDescription = !!(isRevealed && review.includeLabelDescriptions && infoCategories.length);
             if (review.typedMiniQuiz) {
                 const typedResult = review.miniQuiz.typedResult;
                 const inputValue = escapeHtml(review.miniQuiz.typedValue || '');
-                const descriptionHtml = showDescription
-                    ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
-                    : '';
+                const descriptionHtml = renderReviewModeLabelInformation(item, showDescription);
                 let typedBody = '';
                 if (!isRevealed) {
                     const feedback = typedResult === 'retry'
@@ -8753,9 +8888,7 @@ The deletion becomes permanent when you save the diagram.`);
                   </div>`;
             } else {
                 const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : (review.showLabelNumbers ? String(index + 1) : '?');
-                const descriptionHtml = showDescription
-                    ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
-                    : '';
+                const descriptionHtml = renderReviewModeLabelInformation(item, showDescription);
                 layer.innerHTML = `
                     <div class="review-mode-mini-label-wrap${isRevealed ? ' is-revealed' : ''}" style="left:${item.x}%; top:${item.y}%;">
                       ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this label">✕</button>' : ''}
@@ -8777,14 +8910,12 @@ The deletion becomes permanent when you save the diagram.`);
         layer.innerHTML = labels.map((item, index) => {
             const isSelected = selectedLabels.has(index);
             const isNameVisible = visibleNames.has(index);
-            const description = normalizeSheetText(item.description || '');
-            const isDescriptionVisible = !!(review.includeLabelDescriptions && description && isSelected && isNameVisible);
+            const infoCategories = getDiagramLabelVisibleInfoCategories(item);
+            const isDescriptionVisible = !!(review.includeLabelDescriptions && infoCategories.length && isSelected && isNameVisible);
             const actionText = isSelected ? 'Hide' : 'Show';
             const targetText = review.disableLabelNamesOnClick && !review.showAllNames ? 'drawing for' : 'label';
             const nameHtml = isNameVisible ? renderMathChemTextToHtml(item.label) : (review.showLabelNumbers ? String(index + 1) : '?');
-            const descriptionHtml = isDescriptionVisible
-                ? `<span class="review-mode-label-description">${description.split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>')}</span>`
-                : '';
+            const descriptionHtml = renderReviewModeLabelInformation(item, isDescriptionVisible);
             return `<button type="button" class="review-mode-label-marker${isSelected ? ' is-selected' : ''}${isNameVisible ? ' is-name-visible' : ''}${isDescriptionVisible ? ' has-description' : ''}" data-review-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" aria-pressed="${isSelected ? 'true' : 'false'}" aria-label="${actionText} ${targetText} ${index + 1}"><span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}</button>`;
         }).join('');
         renderReviewModeDrawData();
@@ -8901,6 +9032,7 @@ The deletion becomes permanent when you save the diagram.`);
     function openReviewModeImage(entryId = '') {
         const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === normalizeSheetText(entryId));
         if (!entry || !elements.reviewModeOverlay || !elements.reviewModeImage) return;
+        markStudioSavedImageOpened(entry.id);
         const review = getReviewModeState();
         review.activeEntryId = entry.id;
         review.activeAngleIndex = 0;
@@ -8986,6 +9118,7 @@ The deletion becomes permanent when you save the diagram.`);
         }
         setReviewModeOptionsOpen(false);
         syncBodyScrollLock();
+        if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
     }
 
     function setReviewModeLabelScale(nextScale) {
@@ -9489,7 +9622,7 @@ The deletion becomes permanent when you save the diagram.`);
                       </div>
                     </div>
                     <div id="studioImageEditorLabelInfoPanel" class="studio-image-editor-label-info-panel hidden" aria-label="Label information" aria-hidden="true" hidden>
-                      <div class="studio-image-editor-label-info-heading"><div><div class="studio-image-editor-label-info-title">Label Information</div><div class="studio-image-editor-label-info-subtitle">Edit each numbered label name and add study information for that label.</div></div></div>
+                      <div class="studio-image-editor-label-info-heading"><div><div class="studio-image-editor-label-info-title">Label Information</div><div class="studio-image-editor-label-info-subtitle">Edit each numbered label name and organize its study information into collapsible categories.</div></div></div>
                       <div id="studioImageEditorLabelInfoList" class="studio-image-editor-label-info-list"></div>
                     </div>
                     <div class="studio-image-editor-actions">
@@ -9634,7 +9767,35 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function resizeAllImageEditorLabelInfoTextareas() {
-        elements.studioImageEditorLabelInfoList?.querySelectorAll('[data-image-editor-label-info-description]').forEach(resizeImageEditorLabelInfoTextarea);
+        elements.studioImageEditorLabelInfoList?.querySelectorAll('[data-image-editor-label-info-body]').forEach(resizeImageEditorLabelInfoTextarea);
+    }
+
+    function syncImageEditorLabelInfoExpansionUi() {
+        const editor = state.auth.imageEditor;
+        const expandedIndex = Number.isInteger(editor?.labelInfoExpandedIndex) ? editor.labelInfoExpandedIndex : -1;
+        elements.studioImageEditorLabelInfoList?.querySelectorAll('[data-image-editor-label-info-row]').forEach(row => {
+            const index = Number(row.dataset.imageEditorLabelIndex ?? -1);
+            const expanded = index === expandedIndex;
+            row.classList.toggle('is-expanded', expanded);
+            row.classList.toggle('is-collapsed', !expanded);
+            const categories = row.querySelector('[data-image-editor-label-info-categories]');
+            categories?.classList.toggle('hidden', !expanded);
+            categories?.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+            const toggle = row.querySelector('[data-image-editor-label-info-collapse]');
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                toggle.textContent = expanded ? '▾' : '▸';
+                toggle.title = expanded ? 'Collapse label categories' : 'Expand label categories';
+            }
+        });
+    }
+
+    function setImageEditorLabelInfoExpandedIndex(index = null) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labelInfoEnabled) return;
+        const next = Number.isInteger(index) && index >= 0 && index < (editor.labels?.length || 0) ? index : null;
+        editor.labelInfoExpandedIndex = next;
+        syncImageEditorLabelInfoExpansionUi();
     }
 
     function renderImageEditorLabelInfoList() {
@@ -9647,16 +9808,39 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const labels = syncImageEditorLabels();
         if (!labels.length) {
+            editor.labelInfoExpandedIndex = null;
             list.innerHTML = '<div class="studio-image-editor-label-info-empty">No labels yet. Add a label to create its information row.</div>';
             return;
         }
-        list.innerHTML = labels.map((item, index) => `
-            <div class="studio-image-editor-label-info-row" data-image-editor-label-info-row data-image-editor-label-index="${index}">
-              <span class="studio-image-editor-label-info-number" aria-hidden="true">${index + 1}.</span>
-              <input type="text" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-info-name autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} name" placeholder="Label name">
-              <textarea rows="1" maxlength="2000" data-image-editor-label-info-description aria-label="Label ${index + 1} information" placeholder="Enter label information">${escapeHtml(item.description || '')}</textarea>
-            </div>
-        `).join('');
+        if (!Number.isInteger(editor.labelInfoExpandedIndex) || editor.labelInfoExpandedIndex < 0 || editor.labelInfoExpandedIndex >= labels.length) {
+            editor.labelInfoExpandedIndex = 0;
+        }
+        list.innerHTML = labels.map((item, index) => {
+            const expanded = editor.labelInfoExpandedIndex === index;
+            const categories = normalizeDiagramLabelInfoCategories(item);
+            const categoryMarkup = categories.length
+                ? categories.map((category, categoryIndex) => `
+                    <div class="studio-image-editor-label-info-category-row" data-image-editor-label-info-category-row data-image-editor-label-info-category-index="${categoryIndex}">
+                      <input type="text" maxlength="${DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX}" class="studio-image-editor-label-info-category-name" value="${escapeHtml(displayMathChemTextForEditor(category.name || ''))}" data-image-editor-label-info-category-name autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} category ${categoryIndex + 1} name" placeholder="Category name">
+                      <textarea rows="1" maxlength="${DIAGRAM_LABEL_INFO_CATEGORY_BODY_MAX}" class="studio-image-editor-label-info-category-body" data-image-editor-label-info-body aria-label="Label ${index + 1} category ${categoryIndex + 1} information" placeholder="Enter category information">${escapeHtml(category.body || '')}</textarea>
+                      <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-info-category-delete" data-image-editor-label-info-category-delete aria-label="Delete category ${categoryIndex + 1}" title="Delete category">×</button>
+                    </div>
+                `).join('')
+                : '<div class="studio-image-editor-label-info-category-empty">No categories yet. Use + to add one.</div>';
+            return `
+              <div class="studio-image-editor-label-info-row ${expanded ? 'is-expanded' : 'is-collapsed'}" data-image-editor-label-info-row data-image-editor-label-index="${index}">
+                <div class="studio-image-editor-label-info-header">
+                  <span class="studio-image-editor-label-info-number" aria-hidden="true">${index + 1}.</span>
+                  <input type="text" class="studio-image-editor-label-info-name" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-info-name autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} name" placeholder="Label name">
+                  <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-info-add" data-image-editor-label-info-add aria-label="Add information category to label ${index + 1}" title="Add category">+</button>
+                  <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-info-collapse" data-image-editor-label-info-collapse aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${expanded ? 'Collapse' : 'Expand'} categories for label ${index + 1}" title="${expanded ? 'Collapse label categories' : 'Expand label categories'}">${expanded ? '▾' : '▸'}</button>
+                </div>
+                <div class="studio-image-editor-label-info-categories ${expanded ? '' : 'hidden'}" data-image-editor-label-info-categories aria-hidden="${expanded ? 'false' : 'true'}">
+                  ${categoryMarkup}
+                </div>
+              </div>
+            `;
+        }).join('');
         requestAnimationFrame(resizeAllImageEditorLabelInfoTextareas);
     }
 
@@ -9677,8 +9861,8 @@ The deletion becomes permanent when you save the diagram.`);
             elements.studioImageEditorLabelInfoToggleBtn.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
             elements.studioImageEditorLabelInfoToggleBtn.textContent = panelOpen ? 'Hide Label Information' : 'Show Label Information';
             elements.studioImageEditorLabelInfoToggleBtn.title = panelOpen
-                ? 'Hide label names and study information'
-                : 'Show label names and study information';
+                ? 'Hide label names and organized study information'
+                : 'Show label names and organized study information';
         }
         renderImageEditorLabelInfoList();
     }
@@ -9687,6 +9871,9 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         if (!editor?.labelInfoEnabled) return;
         editor.labelInfoPanelOpen = !editor.labelInfoPanelOpen;
+        if (editor.labelInfoPanelOpen && (!Number.isInteger(editor.labelInfoExpandedIndex) || editor.labelInfoExpandedIndex < 0)) {
+            editor.labelInfoExpandedIndex = editor.labels?.length ? 0 : null;
+        }
         refreshImageEditorLabelInfoUi();
     }
 
@@ -9728,14 +9915,16 @@ The deletion becomes permanent when you save the diagram.`);
                 const name = displayMathChemTextForEditor(item.label).replace(/\s+/g, ' ').trim();
                 const key = normalizeImageEditorSharedLabelKey(name);
                 if (!key) return;
-                const description = String(item.description || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
+                const infoCategories = normalizeDiagramLabelInfoCategories(item);
+                const description = buildDiagramLabelLegacyDescription(infoCategories, item.description || '');
                 // Single-character untouched defaults are not useful predictions unless they carry study information.
                 if (key.length < 2 && !description) return;
                 const existing = recordsByKey.get(key);
                 if (!existing) {
-                    recordsByKey.set(key, { key, label: name, description, source });
+                    recordsByKey.set(key, { key, label: name, description, infoCategories, source });
                 } else if (!existing.description && description) {
                     existing.description = description;
+                    existing.infoCategories = infoCategories;
                 }
             });
         };
@@ -9758,32 +9947,43 @@ The deletion becomes permanent when you save the diagram.`);
         return getImageEditorSharedLabelRecords(options).find(record => record.key === key) || null;
     }
 
-    function syncImageEditorLabelDescriptionFields(key = '', sourceElement = null) {
+    function syncImageEditorLabelInfoCategoryFields(key = '', sourceElement = null) {
         const editor = state.auth.imageEditor;
         if (!editor || !key) return;
         (editor.labels || []).forEach((label, index) => {
             if (normalizeImageEditorSharedLabelKey(label?.label) !== key) return;
-            const textarea = elements.studioImageEditorOverlay?.querySelector(
-                `[data-image-editor-label-info-row][data-image-editor-label-index="${index}"] [data-image-editor-label-info-description]`
+            const categories = normalizeDiagramLabelInfoCategories(label);
+            const row = elements.studioImageEditorOverlay?.querySelector(
+                `[data-image-editor-label-info-row][data-image-editor-label-index="${index}"]`
             );
-            if (textarea && textarea !== sourceElement && textarea !== document.activeElement) {
-                textarea.value = String(label.description || '');
-                resizeImageEditorLabelInfoTextarea(textarea);
-            }
+            if (!row) return;
+            const categoryRows = Array.from(row.querySelectorAll('[data-image-editor-label-info-category-row]'));
+            if (categoryRows.length !== categories.length) return;
+            categoryRows.forEach((categoryRow, categoryIndex) => {
+                const category = categories[categoryIndex] || { name: '', body: '' };
+                const nameInput = categoryRow.querySelector('[data-image-editor-label-info-category-name]');
+                const bodyInput = categoryRow.querySelector('[data-image-editor-label-info-body]');
+                if (nameInput && nameInput !== sourceElement && nameInput !== document.activeElement) nameInput.value = displayMathChemTextForEditor(category.name || '');
+                if (bodyInput && bodyInput !== sourceElement && bodyInput !== document.activeElement) {
+                    bodyInput.value = category.body || '';
+                    resizeImageEditorLabelInfoTextarea(bodyInput);
+                }
+            });
         });
     }
 
-    function synchronizeImageEditorSharedDescription(index, descriptionValue, options = {}) {
+    function synchronizeImageEditorSharedInfoCategories(index, categoriesValue, options = {}) {
         const editor = state.auth.imageEditor;
         if (!isImageEditorSharedLabelTarget(editor) || !editor.labels?.[index]) return false;
         const key = normalizeImageEditorSharedLabelKey(editor.labels[index].label);
         if (!key) return false;
-        const description = String(descriptionValue ?? '')
-            .replace(/\r\n/g, '\n')
-            .replace(/\r/g, '\n')
-            .slice(0, 2000);
+        const categories = normalizeDiagramLabelInfoCategories(categoriesValue);
+        const description = buildDiagramLabelLegacyDescription(categories, '');
         editor.labels.forEach(label => {
-            if (normalizeImageEditorSharedLabelKey(label?.label) === key) label.description = description;
+            if (normalizeImageEditorSharedLabelKey(label?.label) === key) {
+                label.infoCategories = categories.map(category => ({ ...category }));
+                label.description = description;
+            }
         });
         if (editor.target?.multiAngleDraft === true) {
             const draft = getMultiAngleCreatorState();
@@ -9795,13 +9995,18 @@ The deletion becomes permanent when you save the diagram.`);
                 }
                 angle.labels = normalizeDiagramLabels(angle.labels || []).map(label => (
                     normalizeImageEditorSharedLabelKey(label.label) === key
-                        ? { ...label, description }
+                        ? { ...label, infoCategories: categories.map(category => ({ ...category })), description }
                         : label
                 ));
             });
         }
-        syncImageEditorLabelDescriptionFields(key, options.sourceElement || null);
+        syncImageEditorLabelInfoCategoryFields(key, options.sourceElement || null);
         return true;
+    }
+
+    function synchronizeImageEditorSharedDescription(index, descriptionValue, options = {}) {
+        const categories = normalizeDiagramLabelInfoCategories([{ name: 'Information', body: normalizeDiagramLabelInfoBody(descriptionValue) }]);
+        return synchronizeImageEditorSharedInfoCategories(index, categories, options);
     }
 
     function commitAllImageEditorSharedLabelMatches() {
@@ -9811,7 +10016,7 @@ The deletion becomes permanent when you save the diagram.`);
             const record = getImageEditorSharedLabelRecordByName(label?.label, { excludeIndex: index });
             if (!record) return;
             label.label = normalizeAuthoredMathChemText(record.label) || getDiagramLabelName(index);
-            label.description = String(record.description || '').slice(0, 2000);
+            setDiagramLabelInfoCategories(label, record.infoCategories || normalizeDiagramLabelInfoCategories([{ name: 'Information', body: record.description || '' }]));
         });
         if (editor.target?.multiAngleDraft === true) {
             const draft = getMultiAngleCreatorState();
@@ -9829,13 +10034,15 @@ The deletion becomes permanent when you save the diagram.`);
         records.forEach(record => {
             if (!record.key) return;
             const representativeIndex = (editor.labels || []).findIndex(label => normalizeImageEditorSharedLabelKey(label?.label) === record.key);
-            if (representativeIndex >= 0) synchronizeImageEditorSharedDescription(representativeIndex, record.description, { silent: true });
+            if (representativeIndex >= 0) synchronizeImageEditorSharedInfoCategories(representativeIndex, record.infoCategories || [], { silent: true });
             else if (editor.target?.multiAngleDraft === true) {
                 const draft = getMultiAngleCreatorState();
+                const categories = normalizeDiagramLabelInfoCategories(record.infoCategories || []);
+                const description = buildDiagramLabelLegacyDescription(categories, record.description || '');
                 draft.angles.forEach(angle => {
                     angle.labels = normalizeDiagramLabels(angle.labels || []).map(label => (
                         normalizeImageEditorSharedLabelKey(label.label) === record.key
-                            ? { ...label, description: record.description }
+                            ? { ...label, infoCategories: categories.map(category => ({ ...category })), description }
                             : label
                     ));
                 });
@@ -9937,7 +10144,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         if (!isImageEditorSharedLabelTarget(editor) || !editor.labels?.[index] || !record) return false;
         editor.labels[index].label = normalizeAuthoredMathChemText(record.label) || getDiagramLabelName(index);
-        editor.labels[index].description = String(record.description || '').slice(0, 2000);
+        setDiagramLabelInfoCategories(editor.labels[index], record.infoCategories || normalizeDiagramLabelInfoCategories([{ name: 'Information', body: record.description || '' }]));
         syncImageEditorLabelNameFields(index, sourceInput);
         if (sourceInput) {
             sourceInput.value = displayMathChemTextForEditor(editor.labels[index].label);
@@ -9948,10 +10155,10 @@ The deletion becomes permanent when you save the diagram.`);
                 // Some input types/browsers do not expose a selectable text range.
             }
         }
-        synchronizeImageEditorSharedDescription(index, editor.labels[index].description);
+        synchronizeImageEditorSharedInfoCategories(index, editor.labels[index].infoCategories || []);
         renderImageEditorCanvas();
         hideImageEditorLabelSuggestions();
-        setImageEditorStatus(`Reused ${displayMathChemTextForEditor(editor.labels[index].label)} and synchronized its description.`);
+        setImageEditorStatus(`Reused ${displayMathChemTextForEditor(editor.labels[index].label)} and synchronized its label information.`);
         return true;
     }
 
@@ -9991,12 +10198,67 @@ The deletion becomes permanent when you save the diagram.`);
                 showImageEditorLabelSuggestions(context.input, context.index);
                 return;
             }
-            const textarea = event.target.closest?.('[data-image-editor-label-info-description]');
-            const row = textarea?.closest?.('[data-image-editor-label-info-row]');
+            const infoControl = event.target.closest?.('[data-image-editor-label-info-category-name], [data-image-editor-label-info-body]');
+            const row = infoControl?.closest?.('[data-image-editor-label-info-row]');
+            const categoryRow = infoControl?.closest?.('[data-image-editor-label-info-category-row]');
             const index = Number(row?.dataset.imageEditorLabelIndex ?? -1);
-            if (textarea instanceof HTMLTextAreaElement && Number.isInteger(index) && index >= 0) {
-                synchronizeImageEditorSharedDescription(index, textarea.value, { sourceElement: textarea });
+            const categoryIndex = Number(categoryRow?.dataset.imageEditorLabelInfoCategoryIndex ?? -1);
+            const editor = state.auth.imageEditor;
+            if (infoControl && Number.isInteger(index) && index >= 0 && Number.isInteger(categoryIndex) && categoryIndex >= 0 && editor?.labels?.[index]) {
+                const categories = normalizeDiagramLabelInfoCategories(editor.labels[index]);
+                if (categories[categoryIndex]) {
+                    if (infoControl.matches('[data-image-editor-label-info-category-name]')) categories[categoryIndex].name = displayMathChemTextForEditor(normalizeSheetText(infoControl.value)).slice(0, DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX);
+                    else categories[categoryIndex].body = normalizeDiagramLabelInfoBody(infoControl.value);
+                    setDiagramLabelInfoCategories(editor.labels[index], categories);
+                    synchronizeImageEditorSharedInfoCategories(index, categories, { sourceElement: infoControl });
+                    if (infoControl instanceof HTMLTextAreaElement) resizeImageEditorLabelInfoTextarea(infoControl);
+                }
             }
+        });
+        document.addEventListener('click', event => {
+            const row = event.target.closest?.('[data-image-editor-label-info-row]');
+            const editor = state.auth.imageEditor;
+            if (!row || !editor?.labelInfoEnabled) return;
+            const index = Number(row.dataset.imageEditorLabelIndex ?? -1);
+            if (!Number.isInteger(index) || index < 0 || !editor.labels?.[index]) return;
+            const addButton = event.target.closest('[data-image-editor-label-info-add]');
+            const collapseButton = event.target.closest('[data-image-editor-label-info-collapse]');
+            const deleteButton = event.target.closest('[data-image-editor-label-info-category-delete]');
+            if (addButton) {
+                const categories = normalizeDiagramLabelInfoCategories(editor.labels[index]);
+                if (categories.length >= DIAGRAM_LABEL_INFO_CATEGORY_LIMIT) {
+                    setImageEditorStatus(`Each label can have up to ${DIAGRAM_LABEL_INFO_CATEGORY_LIMIT} information categories.`);
+                    return;
+                }
+                categories.push({ name: '', body: '' });
+                setDiagramLabelInfoCategories(editor.labels[index], categories);
+                synchronizeImageEditorSharedInfoCategories(index, categories);
+                editor.labelInfoExpandedIndex = index;
+                renderImageEditorLabelInfoList();
+                requestAnimationFrame(() => {
+                    const categoryRows = elements.studioImageEditorLabelInfoList?.querySelectorAll(`[data-image-editor-label-info-row][data-image-editor-label-index="${index}"] [data-image-editor-label-info-category-row]`);
+                    categoryRows?.[categoryRows.length - 1]?.querySelector('[data-image-editor-label-info-category-name]')?.focus?.();
+                });
+                return;
+            }
+            if (deleteButton) {
+                const categoryRow = deleteButton.closest('[data-image-editor-label-info-category-row]');
+                const categoryIndex = Number(categoryRow?.dataset.imageEditorLabelInfoCategoryIndex ?? -1);
+                if (!Number.isInteger(categoryIndex) || categoryIndex < 0) return;
+                const categories = normalizeDiagramLabelInfoCategories(editor.labels[index]);
+                if (categoryIndex >= categories.length) return;
+                categories.splice(categoryIndex, 1);
+                setDiagramLabelInfoCategories(editor.labels[index], categories);
+                synchronizeImageEditorSharedInfoCategories(index, categories);
+                editor.labelInfoExpandedIndex = index;
+                renderImageEditorLabelInfoList();
+                return;
+            }
+            if (collapseButton) {
+                setImageEditorLabelInfoExpandedIndex(editor.labelInfoExpandedIndex === index ? null : index);
+                return;
+            }
+            if (editor.labelInfoExpandedIndex !== index) setImageEditorLabelInfoExpandedIndex(index);
         });
         document.addEventListener('keydown', event => {
             const context = getImageEditorLabelInputContext(event.target);
@@ -10224,6 +10486,7 @@ The deletion becomes permanent when you save the diagram.`);
             metadataPanelOpen: false,
             labelInfoEnabled: false,
             labelInfoPanelOpen: false,
+            labelInfoExpandedIndex: null,
             activeConnectorLabelIndex: null,
             connectorStylePickerLabelIndex: null,
             pendingConnectorStyle: 'straight',
@@ -12195,8 +12458,9 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor?.labelsEnabled) return;
         const labels = normalizeImageEditorLabels(editor.labels || []);
         const nextLabel = isImageEditorSavedDiagramTarget(editor) ? `Label ${labels.length + 1}` : getDiagramLabelName(labels.length);
-        labels.push({ label: nextLabel, description: '', x: 50, y: 50 });
+        labels.push({ label: nextLabel, description: '', infoCategories: [], x: 50, y: 50 });
         editor.labels = labels;
+        if (editor.labelInfoPanelOpen) editor.labelInfoExpandedIndex = labels.length - 1;
         setImageEditorLabelDrawVisible(labels.length - 1, true);
         editor.showLabelPanel = true;
         refreshImageEditorLabelUi();
@@ -12659,11 +12923,19 @@ The deletion becomes permanent when you save the diagram.`);
                 renderImageEditorCanvas();
                 return;
             }
-            if (event.target.matches('[data-image-editor-label-info-description]')) {
-                editor.labels[index].description = String(event.target.value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
-                synchronizeImageEditorSharedDescription(index, editor.labels[index].description, { sourceElement: event.target });
+            const categoryRow = event.target.closest('[data-image-editor-label-info-category-row]');
+            const categoryIndex = Number(categoryRow?.dataset.imageEditorLabelInfoCategoryIndex ?? -1);
+            if (!Number.isInteger(categoryIndex) || categoryIndex < 0) return;
+            const categories = normalizeDiagramLabelInfoCategories(editor.labels[index]);
+            if (!categories[categoryIndex]) return;
+            if (event.target.matches('[data-image-editor-label-info-category-name]')) {
+                categories[categoryIndex].name = displayMathChemTextForEditor(normalizeSheetText(event.target.value)).slice(0, DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX);
+            } else if (event.target.matches('[data-image-editor-label-info-body]')) {
+                categories[categoryIndex].body = normalizeDiagramLabelInfoBody(event.target.value);
                 resizeImageEditorLabelInfoTextarea(event.target);
-            }
+            } else return;
+            setDiagramLabelInfoCategories(editor.labels[index], categories);
+            synchronizeImageEditorSharedInfoCategories(index, categories, { sourceElement: event.target });
         });
         elements.studioImageEditorLabelList?.addEventListener('click', event => {
             const row = event.target.closest('[data-image-editor-label-row]');
@@ -12671,6 +12943,7 @@ The deletion becomes permanent when you save the diagram.`);
             if (!row || !editor?.labelsEnabled) return;
             const index = Number(row.dataset.imageEditorLabelIndex || -1);
             if (index < 0) return;
+            if (editor.labelInfoPanelOpen) setImageEditorLabelInfoExpandedIndex(index);
             const drawBtn = event.target.closest('[data-image-editor-label-draw]');
             const connectorBtn = event.target.closest('[data-image-editor-label-connector]');
             const connectorStyleBtn = event.target.closest('[data-image-editor-connector-style]');
@@ -12808,6 +13081,7 @@ The deletion becomes permanent when you save the diagram.`);
         const recoveredDrawingBackup = restoreImageEditorDrawingBackup(editor);
         editor.labelInfoEnabled = !!(editor.labelsEnabled && isImageEditorNumberedLabelTarget(editor));
         editor.labelInfoPanelOpen = false;
+        editor.labelInfoExpandedIndex = editor.labels.length ? 0 : null;
         editor.drawVisibilityByLabel = {};
         const hideDiagramDrawingsByDefault = isImageEditorStandaloneDiagramTarget(editor);
         editor.labels.forEach((label, index) => {
@@ -13136,6 +13410,7 @@ The deletion becomes permanent when you save the diagram.`);
             const labelIndex = findImageEditorLabelIndexAtPoint(point);
             editor.hoveredLabelIndex = labelIndex >= 0 ? labelIndex : null;
             if (labelIndex >= 0) {
+                if (editor.labelInfoPanelOpen) setImageEditorLabelInfoExpandedIndex(labelIndex);
                 pushImageEditorLabelHistory();
                 editor.isDrawing = true;
                 editor.draggingLabelIndex = labelIndex;
@@ -13189,6 +13464,7 @@ The deletion becomes permanent when you save the diagram.`);
             const labelIndex = findImageEditorLabelIndexAtPoint(point);
             editor.hoveredLabelIndex = labelIndex >= 0 ? labelIndex : null;
             if (labelIndex >= 0) {
+                if (editor.labelInfoPanelOpen) setImageEditorLabelInfoExpandedIndex(labelIndex);
                 editor.isDrawing = true;
                 editor.draggingLabelIndex = labelIndex;
                 editor.dragStart = point;
@@ -19593,11 +19869,281 @@ The deletion becomes permanent when you save the diagram.`);
         state.auth.handwrittenFlashcardRedo.set(key, []);
     }
 
+    function getHandwrittenToolPrefsStorageKey(userId = state.auth.user?.id) {
+        const owner = normalizeSheetText(userId) || 'anonymous';
+        return `${CONFIG.handwrittenToolPrefsStorageKey}:${owner}`;
+    }
+
+    function clampHandwrittenToolMm(value, fallback, min=.5, max=8) {
+        const parsed = Number(value);
+        return Math.round(Math.max(min, Math.min(max, Number.isFinite(parsed) ? parsed : fallback)) * 10) / 10;
+    }
+
+    function ensureHandwrittenToolPrefsLoaded() {
+        const owner = normalizeSheetText(state.auth.user?.id) || 'anonymous';
+        if (state.auth.handwrittenFlashcardToolPrefsUserId === owner) return;
+        state.auth.handwrittenFlashcardToolPrefsUserId = owner;
+        try {
+            const raw = window.localStorage?.getItem(getHandwrittenToolPrefsStorageKey(owner));
+            const stored = raw ? JSON.parse(raw) : {};
+            state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(stored.penSizeMm, 1.1);
+            state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(stored.eraserSizeMm, 5, 1, 12);
+            state.auth.handwrittenFlashcardSmoothingEnabled = stored.smoothingEnabled !== false;
+            state.auth.handwrittenFlashcardSmoothingStrength = Math.round(Math.max(0, Math.min(100, Number.isFinite(Number(stored.smoothingStrength)) ? Number(stored.smoothingStrength) : 65)));
+            if (/^#[0-9a-f]{6}$/i.test(String(stored.penColor || ''))) {
+                state.auth.handwrittenFlashcardPenColor = normalizeEditorHexColor(stored.penColor, '#111827');
+            }
+        } catch (error) {
+            console.warn('Could not read handwritten Flashcard tool preferences:', error);
+        }
+    }
+
+    function persistHandwrittenToolPrefs() {
+        ensureHandwrittenToolPrefsLoaded();
+        try {
+            window.localStorage?.setItem(getHandwrittenToolPrefsStorageKey(), JSON.stringify({
+                penSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardPenSizeMm, 1.1),
+                eraserSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12),
+                smoothingEnabled: state.auth.handwrittenFlashcardSmoothingEnabled !== false,
+                smoothingStrength: Math.round(Math.max(0, Math.min(100, Number(state.auth.handwrittenFlashcardSmoothingStrength) || 0))),
+                penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827')
+            }));
+        } catch (error) {
+            console.warn('Could not save handwritten Flashcard tool preferences:', error);
+        }
+    }
+
+    function handwrittenMmToStrokeSize(mm) {
+        return Math.max(1, Math.min(32, clampHandwrittenToolMm(mm, 1.1) * 4));
+    }
+
+    function getActiveHandwrittenToolSizeMm() {
+        return state.auth.handwrittenFlashcardTool === 'eraser'
+            ? clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12)
+            : clampHandwrittenToolMm(state.auth.handwrittenFlashcardPenSizeMm, 1.1);
+    }
+
+    let handwrittenToolIndicatorHideTimer = null;
+
+    function hideHandwrittenToolSizeIndicator() {
+        if (handwrittenToolIndicatorHideTimer) {
+            window.clearTimeout(handwrittenToolIndicatorHideTimer);
+            handwrittenToolIndicatorHideTimer = null;
+        }
+        state.auth.handwrittenFlashcardToolIndicatorPointer = null;
+        elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
+    }
+
+    function scheduleHandwrittenToolSizeIndicatorHide(delay = 420) {
+        if (handwrittenToolIndicatorHideTimer) window.clearTimeout(handwrittenToolIndicatorHideTimer);
+        handwrittenToolIndicatorHideTimer = window.setTimeout(() => {
+            handwrittenToolIndicatorHideTimer = null;
+            elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
+        }, Math.max(0, Number(delay) || 0));
+    }
+
+    function getHandwrittenToolIndicatorDiameterPx(event = null) {
+        const tool = state.auth.handwrittenFlashcardTool;
+        if (tool === 'eraser') {
+            const rect = elements.flashcardHandwrittenCanvas?.getBoundingClientRect();
+            const minDimension = Math.max(1, Math.min(rect?.width || 1, rect?.height || 1));
+            return Math.max(2, getHandwrittenEraserThreshold() * minDimension * 2);
+        }
+        if (tool === 'pen') {
+            const rawPressure = Number(event?.pressure);
+            const pressure = Number.isFinite(rawPressure) && rawPressure > 0 ? Math.max(.05, Math.min(1, rawPressure)) : .5;
+            return Math.max(.8, handwrittenMmToStrokeSize(state.auth.handwrittenFlashcardPenSizeMm) * (.35 + pressure * .85));
+        }
+        return 0;
+    }
+
+    function updateHandwrittenToolSizeIndicator(event = null) {
+        const indicator = elements.flashcardHandwrittenToolIndicator;
+        const card = elements.flashcardHandwrittenCard;
+        const canvas = elements.flashcardHandwrittenCanvas;
+        const tool = state.auth.handwrittenFlashcardTool;
+        if (!indicator || !card || !canvas || !event || !state.auth.handwrittenFlashcardEnabled || getHandwrittenSideModeFromEditorState() !== 'handwritten' || (tool !== 'pen' && tool !== 'eraser')) {
+            indicator?.classList.add('hidden');
+            return;
+        }
+        const pointerType = normalizeSheetText(event.pointerType).toLowerCase();
+        if (pointerType === 'touch') {
+            indicator.classList.add('hidden');
+            return;
+        }
+        const canvasRect = canvas.getBoundingClientRect();
+        if (!canvasRect.width || !canvasRect.height) {
+            indicator.classList.add('hidden');
+            return;
+        }
+        const row = getCurrentHandwrittenFlashcardRow();
+        const side = getHandwrittenSideKey();
+        const image = normalizeSheetText(row?.[`${side}_image_url`]);
+        if (image && getHandwrittenSideImageLayoutFromEditorState(side) === 'full') {
+            indicator.classList.add('hidden');
+            return;
+        }
+        const cardRect = card.getBoundingClientRect();
+        const diameter = getHandwrittenToolIndicatorDiameterPx(event);
+        const x = event.clientX - cardRect.left;
+        const y = event.clientY - cardRect.top;
+        state.auth.handwrittenFlashcardToolIndicatorPointer = { clientX: event.clientX, clientY: event.clientY, pressure: Number(event.pressure) || 0, pointerType };
+        if (handwrittenToolIndicatorHideTimer) {
+            window.clearTimeout(handwrittenToolIndicatorHideTimer);
+            handwrittenToolIndicatorHideTimer = null;
+        }
+        indicator.style.left = `${x}px`;
+        indicator.style.top = `${y}px`;
+        const visualDiameter = Math.max(4, diameter);
+        indicator.style.width = `${visualDiameter}px`;
+        indicator.style.height = `${visualDiameter}px`;
+        indicator.classList.toggle('is-eraser', tool === 'eraser');
+        indicator.classList.toggle('is-pen', tool === 'pen');
+        indicator.classList.remove('hidden');
+    }
+
+    function refreshHandwrittenToolSizeIndicator() {
+        const pointer = state.auth.handwrittenFlashcardToolIndicatorPointer;
+        if (!pointer) return;
+        updateHandwrittenToolSizeIndicator(pointer);
+    }
+
+    function syncHandwrittenSizeControls() {
+        const eraser = state.auth.handwrittenFlashcardTool === 'eraser';
+        const move = state.auth.handwrittenFlashcardTool === 'move';
+        const value = getActiveHandwrittenToolSizeMm();
+        if (elements.flashcardHandwrittenBrushSize) {
+            elements.flashcardHandwrittenBrushSize.min = eraser ? '1' : '.5';
+            elements.flashcardHandwrittenBrushSize.max = eraser ? '12' : '8';
+            elements.flashcardHandwrittenBrushSize.value = String(value);
+        }
+        if (elements.flashcardHandwrittenSizeLabel) elements.flashcardHandwrittenSizeLabel.textContent = eraser ? 'Eraser size' : 'Pen thickness';
+        if (elements.flashcardHandwrittenSizeValue) elements.flashcardHandwrittenSizeValue.textContent = `${value.toFixed(1)} mm`;
+        const smoothingEnabled = state.auth.handwrittenFlashcardSmoothingEnabled !== false;
+        const smoothingStrength = Math.round(Math.max(0, Math.min(100, Number(state.auth.handwrittenFlashcardSmoothingStrength) || 0)));
+        if (elements.flashcardHandwrittenSmoothingToggle) elements.flashcardHandwrittenSmoothingToggle.checked = smoothingEnabled;
+        if (elements.flashcardHandwrittenSmoothingStrength) {
+            elements.flashcardHandwrittenSmoothingStrength.value = String(smoothingStrength);
+            elements.flashcardHandwrittenSmoothingStrength.disabled = !smoothingEnabled;
+        }
+        if (elements.flashcardHandwrittenSmoothingValue) elements.flashcardHandwrittenSmoothingValue.textContent = `${smoothingStrength}%`;
+        elements.flashcardHandwrittenSmoothingStrengthWrap?.classList.toggle('is-disabled', !smoothingEnabled);
+        if (elements.flashcardHandwrittenSizeBtn) {
+            elements.flashcardHandwrittenSizeBtn.disabled = move;
+            elements.flashcardHandwrittenSizeBtn.title = move ? 'Choose Pen or Eraser to change thickness' : (eraser ? 'Eraser size' : 'Pen thickness');
+        }
+        if (move) elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
+        else refreshHandwrittenToolSizeIndicator();
+    }
+
+    function positionHandwrittenFloatingPopover(popover, anchor) {
+        if (!popover || !anchor || popover.classList.contains('hidden')) return;
+        const rect = anchor.getBoundingClientRect();
+        const margin = 10;
+        const popRect = popover.getBoundingClientRect();
+        const left = Math.max(margin, Math.min(window.innerWidth - popRect.width - margin, rect.left + rect.width / 2 - popRect.width / 2));
+        let top = rect.bottom + 8;
+        if (top + popRect.height > window.innerHeight - margin) top = Math.max(margin, rect.top - popRect.height - 8);
+        popover.style.left = `${Math.round(left)}px`;
+        popover.style.top = `${Math.round(top)}px`;
+    }
+
+    function closeHandwrittenFloatingPopovers() {
+        elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
+        state.auth.handwrittenFlashcardColorPopoverMode = '';
+        state.auth.handwrittenFlashcardEditingColorPreset = '';
+    }
+
+    function openHandwrittenSizePopover(anchor = elements.flashcardHandwrittenSizeBtn) {
+        if (!elements.flashcardHandwrittenSizePopover || elements.flashcardHandwrittenSizeBtn?.disabled) return;
+        elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
+        syncHandwrittenSizeControls();
+        elements.flashcardHandwrittenSizePopover.classList.remove('hidden');
+        requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenSizePopover, anchor));
+    }
+
+    function openHandwrittenColorPopover(mode = 'add', color = state.auth.handwrittenFlashcardPenColor, anchor = elements.flashcardHandwrittenSaveColorBtn) {
+        if (!elements.flashcardHandwrittenColorPopover || !elements.flashcardHandwrittenBrushColor) return;
+        elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        const normalized = normalizeEditorHexColor(color || state.auth.handwrittenFlashcardPenColor || '#111827', '#111827').toLowerCase();
+        state.auth.handwrittenFlashcardColorPopoverMode = mode === 'edit' ? 'edit' : 'add';
+        state.auth.handwrittenFlashcardEditingColorPreset = mode === 'edit' ? normalized : '';
+        state.auth.handwrittenFlashcardPenColor = normalized;
+        elements.flashcardHandwrittenBrushColor.value = normalized;
+        if (elements.flashcardHandwrittenColorPopoverActionBtn) elements.flashcardHandwrittenColorPopoverActionBtn.textContent = mode === 'edit' ? 'Done' : 'Add';
+        if (elements.flashcardHandwrittenColorPopoverDeleteBtn) elements.flashcardHandwrittenColorPopoverDeleteBtn.classList.toggle('hidden', mode !== 'edit');
+        elements.flashcardHandwrittenColorPopover.classList.remove('hidden');
+        renderHandwrittenFlashcardColorPresets();
+        persistHandwrittenToolPrefs();
+        requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenColorPopover, anchor));
+    }
+
+    function replaceHandwrittenSharedColorPreset(oldColor, nextColor) {
+        const oldValue = normalizeEditorHexColor(oldColor || '', '').toLowerCase();
+        const nextValue = normalizeEditorHexColor(nextColor || '#111827', '#111827').toLowerCase();
+        const colors = normalizeImageEditorColorPresetList(state.auth.diagramColorPresets || []);
+        const index = colors.indexOf(oldValue);
+        if (index < 0) return false;
+        colors[index] = nextValue;
+        state.auth.diagramColorPresets = normalizeImageEditorColorPresetList(colors);
+        state.auth.diagramColorPresetUpdatedAt = Date.now();
+        state.auth.diagramColorLastColor = nextValue;
+        writeLocalImageEditorColorPresets({ colors: state.auth.diagramColorPresets, lastColor: nextValue, updatedAt: state.auth.diagramColorPresetUpdatedAt });
+        renderImageEditorColorPresets();
+        scheduleImageEditorColorPresetSync();
+        return true;
+    }
+
     function renderHandwrittenFlashcardColorPresets() {
         if (!elements.flashcardHandwrittenColorPresets) return;
         const colors = normalizeImageEditorColorPresetList(state.auth.diagramColorPresets || []);
         const active = normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827').toLowerCase();
-        elements.flashcardHandwrittenColorPresets.innerHTML = colors.map(color => `<span><button type="button" class="studio-handwritten-color-preset ${color===active?'is-active':''}" data-handwritten-color="${color}" style="--preset-color:${color}" title="Use ${color.toUpperCase()}"></button><button type="button" class="studio-handwritten-color-preset-delete" data-handwritten-color-delete="${color}" title="Delete saved color">×</button></span>`).join('');
+        elements.flashcardHandwrittenColorPresets.innerHTML = colors.map(color => `<button type="button" class="studio-handwritten-color-preset ${color===active?'is-active':''}" data-handwritten-color="${color}" style="--preset-color:${color}" aria-label="Use and edit ${color.toUpperCase()}" title="Use/edit ${color.toUpperCase()}"></button>`).join('');
+        if (elements.flashcardHandwrittenSaveColorBtn) elements.flashcardHandwrittenSaveColorBtn.disabled = colors.length >= IMAGE_EDITOR_COLOR_PRESET_MAX;
+    }
+
+    function getHandwrittenEraserThreshold() {
+        const rect = elements.flashcardHandwrittenCanvas?.getBoundingClientRect();
+        const minDimension = Math.max(1, Math.min(rect?.width || 1, rect?.height || 1));
+        const radiusPixels = clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12) * 4.5;
+        return Math.max(.008, Math.min(.16, radiusPixels / minDimension));
+    }
+
+    function syncHandwrittenFocusControls(rows = getHandwrittenWorkspaceRows(), index = 0, side = getHandwrittenSideKey()) {
+        const total = Math.max(1, rows.length);
+        const number = rows.length ? index + 1 : 1;
+        if (elements.flashcardHandwrittenFocusCardNumber) elements.flashcardHandwrittenFocusCardNumber.textContent = `${number} / ${total}`;
+        if (elements.flashcardHandwrittenFocusPrevBtn) elements.flashcardHandwrittenFocusPrevBtn.disabled = !rows.length || index <= 0;
+        if (elements.flashcardHandwrittenFocusNextBtn) elements.flashcardHandwrittenFocusNextBtn.disabled = false;
+        if (elements.flashcardHandwrittenFocusFrontBtn) {
+            const active = side === 'term';
+            elements.flashcardHandwrittenFocusFrontBtn.classList.toggle('active', active);
+            elements.flashcardHandwrittenFocusFrontBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
+        if (elements.flashcardHandwrittenFocusBackBtn) {
+            const active = side === 'definition';
+            elements.flashcardHandwrittenFocusBackBtn.classList.toggle('active', active);
+            elements.flashcardHandwrittenFocusBackBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
+    }
+
+    function setHandwrittenFlashcardFocusMode(enabled) {
+        const next = !!enabled && state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied;
+        state.auth.handwrittenFlashcardFocusMode = next;
+        elements.flashcardHandwrittenWorkspace?.classList.toggle('is-focus-mode', next);
+        document.body.classList.toggle('studio-handwritten-focus-open', next);
+        elements.flashcardHandwrittenFocusBtn?.classList.toggle('active', next);
+        if (elements.flashcardHandwrittenFocusBtn) {
+            elements.flashcardHandwrittenFocusBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
+            elements.flashcardHandwrittenFocusBtn.title = next ? 'Exit fullscreen handwriting focus mode (F or Esc)' : 'Fullscreen handwriting focus mode (F)';
+        }
+        closeHandwrittenFloatingPopovers();
+        hideHandwrittenToolSizeIndicator();
+        requestAnimationFrame(() => {
+            renderHandwrittenFlashcardWorkspace();
+            drawHandwrittenEditorCanvas(getHandwrittenSideKey());
+        });
     }
 
     function drawHandwrittenEditorCanvas(side = state.auth.handwrittenFlashcardSide) {
@@ -19621,6 +20167,7 @@ The deletion becomes permanent when you save the diagram.`);
         // prevents an eraser/move gesture from leaking across a Flip action.
         state.auth.handwrittenFlashcardTool = 'pen';
         state.auth.handwrittenFlashcardSide = getHandwrittenSideKey(nextSide);
+        hideHandwrittenToolSizeIndicator();
         const row = getCurrentHandwrittenFlashcardRow();
         const side = state.auth.handwrittenFlashcardSide;
         if (row && !normalizeSheetText(row[`${side}_content_mode`])) row[`${side}_content_mode`] = 'handwritten';
@@ -19630,6 +20177,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function renderHandwrittenFlashcardWorkspace() {
         if (!elements.flashcardHandwrittenWorkspace || !state.auth.handwrittenFlashcardEnabled) return;
+        ensureHandwrittenToolPrefsLoaded();
         const row = getCurrentHandwrittenFlashcardRow();
         const side = getHandwrittenSideKey();
         const style = normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {});
@@ -19646,9 +20194,10 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardHandwrittenMoveRightBtn) elements.flashcardHandwrittenMoveRightBtn.disabled = !rows.length || index >= rows.length - 1;
         if (elements.flashcardHandwrittenSideSelect) elements.flashcardHandwrittenSideSelect.checked = side === 'definition';
         if (elements.flashcardHandwrittenSideMode) elements.flashcardHandwrittenSideMode.checked = mode === 'typed';
-        if (elements.flashcardHandwrittenBrushSize) elements.flashcardHandwrittenBrushSize.value = String(state.auth.handwrittenFlashcardBrushSize || 4);
         if (elements.flashcardHandwrittenBrushColor) elements.flashcardHandwrittenBrushColor.value = normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827');
         if (elements.flashcardHandwrittenImageLayout) elements.flashcardHandwrittenImageLayout.checked = layout === 'full';
+        syncHandwrittenSizeControls();
+        syncHandwrittenFocusControls(rows, index, side);
         const card = elements.flashcardHandwrittenCard;
         if (card) {
             card.style.setProperty('--hand-card-bg', style.backgroundColor);
@@ -19669,7 +20218,13 @@ The deletion becomes permanent when you save the diagram.`);
             if (document.activeElement !== typedEditor && typedEditor.innerHTML !== html) typedEditor.innerHTML = html;
         }
         const handwritingInputActive = mode === 'handwritten' && !(imageValue && layout === 'full');
-        if (elements.flashcardHandwrittenWorkspace) elements.flashcardHandwrittenWorkspace.classList.toggle('is-handwriting-active', handwritingInputActive);
+        if (elements.flashcardHandwrittenWorkspace) {
+            const tool = state.auth.handwrittenFlashcardTool;
+            elements.flashcardHandwrittenWorkspace.classList.toggle('is-handwriting-active', handwritingInputActive);
+            elements.flashcardHandwrittenWorkspace.classList.toggle('is-tool-pen', handwritingInputActive && tool === 'pen');
+            elements.flashcardHandwrittenWorkspace.classList.toggle('is-tool-eraser', handwritingInputActive && tool === 'eraser');
+        }
+        if (!handwritingInputActive || state.auth.handwrittenFlashcardTool === 'move') elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
         syncHandwrittenDocumentSelectionGuard();
         if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', !handwritingInputActive);
         if (elements.flashcardHandwrittenImageWrap) elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
@@ -19705,6 +20260,54 @@ The deletion becomes permanent when you save the diagram.`);
         const canvas = elements.flashcardHandwrittenCanvas;
         const rect = canvas.getBoundingClientRect();
         return { x: Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width))), y: Math.max(0,Math.min(1,(event.clientY-rect.top)/Math.max(1,rect.height))), p: Math.max(.05,Math.min(1, Number(event.pressure)||.5)) };
+    }
+
+    function getHandwrittenPointerSamples(event) {
+        if (!event) return [];
+        try {
+            const samples = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
+            return samples?.length ? samples : [event];
+        } catch (_) {
+            return [event];
+        }
+    }
+
+    function getHandwrittenSmoothingStrength() {
+        if (state.auth.handwrittenFlashcardSmoothingEnabled === false) return 0;
+        return Math.max(0, Math.min(1, (Number(state.auth.handwrittenFlashcardSmoothingStrength) || 0) / 100));
+    }
+
+    function smoothHandwrittenInputPoint(drag, rawPoint, options = {}) {
+        const strength = getHandwrittenSmoothingStrength();
+        if (!drag || !rawPoint || strength <= 0) {
+            if (drag) drag.smoothedPoint = rawPoint;
+            return rawPoint;
+        }
+        const previous = drag.smoothedPoint || rawPoint;
+        if (!drag.smoothedPoint) {
+            drag.smoothedPoint = rawPoint;
+            return rawPoint;
+        }
+        const distance = Math.hypot(rawPoint.x - previous.x, rawPoint.y - previous.y);
+        let alpha = 1 - (strength * .82);
+        // Quick movements need a little more catch-up so smoothing stays responsive.
+        alpha = Math.max(alpha, Math.min(.82, .22 + distance * 16));
+        if (options.finish) alpha = Math.max(alpha, .82);
+        const point = {
+            x: previous.x + (rawPoint.x - previous.x) * alpha,
+            y: previous.y + (rawPoint.y - previous.y) * alpha,
+            p: previous.p + (rawPoint.p - previous.p) * Math.max(alpha, .42)
+        };
+        drag.smoothedPoint = point;
+        return point;
+    }
+
+    function appendHandwrittenStrokePoint(stroke, point) {
+        if (!stroke || !point) return false;
+        const last = stroke.points?.[stroke.points.length - 1];
+        if (last && Math.hypot(point.x - last.x, point.y - last.y) < .00012 && Math.abs(point.p - last.p) < .015) return false;
+        stroke.points.push(point);
+        return true;
     }
 
     function findNearestHandwritingStroke(strokes, point, threshold=.045) {
@@ -19759,35 +20362,52 @@ The deletion becomes permanent when you save the diagram.`);
             clearHandwrittenDocumentSelection();
         }
         const row=getCurrentHandwrittenFlashcardRow(); const side=getHandwrittenSideKey(); const image=normalizeSheetText(row?.[`${side}_image_url`]);
-        if (image && getHandwrittenSideImageLayoutFromEditorState(side)==='full') return;
+        if (image && getHandwrittenSideImageLayoutFromEditorState(side)==='full') { hideHandwrittenToolSizeIndicator(); return; }
+        updateHandwrittenToolSizeIndicator(event);
         event.preventDefault();
         event.stopPropagation();
         elements.flashcardHandwrittenCanvas?.setPointerCapture?.(event.pointerId);
         pushHandwrittenUndo(side);
         const point=getHandwrittenCanvasPoint(event); const strokes=getHandwrittenSideStrokesFromEditorState(side); const tool=state.auth.handwrittenFlashcardTool;
         if (tool==='eraser') {
-            const erased=eraseHandwritingAtPoint(strokes,point,.045);
+            const erased=eraseHandwritingAtPoint(strokes,point,getHandwrittenEraserThreshold());
             setHandwrittenSideState(side,{strokes:erased});
             drawHandwrittenEditorCanvas(side);
-            state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId,side}; return;
+            state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId,side,smoothedPoint:point}; return;
         }
         if (tool==='move') {
             const idx=findNearestHandwritingStroke(strokes,point,.07); state.auth.handwrittenFlashcardPointer={tool:'move',pointerId:event.pointerId,side,index:idx,last:point,strokes}; return;
         }
-        const stroke={color:normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor||'#111827','#111827'),size:Number(state.auth.handwrittenFlashcardBrushSize)||4,points:[point]};
-        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes}; drawHandwrittenEditorCanvas(side);
+        const stroke={color:normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor||'#111827','#111827'),size:handwrittenMmToStrokeSize(state.auth.handwrittenFlashcardPenSizeMm),points:[point]};
+        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes,smoothedPoint:point}; drawHandwrittenEditorCanvas(side);
     }
     function handleHandwrittenPointerMove(event) {
         if (normalizeSheetText(event.pointerType).toLowerCase() === 'touch') {
             if (state.auth.handwrittenFlashcardEnabled && getHandwrittenSideModeFromEditorState() === 'handwritten') event.preventDefault();
             return;
         }
+        updateHandwrittenToolSizeIndicator(event);
         const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault(); event.stopPropagation();
         const side=getHandwrittenSideKey(drag.side || state.auth.handwrittenFlashcardSide);
         if (side !== getHandwrittenSideKey()) return;
+        const pointerSamples = getHandwrittenPointerSamples(event);
         const point=getHandwrittenCanvasPoint(event);
-        if(drag.tool==='pen'){drag.stroke.points.push(point);setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
-        else if(drag.tool==='eraser'){const strokes=getHandwrittenSideStrokesFromEditorState(side);const erased=eraseHandwritingAtPoint(strokes,point,.045);setHandwrittenSideState(side,{strokes:erased});drawHandwrittenEditorCanvas(side);}
+        if(drag.tool==='pen'){
+            let changed=false;
+            pointerSamples.forEach(sample => {
+                const smoothPoint=smoothHandwrittenInputPoint(drag,getHandwrittenCanvasPoint(sample));
+                changed=appendHandwrittenStrokePoint(drag.stroke,smoothPoint)||changed;
+            });
+            if(changed){setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
+        }
+        else if(drag.tool==='eraser'){
+            let strokes=getHandwrittenSideStrokesFromEditorState(side);
+            pointerSamples.forEach(sample => {
+                const smoothPoint=smoothHandwrittenInputPoint(drag,getHandwrittenCanvasPoint(sample));
+                strokes=eraseHandwritingAtPoint(strokes,smoothPoint,getHandwrittenEraserThreshold());
+            });
+            setHandwrittenSideState(side,{strokes});drawHandwrittenEditorCanvas(side);
+        }
         else if(drag.tool==='move'&&drag.index>=0){const dx=point.x-drag.last.x,dy=point.y-drag.last.y;const stroke=drag.strokes[drag.index];stroke.points=stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}));drag.last=point;setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
     }
     function handleHandwrittenPointerUp(event) {
@@ -19797,10 +20417,24 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const drag = state.auth.handwrittenFlashcardPointer;
         if (!drag || drag.pointerId !== event.pointerId) return;
+        updateHandwrittenToolSizeIndicator(event);
         event.preventDefault();
         event.stopPropagation();
+        if (event.type !== 'pointercancel' && (drag.tool === 'pen' || drag.tool === 'eraser')) {
+            const finalPoint = smoothHandwrittenInputPoint(drag, getHandwrittenCanvasPoint(event), { finish: true });
+            if (drag.tool === 'pen') {
+                if (appendHandwrittenStrokePoint(drag.stroke, finalPoint)) setHandwrittenSideState(getHandwrittenSideKey(drag.side), { strokes: drag.strokes });
+            } else {
+                const eraseSide = getHandwrittenSideKey(drag.side);
+                const erased = eraseHandwritingAtPoint(getHandwrittenSideStrokesFromEditorState(eraseSide), finalPoint, getHandwrittenEraserThreshold());
+                setHandwrittenSideState(eraseSide, { strokes: erased });
+            }
+            drawHandwrittenEditorCanvas(getHandwrittenSideKey(drag.side));
+        }
         try { elements.flashcardHandwrittenCanvas?.releasePointerCapture?.(event.pointerId); } catch (_) {}
         state.auth.handwrittenFlashcardPointer = null;
+        if (event.type === 'pointercancel') hideHandwrittenToolSizeIndicator();
+        else scheduleHandwrittenToolSizeIndicatorHide();
         if (normalizeSheetText(event.pointerType).toLowerCase() === 'pen') {
             state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
             clearHandwrittenDocumentSelection();
@@ -38455,11 +39089,19 @@ elements.studioImageEditorLabelInfoList?.addEventListener('input', event => {
         renderImageEditorCanvas();
         return;
     }
-    if (event.target.matches('[data-image-editor-label-info-description]')) {
-        editor.labels[index].description = String(event.target.value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').slice(0, 2000);
-        synchronizeImageEditorSharedDescription(index, editor.labels[index].description, { sourceElement: event.target });
+    const categoryRow = event.target.closest('[data-image-editor-label-info-category-row]');
+    const categoryIndex = Number(categoryRow?.dataset.imageEditorLabelInfoCategoryIndex ?? -1);
+    if (!Number.isInteger(categoryIndex) || categoryIndex < 0) return;
+    const categories = normalizeDiagramLabelInfoCategories(editor.labels[index]);
+    if (!categories[categoryIndex]) return;
+    if (event.target.matches('[data-image-editor-label-info-category-name]')) {
+        categories[categoryIndex].name = displayMathChemTextForEditor(normalizeSheetText(event.target.value)).slice(0, DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX);
+    } else if (event.target.matches('[data-image-editor-label-info-body]')) {
+        categories[categoryIndex].body = normalizeDiagramLabelInfoBody(event.target.value);
         resizeImageEditorLabelInfoTextarea(event.target);
-    }
+    } else return;
+    setDiagramLabelInfoCategories(editor.labels[index], categories);
+    synchronizeImageEditorSharedInfoCategories(index, categories, { sourceElement: event.target });
 });
 elements.studioImageEditorLabelList?.addEventListener('click', event => {
     const row = event.target.closest('[data-image-editor-label-row]');
@@ -38467,6 +39109,7 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
     if (!row || !editor?.labelsEnabled) return;
     const index = Number(row.dataset.imageEditorLabelIndex || -1);
     if (index < 0 || !editor.labels?.[index]) return;
+    if (editor.labelInfoPanelOpen) setImageEditorLabelInfoExpandedIndex(index);
     const drawBtn = event.target.closest('[data-image-editor-label-draw]');
     const connectorBtn = event.target.closest('[data-image-editor-label-connector]');
     const connectorStyleBtn = event.target.closest('[data-image-editor-connector-style]');
@@ -39845,22 +40488,79 @@ elements.questionImage.onclick = function () {
     });
     elements.handwrittenToolButtons?.forEach(btn => btn.addEventListener('click', event => {
         event.preventDefault();
-        // Finish/cancel any in-progress pointer gesture before changing tools so an
-        // iPad Pencil gesture cannot continue under the newly selected tool.
         state.auth.handwrittenFlashcardPointer = null;
         state.auth.handwrittenFlashcardTool = btn.dataset.handwrittenTool || 'pen';
+        closeHandwrittenFloatingPopovers();
         renderHandwrittenFlashcardWorkspace();
+        if (state.auth.handwrittenFlashcardTool === 'move') hideHandwrittenToolSizeIndicator();
+        else refreshHandwrittenToolSizeIndicator();
     }));
-    elements.flashcardHandwrittenBrushSize?.addEventListener('input',()=>{state.auth.handwrittenFlashcardBrushSize=Math.max(1,Math.min(24,Number(elements.flashcardHandwrittenBrushSize.value)||4));});
-    elements.flashcardHandwrittenBrushColor?.addEventListener('input',()=>{state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(elements.flashcardHandwrittenBrushColor.value,'#111827');renderHandwrittenFlashcardColorPresets();});
-    elements.flashcardHandwrittenSaveColorBtn?.addEventListener('click',()=>{saveImageEditorColorPreset(state.auth.handwrittenFlashcardPenColor);renderHandwrittenFlashcardColorPresets();});
-    elements.flashcardHandwrittenColorPresets?.addEventListener('click',event=>{const use=event.target.closest('[data-handwritten-color]');if(use){state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(use.dataset.handwrittenColor,'#111827');if(elements.flashcardHandwrittenBrushColor)elements.flashcardHandwrittenBrushColor.value=state.auth.handwrittenFlashcardPenColor;renderHandwrittenFlashcardColorPresets();return;}const del=event.target.closest('[data-handwritten-color-delete]');if(del){deleteImageEditorColorPreset(del.dataset.handwrittenColorDelete);renderHandwrittenFlashcardColorPresets();}});
+    elements.flashcardHandwrittenSizeBtn?.addEventListener('click', event => {
+        event.preventDefault();
+        if (elements.flashcardHandwrittenSizePopover?.classList.contains('hidden')) openHandwrittenSizePopover(event.currentTarget);
+        else elements.flashcardHandwrittenSizePopover.classList.add('hidden');
+    });
+    elements.flashcardHandwrittenBrushSize?.addEventListener('input',()=>{
+        const value = Number(elements.flashcardHandwrittenBrushSize.value);
+        if (state.auth.handwrittenFlashcardTool === 'eraser') state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(value, 5, 1, 12);
+        else state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(value, 1.1);
+        syncHandwrittenSizeControls();
+        persistHandwrittenToolPrefs();
+    });
+    elements.flashcardHandwrittenSmoothingToggle?.addEventListener('change',()=>{
+        state.auth.handwrittenFlashcardSmoothingEnabled = !!elements.flashcardHandwrittenSmoothingToggle.checked;
+        syncHandwrittenSizeControls();
+        persistHandwrittenToolPrefs();
+    });
+    elements.flashcardHandwrittenSmoothingStrength?.addEventListener('input',()=>{
+        state.auth.handwrittenFlashcardSmoothingStrength = Math.round(Math.max(0, Math.min(100, Number(elements.flashcardHandwrittenSmoothingStrength.value) || 0)));
+        syncHandwrittenSizeControls();
+        persistHandwrittenToolPrefs();
+    });
+    elements.flashcardHandwrittenBrushColor?.addEventListener('input',()=>{
+        state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(elements.flashcardHandwrittenBrushColor.value,'#111827');
+        renderHandwrittenFlashcardColorPresets();
+        refreshHandwrittenToolSizeIndicator();
+        persistHandwrittenToolPrefs();
+    });
+    elements.flashcardHandwrittenSaveColorBtn?.addEventListener('click',event=>{
+        event.preventDefault();
+        openHandwrittenColorPopover('add', state.auth.handwrittenFlashcardPenColor, event.currentTarget);
+    });
+    elements.flashcardHandwrittenColorPresets?.addEventListener('click',event=>{
+        const use=event.target.closest('[data-handwritten-color]');
+        if(!use)return;
+        const color=normalizeEditorHexColor(use.dataset.handwrittenColor,'#111827');
+        state.auth.handwrittenFlashcardPenColor=color;
+        persistHandwrittenToolPrefs();
+        renderHandwrittenFlashcardColorPresets();
+        refreshHandwrittenToolSizeIndicator();
+        openHandwrittenColorPopover('edit', color, use);
+    });
+    elements.flashcardHandwrittenColorPopoverActionBtn?.addEventListener('click',()=>{
+        const color=normalizeEditorHexColor(elements.flashcardHandwrittenBrushColor?.value || state.auth.handwrittenFlashcardPenColor,'#111827').toLowerCase();
+        const mode=state.auth.handwrittenFlashcardColorPopoverMode;
+        if(mode==='edit') replaceHandwrittenSharedColorPreset(state.auth.handwrittenFlashcardEditingColorPreset,color);
+        else saveImageEditorColorPreset(color);
+        state.auth.handwrittenFlashcardPenColor=color;
+        persistHandwrittenToolPrefs();
+        closeHandwrittenFloatingPopovers();
+        renderHandwrittenFlashcardColorPresets();
+    });
+    elements.flashcardHandwrittenColorPopoverDeleteBtn?.addEventListener('click',()=>{
+        const color=state.auth.handwrittenFlashcardEditingColorPreset;
+        if(color) deleteImageEditorColorPreset(color);
+        closeHandwrittenFloatingPopovers();
+        renderHandwrittenFlashcardColorPresets();
+    });
     elements.flashcardHandwrittenUndoBtn?.addEventListener('click',undoHandwrittenStroke);
     elements.flashcardHandwrittenRedoBtn?.addEventListener('click',redoHandwrittenStroke);
     // Capture Pencil input as early as possible on iPad. passive:false is required
     // for preventDefault() to reliably suppress Safari's compatibility selection path.
     elements.flashcardHandwrittenCanvas?.addEventListener('pointerdown',handleHandwrittenPointerDown,{capture:true,passive:false});
     elements.flashcardHandwrittenCanvas?.addEventListener('pointermove',handleHandwrittenPointerMove,{capture:true,passive:false});
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointerenter',event=>{ if(normalizeSheetText(event.pointerType).toLowerCase()!=='touch') updateHandwrittenToolSizeIndicator(event); },{capture:true,passive:true});
+    elements.flashcardHandwrittenCanvas?.addEventListener('pointerleave',()=>{ if(!state.auth.handwrittenFlashcardPointer) scheduleHandwrittenToolSizeIndicatorHide(90); },{capture:true,passive:true});
     elements.flashcardHandwrittenCanvas?.addEventListener('pointerup',handleHandwrittenPointerUp,{capture:true,passive:false});
     elements.flashcardHandwrittenCanvas?.addEventListener('pointercancel',handleHandwrittenPointerUp,{capture:true,passive:false});
     ['selectstart','dragstart','contextmenu'].forEach(eventName => {
@@ -39947,6 +40647,12 @@ elements.questionImage.onclick = function () {
         const side=getHandwrittenSideKey(); if(side==='definition') setStudioFlashcardDefinitionImageState('','No definition image selected.'); else setStudioFlashcardTermImageState('','No term image selected.');
         setHandwrittenSideState(side,{imageLayout:'none'}); renderHandwrittenFlashcardWorkspace();
     });
+    elements.flashcardHandwrittenFocusBtn?.addEventListener('click',()=>setHandwrittenFlashcardFocusMode(!state.auth.handwrittenFlashcardFocusMode));
+    elements.flashcardHandwrittenFocusPrevBtn?.addEventListener('click',()=>elements.flashcardHandwrittenPrevBtn?.click());
+    elements.flashcardHandwrittenFocusNextBtn?.addEventListener('click',()=>elements.flashcardHandwrittenNextBtn?.click());
+    elements.flashcardHandwrittenFocusFrontBtn?.addEventListener('click',()=>switchHandwrittenFlashcardSide('term'));
+    elements.flashcardHandwrittenFocusBackBtn?.addEventListener('click',()=>switchHandwrittenFlashcardSide('definition'));
+    elements.flashcardHandwrittenFocusDeleteBtn?.addEventListener('click',()=>elements.flashcardHandwrittenDeleteBtn?.click());
     elements.flashcardHandwrittenCardList?.addEventListener('click', event => {
         const openButton = event.target.closest('[data-handwritten-list-open-id]');
         if (openButton) {
@@ -40022,17 +40728,30 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenDeleteBtn?.addEventListener('click',()=>deleteCurrentHandwrittenFlashcard().catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not delete this card.','error');}));
     elements.flashcardHandwrittenGoBtn?.addEventListener('click',()=>{const n=Math.max(1,Number(elements.flashcardHandwrittenGoInput?.value)||1);navigateHandwrittenFlashcard(0,n-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not open that card.','error');});});
     elements.flashcardHandwrittenGoInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();elements.flashcardHandwrittenGoBtn?.click();}});
+    document.addEventListener('pointerdown', event => {
+        if (!state.auth.handwrittenFlashcardEnabled) return;
+        const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSizeBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color]');
+        if (!inside) closeHandwrittenFloatingPopovers();
+    });
     window.addEventListener('keydown',event=>{
         if(!state.auth.handwrittenFlashcardEnabled||!state.auth.handwrittenFlashcardSetupApplied||elements.flashcardHandwrittenWorkspace?.classList.contains('hidden'))return;
         const tag=event.target?.tagName?.toLowerCase(); if(event.target?.isContentEditable||['input','textarea','select'].includes(tag))return;
+        const key=event.key.toLowerCase();
+        if(event.code==='Escape' && state.auth.handwrittenFlashcardFocusMode){event.preventDefault();setHandwrittenFlashcardFocusMode(false);return;}
+        if(key==='f'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();setHandwrittenFlashcardFocusMode(!state.auth.handwrittenFlashcardFocusMode);return;}
+        if(key==='b'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();state.auth.handwrittenFlashcardTool='pen';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
+        if(key==='e'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();state.auth.handwrittenFlashcardTool='eraser';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
         if(event.code==='Space'){event.preventDefault();elements.flashcardHandwrittenFlipBtn?.click();}
-        else if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.shiftKey?redoHandwrittenStroke():undoHandwrittenStroke();}
+        else if((event.ctrlKey||event.metaKey)&&key==='z'){event.preventDefault();event.shiftKey?redoHandwrittenStroke():undoHandwrittenStroke();}
     });
-    window.addEventListener('resize',()=>{if(state.auth.handwrittenFlashcardEnabled){const side=getHandwrittenSideKey();requestAnimationFrame(()=>drawHandwrittenEditorCanvas(side));}});
+    window.addEventListener('resize',()=>{
+        closeHandwrittenFloatingPopovers();
+        if(state.auth.handwrittenFlashcardEnabled){const side=getHandwrittenSideKey();requestAnimationFrame(()=>drawHandwrittenEditorCanvas(side));}
+    });
 
     elements.createQuizTypeSelect?.addEventListener('change', () => {
         const type=normalizeSheetText(elements.createQuizTypeSelect.value);
-        if(type!=='flashcard'){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardPersistedEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;}
+        if(type!=='flashcard'){setHandwrittenFlashcardFocusMode(false);state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardPersistedEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;}
         else if(!state.auth.editingQuizId){state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardPersistedEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;state.auth.handwrittenFlashcardStyle=getDefaultHandwrittenFlashcardStyle();syncHandwrittenFlashcardSetupControls();}
         updateStudioEditorTypeUI();
     });

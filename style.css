@@ -11243,6 +11243,40 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   white-space: normal;
 }
 
+
+.review-mode-label-info-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-top: 0;
+}
+
+.review-mode-label-info-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+  gap: calc(5px * var(--review-label-scale));
+  padding: calc(5px * var(--review-label-scale)) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.review-mode-label-info-row:first-child {
+  border-top: none;
+}
+
+.review-mode-label-info-category {
+  color: #fff;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.review-mode-label-info-body {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
 .review-mode-label-marker:focus-visible {
   outline: 3px solid rgba(250, 204, 21, 0.45);
   outline-offset: 2px;
@@ -11307,10 +11341,10 @@ body.review-mode-image-open {
   }
 }
 
-/* Phase 22MI — collapsible per-label names and study information. */
+/* Phase 23C — structured, collapsible per-label study-information categories. */
 .studio-image-editor-label-info-panel {
   flex: 0 0 auto;
-  max-height: 230px;
+  max-height: 310px;
   overflow: auto;
   padding: 10px;
   border: 1px solid rgba(124, 108, 255, 0.34);
@@ -11338,7 +11372,8 @@ body.review-mode-image-open {
 }
 
 .studio-image-editor-label-info-subtitle,
-.studio-image-editor-label-info-empty {
+.studio-image-editor-label-info-empty,
+.studio-image-editor-label-info-category-empty {
   color: rgba(232, 226, 255, 0.7);
   font-size: 0.7rem;
   line-height: 1.35;
@@ -11351,15 +11386,27 @@ body.review-mode-image-open {
 }
 
 .studio-image-editor-label-info-row {
-  display: grid;
-  grid-template-columns: auto minmax(120px, 0.38fr) minmax(220px, 1fr);
-  align-items: start;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.studio-image-editor-label-info-row.is-expanded {
+  border-color: rgba(250, 204, 21, 0.28);
+  background: rgba(250, 204, 21, 0.035);
+}
+
+.studio-image-editor-label-info-header {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .studio-image-editor-label-info-number {
+  flex: 0 0 auto;
   min-width: 1.8em;
-  padding-top: 7px;
   color: rgba(250, 204, 21, 0.92);
   font-size: 0.76rem;
   font-weight: 900;
@@ -11368,7 +11415,6 @@ body.review-mode-image-open {
 
 .studio-image-editor-label-info-row input,
 .studio-image-editor-label-info-row textarea {
-  width: 100%;
   min-width: 0;
   box-sizing: border-box;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -11382,11 +11428,63 @@ body.review-mode-image-open {
   outline: none;
 }
 
-.studio-image-editor-label-info-row input {
+.studio-image-editor-label-info-name {
+  flex: 0 1 27%;
+  width: 27%;
+  max-width: 27%;
   min-height: 31px;
 }
 
-.studio-image-editor-label-info-row textarea {
+.studio-image-editor-label-info-add,
+.studio-image-editor-label-info-collapse,
+.studio-image-editor-label-info-category-delete {
+  flex: 0 0 32px;
+  width: 32px;
+  min-width: 32px;
+  height: 31px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.studio-image-editor-label-info-collapse {
+  font-size: 1.08rem;
+}
+
+.studio-image-editor-label-info-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 8px;
+  margin-left: calc(1.8em + 8px);
+}
+
+.studio-image-editor-label-info-categories.hidden {
+  display: none !important;
+}
+
+.studio-image-editor-label-info-category-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.studio-image-editor-label-info-category-name {
+  flex: 0 1 24%;
+  width: 24%;
+  max-width: 24%;
+  min-height: 31px;
+}
+
+.studio-image-editor-label-info-category-body {
+  flex: 0 1 50%;
+  width: 50%;
+  max-width: 50%;
   height: 31px;
   min-height: 31px;
   max-height: 150px;
@@ -11405,27 +11503,63 @@ body.review-mode-image-open {
   background: rgba(250, 204, 21, 0.14);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .studio-image-editor-label-info-panel {
-    max-height: 240px;
+    max-height: 320px;
   }
 
-  .studio-image-editor-label-info-row {
-    grid-template-columns: auto minmax(0, 1fr);
+  .studio-image-editor-label-info-name {
+    flex-basis: 45%;
+    width: 45%;
+    max-width: 45%;
   }
 
-  .studio-image-editor-label-info-row textarea {
-    grid-column: 2;
+  .studio-image-editor-label-info-category-name {
+    flex-basis: 32%;
+    width: 32%;
+    max-width: 32%;
+  }
+
+  .studio-image-editor-label-info-category-body {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
   }
 }
 
-@media (max-width: 460px) {
-  .studio-image-editor-label-info-row {
-    grid-template-columns: auto minmax(0, 1fr);
+@media (max-width: 560px) {
+  .studio-image-editor-label-info-header {
+    flex-wrap: wrap;
   }
 
-  .studio-image-editor-label-info-row textarea {
-    grid-column: 1 / -1;
+  .studio-image-editor-label-info-name {
+    flex: 1 1 calc(100% - 120px);
+    width: auto;
+    max-width: none;
+  }
+
+  .studio-image-editor-label-info-categories {
+    margin-left: 0;
+  }
+
+  .studio-image-editor-label-info-category-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px;
+  }
+
+  .studio-image-editor-label-info-category-name,
+  .studio-image-editor-label-info-category-body {
+    width: 100%;
+    max-width: none;
+  }
+
+  .studio-image-editor-label-info-category-body {
+    grid-column: 1;
+  }
+
+  .studio-image-editor-label-info-category-delete {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 
@@ -13688,6 +13822,12 @@ body.review-mode-image-open {
 .studio-handwritten-workspace.is-handwriting-active .studio-handwritten-canvas {
   touch-action:none;
 }
+/* Phase 23D.5: Pen/Eraser use the live tool-size ring as the pointer.
+   Move/Typed/image-only states keep the normal system cursor. */
+.studio-handwritten-workspace.is-handwriting-active.is-tool-pen .studio-handwritten-canvas,
+.studio-handwritten-workspace.is-handwriting-active.is-tool-eraser .studio-handwritten-canvas {
+  cursor:none;
+}
 .studio-handwritten-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px; border:1px solid rgba(167,139,250,.28); border-radius:14px; background:rgba(28,24,48,.76); }
 .studio-handwritten-toolbar .active { box-shadow:0 0 0 2px rgba(124,108,255,.7) inset; }
 .studio-handwritten-inline-control { display:inline-flex; align-items:center; gap:6px; font-size:.86rem; }
@@ -14096,4 +14236,293 @@ body.studio-handwritten-list-dragging {
   .studio-handwritten-question-list-fields {
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
+}
+
+/* ================= PHASE 23D.1: HANDWRITING FOCUS MODE VISUAL HOTFIX =================
+   Phase 23D shipped the focus-mode state/event wiring but the matching visual
+   rules were omitted from the packaged stylesheet. This block makes that
+   existing state an immersive viewport overlay without creating a second
+   canvas or changing handwriting data. */
+.studio-handwritten-focus-navigation {
+  display: none;
+}
+
+body.studio-handwritten-focus-open {
+  overflow: hidden !important;
+  background: #000 !important;
+}
+
+.studio-handwritten-workspace.is-focus-mode {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 100000 !important;
+  box-sizing: border-box;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: center;
+  gap: clamp(10px, 1.6vh, 18px);
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-height: 100vh;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  margin: 0 !important;
+  overflow: hidden;
+  background: #000;
+  isolation: isolate;
+}
+
+.studio-handwritten-workspace.is-focus-mode .studio-handwritten-toolbar {
+  position: relative;
+  z-index: 4;
+  width: min(96vw, 1420px);
+  max-height: min(22dvh, 150px);
+  overflow: auto;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  margin: 0;
+  border-color: rgba(124, 108, 255, .42);
+  background: rgba(15, 13, 23, .94);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .38);
+}
+
+.studio-handwritten-workspace.is-focus-mode .studio-handwritten-toolbar-card-number {
+  display: none !important;
+}
+
+.studio-handwritten-workspace.is-focus-mode .studio-handwritten-card {
+  grid-row: 2;
+  align-self: center;
+  justify-self: center;
+  width: min(94vw, 1200px, calc((100dvh - 190px) * 1.6)) !important;
+  max-width: 94vw !important;
+  max-height: calc(100dvh - 190px);
+  margin: 0 !important;
+  border: 2px solid rgba(124, 108, 255, .78) !important;
+  border-radius: clamp(16px, 2vw, 24px);
+  box-shadow: 0 0 0 1px rgba(124, 108, 255, .18), 0 18px 54px rgba(0, 0, 0, .58) !important;
+}
+
+.studio-handwritten-workspace.is-focus-mode .studio-handwritten-navigation,
+.studio-handwritten-workspace.is-focus-mode > .creator-note {
+  display: none !important;
+}
+
+.studio-handwritten-workspace.is-focus-mode .studio-handwritten-focus-navigation {
+  grid-row: 3;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 48px;
+  margin: 0;
+  padding: 6px 10px;
+  color: #f4f1ff;
+  border: 1px solid rgba(124, 108, 255, .30);
+  border-radius: 14px;
+  background: rgba(15, 13, 23, .90);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .32);
+}
+
+.studio-handwritten-focus-navigation > strong {
+  min-width: 64px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #ddd7ff;
+}
+
+.studio-handwritten-focus-control {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(167, 139, 250, .34);
+  border-radius: 11px;
+  background: rgba(39, 34, 58, .92);
+  color: #f4f1ff;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.studio-handwritten-focus-control:hover:not(:disabled),
+.studio-handwritten-focus-control:focus-visible:not(:disabled) {
+  border-color: rgba(124, 108, 255, .82);
+  background: rgba(70, 59, 112, .94);
+  outline: none;
+}
+
+.studio-handwritten-focus-control.active {
+  border-color: rgba(124, 108, 255, .95);
+  background: rgba(124, 108, 255, .92);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, .22);
+}
+
+.studio-handwritten-focus-control:disabled {
+  opacity: .38;
+  cursor: default;
+}
+
+.studio-handwritten-focus-delete svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Phase 23D.4 — true floating handwritten thickness/color popovers. */
+.studio-handwritten-floating-popover {
+  position: fixed;
+  z-index: 100004;
+  box-sizing: border-box;
+  min-width: 220px;
+  max-width: min(290px, calc(100vw - 20px));
+  padding: 10px 12px;
+  border: 1px solid rgba(167, 139, 250, .38);
+  border-radius: 12px;
+  background: rgba(20, 17, 32, .97);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .44);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.studio-handwritten-popover-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #f4f1ff;
+  font-size: .82rem;
+  line-height: 1.2;
+}
+
+#flashcardHandwrittenSizePopover input[type="range"] {
+  display: block;
+  width: 100%;
+  margin: 9px 0 1px;
+}
+
+.studio-handwritten-size-trigger svg path {
+  stroke-width: 2.25;
+}
+
+/* Keep floating thickness/color controls above the focus overlay. */
+.studio-handwritten-workspace.is-focus-mode .studio-handwritten-floating-popover {
+  z-index: 100004 !important;
+}
+
+@media (orientation: portrait) and (max-width: 1100px) {
+  .studio-handwritten-workspace.is-focus-mode {
+    gap: 10px;
+  }
+
+  .studio-handwritten-workspace.is-focus-mode .studio-handwritten-toolbar {
+    width: min(97vw, 920px);
+    max-height: min(25dvh, 180px);
+  }
+
+  .studio-handwritten-workspace.is-focus-mode .studio-handwritten-card {
+    width: min(95vw, calc((100dvh - 210px) * 1.6)) !important;
+    max-width: 95vw !important;
+    max-height: calc(100dvh - 210px);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 720px) {
+  .studio-handwritten-workspace.is-focus-mode {
+    gap: 6px;
+    padding-top: max(6px, env(safe-area-inset-top));
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .studio-handwritten-workspace.is-focus-mode .studio-handwritten-toolbar {
+    max-height: 92px;
+    padding-block: 5px;
+  }
+
+  .studio-handwritten-workspace.is-focus-mode .studio-handwritten-card {
+    width: min(92vw, 1200px, calc((100dvh - 142px) * 1.6)) !important;
+    max-height: calc(100dvh - 142px);
+  }
+
+  .studio-handwritten-workspace.is-focus-mode .studio-handwritten-focus-navigation {
+    min-height: 42px;
+    padding-block: 3px;
+  }
+
+  .studio-handwritten-focus-control {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+
+/* ================= PHASE 23D.3: THIN WHITE LIVE TOOL SIZE INDICATOR ================= */
+.studio-handwritten-tool-indicator {
+  position: absolute;
+  z-index: 8;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,.98);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none !important;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: .98;
+  background: transparent;
+  box-shadow: 0 0 2px rgba(0,0,0,.92);
+  transition: width 45ms linear, height 45ms linear, opacity 90ms ease;
+}
+.studio-handwritten-tool-indicator.is-eraser,
+.studio-handwritten-tool-indicator.is-pen {
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(255,255,255,.98);
+  background: transparent;
+}
+.studio-handwritten-card:not(.is-handwritten-input) .studio-handwritten-tool-indicator {
+  display: none !important;
+}
+
+/* Phase 23D.6 — GoodNotes-style handwriting smoothing controls. */
+.studio-handwritten-smoothing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(167, 139, 250, .18);
+  color: #f4f1ff;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.studio-handwritten-smoothing-strength {
+  margin-top: 10px;
+  transition: opacity .16s ease;
+}
+
+.studio-handwritten-smoothing-strength.is-disabled {
+  opacity: .42;
+}
+
+#flashcardHandwrittenSmoothingStrength {
+  display: block;
+  width: 100%;
+  margin: 9px 0 1px;
 }
