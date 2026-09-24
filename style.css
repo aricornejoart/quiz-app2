@@ -14497,3 +14497,27 @@ body.studio-handwritten-focus-open {
 .studio-handwritten-card:not(.is-handwritten-input) .studio-handwritten-tool-indicator {
   display: none !important;
 }
+
+/* ================= PHASE 23D.7: COLOR POPOVER + IPAD FOCUS NAV SPACING =================
+   Color editing uses the same fixed overlay behavior as the thickness menu.
+   On touch-first tablet layouts, anchor the focus navigation exactly 15px below
+   the flashcard so portrait/landscape controls stay inside the safe viewport. */
+.studio-handwritten-color-popover {
+  z-index: 100005;
+}
+
+@media (hover: none) and (pointer: coarse) and (max-width: 1400px) {
+  .studio-handwritten-workspace.is-focus-mode {
+    row-gap: 15px !important;
+  }
+
+  .studio-handwritten-workspace.is-focus-mode .studio-handwritten-card {
+    align-self: end;
+  }
+
+  .studio-handwritten-workspace.is-focus-mode .studio-handwritten-focus-navigation {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+}
+

@@ -20017,14 +20017,18 @@ The deletion becomes permanent when you save the diagram.`);
         else refreshHandwrittenToolSizeIndicator();
     }
 
-    function positionHandwrittenFloatingPopover(popover, anchor) {
+    function positionHandwrittenFloatingPopover(popover, anchor, options = {}) {
         if (!popover || !anchor || popover.classList.contains('hidden')) return;
         const rect = anchor.getBoundingClientRect();
         const margin = 10;
         const popRect = popover.getBoundingClientRect();
         const left = Math.max(margin, Math.min(window.innerWidth - popRect.width - margin, rect.left + rect.width / 2 - popRect.width / 2));
         let top = rect.bottom + 8;
-        if (top + popRect.height > window.innerHeight - margin) top = Math.max(margin, rect.top - popRect.height - 8);
+        if (options.forceBelow) {
+            top = Math.min(top, Math.max(margin, window.innerHeight - popRect.height - margin));
+        } else if (top + popRect.height > window.innerHeight - margin) {
+            top = Math.max(margin, rect.top - popRect.height - 8);
+        }
         popover.style.left = `${Math.round(left)}px`;
         popover.style.top = `${Math.round(top)}px`;
     }
@@ -20057,7 +20061,8 @@ The deletion becomes permanent when you save the diagram.`);
         elements.flashcardHandwrittenColorPopover.classList.remove('hidden');
         renderHandwrittenFlashcardColorPresets();
         persistHandwrittenToolPrefs();
-        requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenColorPopover, anchor));
+        const colorAnchor = mode === 'edit' ? (elements.flashcardHandwrittenColorPresets || anchor) : anchor;
+        requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenColorPopover, colorAnchor, { forceBelow: true }));
     }
 
     function replaceHandwrittenSharedColorPreset(oldColor, nextColor) {
@@ -40625,11 +40630,13 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenDeleteBtn?.addEventListener('click',()=>deleteCurrentHandwrittenFlashcard().catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not delete this card.','error');}));
     elements.flashcardHandwrittenGoBtn?.addEventListener('click',()=>{const n=Math.max(1,Number(elements.flashcardHandwrittenGoInput?.value)||1);navigateHandwrittenFlashcard(0,n-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not open that card.','error');});});
     elements.flashcardHandwrittenGoInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();elements.flashcardHandwrittenGoBtn?.click();}});
+    // Phase 23D.7: capture outside taps before the handwriting canvas stops
+    // propagation so tapping anywhere else on the screen always dismisses open popovers.
     document.addEventListener('pointerdown', event => {
         if (!state.auth.handwrittenFlashcardEnabled) return;
         const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSizeBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color]');
         if (!inside) closeHandwrittenFloatingPopovers();
-    });
+    }, { capture: true, passive: true });
     window.addEventListener('keydown',event=>{
         if(!state.auth.handwrittenFlashcardEnabled||!state.auth.handwrittenFlashcardSetupApplied||elements.flashcardHandwrittenWorkspace?.classList.contains('hidden'))return;
         const tag=event.target?.tagName?.toLowerCase(); if(event.target?.isContentEditable||['input','textarea','select'].includes(tag))return;
