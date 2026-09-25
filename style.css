@@ -14654,3 +14654,36 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   max-width: 100%;
 }
 
+
+/* ===== Phase 23E.1 — iPhone/iPad full-face flip isolation =====
+   iOS/iPadOS Safari can occasionally composite the mirrored inactive flashcard
+   face through the visible face after Study Mode geometry changes. Preserve the
+   existing 3D flip, but explicitly swap whole-face visibility at the midpoint
+   of the 0.45s rotation so only one face can be painted at a time. */
+@supports (-webkit-touch-callout: none) {
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-face,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-face,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-face {
+    transition: visibility 0s linear 0.225s;
+  }
+
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front,
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back {
+    visibility: visible !important;
+    pointer-events: auto;
+  }
+
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back,
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
