@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23d8" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23d9" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23d8-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23d9-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1649,8 +1649,8 @@ MODIFICATION RULES FOR THIS APP
                         <button type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" data-handwritten-tool="eraser" aria-label="Eraser" title="Eraser (E)">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 21-4-4L14.5 5.5a2.12 2.12 0 0 1 3 0l1 1a2.12 2.12 0 0 1 0 3L7 21Z"></path><path d="m11 17 4 4"></path><path d="M7 21h14"></path></svg>
                         </button>
-                        <button type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" data-handwritten-tool="move" aria-label="Move handwriting" title="Move handwriting">
-                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"></path><path d="m8 6 4-4 4 4"></path><path d="m8 18 4 4 4-4"></path><path d="M2 12h20"></path><path d="m6 8-4 4 4 4"></path><path d="m18 8 4 4-4 4"></path></svg>
+                        <button id="flashcardHandwrittenSelectionToolBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" data-handwritten-tool="select" aria-label="Select handwriting" title="Select handwriting; click again for Rectangle or Lasso">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"></rect></svg>
                         </button>
                         <button id="flashcardHandwrittenUndoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Undo" title="Undo">↶</button>
                         <button id="flashcardHandwrittenRedoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Redo" title="Redo">↷</button>
@@ -1683,6 +1683,14 @@ MODIFICATION RULES FOR THIS APP
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5"></path><path d="M16 3h5v5"></path><path d="M8 21H3v-5"></path><path d="M16 21h5v-5"></path></svg>
                         </button>
 
+                        <div id="flashcardHandwrittenSelectionPopover" class="studio-handwritten-floating-popover studio-handwritten-selection-popover hidden" role="dialog" aria-label="Selection type">
+                          <button id="flashcardHandwrittenSelectionRectangleBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-selection-choice active" data-handwritten-selection-type="rectangle" aria-pressed="true">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"></rect></svg><span>Rectangle</span>
+                          </button>
+                          <button id="flashcardHandwrittenSelectionLassoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-selection-choice" data-handwritten-selection-type="lasso" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7c3-3 10-3 12 1 2 4-2 8-7 9-5 1-8-1-7-4 1-2 4-2 6 0"></path><path d="m10 13 2 7"></path></svg><span>Lasso</span>
+                          </button>
+                        </div>
                         <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Stroke thickness">
                           <div class="studio-handwritten-popover-title"><strong id="flashcardHandwrittenSizeLabel">Pen thickness</strong><span id="flashcardHandwrittenSizeValue">1.1 mm</span></div>
                           <input id="flashcardHandwrittenBrushSize" type="range" min="0.5" max="8" step="0.1" value="1.1" aria-label="Stroke thickness in millimeters">
@@ -1698,6 +1706,15 @@ MODIFICATION RULES FOR THIS APP
                         <div id="flashcardHandwrittenGrid" class="studio-handwritten-grid"></div>
                         <div id="flashcardHandwrittenTypedEditor" class="studio-handwritten-typed-editor hidden" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Type this side of the flashcard"></div>
                         <canvas id="flashcardHandwrittenCanvas" class="studio-handwritten-canvas"></canvas>
+                        <div id="flashcardHandwrittenSelectionOverlay" class="studio-handwritten-selection-overlay hidden">
+                          <svg class="studio-handwritten-selection-gesture" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+                            <rect id="flashcardHandwrittenSelectionGestureRect" class="studio-handwritten-selection-gesture-shape hidden"></rect>
+                            <path id="flashcardHandwrittenSelectionGesturePath" class="studio-handwritten-selection-gesture-shape hidden"></path>
+                          </svg>
+                          <div id="flashcardHandwrittenSelectionBox" class="studio-handwritten-selection-box hidden">
+                            <button id="flashcardHandwrittenSelectionClearBtn" type="button" class="studio-handwritten-selection-clear" aria-label="Deselect handwriting" title="Deselect">×</button>
+                          </div>
+                        </div>
                         <div id="flashcardHandwrittenToolIndicator" class="studio-handwritten-tool-indicator hidden" aria-hidden="true"></div>
                         <div id="flashcardHandwrittenImageWrap" class="studio-handwritten-image-wrap hidden"><img id="flashcardHandwrittenImage" alt="Flashcard image"></div>
                         <div id="flashcardHandwrittenFullImageNote" class="studio-handwritten-full-image-note hidden">Full image side — drawing is disabled.</div>
@@ -2285,6 +2302,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23d8"></script>
+  <script src="script.js?v=23d9"></script>
 </body>
 </html>

@@ -13823,7 +13823,7 @@ body.review-mode-image-open {
   touch-action:none;
 }
 /* Phase 23D.5: Pen/Eraser use the live tool-size ring as the pointer.
-   Move/Typed/image-only states keep the normal system cursor. */
+   Selection/Typed/image-only states keep the normal system cursor. */
 .studio-handwritten-workspace.is-handwriting-active.is-tool-pen .studio-handwritten-canvas,
 .studio-handwritten-workspace.is-handwriting-active.is-tool-eraser .studio-handwritten-canvas {
   cursor:none;
@@ -14469,6 +14469,104 @@ body.studio-handwritten-focus-open {
 }
 
 
+/* ================= PHASE 23D.9: HANDWRITING RECTANGLE/LASSO SELECTION ================= */
+.studio-handwritten-selection-popover {
+  min-width: 210px;
+  display: flex;
+  gap: 8px;
+}
+.studio-handwritten-selection-choice {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+}
+.studio-handwritten-selection-choice svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.studio-handwritten-selection-choice.active {
+  box-shadow: 0 0 0 2px rgba(124,108,255,.7) inset;
+  color: #f4f1ff;
+}
+.studio-handwritten-selection-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 7;
+  pointer-events: none;
+  overflow: visible;
+}
+.studio-handwritten-card.has-half-image .studio-handwritten-selection-overlay {
+  right: 50%;
+  width: 50%;
+}
+.studio-handwritten-card.has-full-image .studio-handwritten-selection-overlay {
+  display: none !important;
+}
+.studio-handwritten-selection-gesture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.studio-handwritten-selection-gesture-shape {
+  fill: rgba(124,108,255,.08);
+  stroke: rgba(167,139,250,.98);
+  stroke-width: 2.2;
+  stroke-dasharray: 8 6;
+  vector-effect: non-scaling-stroke;
+}
+#flashcardHandwrittenSelectionGesturePath {
+  fill: rgba(124,108,255,.06);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.studio-handwritten-selection-box {
+  position: absolute;
+  box-sizing: border-box;
+  min-width: 12px;
+  min-height: 12px;
+  border: 2px dashed rgba(167,139,250,.98);
+  border-radius: 7px;
+  background: rgba(124,108,255,.045);
+  box-shadow: 0 0 0 1px rgba(28,24,48,.38);
+  pointer-events: none;
+}
+.studio-handwritten-selection-clear {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.88);
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 800;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 2px 7px rgba(0,0,0,.32);
+}
+.studio-handwritten-workspace.is-tool-select .studio-handwritten-canvas {
+  cursor: crosshair;
+}
 /* ================= PHASE 23D.3: THIN WHITE LIVE TOOL SIZE INDICATOR ================= */
 .studio-handwritten-tool-indicator {
   position: absolute;

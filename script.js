@@ -298,6 +298,8 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardStyle: { backgroundColor: '#ffffff', gridType: 'none', gridColor: '#94a3b8', gridOpacity: 0.24 },
             handwrittenFlashcardSide: 'term',
             handwrittenFlashcardTool: 'pen',
+            handwrittenFlashcardSelectionType: 'rectangle',
+            handwrittenFlashcardSelection: null,
             handwrittenFlashcardPenColor: '#111827',
             handwrittenFlashcardBrushSize: 4,
             handwrittenFlashcardPenSizeMm: 1.1,
@@ -863,6 +865,15 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenTypedEditor: document.getElementById('flashcardHandwrittenTypedEditor'),
         flashcardHandwrittenCanvas: document.getElementById('flashcardHandwrittenCanvas'),
         flashcardHandwrittenToolIndicator: document.getElementById('flashcardHandwrittenToolIndicator'),
+        flashcardHandwrittenSelectionToolBtn: document.getElementById('flashcardHandwrittenSelectionToolBtn'),
+        flashcardHandwrittenSelectionPopover: document.getElementById('flashcardHandwrittenSelectionPopover'),
+        flashcardHandwrittenSelectionRectangleBtn: document.getElementById('flashcardHandwrittenSelectionRectangleBtn'),
+        flashcardHandwrittenSelectionLassoBtn: document.getElementById('flashcardHandwrittenSelectionLassoBtn'),
+        flashcardHandwrittenSelectionOverlay: document.getElementById('flashcardHandwrittenSelectionOverlay'),
+        flashcardHandwrittenSelectionGestureRect: document.getElementById('flashcardHandwrittenSelectionGestureRect'),
+        flashcardHandwrittenSelectionGesturePath: document.getElementById('flashcardHandwrittenSelectionGesturePath'),
+        flashcardHandwrittenSelectionBox: document.getElementById('flashcardHandwrittenSelectionBox'),
+        flashcardHandwrittenSelectionClearBtn: document.getElementById('flashcardHandwrittenSelectionClearBtn'),
         flashcardHandwrittenImageWrap: document.getElementById('flashcardHandwrittenImageWrap'),
         flashcardHandwrittenImage: document.getElementById('flashcardHandwrittenImage'),
         flashcardHandwrittenFullImageNote: document.getElementById('flashcardHandwrittenFullImageNote'),
@@ -19882,6 +19893,7 @@ The deletion becomes permanent when you save the diagram.`);
             const stored = raw ? JSON.parse(raw) : {};
             state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(stored.penSizeMm, 1.1);
             state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(stored.eraserSizeMm, 5, 1, 12);
+            state.auth.handwrittenFlashcardSelectionType = stored.selectionType === 'lasso' ? 'lasso' : 'rectangle';
             if (/^#[0-9a-f]{6}$/i.test(String(stored.penColor || ''))) {
                 state.auth.handwrittenFlashcardPenColor = normalizeEditorHexColor(stored.penColor, '#111827');
             }
@@ -19896,7 +19908,8 @@ The deletion becomes permanent when you save the diagram.`);
             window.localStorage?.setItem(getHandwrittenToolPrefsStorageKey(), JSON.stringify({
                 penSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardPenSizeMm, 1.1),
                 eraserSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12),
-                penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827')
+                penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827'),
+                selectionType: state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle'
             }));
         } catch (error) {
             console.warn('Could not save handwritten Flashcard tool preferences:', error);
@@ -20000,7 +20013,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function syncHandwrittenSizeControls() {
         const eraser = state.auth.handwrittenFlashcardTool === 'eraser';
-        const move = state.auth.handwrittenFlashcardTool === 'move';
+        const sizeToolActive = state.auth.handwrittenFlashcardTool === 'pen' || eraser;
         const value = getActiveHandwrittenToolSizeMm();
         if (elements.flashcardHandwrittenBrushSize) {
             elements.flashcardHandwrittenBrushSize.min = eraser ? '1' : '.5';
@@ -20010,10 +20023,10 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardHandwrittenSizeLabel) elements.flashcardHandwrittenSizeLabel.textContent = eraser ? 'Eraser size' : 'Pen thickness';
         if (elements.flashcardHandwrittenSizeValue) elements.flashcardHandwrittenSizeValue.textContent = `${value.toFixed(1)} mm`;
         if (elements.flashcardHandwrittenSizeBtn) {
-            elements.flashcardHandwrittenSizeBtn.disabled = move;
-            elements.flashcardHandwrittenSizeBtn.title = move ? 'Choose Pen or Eraser to change thickness' : (eraser ? 'Eraser size' : 'Pen thickness');
+            elements.flashcardHandwrittenSizeBtn.disabled = !sizeToolActive;
+            elements.flashcardHandwrittenSizeBtn.title = !sizeToolActive ? 'Choose Pen or Eraser to change thickness' : (eraser ? 'Eraser size' : 'Pen thickness');
         }
-        if (move) elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
+        if (!sizeToolActive) elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
         else refreshHandwrittenToolSizeIndicator();
     }
 
@@ -20036,6 +20049,7 @@ The deletion becomes permanent when you save the diagram.`);
     function closeHandwrittenFloatingPopovers() {
         elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
         elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
+        elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         state.auth.handwrittenFlashcardColorPopoverMode = '';
         state.auth.handwrittenFlashcardEditingColorPreset = '';
     }
@@ -20043,6 +20057,7 @@ The deletion becomes permanent when you save the diagram.`);
     function openHandwrittenSizePopover(anchor = elements.flashcardHandwrittenSizeBtn) {
         if (!elements.flashcardHandwrittenSizePopover || elements.flashcardHandwrittenSizeBtn?.disabled) return;
         elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
+        elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         syncHandwrittenSizeControls();
         elements.flashcardHandwrittenSizePopover.classList.remove('hidden');
         requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenSizePopover, anchor));
@@ -20051,6 +20066,7 @@ The deletion becomes permanent when you save the diagram.`);
     function openHandwrittenColorPopover(mode = 'add', color = state.auth.handwrittenFlashcardPenColor, anchor = elements.flashcardHandwrittenSaveColorBtn) {
         if (!elements.flashcardHandwrittenColorPopover || !elements.flashcardHandwrittenBrushColor) return;
         elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         const normalized = normalizeEditorHexColor(color || state.auth.handwrittenFlashcardPenColor || '#111827', '#111827').toLowerCase();
         state.auth.handwrittenFlashcardColorPopoverMode = mode === 'edit' ? 'edit' : 'add';
         state.auth.handwrittenFlashcardEditingColorPreset = mode === 'edit' ? normalized : '';
@@ -20063,6 +20079,23 @@ The deletion becomes permanent when you save the diagram.`);
         persistHandwrittenToolPrefs();
         const colorAnchor = mode === 'edit' ? (elements.flashcardHandwrittenColorPresets || anchor) : anchor;
         requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenColorPopover, colorAnchor, { forceBelow: true }));
+    }
+
+    function syncHandwrittenSelectionControls() {
+        const type = state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle';
+        elements.flashcardHandwrittenSelectionRectangleBtn?.classList.toggle('active', type === 'rectangle');
+        elements.flashcardHandwrittenSelectionLassoBtn?.classList.toggle('active', type === 'lasso');
+        elements.flashcardHandwrittenSelectionRectangleBtn?.setAttribute('aria-pressed', type === 'rectangle' ? 'true' : 'false');
+        elements.flashcardHandwrittenSelectionLassoBtn?.setAttribute('aria-pressed', type === 'lasso' ? 'true' : 'false');
+    }
+
+    function openHandwrittenSelectionPopover(anchor = elements.flashcardHandwrittenSelectionToolBtn) {
+        if (!elements.flashcardHandwrittenSelectionPopover || !anchor) return;
+        elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
+        syncHandwrittenSelectionControls();
+        elements.flashcardHandwrittenSelectionPopover.classList.remove('hidden');
+        requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenSelectionPopover, anchor, { forceBelow: true }));
     }
 
     function replaceHandwrittenSharedColorPreset(oldColor, nextColor) {
@@ -20166,8 +20199,149 @@ The deletion becomes permanent when you save the diagram.`);
         });
     }
 
+    function getHandwrittenSelectionContext(side = state.auth.handwrittenFlashcardSide) {
+        const row = getCurrentHandwrittenFlashcardRow();
+        return {
+            questionId: normalizeSheetText(row?.id || state.auth.editingQuestionId || STUDIO_PENDING_NEW_FLASHCARD_ID),
+            side: getHandwrittenSideKey(side)
+        };
+    }
+
+    function isCurrentHandwrittenSelection(selection = state.auth.handwrittenFlashcardSelection, side = state.auth.handwrittenFlashcardSide) {
+        if (!selection || !Array.isArray(selection.indices) || !selection.indices.length) return false;
+        const context = getHandwrittenSelectionContext(side);
+        return selection.questionId === context.questionId && selection.side === context.side;
+    }
+
+    function getHandwrittenStrokeBounds(stroke = {}) {
+        const points = Array.isArray(stroke.points) ? stroke.points : [];
+        if (!points.length) return null;
+        let minX=1,minY=1,maxX=0,maxY=0;
+        points.forEach(point => {
+            minX=Math.min(minX,point.x); minY=Math.min(minY,point.y);
+            maxX=Math.max(maxX,point.x); maxY=Math.max(maxY,point.y);
+        });
+        return { minX, minY, maxX, maxY };
+    }
+
+    function getHandwrittenSelectionBounds(strokes = [], indices = []) {
+        let minX=1,minY=1,maxX=0,maxY=0,found=false;
+        indices.forEach(index => {
+            const bounds = getHandwrittenStrokeBounds(strokes[index]);
+            if (!bounds) return;
+            found=true;
+            minX=Math.min(minX,bounds.minX); minY=Math.min(minY,bounds.minY);
+            maxX=Math.max(maxX,bounds.maxX); maxY=Math.max(maxY,bounds.maxY);
+        });
+        return found ? { minX, minY, maxX, maxY } : null;
+    }
+
+    function isPointInsideHandwrittenBounds(point, bounds, padding = 0) {
+        return !!bounds && point.x >= bounds.minX-padding && point.x <= bounds.maxX+padding && point.y >= bounds.minY-padding && point.y <= bounds.maxY+padding;
+    }
+
+    function orientation2d(a,b,c) {
+        return (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
+    }
+
+    function handwrittenSegmentsIntersect(a,b,c,d) {
+        const o1=orientation2d(a,b,c),o2=orientation2d(a,b,d),o3=orientation2d(c,d,a),o4=orientation2d(c,d,b);
+        const eps=1e-9;
+        const on=(p,q,r)=>Math.min(p.x,r.x)-eps<=q.x&&q.x<=Math.max(p.x,r.x)+eps&&Math.min(p.y,r.y)-eps<=q.y&&q.y<=Math.max(p.y,r.y)+eps&&Math.abs(orientation2d(p,q,r))<=eps;
+        if (((o1>eps&&o2<-eps)||(o1<-eps&&o2>eps))&&((o3>eps&&o4<-eps)||(o3<-eps&&o4>eps))) return true;
+        return (Math.abs(o1)<=eps&&on(a,c,b))||(Math.abs(o2)<=eps&&on(a,d,b))||(Math.abs(o3)<=eps&&on(c,a,d))||(Math.abs(o4)<=eps&&on(c,b,d));
+    }
+
+    function handwrittenStrokeIntersectsRect(stroke, rect) {
+        const points=stroke?.points||[];
+        if (!points.length) return false;
+        const inside=p=>p.x>=rect.minX&&p.x<=rect.maxX&&p.y>=rect.minY&&p.y<=rect.maxY;
+        if (points.some(inside)) return true;
+        const tl={x:rect.minX,y:rect.minY},tr={x:rect.maxX,y:rect.minY},br={x:rect.maxX,y:rect.maxY},bl={x:rect.minX,y:rect.maxY};
+        for(let i=1;i<points.length;i++){
+            const a=points[i-1],b=points[i];
+            if(handwrittenSegmentsIntersect(a,b,tl,tr)||handwrittenSegmentsIntersect(a,b,tr,br)||handwrittenSegmentsIntersect(a,b,br,bl)||handwrittenSegmentsIntersect(a,b,bl,tl)) return true;
+        }
+        return false;
+    }
+
+    function handwrittenPointInPolygon(point, polygon = []) {
+        let inside=false;
+        for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+            const a=polygon[i],b=polygon[j];
+            const crosses=((a.y>point.y)!==(b.y>point.y))&&(point.x<(b.x-a.x)*(point.y-a.y)/((b.y-a.y)||1e-12)+a.x);
+            if(crosses) inside=!inside;
+        }
+        return inside;
+    }
+
+    function handwrittenStrokeIntersectsPolygon(stroke, polygon = []) {
+        const points=stroke?.points||[];
+        if(points.some(point=>handwrittenPointInPolygon(point,polygon))) return true;
+        for(let i=1;i<points.length;i++){
+            for(let j=0;j<polygon.length;j++){
+                const a=polygon[j],b=polygon[(j+1)%polygon.length];
+                if(handwrittenSegmentsIntersect(points[i-1],points[i],a,b)) return true;
+            }
+        }
+        return false;
+    }
+
+    function clearHandwrittenSelection(options = {}) {
+        state.auth.handwrittenFlashcardSelection = null;
+        if (state.auth.handwrittenFlashcardPointer?.tool?.startsWith?.('select-')) state.auth.handwrittenFlashcardPointer = null;
+        if (options.redraw !== false) renderHandwrittenSelectionOverlay();
+    }
+
+    function setHandwrittenSelection(indices = [], side = state.auth.handwrittenFlashcardSide) {
+        const clean = Array.from(new Set((indices || []).map(Number).filter(index => Number.isInteger(index) && index >= 0)));
+        if (!clean.length) {
+            clearHandwrittenSelection();
+            return;
+        }
+        const context = getHandwrittenSelectionContext(side);
+        state.auth.handwrittenFlashcardSelection = { ...context, indices: clean };
+        renderHandwrittenSelectionOverlay(side);
+    }
+
+    function renderHandwrittenSelectionOverlay(side = state.auth.handwrittenFlashcardSide) {
+        const overlay=elements.flashcardHandwrittenSelectionOverlay;
+        const box=elements.flashcardHandwrittenSelectionBox;
+        const gestureRect=elements.flashcardHandwrittenSelectionGestureRect;
+        const gesturePath=elements.flashcardHandwrittenSelectionGesturePath;
+        if(!overlay||!box||!gestureRect||!gesturePath) return;
+        gestureRect.classList.add('hidden'); gesturePath.classList.add('hidden'); box.classList.add('hidden');
+        const active = state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardTool === 'select' && getHandwrittenSideModeFromEditorState(getHandwrittenSideKey(side)) === 'handwritten';
+        if(!active){overlay.classList.add('hidden');return;}
+        const row=getCurrentHandwrittenFlashcardRow(); const sideKey=getHandwrittenSideKey(side); const image=normalizeSheetText(row?.[`${sideKey}_image_url`]);
+        if(image&&getHandwrittenSideImageLayoutFromEditorState(sideKey)==='full'){overlay.classList.add('hidden');return;}
+        const drag=state.auth.handwrittenFlashcardPointer;
+        if(drag?.side===sideKey&&drag.tool==='select-rect'){
+            const minX=Math.min(drag.start.x,drag.current.x),minY=Math.min(drag.start.y,drag.current.y),maxX=Math.max(drag.start.x,drag.current.x),maxY=Math.max(drag.start.y,drag.current.y);
+            gestureRect.setAttribute('x',String(minX*1000)); gestureRect.setAttribute('y',String(minY*1000)); gestureRect.setAttribute('width',String((maxX-minX)*1000)); gestureRect.setAttribute('height',String((maxY-minY)*1000));
+            gestureRect.classList.remove('hidden');
+        } else if(drag?.side===sideKey&&drag.tool==='select-lasso'&&drag.points?.length){
+            gesturePath.setAttribute('d',drag.points.map((point,index)=>`${index?'L':'M'} ${point.x*1000} ${point.y*1000}`).join(' '));
+            gesturePath.classList.remove('hidden');
+        }
+        if(isCurrentHandwrittenSelection(state.auth.handwrittenFlashcardSelection,sideKey)){
+            const strokes=getHandwrittenSideStrokesFromEditorState(sideKey);
+            const valid=state.auth.handwrittenFlashcardSelection.indices.filter(index=>index<strokes.length);
+            if(valid.length!==state.auth.handwrittenFlashcardSelection.indices.length) state.auth.handwrittenFlashcardSelection.indices=valid;
+            const bounds=getHandwrittenSelectionBounds(strokes,valid);
+            if(bounds){
+                const pad=.008; const left=Math.max(0,bounds.minX-pad),top=Math.max(0,bounds.minY-pad),right=Math.min(1,bounds.maxX+pad),bottom=Math.min(1,bounds.maxY+pad);
+                box.style.left=`${left*100}%`; box.style.top=`${top*100}%`; box.style.width=`${Math.max(.012,right-left)*100}%`; box.style.height=`${Math.max(.012,bottom-top)*100}%`;
+                box.classList.remove('hidden');
+            }
+        }
+        const hasVisual=!box.classList.contains('hidden')||!gestureRect.classList.contains('hidden')||!gesturePath.classList.contains('hidden');
+        overlay.classList.toggle('hidden',!hasVisual);
+    }
+
     function drawHandwrittenEditorCanvas(side = state.auth.handwrittenFlashcardSide) {
         renderHandwritingStrokesToCanvas(elements.flashcardHandwrittenCanvas, getHandwrittenSideStrokesFromEditorState(getHandwrittenSideKey(side)));
+        renderHandwrittenSelectionOverlay(side);
     }
 
     function clearHandwrittenEditorCanvasPixels() {
@@ -20183,8 +20357,9 @@ The deletion becomes permanent when you save the diagram.`);
     function switchHandwrittenFlashcardSide(nextSide = 'term') {
         syncHandwrittenTypedEditorToBase();
         state.auth.handwrittenFlashcardPointer = null;
+        clearHandwrittenSelection({ redraw: false });
         // A newly shown side should always be immediately ready to write. This also
-        // prevents an eraser/move gesture from leaking across a Flip action.
+        // prevents an eraser/selection gesture from leaking across a Flip action.
         state.auth.handwrittenFlashcardTool = 'pen';
         state.auth.handwrittenFlashcardSide = getHandwrittenSideKey(nextSide);
         hideHandwrittenToolSizeIndicator();
@@ -20200,6 +20375,9 @@ The deletion becomes permanent when you save the diagram.`);
         ensureHandwrittenToolPrefsLoaded();
         const row = getCurrentHandwrittenFlashcardRow();
         const side = getHandwrittenSideKey();
+        if (state.auth.handwrittenFlashcardSelection && !isCurrentHandwrittenSelection(state.auth.handwrittenFlashcardSelection, side)) {
+            state.auth.handwrittenFlashcardSelection = null;
+        }
         const style = normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {});
         const mode = getHandwrittenSideModeFromEditorState(side);
         const imageValue = normalizeSheetText(row?.[`${side}_image_url`] || (side === 'definition' ? state.auth.studioFlashcardDefinitionImageDataUrl : state.auth.studioFlashcardTermImageDataUrl));
@@ -20243,8 +20421,9 @@ The deletion becomes permanent when you save the diagram.`);
             elements.flashcardHandwrittenWorkspace.classList.toggle('is-handwriting-active', handwritingInputActive);
             elements.flashcardHandwrittenWorkspace.classList.toggle('is-tool-pen', handwritingInputActive && tool === 'pen');
             elements.flashcardHandwrittenWorkspace.classList.toggle('is-tool-eraser', handwritingInputActive && tool === 'eraser');
+            elements.flashcardHandwrittenWorkspace.classList.toggle('is-tool-select', handwritingInputActive && tool === 'select');
         }
-        if (!handwritingInputActive || state.auth.handwrittenFlashcardTool === 'move') elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
+        if (!handwritingInputActive || !['pen','eraser'].includes(state.auth.handwrittenFlashcardTool)) elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
         syncHandwrittenDocumentSelectionGuard();
         if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', !handwritingInputActive);
         if (elements.flashcardHandwrittenImageWrap) elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
@@ -20252,6 +20431,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardHandwrittenImage && imageValue) setImageElementSourceWithMediaResolution(elements.flashcardHandwrittenImage, imageValue);
         if (elements.flashcardHandwrittenRemoveImageBtn) elements.flashcardHandwrittenRemoveImageBtn.disabled = !imageValue;
         elements.handwrittenToolButtons?.forEach(btn => btn.classList.toggle('active', btn.dataset.handwrittenTool === state.auth.handwrittenFlashcardTool));
+        syncHandwrittenSelectionControls();
         renderHandwrittenFlashcardColorPresets();
         if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.dataset.flashcardSide = side;
         drawHandwrittenEditorCanvas(side);
@@ -20321,15 +20501,12 @@ The deletion becomes permanent when you save the diagram.`);
         if (!state.auth.handwrittenFlashcardEnabled || getHandwrittenSideModeFromEditorState() !== 'handwritten') return;
         const pointerType = normalizeSheetText(event.pointerType).toLowerCase();
         // Phase 23B.8: the handwriting surface owns all touch gestures. Fingers/palms
-        // still never draw, but their native Safari gesture must also be cancelled or
-        // iPadOS can select/highlight the entire flashcard while the Pencil is writing.
+        // still never draw/select, but their native Safari gesture must also be cancelled.
         if (pointerType === 'touch') {
             event.preventDefault();
             event.stopPropagation();
             return;
         }
-        // Clear any stale Safari selection before a new Pencil/mouse stroke begins.
-        // This affects only the handwritten canvas; Typed mode keeps normal text selection.
         if (pointerType === 'pen' || pointerType === 'mouse') {
             if (pointerType === 'pen') state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
             clearHandwrittenDocumentSelection();
@@ -20340,17 +20517,32 @@ The deletion becomes permanent when you save the diagram.`);
         event.preventDefault();
         event.stopPropagation();
         elements.flashcardHandwrittenCanvas?.setPointerCapture?.(event.pointerId);
-        pushHandwrittenUndo(side);
         const point=getHandwrittenCanvasPoint(event); const strokes=getHandwrittenSideStrokesFromEditorState(side); const tool=state.auth.handwrittenFlashcardTool;
         if (tool==='eraser') {
+            pushHandwrittenUndo(side);
             const erased=eraseHandwritingAtPoint(strokes,point,getHandwrittenEraserThreshold());
             setHandwrittenSideState(side,{strokes:erased});
             drawHandwrittenEditorCanvas(side);
             state.auth.handwrittenFlashcardPointer={tool:'eraser',pointerId:event.pointerId,side}; return;
         }
-        if (tool==='move') {
-            const idx=findNearestHandwritingStroke(strokes,point,.07); state.auth.handwrittenFlashcardPointer={tool:'move',pointerId:event.pointerId,side,index:idx,last:point,strokes}; return;
+        if (tool==='select') {
+            hideHandwrittenToolSizeIndicator();
+            const selection=isCurrentHandwrittenSelection()?state.auth.handwrittenFlashcardSelection:null;
+            const selectedBounds=selection?getHandwrittenSelectionBounds(strokes,selection.indices):null;
+            if(selection&&isPointInsideHandwrittenBounds(point,selectedBounds,.012)){
+                state.auth.handwrittenFlashcardPointer={tool:'select-move',pointerId:event.pointerId,side,start:point,baseStrokes:strokes,indices:[...selection.indices],baseBounds:selectedBounds,undoPushed:false};
+            } else if(state.auth.handwrittenFlashcardSelectionType==='lasso') {
+                state.auth.handwrittenFlashcardSelection=null;
+                state.auth.handwrittenFlashcardPointer={tool:'select-lasso',pointerId:event.pointerId,side,points:[point]};
+            } else {
+                state.auth.handwrittenFlashcardSelection=null;
+                state.auth.handwrittenFlashcardPointer={tool:'select-rect',pointerId:event.pointerId,side,start:point,current:point};
+            }
+            renderHandwrittenSelectionOverlay(side);
+            return;
         }
+        clearHandwrittenSelection({ redraw:false });
+        pushHandwrittenUndo(side);
         const stroke={color:normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor||'#111827','#111827'),size:handwrittenMmToStrokeSize(state.auth.handwrittenFlashcardPenSizeMm),points:[point]};
         strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes}; drawHandwrittenEditorCanvas(side);
     }
@@ -20366,7 +20558,21 @@ The deletion becomes permanent when you save the diagram.`);
         const point=getHandwrittenCanvasPoint(event);
         if(drag.tool==='pen'){drag.stroke.points.push(point);setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
         else if(drag.tool==='eraser'){const strokes=getHandwrittenSideStrokesFromEditorState(side);const erased=eraseHandwritingAtPoint(strokes,point,getHandwrittenEraserThreshold());setHandwrittenSideState(side,{strokes:erased});drawHandwrittenEditorCanvas(side);}
-        else if(drag.tool==='move'&&drag.index>=0){const dx=point.x-drag.last.x,dy=point.y-drag.last.y;const stroke=drag.strokes[drag.index];stroke.points=stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}));drag.last=point;setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
+        else if(drag.tool==='select-rect'){drag.current=point;renderHandwrittenSelectionOverlay(side);}
+        else if(drag.tool==='select-lasso'){
+            const last=drag.points[drag.points.length-1];
+            if(!last||Math.hypot(point.x-last.x,point.y-last.y)>=.0025) drag.points.push(point);
+            renderHandwrittenSelectionOverlay(side);
+        }
+        else if(drag.tool==='select-move'&&drag.indices.length){
+            let dx=point.x-drag.start.x,dy=point.y-drag.start.y;
+            if(drag.baseBounds){dx=Math.max(-drag.baseBounds.minX,Math.min(1-drag.baseBounds.maxX,dx));dy=Math.max(-drag.baseBounds.minY,Math.min(1-drag.baseBounds.maxY,dy));}
+            if((Math.abs(dx)>1e-6||Math.abs(dy)>1e-6)&&!drag.undoPushed){pushHandwrittenUndo(side);drag.undoPushed=true;}
+            const selected=new Set(drag.indices);
+            const moved=drag.baseStrokes.map((stroke,index)=>selected.has(index)?{...stroke,points:stroke.points.map(p=>({...p,x:Math.max(0,Math.min(1,p.x+dx)),y:Math.max(0,Math.min(1,p.y+dy))}))}:stroke);
+            setHandwrittenSideState(side,{strokes:moved});
+            drawHandwrittenEditorCanvas(side);
+        }
     }
     function handleHandwrittenPointerUp(event) {
         if (normalizeSheetText(event.pointerType).toLowerCase() === 'touch') {
@@ -20379,24 +20585,43 @@ The deletion becomes permanent when you save the diagram.`);
         event.preventDefault();
         event.stopPropagation();
         try { elements.flashcardHandwrittenCanvas?.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        const side=getHandwrittenSideKey(drag.side || state.auth.handwrittenFlashcardSide);
+        if (event.type === 'pointercancel' && (drag.tool === 'select-rect' || drag.tool === 'select-lasso')) {
+            state.auth.handwrittenFlashcardPointer = null;
+            clearHandwrittenSelection();
+            hideHandwrittenToolSizeIndicator();
+            return;
+        }
+        const point=getHandwrittenCanvasPoint(event);
+        if(drag.tool==='select-rect'){
+            drag.current=point;
+            const rect={minX:Math.min(drag.start.x,point.x),minY:Math.min(drag.start.y,point.y),maxX:Math.max(drag.start.x,point.x),maxY:Math.max(drag.start.y,point.y)};
+            const strokes=getHandwrittenSideStrokesFromEditorState(side);
+            setHandwrittenSelection(strokes.map((stroke,index)=>handwrittenStrokeIntersectsRect(stroke,rect)?index:-1).filter(index=>index>=0),side);
+        } else if(drag.tool==='select-lasso'){
+            const points=[...(drag.points||[])]; const last=points[points.length-1];
+            if(!last||Math.hypot(point.x-last.x,point.y-last.y)>=.0025) points.push(point);
+            const strokes=getHandwrittenSideStrokesFromEditorState(side);
+            if(points.length>=3) setHandwrittenSelection(strokes.map((stroke,index)=>handwrittenStrokeIntersectsPolygon(stroke,points)?index:-1).filter(index=>index>=0),side);
+            else clearHandwrittenSelection();
+        }
         state.auth.handwrittenFlashcardPointer = null;
+        if(drag.tool?.startsWith('select-')) renderHandwrittenSelectionOverlay(side);
         if (event.type === 'pointercancel') hideHandwrittenToolSizeIndicator();
         else scheduleHandwrittenToolSizeIndicatorHide();
         if (normalizeSheetText(event.pointerType).toLowerCase() === 'pen') {
             state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
             clearHandwrittenDocumentSelection();
         }
-
-        // Phase 23B.9: do not rebuild Quiz Studio after every Pencil-up. The
-        // handwritten row/draft is already updated continuously by setHandwrittenSideState().
-        // Re-rendering between separate letters was giving iPad Safari a chance to
-        // fall back into native selection before the next Pencil-down.
-        setStudioDirtyState(true);
-        updateStudioUnsavedChangesIndicator();
+        const changedInk = drag.tool === 'pen' || drag.tool === 'eraser' || (drag.tool === 'select-move' && drag.undoPushed);
+        if (changedInk) {
+            setStudioDirtyState(true);
+            updateStudioUnsavedChangesIndicator();
+        }
     }
 
-    function undoHandwrittenStroke() { const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardUndo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const prev=stack.pop(); const redo=state.auth.handwrittenFlashcardRedo.get(key)||[]; redo.push(current); state.auth.handwrittenFlashcardRedo.set(key,redo); state.auth.handwrittenFlashcardUndo.set(key,stack); setHandwrittenSideState(side,{strokes:prev}); renderHandwrittenFlashcardWorkspace(); }
-    function redoHandwrittenStroke() { const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardRedo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const next=stack.pop(); const undo=state.auth.handwrittenFlashcardUndo.get(key)||[]; undo.push(current); state.auth.handwrittenFlashcardUndo.set(key,undo); state.auth.handwrittenFlashcardRedo.set(key,stack); setHandwrittenSideState(side,{strokes:next}); renderHandwrittenFlashcardWorkspace(); }
+    function undoHandwrittenStroke() { clearHandwrittenSelection({ redraw:false }); const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardUndo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const prev=stack.pop(); const redo=state.auth.handwrittenFlashcardRedo.get(key)||[]; redo.push(current); state.auth.handwrittenFlashcardRedo.set(key,redo); state.auth.handwrittenFlashcardUndo.set(key,stack); setHandwrittenSideState(side,{strokes:prev}); renderHandwrittenFlashcardWorkspace(); }
+    function redoHandwrittenStroke() { clearHandwrittenSelection({ redraw:false }); const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardRedo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const next=stack.pop(); const undo=state.auth.handwrittenFlashcardUndo.get(key)||[]; undo.push(current); state.auth.handwrittenFlashcardUndo.set(key,undo); state.auth.handwrittenFlashcardRedo.set(key,stack); setHandwrittenSideState(side,{strokes:next}); renderHandwrittenFlashcardWorkspace(); }
 
     async function persistCurrentHandwrittenCardBeforeNavigation() {
         syncHandwrittenTypedEditorToBase();
@@ -40416,6 +40641,7 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenSideSelect?.addEventListener('change', () => switchHandwrittenFlashcardSide(elements.flashcardHandwrittenSideSelect.checked ? 'definition' : 'term'));
     elements.flashcardHandwrittenFlipBtn?.addEventListener('click', () => switchHandwrittenFlashcardSide(state.auth.handwrittenFlashcardSide==='definition'?'term':'definition'));
     elements.flashcardHandwrittenSideMode?.addEventListener('change', () => {
+        clearHandwrittenSelection({ redraw:false });
         const side=getHandwrittenSideKey(), next=elements.flashcardHandwrittenSideMode.checked?'typed':'handwritten', prev=getHandwrittenSideModeFromEditorState(side);
         if (next===prev)return;
         const row=getCurrentHandwrittenFlashcardRow();
@@ -40435,13 +40661,39 @@ elements.questionImage.onclick = function () {
     });
     elements.handwrittenToolButtons?.forEach(btn => btn.addEventListener('click', event => {
         event.preventDefault();
+        const nextTool = btn.dataset.handwrittenTool || 'pen';
         state.auth.handwrittenFlashcardPointer = null;
-        state.auth.handwrittenFlashcardTool = btn.dataset.handwrittenTool || 'pen';
+        if (nextTool === 'select' && state.auth.handwrittenFlashcardTool === 'select') {
+            if (elements.flashcardHandwrittenSelectionPopover?.classList.contains('hidden')) openHandwrittenSelectionPopover(btn);
+            else elements.flashcardHandwrittenSelectionPopover.classList.add('hidden');
+            return;
+        }
+        if (nextTool === 'pen' || nextTool === 'eraser') clearHandwrittenSelection({ redraw:false });
+        state.auth.handwrittenFlashcardTool = nextTool;
         closeHandwrittenFloatingPopovers();
         renderHandwrittenFlashcardWorkspace();
-        if (state.auth.handwrittenFlashcardTool === 'move') hideHandwrittenToolSizeIndicator();
+        if (nextTool === 'select') hideHandwrittenToolSizeIndicator();
         else refreshHandwrittenToolSizeIndicator();
     }));
+    elements.flashcardHandwrittenSelectionRectangleBtn?.addEventListener('click', event => {
+        event.preventDefault();
+        state.auth.handwrittenFlashcardSelectionType='rectangle';
+        persistHandwrittenToolPrefs();
+        syncHandwrittenSelectionControls();
+        elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
+    });
+    elements.flashcardHandwrittenSelectionLassoBtn?.addEventListener('click', event => {
+        event.preventDefault();
+        state.auth.handwrittenFlashcardSelectionType='lasso';
+        persistHandwrittenToolPrefs();
+        syncHandwrittenSelectionControls();
+        elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
+    });
+    elements.flashcardHandwrittenSelectionClearBtn?.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        clearHandwrittenSelection();
+    });
     elements.flashcardHandwrittenSizeBtn?.addEventListener('click', event => {
         event.preventDefault();
         if (elements.flashcardHandwrittenSizePopover?.classList.contains('hidden')) openHandwrittenSizePopover(event.currentTarget);
@@ -40678,7 +40930,7 @@ elements.questionImage.onclick = function () {
     // propagation so tapping anywhere else on the screen always dismisses open popovers.
     document.addEventListener('pointerdown', event => {
         if (!state.auth.handwrittenFlashcardEnabled) return;
-        const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSizeBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color]');
+        const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSelectionPopover,#flashcardHandwrittenSizeBtn,#flashcardHandwrittenSelectionToolBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color],[data-handwritten-selection-type]');
         if (!inside) closeHandwrittenFloatingPopovers();
     }, { capture: true, passive: true });
     window.addEventListener('keydown',event=>{
@@ -40687,8 +40939,8 @@ elements.questionImage.onclick = function () {
         const key=event.key.toLowerCase();
         if(event.code==='Escape' && state.auth.handwrittenFlashcardFocusMode){event.preventDefault();setHandwrittenFlashcardFocusMode(false);return;}
         if(key==='f'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();setHandwrittenFlashcardFocusMode(!state.auth.handwrittenFlashcardFocusMode);return;}
-        if(key==='b'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();state.auth.handwrittenFlashcardTool='pen';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
-        if(key==='e'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();state.auth.handwrittenFlashcardTool='eraser';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
+        if(key==='b'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();clearHandwrittenSelection({redraw:false});state.auth.handwrittenFlashcardTool='pen';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
+        if(key==='e'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();clearHandwrittenSelection({redraw:false});state.auth.handwrittenFlashcardTool='eraser';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
         if(event.code==='Space'){event.preventDefault();elements.flashcardHandwrittenFlipBtn?.click();}
         else if((event.ctrlKey||event.metaKey)&&key==='z'){event.preventDefault();event.shiftKey?redoHandwrittenStroke():undoHandwrittenStroke();}
     });
