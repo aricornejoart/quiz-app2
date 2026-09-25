@@ -14616,23 +14616,90 @@ body.studio-handwritten-focus-open {
   }
 }
 
-/* ===== Phase 23E — consistent 16:10 Study Mode flashcard geometry =====
-   The handwritten editor already uses 16:10. Study Mode now preserves that exact
-   card shape on every viewport and changes only the uniform scale. */
+/* ===== Phase 23E.3 — isolated 16:10 Study frame + restored animated 3D flip =====
+   Size the outer frame only. The established flashcard-card / flashcard-card-inner
+   pair is left as the interaction + 3D flip system, so responsive geometry no longer
+   shares a layer with Safari's rotating faces. */
 body.active-question-flashcard .flashcard-container {
   --flashcard-study-card-width: 100%;
 }
 
-body.active-question-flashcard .flashcard-card {
+body.active-question-flashcard .flashcard-study-frame {
+  position: relative;
   width: min(100%, var(--flashcard-study-card-width));
-  height: auto !important;
   aspect-ratio: 16 / 10;
   margin-left: auto;
   margin-right: auto;
+  perspective: 1500px;
+  -webkit-perspective: 1500px;
+  isolation: isolate;
+}
+
+body.active-question-flashcard .flashcard-study-frame > .flashcard-card {
+  width: 100%;
+  height: 100% !important;
+  min-height: 0;
+  margin: 0;
+  aspect-ratio: auto;
+}
+
+/* Restore the original animated inner flip on every platform. */
+body.active-question-flashcard .flashcard-card-inner {
+  width: 100%;
+  height: 100%;
+  transition: transform 0.45s ease;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  will-change: transform;
+}
+
+body.active-question-flashcard .flashcard-card.is-flipped .flashcard-card-inner {
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
+}
+
+body.active-question-flashcard .flashcard-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.active-question-flashcard .flashcard-face.front {
+  transform: rotateY(0deg);
+  -webkit-transform: rotateY(0deg);
+}
+
+body.active-question-flashcard .flashcard-face.back {
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
+}
+
+/* Safari compositing guard: keep each whole face as its own paint layer without
+   hiding either side in JavaScript/CSS timers. Backface visibility alone decides
+   which face can be seen throughout the natural rotation. */
+@supports (-webkit-touch-callout: none) {
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-study-frame,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-study-frame,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-study-frame {
+    -webkit-perspective: 1500px;
+    perspective: 1500px;
+  }
+
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-card-inner,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card-inner,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card-inner,
+  body.narrow-iphone-layout.active-question-flashcard .flashcard-face,
+  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-face,
+  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-face {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
 }
 
 /* Normal desktop keeps the established study width ceiling. Fullscreen may grow
-   wider, but both states retain exactly the same 16:10 aspect ratio. */
+   wider, but both states retain exactly the same 16:10 frame. */
 @media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
   body.active-question-flashcard:not(.fullscreen-mode) .flashcard-container {
     max-width: min(96vw, 930px);
@@ -14652,38 +14719,4 @@ body.active-question-flashcard.ipad-landscape-flashcard-layout .flashcard-contai
 
 body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   max-width: 100%;
-}
-
-
-/* ===== Phase 23E.1 — iPhone/iPad full-face flip isolation =====
-   iOS/iPadOS Safari can occasionally composite the mirrored inactive flashcard
-   face through the visible face after Study Mode geometry changes. Preserve the
-   existing 3D flip, but explicitly swap whole-face visibility at the midpoint
-   of the 0.45s rotation so only one face can be painted at a time. */
-@supports (-webkit-touch-callout: none) {
-  body.narrow-iphone-layout.active-question-flashcard .flashcard-face,
-  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-face,
-  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-face {
-    transition: visibility 0s linear 0.225s;
-  }
-
-  body.narrow-iphone-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front,
-  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front,
-  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.front,
-  body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back,
-  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back,
-  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.back {
-    visibility: visible !important;
-    pointer-events: auto;
-  }
-
-  body.narrow-iphone-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back,
-  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back,
-  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card:not(.is-flipped) .flashcard-face.back,
-  body.narrow-iphone-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front,
-  body.ipad-portrait-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front,
-  body.ipad-landscape-flashcard-layout.active-question-flashcard .flashcard-card.is-flipped .flashcard-face.front {
-    visibility: hidden !important;
-    pointer-events: none !important;
-  }
 }

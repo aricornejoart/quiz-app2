@@ -32484,10 +32484,11 @@ function rerenderVisibleStudyHandwritingCanvases(root = document) {
 
 function updateStudyFlashcardAspectFit() {
     const flashcardContainer = document.getElementById('flashcardContainer') || document.querySelector('.flashcard-container');
-    const card = flashcardContainer?.querySelector?.('.flashcard-card') || document.getElementById('flashcardCard');
+    const studyFrame = flashcardContainer?.querySelector?.('.flashcard-study-frame');
+    const card = studyFrame?.querySelector?.('.flashcard-card') || flashcardContainer?.querySelector?.('.flashcard-card') || document.getElementById('flashcardCard');
     const isFlashcardStudy = document.body.classList.contains('active-question-flashcard') && state.currentQuestionType === 'flashcard';
 
-    if (!flashcardContainer || !card || !isFlashcardStudy) {
+    if (!flashcardContainer || !studyFrame || !card || !isFlashcardStudy) {
         clearStudyFlashcardAspectFit();
         return;
     }
@@ -34320,6 +34321,9 @@ function showFlashcard(q) {
     container.id = 'flashcardContainer';
     container.className = 'flashcard-container';
 
+    const studyFrame = document.createElement('div');
+    studyFrame.className = 'flashcard-study-frame';
+
     const card = document.createElement('div');
     card.id = 'flashcardCard';
     card.className = 'flashcard-card';
@@ -34351,7 +34355,8 @@ function showFlashcard(q) {
         }
     });
     card.appendChild(cardInner);
-    container.appendChild(card);
+    studyFrame.appendChild(card);
+    container.appendChild(studyFrame);
     const swipeFeedback = document.createElement('div');
     swipeFeedback.id = 'flashcardSwipeFeedback';
     swipeFeedback.className = 'flashcard-swipe-feedback';
