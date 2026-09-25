@@ -32461,31 +32461,34 @@ function getElementRenderedScaleY(element) {
     return Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1;
 }
 
-function isDesktopFlashcardHeightTarget() {
-    if (!document.body.classList.contains('active-question-flashcard')) return false;
-    if (document.body.classList.contains('ipad-portrait-flashcard-layout')) return false;
-    if (document.body.classList.contains('ipad-landscape-flashcard-layout')) return false;
-    if (document.body.classList.contains('narrow-iphone-layout')) return false;
+const STUDY_FLASHCARD_ASPECT_WIDTH = 16;
+const STUDY_FLASHCARD_ASPECT_HEIGHT = 10;
+const STUDY_FLASHCARD_ASPECT_RATIO = STUDY_FLASHCARD_ASPECT_WIDTH / STUDY_FLASHCARD_ASPECT_HEIGHT;
 
-    return window.matchMedia?.('(min-width: 1025px) and (hover: hover) and (any-pointer: fine)').matches ?? false;
-}
-
-function getDesktopFlashcardHeightMode() {
-    if (!isDesktopFlashcardHeightTarget()) return '';
-    return document.body.classList.contains('fullscreen-mode') ? 'fullscreen' : 'normal';
-}
-
-function clearDesktopFullscreenFlashcardHeight() {
+function clearStudyFlashcardAspectFit() {
     document.querySelectorAll('.flashcard-container').forEach(container => {
+        container.style.removeProperty('--flashcard-study-card-width');
         container.style.removeProperty('--flashcard-fixed-height');
     });
 }
 
-function updateDesktopFullscreenFlashcardHeight() {
+function rerenderVisibleStudyHandwritingCanvases(root = document) {
+    const canvases = Array.from(root.querySelectorAll?.('.flashcard-handwriting-canvas') || []);
+    canvases.forEach(canvas => {
+        const strokes = Array.isArray(canvas.__studyBunnyHandwritingStrokes)
+            ? canvas.__studyBunnyHandwritingStrokes
+            : [];
+        renderHandwritingStrokesToCanvas(canvas, strokes);
+    });
+}
+
+function updateStudyFlashcardAspectFit() {
     const flashcardContainer = document.getElementById('flashcardContainer') || document.querySelector('.flashcard-container');
-    const heightMode = getDesktopFlashcardHeightMode();
-    if (!flashcardContainer || !heightMode) {
-        clearDesktopFullscreenFlashcardHeight();
+    const card = flashcardContainer?.querySelector?.('.flashcard-card') || document.getElementById('flashcardCard');
+    const isFlashcardStudy = document.body.classList.contains('active-question-flashcard') && state.currentQuestionType === 'flashcard';
+
+    if (!flashcardContainer || !card || !isFlashcardStudy) {
+        clearStudyFlashcardAspectFit();
         return;
     }
 
@@ -32493,32 +32496,40 @@ function updateDesktopFullscreenFlashcardHeight() {
     const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
     if (!viewportHeight || !Number.isFinite(rect.top)) return;
 
-    // Phase 22GH/22GI: measure the space that truly remains below the card.
-    // The app shell is transform-scaled on desktop, so convert rendered pixels back
-    // into CSS layout pixels before assigning the flashcard height variable.
-    // Normal mode keeps a larger reserve and lower cap than fullscreen so controls
-    // stay visible and the card uses extra space without taking over the page.
-    const bottomReserveRendered = heightMode === 'fullscreen' ? 28 : 72;
-    const renderedAvailableHeight = Math.floor(viewportHeight - rect.top - bottomReserveRendered);
+    const isFullscreen = document.body.classList.contains('fullscreen-mode');
+    // Keep enough room below the Study card for browser/app controls. The card itself
+    // is fit with ONE uniform 16:10 scale, so width and height can never diverge.
+    const bottomReserveRendered = isFullscreen ? 36 : 72;
+    const renderedAvailableHeight = Math.max(1, Math.floor(viewportHeight - rect.top - bottomReserveRendered));
     const appShell = document.getElementById('app') || elements.questionContainer || flashcardContainer;
     const scaleY = getElementRenderedScaleY(appShell) || getElementRenderedScaleY(flashcardContainer) || 1;
-    const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
+    const cssAvailableHeight = Math.max(1, Math.floor(renderedAvailableHeight / scaleY));
 
-    if (!Number.isFinite(cssAvailableHeight) || cssAvailableHeight < 260) {
-        flashcardContainer.style.removeProperty('--flashcard-fixed-height');
-        return;
-    }
+    const computed = window.getComputedStyle(flashcardContainer);
+    const paddingLeft = parseFloat(computed.paddingLeft) || 0;
+    const paddingRight = parseFloat(computed.paddingRight) || 0;
+    const cssAvailableWidth = Math.max(1, flashcardContainer.clientWidth - paddingLeft - paddingRight);
+    const widthLimitedByHeight = cssAvailableHeight * STUDY_FLASHCARD_ASPECT_RATIO;
+    const safeWidth = Math.max(1, Math.min(cssAvailableWidth, widthLimitedByHeight));
 
-    const maxHeight = heightMode === 'fullscreen' ? 640 : 540;
-    const safeHeight = Math.min(maxHeight, cssAvailableHeight);
-    flashcardContainer.style.setProperty('--flashcard-fixed-height', `${safeHeight}px`);
-    fitFlashcardTextToFixedCard(flashcardContainer);
-    queueFlashcardImageOverlaySync(flashcardContainer);
+    flashcardContainer.style.removeProperty('--flashcard-fixed-height');
+    flashcardContainer.style.setProperty('--flashcard-study-card-width', `${safeWidth.toFixed(2)}px`);
+
+    requestAnimationFrame(() => {
+        fitFlashcardTextToFixedCard(flashcardContainer);
+        rerenderVisibleStudyHandwritingCanvases(flashcardContainer);
+        queueFlashcardImageOverlaySync(flashcardContainer);
+    });
 }
 
 function queueDesktopFullscreenFlashcardHeightSync() {
+    // Legacy function name retained so established call sites keep working. Phase 23E
+    // makes this universal across desktop, iPad, iPhone, normal Study, and fullscreen.
     const queueState = state.desktopFullscreenFlashcardHeight;
-    if (!queueState) return;
+    if (!queueState) {
+        updateStudyFlashcardAspectFit();
+        return;
+    }
 
     if (queueState.rafId) {
         cancelAnimationFrame(queueState.rafId);
@@ -32528,15 +32539,15 @@ function queueDesktopFullscreenFlashcardHeightSync() {
     queueState.timeoutIds.forEach(timeoutId => clearTimeout(timeoutId));
     queueState.timeoutIds = [];
 
-    updateDesktopFullscreenFlashcardHeight();
+    updateStudyFlashcardAspectFit();
     queueState.rafId = requestAnimationFrame(() => {
         queueState.rafId = 0;
-        updateDesktopFullscreenFlashcardHeight();
-        requestAnimationFrame(updateDesktopFullscreenFlashcardHeight);
+        updateStudyFlashcardAspectFit();
+        requestAnimationFrame(updateStudyFlashcardAspectFit);
     });
 
     [80, 220, 500].forEach(delay => {
-        const timeoutId = setTimeout(updateDesktopFullscreenFlashcardHeight, delay);
+        const timeoutId = setTimeout(updateStudyFlashcardAspectFit, delay);
         queueState.timeoutIds.push(timeoutId);
     });
 }
@@ -33636,9 +33647,10 @@ function buildFlashcardFace(sideData, faceClass) {
             handwritingArea.className = 'flashcard-handwriting-area';
             const handwritingCanvas = document.createElement('canvas');
             handwritingCanvas.className = 'flashcard-handwriting-canvas';
+            handwritingCanvas.__studyBunnyHandwritingStrokes = normalizeHandwritingStrokes(sideData.handwritingStrokes || []);
             handwritingArea.appendChild(handwritingCanvas);
             content.appendChild(handwritingArea);
-            requestAnimationFrame(() => renderHandwritingStrokesToCanvas(handwritingCanvas, sideData.handwritingStrokes || []));
+            requestAnimationFrame(() => renderHandwritingStrokesToCanvas(handwritingCanvas, handwritingCanvas.__studyBunnyHandwritingStrokes));
         }
     } else if (hasText && hasImage) {
         content.classList.add('split');

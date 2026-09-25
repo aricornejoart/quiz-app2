@@ -14616,3 +14616,41 @@ body.studio-handwritten-focus-open {
   }
 }
 
+/* ===== Phase 23E — consistent 16:10 Study Mode flashcard geometry =====
+   The handwritten editor already uses 16:10. Study Mode now preserves that exact
+   card shape on every viewport and changes only the uniform scale. */
+body.active-question-flashcard .flashcard-container {
+  --flashcard-study-card-width: 100%;
+}
+
+body.active-question-flashcard .flashcard-card {
+  width: min(100%, var(--flashcard-study-card-width));
+  height: auto !important;
+  aspect-ratio: 16 / 10;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Normal desktop keeps the established study width ceiling. Fullscreen may grow
+   wider, but both states retain exactly the same 16:10 aspect ratio. */
+@media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  body.active-question-flashcard:not(.fullscreen-mode) .flashcard-container {
+    max-width: min(96vw, 930px);
+  }
+
+  body.fullscreen-mode.active-question-flashcard:not(.ipad-portrait-flashcard-layout):not(.ipad-landscape-flashcard-layout) .flashcard-container {
+    max-width: min(96vw, 1100px);
+  }
+}
+
+/* Touch devices can use the available screen width, while JavaScript also limits
+   width by the actual vertical Study space. This prevents portrait/landscape stretch. */
+body.active-question-flashcard.ipad-portrait-flashcard-layout .flashcard-container,
+body.active-question-flashcard.ipad-landscape-flashcard-layout .flashcard-container {
+  max-width: min(96vw, 1040px);
+}
+
+body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
+  max-width: 100%;
+}
+
