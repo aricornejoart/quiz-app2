@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f8" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f12" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23f8-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23f12-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1984,6 +1984,13 @@ MODIFICATION RULES FOR THIS APP
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
+      <label class="review-mode-switch-row review-mode-visual-aid-only-row">
+        <span>Visual Aid Only</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeVisualAidOnlyToggle" type="checkbox" role="switch" aria-label="Hide labels and show only the interactive Visual Aid">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
       <label class="review-mode-switch-row">
         <span>Show all label names</span>
         <span class="review-mode-toggle-control">
@@ -2335,6 +2342,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23f8"></script>
+  <script src="script.js?v=23f12"></script>
 </body>
 </html>
