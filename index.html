@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23e3" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f8" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23e3-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23f8-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1978,6 +1978,13 @@ MODIFICATION RULES FOR THIS APP
         </span>
       </label>
       <label class="review-mode-switch-row">
+        <span>Visual Aid</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeShowVisualAidToggle" type="checkbox" role="switch" aria-label="Show animated Visual Aid">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
         <span>Show all label names</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeShowAllNamesToggle" type="checkbox" role="switch" aria-label="Show all label names">
@@ -2071,8 +2078,23 @@ MODIFICATION RULES FOR THIS APP
           <span>All angles</span>
         </label>
       </fieldset>
+      <fieldset id="reviewModeMiniVisualAidPolicy" class="review-mode-mini-quiz-scope review-mode-mini-visual-aid-policy">
+        <legend>Interactive Visual Aids</legend>
+        <label>
+          <input id="reviewModeMiniVisualAidInclude" type="radio" name="reviewModeMiniVisualAidChoice" value="include">
+          <span>Include Interactive Visual Aids</span>
+        </label>
+        <label>
+          <input id="reviewModeMiniVisualAidExclude" type="radio" name="reviewModeMiniVisualAidChoice" value="exclude" checked>
+          <span>Exclude Interactive Visual Aids</span>
+        </label>
+        <label>
+          <input id="reviewModeMiniVisualAidOnly" type="radio" name="reviewModeMiniVisualAidChoice" value="only">
+          <span>Interactive Visual Aids Only</span>
+        </label>
+      </fieldset>
       <label class="review-mode-switch-row review-mode-mini-setting-row">
-        <span>Randomize labels</span>
+        <span>Randomize quiz items</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeMiniRandomizeToggle" type="checkbox" role="switch" aria-label="Randomize label order for the mini quiz" checked>
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
@@ -2150,6 +2172,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="reviewModeImageStage" class="review-mode-image-stage">
         <img id="reviewModeImage" class="review-mode-image" alt="Saved diagram review">
         <canvas id="reviewModeDrawCanvas" class="review-mode-draw-canvas" aria-hidden="true"></canvas>
+        <svg id="reviewModeVisualAidLayer" class="review-mode-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg>
         <svg id="reviewModeConnectorLayer" class="review-mode-connector-layer" aria-hidden="true" focusable="false"></svg>
         <div id="reviewModeLabelLayer" class="review-mode-label-layer" aria-label="Interactive diagram labels"></div>
       </div>
@@ -2165,6 +2188,12 @@ MODIFICATION RULES FOR THIS APP
           <button id="reviewModeShortcutNextBtn" type="button" aria-label="Mark current Mini Quiz question correct and go to the next question">Next</button>
           <button id="reviewModeShortcutFocusBtn" type="button" aria-pressed="false">Focus</button>
         </div>
+      </div>
+      <div id="reviewModeVisualAidBar" class="review-mode-visual-aid-bar hidden" data-edge="bottom" aria-hidden="true" aria-label="Visual Aid animation controls">
+        <button id="reviewModeVisualAidGrip" class="review-mode-visual-aid-grip" type="button" aria-label="Move Visual Aid controls"><span class="review-mode-shortcut-grip-dots" aria-hidden="true"></span></button>
+        <div class="review-mode-visual-aid-controls"><button id="reviewModeVisualAidPlayBtn" type="button" aria-label="Play animation" title="Play animation">▶</button><button id="reviewModeVisualAidPauseBtn" type="button" aria-label="Pause animation" title="Pause animation">⏸</button><button id="reviewModeVisualAidResetBtn" type="button" aria-label="Reset animation" title="Reset animation">↺</button><button id="reviewModeVisualAidLoopBtn" type="button" aria-label="Replay loop" title="Replay loop" aria-pressed="false">↻</button></div>
+        <label class="review-mode-visual-aid-speed">Speed <select id="reviewModeVisualAidSpeed" aria-label="Visual Aid animation speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option></select></label>
+        <div id="reviewModeVisualAidSequence" class="review-mode-visual-aid-sequence" aria-label="Visual Aid sequence"></div>
       </div>
     </div>
   </div>
@@ -2218,6 +2247,7 @@ MODIFICATION RULES FOR THIS APP
             </div>
           </div>
           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button>
+          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" id="studioImageEditorVisualAidBtn" title="Show or hide animated Visual Aids" aria-label="Show or hide animated Visual Aids" hidden>Visual Aid</button>
           <button id="studioImageEditorApplyCropBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply Crop</button>
           <button id="studioImageEditorUndoBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Undo last diagram edit (Ctrl+Z / Command+Z)" aria-keyshortcuts="Control+Z Meta+Z">Undo</button>
           <button id="studioImageEditorResetBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset</button>
@@ -2227,8 +2257,13 @@ MODIFICATION RULES FOR THIS APP
 
       <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
       <div class="studio-image-editor-workspace">
+        <div id="studioImageEditorVisualAidPanel" class="studio-image-editor-visual-aid-panel hidden" aria-label="Animated Visual Aids">
+          <div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">Only one Visual Aid can be visible at a time. The active visible aid accepts label connector snapping.</div></div><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button></div>
+          <div id="studioImageEditorVisualAidList" class="studio-image-editor-visual-aid-list"></div>
+        </div>
         <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
           <canvas id="studioImageEditorCanvas" class="studio-image-editor-canvas"></canvas>
+          <svg id="studioImageEditorVisualAidLayer" class="studio-image-editor-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg>
           <svg id="studioImageEditorConnectorLayer" class="studio-image-editor-connector-layer hidden" aria-hidden="true" focusable="false"></svg>
           <canvas id="studioImageEditorLabelOverlayCanvas" class="studio-image-editor-label-overlay-canvas hidden" aria-hidden="true"></canvas>
         </div>
@@ -2243,8 +2278,6 @@ MODIFICATION RULES FOR THIS APP
           <div id="studioImageEditorLabelList" class="studio-image-editor-label-list"></div>
         </div>
       </div>
-
-
       <div id="studioImageEditorMetadataPanel" class="studio-image-editor-metadata-panel hidden" aria-label="Diagram details" aria-hidden="true" hidden>
         <div class="studio-image-editor-metadata-heading">
           <div>
@@ -2302,6 +2335,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23e3"></script>
+  <script src="script.js?v=23f8"></script>
 </body>
 </html>
