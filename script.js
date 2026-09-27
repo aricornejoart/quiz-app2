@@ -444,6 +444,7 @@ MODIFICATION RULES FOR THIS APP
                 miniQuizMode: 'normal',
                 miniQuizScope: 'current',
                 miniQuizVisualAidPolicy: 'exclude',
+                miniQuizCurrentVisualAidOnly: false,
                 randomizeMiniQuiz: true,
                 allowDuplicateMiniQuiz: false,
                 typedMiniQuiz: false,
@@ -457,7 +458,8 @@ MODIFICATION RULES FOR THIS APP
                 visualAidFrameId: 0,
                 visualAidStartedAt: 0,
                 visualAidSelectedKind: '',
-                visualAidSelectedId: ''
+                visualAidSelectedId: '',
+                visualAidIdByAngle: {}
             },
             studioSavedImageMemoryLibrary: [],
             studioSavedImageSync: {
@@ -534,6 +536,7 @@ MODIFICATION RULES FOR THIS APP
                 visualAidsEnabled: false,
                 showVisualAidPanel: false,
                 activeVisualAidId: '',
+                sessionVisibleVisualAidId: '',
                 activeVisualAidTool: 'path',
                 activeVisualAidDivisionId: '',
                 activeVisualAidDraftPath: null,
@@ -682,6 +685,10 @@ MODIFICATION RULES FOR THIS APP
         reviewModeAngleIndicator: document.getElementById('reviewModeAngleIndicator'),
         reviewModeResetZoomBtn: document.getElementById('reviewModeResetZoomBtn'),
         reviewModeZoomPercent: document.getElementById('reviewModeZoomPercent'),
+        reviewModeVisualAidNavigation: document.getElementById('reviewModeVisualAidNavigation'),
+        reviewModePrevVisualAidBtn: document.getElementById('reviewModePrevVisualAidBtn'),
+        reviewModeNextVisualAidBtn: document.getElementById('reviewModeNextVisualAidBtn'),
+        reviewModeVisualAidIndicator: document.getElementById('reviewModeVisualAidIndicator'),
         reviewModeImageStage: document.getElementById('reviewModeImageStage'),
         reviewModeImage: document.getElementById('reviewModeImage'),
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
@@ -715,6 +722,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeMiniVisualAidInclude: document.getElementById('reviewModeMiniVisualAidInclude'),
         reviewModeMiniVisualAidExclude: document.getElementById('reviewModeMiniVisualAidExclude'),
         reviewModeMiniVisualAidOnly: document.getElementById('reviewModeMiniVisualAidOnly'),
+        reviewModeMiniCurrentVisualAidOnlyToggle: document.getElementById('reviewModeMiniCurrentVisualAidOnlyToggle'),
         reviewModeMiniRandomizeToggle: document.getElementById('reviewModeMiniRandomizeToggle'),
         reviewModeMiniAllowDuplicatesToggle: document.getElementById('reviewModeMiniAllowDuplicatesToggle'),
         reviewModeMiniTypedToggle: document.getElementById('reviewModeMiniTypedToggle'),
@@ -3244,8 +3252,9 @@ MODIFICATION RULES FOR THIS APP
         const points = (Array.isArray(source.points) ? source.points : []).slice(0, 120).map((point, pointIndex) => ({
             id: normalizeSheetText(point?.id) || createDiagramVisualAidId('point'),
             name: normalizeSheetText(point?.name || `Point ${pointIndex + 1}`).slice(0, 100) || `Point ${pointIndex + 1}`,
-            position: normalizeDiagramVisualAidPosition(point?.position)
-        })).sort((a, b) => a.position - b.position);
+            position: normalizeDiagramVisualAidPosition(point?.position),
+            sequenceOrder: Number.isFinite(Number(point?.sequenceOrder)) ? Math.max(0, Number(point.sequenceOrder)) : pointIndex
+        })).sort((a, b) => a.sequenceOrder - b.sequenceOrder).map((point, pointIndex) => ({ ...point, sequenceOrder: pointIndex }));
         return {
             id: normalizeSheetText(source.id) || createDiagramVisualAidId('visual'),
             name: normalizeSheetText(source.name || `Visual Aid ${index + 1}`).slice(0, 100) || `Visual Aid ${index + 1}`,
@@ -3269,6 +3278,27 @@ MODIFICATION RULES FOR THIS APP
             visibleFound = true;
             return aid;
         });
+    }
+
+    function ensureDiagramVisualAidEndpointPoints(aid = {}) {
+        const normalized = normalizeDiagramVisualAid(aid);
+        if (normalized.path.length < 2) return normalized;
+        const points = normalized.points.map(point => ({ ...point }));
+        let start = points.find(point => point.position <= 0.001);
+        if (!start) {
+            start = { id: createDiagramVisualAidId('point'), name: 'Point 1', position: 0, sequenceOrder: 0 };
+            points.unshift(start);
+        } else {
+            start.position = 0;
+        }
+        let end = points.find(point => point.position >= 0.999 && point.id !== start.id);
+        if (!end) {
+            end = { id: createDiagramVisualAidId('point'), name: `Point ${Math.max(2, points.length + 1)}`, position: 1, sequenceOrder: points.length };
+            points.push(end);
+        } else {
+            end.position = 1;
+        }
+        return normalizeDiagramVisualAid({ ...normalized, points: points.map((point, index) => ({ ...point, sequenceOrder: index })) });
     }
 
     // Phase 23F.9: render-only smoothing for Visual Aid geometry. This is isolated
@@ -3459,16 +3489,18 @@ MODIFICATION RULES FOR THIS APP
 
     function getDiagramVisualAidSequenceItems(aid = {}) {
         const normalized = normalizeDiagramVisualAid(aid);
-        const items = [];
-        normalized.points.forEach(point => items.push({ type: 'point', id: point.id, name: point.name, position: point.position }));
+        const sequencedPoints = normalized.points.map(point => ({ type: 'point', id: point.id, name: point.name, position: point.position, sequenceOrder: point.sequenceOrder }));
+        const pointSlots = normalized.points.slice().sort((a, b) => a.position - b.position).map(point => ({ type: 'point-slot', position: point.position }));
+        const divisionItems = [];
         const boundaries = [0, ...normalized.divisions.map(item => item.position).filter(position => position > 0 && position < 1), 1].sort((a,b)=>a-b);
         for (let i = 0; i < boundaries.length - 1; i += 1) {
             const start = boundaries[i];
             const end = boundaries[i + 1];
             const division = normalized.divisions.find(item => Math.abs(item.position - start) < 0.00001) || (i === 0 ? { id: `${normalized.id}_segment_0`, name: normalized.name } : null);
-            if (division) items.push({ type: 'division', id: division.id, name: division.name, position: Math.min(1, start + ((end - start) / 2)), start, end });
+            if (division) divisionItems.push({ type: 'division', id: division.id, name: division.name, position: Math.min(1, start + ((end - start) / 2)), start, end });
         }
-        return items.sort((a,b)=>a.position-b.position);
+        let pointIndex = 0;
+        return [...pointSlots, ...divisionItems].sort((a, b) => a.position - b.position).map(item => item.type === 'point-slot' ? sequencedPoints[pointIndex++] : item).filter(Boolean);
     }
 
     function getDiagramVisualAidSelectableItems(aid = {}) {
@@ -3481,104 +3513,121 @@ MODIFICATION RULES FOR THIS APP
         return aids.find(aid => aid.id === normalizeSheetText(editor?.activeVisualAidId || '')) || null;
     }
 
-    function buildDiagramVisualAidSvgMarkup(aids = [], width = 1, height = 1, options = {}) {
+    function isImageEditorVisualAidSessionVisible(editor = state.auth.imageEditor, aidId = '') {
+        return !!normalizeSheetText(aidId) && normalizeSheetText(editor?.sessionVisibleVisualAidId || '') === normalizeSheetText(aidId);
+    }
+
+    // Phase 23F.15: one persistent SVG playback surface is shared by Diagram Creator
+    // preview, Review Mode, and Mini Quiz. Saved Visual Aid geometry is unchanged.
+    const diagramVisualAidPlaybackSurfaceCache = new WeakMap();
+    let diagramVisualAidPlaybackSurfaceSerial = 0;
+
+    function getDiagramVisualAidPlaybackColorAtPosition(runtime = {}, position = 0) {
+        const segmentPositions = runtime.segmentPositions || [0, 1];
+        const segmentColors = runtime.segmentColors || [runtime.aid?.defaultColor || '#8b5cf6'];
+        const target = normalizeDiagramVisualAidPosition(position);
+        let index = segmentPositions.findIndex((start, itemIndex) => itemIndex < segmentPositions.length - 1 && target >= start && target <= segmentPositions[itemIndex + 1]);
+        if (index < 0) index = Math.max(0, segmentColors.length - 1);
+        return segmentColors[index] || runtime.aid?.defaultColor || '#8b5cf6';
+    }
+
+    function createDiagramVisualAidPlaybackSurface(aids = [], width = 1, height = 1, options = {}) {
         const safeWidth = Math.max(1, Number(width) || 1);
         const safeHeight = Math.max(1, Number(height) || 1);
-        const progress = Number.isFinite(Number(options.progress)) ? Math.min(1, Math.max(0, Number(options.progress))) : null;
         const activeOnlyId = normalizeSheetText(options.activeOnlyId || '');
         const interactive = options.interactive === true;
         const quizTarget = options.quizTarget && typeof options.quizTarget === 'object' ? options.quizTarget : null;
         const quizMode = options.quizMode === true;
-        const defs = `<defs><filter id="visualAidGlow"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="visualAidQuizGlow"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="visualAidArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>`;
-        const markup = normalizeDiagramVisualAids(aids).filter(aid => aid.visible && (!activeOnlyId || aid.id === activeOnlyId)).map(aid => {
+        const animated = Number.isFinite(Number(options.progress));
+        const reviewSelectionClass = quizTarget && !quizMode ? ' is-review-selected' : '';
+        const surfaceSerial = ++diagramVisualAidPlaybackSurfaceSerial;
+        const glowId = `visualAidGlow_${surfaceSerial}`;
+        const quizGlowId = `visualAidQuizGlow_${surfaceSerial}`;
+        const arrowId = `visualAidArrow_${surfaceSerial}`;
+        const quizFilter = quizMode ? ` filter="url(#${quizGlowId})"` : '';
+        const runtimes = [];
+        const maskDefs = [];
+        const normalizedAids = normalizeDiagramVisualAids(aids).filter(aid => aid.visible && (!activeOnlyId || aid.id === activeOnlyId));
+        const markup = normalizedAids.map((aid, aidIndex) => {
             if (aid.path.length < 2) return '';
             const masterMetrics = getDiagramVisualAidPathMetrics(aid);
             const svgMasterMetrics = getDiagramVisualAidSvgPathMetrics(masterMetrics, safeWidth, safeHeight);
             const masterPoints = svgMasterMetrics.pointsText;
             const divisionQuizActive = !!(quizMode && quizTarget && quizTarget.aidId === aid.id && quizTarget.kind === 'visual-division');
             const divisionQuizTargetId = divisionQuizActive ? normalizeSheetText(quizTarget.itemId || '') : '';
-            const segmentPositions = [0, ...aid.divisions.map(item => item.position).filter(position => position > 0 && position < 1), 1].sort((a, b) => a - b);
+            const segmentPositions = [0, ...aid.divisions.map(item => item.position).filter(position => position > 0 && position < 1), 1].sort((x, y) => x - y);
             const segmentColors = segmentPositions.slice(0, -1).map(start => {
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
                 return division?.color || aid.defaultColor;
             });
-            const colorAtPosition = position => {
-                let index = segmentPositions.findIndex((start, itemIndex) => itemIndex < segmentPositions.length - 1 && position >= start && position <= segmentPositions[itemIndex + 1]);
-                if (index < 0) index = Math.max(0, segmentColors.length - 1);
-                return segmentColors[index] || aid.defaultColor;
-            };
-            const baseOpacity = divisionQuizActive ? 0.32 : (progress === null ? 0.18 : 0.14);
+            const runtime = { aid, masterMetrics, svgMasterMetrics, segmentPositions, segmentColors, divisionQuizActive, width: safeWidth, height: safeHeight, pointNodes: [], boundaryArrowNodes: [] };
+            runtimes.push(runtime);
+            const colorAtPosition = position => getDiagramVisualAidPlaybackColorAtPosition(runtime, position);
+            const baseOpacity = divisionQuizActive ? 0.32 : (animated ? 0.14 : 0.18);
+            const maskId = `visualAidRevealMask_${surfaceSerial}_${aidIndex}`;
+            const revealMaskWidth = Math.max(aid.thickness + 18, 24);
+            maskDefs.push(`<mask id="${maskId}" maskUnits="userSpaceOnUse" x="0" y="0" width="${safeWidth}" height="${safeHeight}"><polyline data-visual-aid-reveal-mask="${escapeHtml(aid.id)}" points="${masterPoints}" fill="none" stroke="#ffffff" stroke-width="${revealMaskWidth}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${svgMasterMetrics.total.toFixed(4)} ${svgMasterMetrics.total.toFixed(4)}" stroke-dashoffset="${svgMasterMetrics.total.toFixed(4)}"/></mask>`);
             const base = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
                 const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
                 return `<polyline points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${baseOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
             }).join('');
-            let colored = '';
-            let arrowCarriers = '';
-            segmentPositions.slice(0, -1).forEach((start, index) => {
+            const colored = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
-                const visibleEnd = progress === null ? end : Math.min(end, progress);
-                if (visibleEnd <= start + 0.000001) return;
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
-                const mid = start + ((end - start) / 2);
                 const isDivisionQuizTarget = divisionQuizActive && division?.id === divisionQuizTargetId;
                 const segmentOpacity = divisionQuizActive && !isDivisionQuizTarget ? 0.65 : 1;
                 const targetClass = isDivisionQuizTarget ? ' diagram-visual-aid-division-quiz-target' : '';
-                const hit = interactive && division ? ` class="diagram-visual-aid-animated-path diagram-visual-aid-hit${targetClass}" data-review-visual-aid-kind="division" data-review-visual-aid-id="${escapeHtml(division.id)}" data-review-visual-aid-position="${mid.toFixed(6)}"` : ` class="diagram-visual-aid-animated-path${targetClass}"`;
-                const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, visibleEnd);
-                colored += `<polyline${hit} points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${segmentOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
-                if (aid.arrows) {
-                    const arrowPoints = getDiagramVisualAidPathSliceFromMetrics(masterMetrics, start, visibleEnd).map(point => `${(point.x / 100) * safeWidth},${(point.y / 100) * safeHeight}`).join(' ');
-                    arrowCarriers += `<polyline points="${arrowPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#visualAidArrow)" pointer-events="none"/>`;
-                }
-            });
-            const glowEnd = progress === null ? 1 : progress;
-            const revealGlow = glowEnd > 0.000001
-                ? `<polyline points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" ${getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, 0, glowEnd)} filter="url(#visualAidGlow)" pointer-events="none"/>`
-                : '';
+                const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
+                return `<polyline class="diagram-visual-aid-animated-path${targetClass}" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${segmentOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
+            }).join('');
+            const revealGlow = `<polyline points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" filter="url(#${glowId})" pointer-events="none"/>`;
             const startPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 0);
             const endPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 1);
             const endpointRadius = Math.max(1, aid.thickness / 2);
             const baseEndpoints = `<circle cx="${(startPoint.x / 100) * safeWidth}" cy="${(startPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" fill-opacity="${baseOpacity}"/><circle cx="${(endPoint.x / 100) * safeWidth}" cy="${(endPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[segmentColors.length - 1] || aid.defaultColor}" fill-opacity="${baseOpacity}"/>`;
-            let revealCap = '';
-            if (progress === null || progress > 0.000001) {
-                const revealPosition = progress === null ? 1 : progress;
-                const lead = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, revealPosition);
-                const leadDivisionIndex = Math.max(0, Math.min(segmentColors.length - 1, segmentPositions.findIndex((start, itemIndex) => itemIndex < segmentPositions.length - 1 && revealPosition >= start && revealPosition <= segmentPositions[itemIndex + 1])));
-                const leadColor = segmentColors[leadDivisionIndex] || aid.defaultColor;
-                revealCap = `<circle cx="${(lead.x / 100) * safeWidth}" cy="${(lead.y / 100) * safeHeight}" r="${endpointRadius}" fill="${leadColor}" filter="url(#visualAidGlow)"/>`;
-            }
+            const revealCap = `<circle data-visual-aid-reveal-cap cx="0" cy="0" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" filter="url(#${glowId})" opacity="0" pointer-events="none"/>`;
             let divisionHits = '';
             if (interactive) {
                 aid.divisions.forEach((division, divisionIndex) => {
                     const start = division.position;
                     const end = aid.divisions[divisionIndex + 1]?.position ?? 1;
                     const mid = start + ((end - start) / 2);
-                    const hitPoints = getDiagramVisualAidPathSliceFromMetrics(masterMetrics, start, end).map(point => `${(point.x / 100) * safeWidth},${(point.y / 100) * safeHeight}`).join(' ');
-                    divisionHits += `<polyline class="diagram-visual-aid-hit-path" data-review-visual-aid-kind="division" data-review-visual-aid-id="${escapeHtml(division.id)}" data-review-visual-aid-position="${mid.toFixed(6)}" points="${hitPoints}" fill="none" stroke="transparent" stroke-width="${aid.thickness + 16}" stroke-linecap="round" stroke-linejoin="round"/>`;
+                    const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
+                    divisionHits += `<polyline class="diagram-visual-aid-hit-path" data-review-visual-aid-kind="division" data-review-visual-aid-id="${escapeHtml(division.id)}" data-review-visual-aid-position="${mid.toFixed(6)}" points="${masterPoints}" fill="none" stroke="transparent" stroke-width="${aid.thickness + 16}" stroke-linecap="round" stroke-linejoin="round" ${dash}/>`;
                 });
             }
-            const points = aid.points.map(point => {
-                const p = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, point.position);
-                const reached = progress === null || point.position <= progress + 0.001;
-                const opacity = divisionQuizActive ? (reached ? 0.6 : 0.3) : (reached ? 1 : 0.3);
-                const pointColor = colorAtPosition(point.position);
-                const hit = interactive ? ` data-review-visual-aid-kind="point" data-review-visual-aid-id="${escapeHtml(point.id)}" data-review-visual-aid-position="${Number(point.position).toFixed(6)}" class="diagram-visual-aid-hit"` : '';
-                return `<g data-visual-aid-point-id="${escapeHtml(point.id)}" opacity="${opacity}"${hit}><circle cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(5, aid.thickness * 1.05)}" fill="#111827" stroke="#ffffff" stroke-width="2"/><circle cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(2.5, aid.thickness * 0.45)}" fill="${reached ? pointColor : aid.defaultColor}"/></g>`;
+            const pointMarkup = aid.points.map(point => {
+                const pointPosition = normalizeDiagramVisualAidPosition(point.position);
+                const p = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, pointPosition);
+                const pointColor = colorAtPosition(pointPosition);
+                const hit = interactive ? ` data-review-visual-aid-kind="point" data-review-visual-aid-id="${escapeHtml(point.id)}" data-review-visual-aid-position="${pointPosition.toFixed(6)}" class="diagram-visual-aid-hit"` : '';
+                return `<g data-visual-aid-point-id="${escapeHtml(point.id)}" data-visual-aid-point-position="${pointPosition.toFixed(6)}" data-visual-aid-point-color="${pointColor}" opacity="0.3"${hit}><circle cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(5, aid.thickness * 1.05)}" fill="#111827" stroke="#ffffff" stroke-width="2"/><circle data-visual-aid-point-fill cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(2.5, aid.thickness * 0.45)}" fill="${aid.defaultColor}"/></g>`;
             }).join('');
+            let boundaryArrows = '';
+            let leadArrow = '';
+            if (aid.arrows) {
+                boundaryArrows = segmentPositions.slice(0, -1).map((start, index) => {
+                    const end = segmentPositions[index + 1];
+                    const arrowStart = Math.max(start, end - Math.min(0.03, Math.max(0.006, (end - start) * 0.28)));
+                    const arrowPoints = getDiagramVisualAidPathSliceFromMetrics(masterMetrics, arrowStart, end).map(point => `${(point.x / 100) * safeWidth},${(point.y / 100) * safeHeight}`).join(' ');
+                    return `<polyline data-visual-aid-boundary-arrow data-visual-aid-boundary-arrow-end="${end.toFixed(6)}" points="${arrowPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#${arrowId})" opacity="0" pointer-events="none"/>`;
+                }).join('');
+                leadArrow = `<polyline data-visual-aid-lead-arrow points="" fill="none" stroke="${segmentColors[0] || aid.defaultColor}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#${arrowId})" opacity="0" pointer-events="none"/>`;
+            }
             let quizOverlay = '';
             if (quizTarget && quizTarget.aidId === aid.id) {
                 if (quizTarget.kind === 'visual-path') {
                     quizOverlay = segmentPositions.slice(0, -1).map((start, index) => {
                         const end = segmentPositions[index + 1];
                         const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                        return `<polyline class="diagram-visual-aid-quiz-highlight is-path" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-width="${aid.thickness + 7}" stroke-linecap="butt" stroke-linejoin="round" ${dash} filter="url(#visualAidQuizGlow)"/>`;
+                        return `<polyline class="diagram-visual-aid-quiz-highlight is-path${reviewSelectionClass}" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-width="${aid.thickness + 7}" stroke-linecap="butt" stroke-linejoin="round" ${dash}${quizFilter}/>`;
                     }).join('');
                 } else if (quizTarget.kind === 'visual-point') {
                     const point = aid.points.find(item => item.id === quizTarget.itemId);
                     if (point) {
                         const p = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, point.position);
-                        quizOverlay = `<circle class="diagram-visual-aid-quiz-highlight is-point" cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(10, aid.thickness * 1.8)}" fill="none" stroke="${colorAtPosition(point.position)}" stroke-width="4" filter="url(#visualAidQuizGlow)"/>`;
+                        quizOverlay = `<circle class="diagram-visual-aid-quiz-highlight is-point${reviewSelectionClass}" cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(10, aid.thickness * 1.8)}" fill="none" stroke="${colorAtPosition(point.position)}" stroke-width="4"${quizFilter}/>`;
                     }
                 } else if (quizTarget.kind === 'visual-division') {
                     const divisionIndex = aid.divisions.findIndex(item => item.id === quizTarget.itemId);
@@ -3586,14 +3635,129 @@ MODIFICATION RULES FOR THIS APP
                     if (division) {
                         const start = division.position;
                         const end = aid.divisions[divisionIndex + 1]?.position ?? 1;
-                        const segmentPoints = getDiagramVisualAidPathSliceFromMetrics(masterMetrics, start, end).map(point => `${(point.x / 100) * safeWidth},${(point.y / 100) * safeHeight}`).join(' ');
-                        quizOverlay = `<polyline class="diagram-visual-aid-quiz-highlight is-division${quizMode ? ' is-mini-quiz' : ''}" points="${segmentPoints}" fill="none" stroke="${division.color || aid.defaultColor}" stroke-width="${aid.thickness + 7}" stroke-linecap="round" stroke-linejoin="round" filter="url(#visualAidQuizGlow)"/>`;
+                        const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
+                        quizOverlay = `<polyline class="diagram-visual-aid-quiz-highlight is-division${quizMode ? ' is-mini-quiz' : ''}${reviewSelectionClass}" points="${masterPoints}" fill="none" stroke="${division.color || aid.defaultColor}" stroke-width="${aid.thickness + 7}" stroke-linecap="round" stroke-linejoin="round" ${dash}${quizFilter}/>`;
                     }
                 }
             }
-            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}${revealGlow}${colored}${arrowCarriers}${revealCap}${points}${quizOverlay}</g>`;
+            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g mask="url(#${maskId})" data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${leadArrow}${revealCap}${pointMarkup}${quizOverlay}</g>`;
         }).join('');
-        return `${defs}${markup}`;
+        const defs = `<defs><filter id="${glowId}"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="${quizGlowId}"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="${arrowId}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker>${maskDefs.join('')}</defs>`;
+        return { markup: `${defs}${markup}`, runtimes, animated };
+    }
+
+    function findDiagramVisualAidPlaybackNodeByData(root, selector, dataKey, value) {
+        return Array.from(root?.querySelectorAll?.(selector) || []).find(node => normalizeSheetText(node.dataset?.[dataKey] || '') === normalizeSheetText(value || '')) || null;
+    }
+
+    function mountDiagramVisualAidPlaybackSurface(svg, aids = [], width = 1, height = 1, options = {}) {
+        if (!svg) return null;
+        const surface = createDiagramVisualAidPlaybackSurface(aids, width, height, options);
+        svg.setAttribute('viewBox', `0 0 ${Math.max(1, Number(width) || 1)} ${Math.max(1, Number(height) || 1)}`);
+        svg.innerHTML = surface.markup;
+        surface.runtimes.forEach(runtime => {
+            runtime.group = findDiagramVisualAidPlaybackNodeByData(svg, '[data-visual-aid-id]', 'visualAidId', runtime.aid.id);
+            runtime.maskPath = findDiagramVisualAidPlaybackNodeByData(svg, '[data-visual-aid-reveal-mask]', 'visualAidRevealMask', runtime.aid.id);
+            runtime.revealCap = runtime.group?.querySelector?.('[data-visual-aid-reveal-cap]') || null;
+            runtime.leadArrow = runtime.group?.querySelector?.('[data-visual-aid-lead-arrow]') || null;
+            runtime.boundaryArrowNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-boundary-arrow]') || []);
+            runtime.pointNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-point-id]') || []);
+        });
+        diagramVisualAidPlaybackSurfaceCache.set(svg, surface);
+        return surface;
+    }
+
+    function updateDiagramVisualAidPlaybackSurface(svg, progress = null) {
+        const surface = diagramVisualAidPlaybackSurfaceCache.get(svg);
+        if (!surface) return false;
+        const currentProgress = Number.isFinite(Number(progress)) ? normalizeDiagramVisualAidPosition(progress) : 1;
+        surface.runtimes.forEach(runtime => {
+            const total = Math.max(0, Number(runtime.svgMasterMetrics?.total) || 0);
+            if (runtime.maskPath) runtime.maskPath.setAttribute('stroke-dashoffset', Math.max(0, total * (1 - currentProgress)).toFixed(4));
+            if (runtime.revealCap) {
+                if (currentProgress > 0.000001 && runtime.masterMetrics?.path?.length) {
+                    const lead = getDiagramVisualAidPointAtPositionFromMetrics(runtime.masterMetrics, currentProgress);
+                    runtime.revealCap.setAttribute('cx', String((lead.x / 100) * runtime.width));
+                    runtime.revealCap.setAttribute('cy', String((lead.y / 100) * runtime.height));
+                    runtime.revealCap.setAttribute('fill', getDiagramVisualAidPlaybackColorAtPosition(runtime, currentProgress));
+                    runtime.revealCap.setAttribute('opacity', '1');
+                } else {
+                    runtime.revealCap.setAttribute('opacity', '0');
+                }
+            }
+            runtime.pointNodes.forEach(node => {
+                const pointPosition = normalizeDiagramVisualAidPosition(node.dataset.visualAidPointPosition || 0);
+                const reached = pointPosition <= currentProgress + 0.001;
+                const reachedKey = reached ? '1' : '0';
+                if (node.dataset.visualAidReached !== reachedKey) {
+                    node.dataset.visualAidReached = reachedKey;
+                    node.setAttribute('opacity', String(runtime.divisionQuizActive ? (reached ? 0.6 : 0.3) : (reached ? 1 : 0.3)));
+                    const fill = node.querySelector('[data-visual-aid-point-fill]');
+                    if (fill) fill.setAttribute('fill', reached ? (node.dataset.visualAidPointColor || runtime.aid.defaultColor) : runtime.aid.defaultColor);
+                }
+            });
+            runtime.boundaryArrowNodes.forEach(node => {
+                const end = normalizeDiagramVisualAidPosition(node.dataset.visualAidBoundaryArrowEnd || 0);
+                const visibleKey = currentProgress >= end - 0.0005 ? '1' : '0';
+                if (node.dataset.visualAidArrowVisible !== visibleKey) {
+                    node.dataset.visualAidArrowVisible = visibleKey;
+                    node.setAttribute('opacity', visibleKey);
+                }
+            });
+            if (runtime.leadArrow) {
+                if (currentProgress > 0.002 && currentProgress < 0.9995) {
+                    const previousPosition = Math.max(0, currentProgress - 0.012);
+                    const previous = getDiagramVisualAidPointAtPositionFromMetrics(runtime.masterMetrics, previousPosition);
+                    const lead = getDiagramVisualAidPointAtPositionFromMetrics(runtime.masterMetrics, currentProgress);
+                    runtime.leadArrow.setAttribute('points', `${(previous.x / 100) * runtime.width},${(previous.y / 100) * runtime.height} ${(lead.x / 100) * runtime.width},${(lead.y / 100) * runtime.height}`);
+                    runtime.leadArrow.setAttribute('stroke', getDiagramVisualAidPlaybackColorAtPosition(runtime, currentProgress));
+                    runtime.leadArrow.setAttribute('opacity', '1');
+                } else {
+                    runtime.leadArrow.setAttribute('opacity', '0');
+                }
+            }
+        });
+        return true;
+    }
+
+    function renderDiagramVisualAidPlaybackSurface(svg, aids = [], width = 1, height = 1, options = {}, { animationFrame = false } = {}) {
+        if (!svg) return;
+        const progress = Number.isFinite(Number(options.progress)) ? normalizeDiagramVisualAidPosition(options.progress) : null;
+        if (animationFrame && diagramVisualAidPlaybackSurfaceCache.has(svg)) {
+            updateDiagramVisualAidPlaybackSurface(svg, progress);
+            return;
+        }
+        mountDiagramVisualAidPlaybackSurface(svg, aids, width, height, options);
+        updateDiagramVisualAidPlaybackSurface(svg, progress);
+    }
+
+    function startDiagramVisualAidPlaybackClock({ owner, playingKey, progressKey, startedAtKey, frameIdKey, loopKey, duration, renderFrame, renderResting }) {
+        if (!owner || !playingKey || !progressKey || !startedAtKey || !frameIdKey) return;
+        const safeDuration = Math.max(1, Number(duration) || 1);
+        const tick = now => {
+            if (!owner[playingKey]) return;
+            if (!owner[startedAtKey]) {
+                owner[startedAtKey] = now;
+                owner[progressKey] = 0;
+            } else {
+                owner[progressKey] = Math.min(1, (now - owner[startedAtKey]) / safeDuration);
+            }
+            renderFrame?.();
+            if (owner[progressKey] >= 1) {
+                if (owner[loopKey]) {
+                    owner[progressKey] = 0;
+                    owner[startedAtKey] = 0;
+                    renderFrame?.();
+                } else {
+                    owner[playingKey] = false;
+                    owner[frameIdKey] = 0;
+                    renderResting?.();
+                    return;
+                }
+            }
+            owner[frameIdKey] = requestAnimationFrame(tick);
+        };
+        owner[frameIdKey] = requestAnimationFrame(tick);
     }
 
     function normalizeDiagramMetadata(metadata = {}) {
@@ -7850,6 +8014,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.spellUntilCorrectMiniQuiz = review.typedMiniQuiz && review.spellUntilCorrectMiniQuiz === true;
         review.miniQuizScope = review.miniQuizScope === 'all' ? 'all' : 'current';
         review.miniQuizVisualAidPolicy = ['include', 'exclude', 'only'].includes(review.miniQuizVisualAidPolicy) ? review.miniQuizVisualAidPolicy : 'exclude';
+        review.miniQuizCurrentVisualAidOnly = review.miniQuizCurrentVisualAidOnly === true;
         review.miniQuizMode = normalizeReviewModeMiniQuizMode(review.miniQuizMode);
         review.miniQuiz = normalizeReviewModeMiniQuizState(review.miniQuiz, review.miniQuizMode);
         if (!review.temporaryLabelPositions || typeof review.temporaryLabelPositions !== 'object' || Array.isArray(review.temporaryLabelPositions)) review.temporaryLabelPositions = {};
@@ -7868,6 +8033,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.visualAidDockOffset = Math.min(1, Math.max(0, Number.isFinite(visualAidDockOffset) ? visualAidDockOffset : 0.5));
         review.visualAidSelectedKind = ['path', 'point', 'division'].includes(review.visualAidSelectedKind) ? review.visualAidSelectedKind : '';
         review.visualAidSelectedId = normalizeSheetText(review.visualAidSelectedId || '');
+        if (!review.visualAidIdByAngle || typeof review.visualAidIdByAngle !== 'object' || Array.isArray(review.visualAidIdByAngle)) review.visualAidIdByAngle = {};
         return review;
     }
 
@@ -8794,10 +8960,11 @@ The deletion becomes permanent when you save the diagram.`);
         return normalizeSheetText(labelName).replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     }
 
-    function buildReviewModeMiniQuizTargets(entry, scope = 'current', activeAngleIndex = 0, allowDuplicates = false, visualAidPolicy = 'exclude') {
+    function buildReviewModeMiniQuizTargets(entry, scope = 'current', activeAngleIndex = 0, allowDuplicates = false, visualAidPolicy = 'exclude', currentVisualAidId = '') {
         const angles = getStudioSavedImageAngles(entry || {});
         const normalizedScope = scope === 'all' && angles.length > 1 ? 'all' : 'current';
         const policy = ['include', 'exclude', 'only'].includes(visualAidPolicy) ? visualAidPolicy : 'exclude';
+        const onlyCurrentVisualAidId = normalizeSheetText(currentVisualAidId || '');
         const angleIndexes = normalizedScope === 'all'
             ? angles.map((_, index) => index)
             : [Math.min(Math.max(0, activeAngleIndex), Math.max(0, angles.length - 1))];
@@ -8815,7 +8982,8 @@ The deletion becomes permanent when you save the diagram.`);
         const visualTargets = policy === 'exclude' ? [] : angleIndexes.flatMap(angleIndex => {
             const angle = angles[angleIndex];
             const angleId = normalizeSheetText(angle?.id || `angle_${angleIndex}`);
-            return normalizeDiagramVisualAids(angle?.visualAids || []).filter(aid => aid.visible && aid.path.length > 1).flatMap(aid => {
+            const eligibleAids = normalizeDiagramVisualAids(angle?.visualAids || []).filter(aid => aid.path.length > 1).filter(aid => !onlyCurrentVisualAidId || (angleIndex === activeAngleIndex && aid.id === onlyCurrentVisualAidId));
+            return eligibleAids.flatMap(aid => {
                 const targets = [{
                     id: `${angleId}::visual_${aid.id}::path`,
                     kind: 'visual-path',
@@ -9083,7 +9251,8 @@ The deletion becomes permanent when you save the diagram.`);
         const angles = getStudioSavedImageAngles(entry || {});
         const requestedScope = scope === 'all' || scope === 'current' ? scope : review.miniQuizScope;
         const quizScope = requestedScope === 'all' && angles.length > 1 ? 'all' : 'current';
-        const targets = buildReviewModeMiniQuizTargets(entry, quizScope, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy);
+        const currentVisualAidId = review.miniQuizCurrentVisualAidOnly && review.miniQuizVisualAidPolicy !== 'exclude' ? (getReviewModeActiveVisualAid()?.id || '') : '';
+        const targets = buildReviewModeMiniQuizTargets(entry, quizScope, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy, currentVisualAidId);
         if (!targets.length) {
             setCreatorStatus(quizScope === 'all' ? 'This diagram does not have any quiz items for the selected label / Interactive Visual Aid options.' : 'This angle does not have any quiz items for the selected label / Interactive Visual Aid options.', 'error');
             return;
@@ -9439,33 +9608,125 @@ The deletion becomes permanent when you save the diagram.`);
         return normalizeDiagramVisualAids(angle?.visualAids || []);
     }
 
-    function renderReviewModeVisualAids() {
+    function getReviewModeVisualAidAngleKey() {
+        const review = getReviewModeState();
+        const angle = getActiveReviewModeAngle(getActiveReviewModeEntry());
+        return normalizeSheetText(angle?.id || `angle_${review.activeAngleIndex}`);
+    }
+
+    function getReviewModeAvailableVisualAids() {
+        return getReviewModeVisualAids().filter(aid => aid.path.length > 1);
+    }
+
+    function getReviewModeActiveVisualAid() {
+        const review = getReviewModeState();
+        const aids = getReviewModeAvailableVisualAids();
+        if (!aids.length) return null;
+        const key = getReviewModeVisualAidAngleKey();
+        const selectedId = normalizeSheetText(review.visualAidIdByAngle[key] || '');
+        const active = aids.find(aid => aid.id === selectedId) || aids[0];
+        review.visualAidIdByAngle[key] = active.id;
+        return active;
+    }
+
+    function syncReviewModeVisualAidNavigation() {
+        const review = getReviewModeState();
+        const aids = getReviewModeAvailableVisualAids();
+        const quizAid = review.miniQuiz.active && !review.miniQuiz.complete ? getReviewModeMiniQuizVisualTargetDetails(review)?.aid : null;
+        const activeAid = quizAid || getReviewModeActiveVisualAid();
+        const show = (review.showVisualAid || !!quizAid) && !!activeAid;
+        elements.reviewModeVisualAidNavigation?.classList.toggle('hidden', !show);
+        elements.reviewModeVisualAidNavigation?.setAttribute('aria-hidden', show ? 'false' : 'true');
+        if (elements.reviewModeVisualAidIndicator) {
+            const index = activeAid ? Math.max(0, aids.findIndex(aid => aid.id === activeAid.id)) : 0;
+            elements.reviewModeVisualAidIndicator.textContent = activeAid ? `${index + 1} / ${aids.length} · ${activeAid.name || `Visual Aid ${index + 1}`}` : '';
+        }
+        const disabled = !show || aids.length < 2 || review.miniQuiz.active;
+        if (elements.reviewModePrevVisualAidBtn) elements.reviewModePrevVisualAidBtn.disabled = disabled;
+        if (elements.reviewModeNextVisualAidBtn) elements.reviewModeNextVisualAidBtn.disabled = disabled;
+    }
+
+    function changeReviewModeVisualAid(direction = 1) {
+        const review = getReviewModeState();
+        if (!review.overlayOpen || review.miniQuiz.active) return;
+        const aids = getReviewModeAvailableVisualAids();
+        if (aids.length < 2) return;
+        const active = getReviewModeActiveVisualAid();
+        const currentIndex = Math.max(0, aids.findIndex(aid => aid.id === active?.id));
+        const nextIndex = (currentIndex + (direction < 0 ? -1 : 1) + aids.length) % aids.length;
+        const key = getReviewModeVisualAidAngleKey();
+        review.visualAidIdByAngle[key] = aids[nextIndex].id;
+        stopReviewModeVisualAidAnimation();
+        review.visualAidProgress = 0;
+        review.visualAidSpeed = null;
+        review.visualAidStartedAt = 0;
+        review.visualAidSelectedKind = '';
+        review.visualAidSelectedId = '';
+        renderReviewModeVisualAids();
+        syncReviewModeVisualAidNavigation();
+        syncReviewModeControls();
+    }
+
+    function updateReviewModeVisualAidPlaybackFrame(review = getReviewModeState()) {
+        const layer = elements.reviewModeVisualAidLayer;
+        const sequence = elements.reviewModeVisualAidSequence;
+        if (!layer || !diagramVisualAidPlaybackSurfaceCache.has(layer)) return false;
+        updateDiagramVisualAidPlaybackSurface(layer, review.visualAidProgress);
+        if (!sequence) return true;
+        const progress = normalizeDiagramVisualAidPosition(review.visualAidProgress);
+        const scrubber = sequence.querySelector('[data-review-visual-aid-scrubber]');
+        if (scrubber) {
+            scrubber.value = String(Math.round(progress * 1000));
+            scrubber.style.setProperty('--visual-aid-progress', `${(progress * 100).toFixed(2)}%`);
+        }
+        // Mini Quiz selection is fixed to the target built during the resting render.
+        if (review.miniQuiz.active) return true;
+        const surface = diagramVisualAidPlaybackSurfaceCache.get(layer);
+        const activeAid = surface?.runtimes?.[0]?.aid || null;
+        if (!activeAid) return true;
+        const items = getDiagramVisualAidSelectableItems(activeAid);
+        let activeItem = items.find(item => item.type === 'point' && Math.abs(item.position - progress) <= 0.012)
+            || items.find(item => item.type === 'division' && progress >= Number(item.start || 0) && (progress < Number(item.end || 1) || progress >= 0.999))
+            || items.filter(item => item.type !== 'path' && item.position <= progress).slice(-1)[0]
+            || items[0]
+            || null;
+        const activeKey = activeItem ? `${activeItem.type}:${activeItem.id}` : '';
+        if (sequence.dataset.visualAidActiveKey !== activeKey) {
+            sequence.dataset.visualAidActiveKey = activeKey;
+            sequence.querySelectorAll('.visual-aid-sequence-selection').forEach(button => button.classList.toggle('is-active', button.dataset.reviewVisualAidSelectKind === activeItem?.type && button.dataset.reviewVisualAidSelectId === activeItem?.id));
+            sequence.querySelector('.visual-aid-sequence-selection.is-active')?.scrollIntoView?.({ behavior: 'auto', inline: 'center', block: 'nearest' });
+        }
+        return true;
+    }
+
+    function renderReviewModeVisualAids({ animationFrame = false } = {}) {
         const layer = elements.reviewModeVisualAidLayer;
         const img = elements.reviewModeImage;
         const bar = elements.reviewModeVisualAidBar;
         const sequence = elements.reviewModeVisualAidSequence;
         if (!layer || !img) return;
         const review = getReviewModeState();
+        if (animationFrame && updateReviewModeVisualAidPlaybackFrame(review)) return;
         const visualQuiz = review.miniQuiz.active && !review.miniQuiz.complete ? getReviewModeMiniQuizVisualTargetDetails(review) : null;
-        const availableAids = isReviewModeActiveAngleOverlayReady() ? getReviewModeVisualAids().filter(aid => aid.visible && aid.path.length > 1) : [];
+        const availableAids = isReviewModeActiveAngleOverlayReady() ? getReviewModeAvailableVisualAids() : [];
         if (!availableAids.length && !visualQuiz) review.showVisualAid = false;
-        const activeAid = visualQuiz?.aid || availableAids[0] || null;
+        const activeAid = visualQuiz?.aid || getReviewModeActiveVisualAid() || null;
         const showAid = !!activeAid && (review.showVisualAid || !!visualQuiz);
-        const aids = showAid ? [activeAid] : [];
+        const aids = showAid ? [{ ...activeAid, visible: true }] : [];
         const width = Math.max(1, img.naturalWidth || 1);
         const height = Math.max(1, img.naturalHeight || 1);
         const quizTarget = visualQuiz ? { kind: visualQuiz.target.kind, aidId: visualQuiz.aid.id, itemId: visualQuiz.target.visualItemId } : null;
         const selectedTarget = !review.miniQuiz.active && activeAid && review.visualAidSelectedKind && review.visualAidSelectedId
             ? { kind: `visual-${review.visualAidSelectedKind}`, aidId: activeAid.id, itemId: review.visualAidSelectedId }
             : null;
-        layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
-        layer.innerHTML = buildDiagramVisualAidSvgMarkup(aids, width, height, {
+        renderDiagramVisualAidPlaybackSurface(layer, aids, width, height, {
             progress: review.visualAidProgress,
             activeOnlyId: activeAid?.id || '',
-            interactive: !!activeAid && !review.miniQuiz.active,
+            // Review interaction geometry is mounted only while playback is stopped.
+            interactive: !!activeAid && !review.miniQuiz.active && !review.visualAidPlaying,
             quizTarget: quizTarget || selectedTarget,
             quizMode: !!visualQuiz
-        });
+        }, { animationFrame });
         layer.classList.toggle('hidden', !aids.length);
         layer.classList.toggle('is-interactive', !!activeAid && !review.miniQuiz.active);
         if (bar) { bar.classList.toggle('hidden', !aids.length); bar.setAttribute('aria-hidden', aids.length ? 'false' : 'true'); }
@@ -9508,10 +9769,19 @@ The deletion becomes permanent when you save the diagram.`);
             }
             const currentLabel = sequence.querySelector('.visual-aid-sequence-current strong');
             if (currentLabel) currentLabel.textContent = quizMasked ? 'Interactive Visual Aid' : (activeAid?.name || 'Visual Aid');
-            sequence.querySelectorAll('.visual-aid-sequence-selection').forEach(button => button.classList.toggle('is-active', button.dataset.reviewVisualAidSelectKind === activeItem?.type && button.dataset.reviewVisualAidSelectId === activeItem?.id));
-            sequence.querySelector('.visual-aid-sequence-selection.is-active')?.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            const activeKey = activeItem ? `${activeItem.type}:${activeItem.id}` : '';
+            if (sequence.dataset.visualAidActiveKey !== activeKey) {
+                sequence.dataset.visualAidActiveKey = activeKey;
+                sequence.querySelectorAll('.visual-aid-sequence-selection').forEach(button => button.classList.toggle('is-active', button.dataset.reviewVisualAidSelectKind === activeItem?.type && button.dataset.reviewVisualAidSelectId === activeItem?.id));
+                // Keep the sequence synchronized without launching a new smooth-scroll animation
+                // on every playback frame. Smooth scrolling is reserved for direct/user renders.
+                sequence.querySelector('.visual-aid-sequence-selection.is-active')?.scrollIntoView?.({ behavior: animationFrame ? 'auto' : 'smooth', inline: 'center', block: 'nearest' });
+            }
         }
-        if (aids.length) window.requestAnimationFrame(applyReviewModeVisualAidDockPosition);
+        if (!animationFrame) {
+            syncReviewModeVisualAidNavigation();
+            if (aids.length) window.requestAnimationFrame(applyReviewModeVisualAidDockPosition);
+        }
     }
 
     function resetReviewModeVisualAidAnimation() {
@@ -9520,25 +9790,27 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function playReviewModeVisualAidAnimation() {
-        const review=getReviewModeState();
-        if (!(review.showVisualAid || getReviewModeMiniQuizVisualTargetDetails(review)) || !getReviewModeVisualAids().some(aid=>aid.visible&&aid.path.length>1)) return;
+        const review = getReviewModeState();
+        if (!(review.showVisualAid || getReviewModeMiniQuizVisualTargetDetails(review)) || !getReviewModeAvailableVisualAids().length) return;
         if (review.visualAidPlaying) return;
         if (!review.miniQuiz.active) { review.visualAidSelectedKind = ''; review.visualAidSelectedId = ''; }
-        review.visualAidPlaying=true;
-        const activeAid = getReviewModeVisualAids().find(aid => aid.visible && aid.path.length > 1);
+        review.visualAidPlaying = true;
+        const activeAid = getReviewModeMiniQuizVisualTargetDetails(review)?.aid || getReviewModeActiveVisualAid();
         const duration = getDiagramVisualAidDurationMs(review.visualAidSpeed ?? activeAid?.speed ?? 1);
-        review.visualAidStartedAt=performance.now()-(review.visualAidProgress*duration);
-        const tick=now=>{
-            if(!review.visualAidPlaying) return;
-            review.visualAidProgress=Math.min(1,(now-review.visualAidStartedAt)/duration);
-            renderReviewModeVisualAids();
-            if(review.visualAidProgress>=1){
-                if(review.visualAidLoop){ review.visualAidProgress=0; review.visualAidStartedAt=now; }
-                else { stopReviewModeVisualAidAnimation(); return; }
-            }
-            review.visualAidFrameId=requestAnimationFrame(tick);
-        };
-        review.visualAidFrameId=requestAnimationFrame(tick);
+        review.visualAidStartedAt = performance.now() - (review.visualAidProgress * duration);
+        // Re-mount once with non-interactive playback geometry, then only update progress.
+        renderReviewModeVisualAids();
+        startDiagramVisualAidPlaybackClock({
+            owner: review,
+            playingKey: 'visualAidPlaying',
+            progressKey: 'visualAidProgress',
+            startedAtKey: 'visualAidStartedAt',
+            frameIdKey: 'visualAidFrameId',
+            loopKey: 'visualAidLoop',
+            duration,
+            renderFrame: () => renderReviewModeVisualAids({ animationFrame: true }),
+            renderResting: () => renderReviewModeVisualAids()
+        });
     }
 
     function pauseReviewModeVisualAidAnimation(){ stopReviewModeVisualAidAnimation(); renderReviewModeVisualAids(); }
@@ -9789,13 +10061,18 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeMiniVisualAidOnly.checked = review.miniQuizVisualAidPolicy === 'only';
             elements.reviewModeMiniVisualAidOnly.disabled = miniActive;
         }
+        if (elements.reviewModeMiniCurrentVisualAidOnlyToggle) {
+            const canLimitToCurrentAid = review.miniQuizVisualAidPolicy !== 'exclude' && !!getReviewModeActiveVisualAid();
+            elements.reviewModeMiniCurrentVisualAidOnlyToggle.checked = review.miniQuizCurrentVisualAidOnly;
+            elements.reviewModeMiniCurrentVisualAidOnlyToggle.disabled = miniActive || !canLimitToCurrentAid;
+        }
         if (elements.reviewModeShowAngleControlsToggle) {
             elements.reviewModeShowAngleControlsToggle.checked = hasMultipleAngles && review.showAngleControls;
             elements.reviewModeShowAngleControlsToggle.disabled = !hasMultipleAngles;
         }
         if (elements.reviewModeShowShortcutDockToggle) elements.reviewModeShowShortcutDockToggle.checked = review.shortcutDockVisible;
         if (elements.reviewModeShowVisualAidToggle) {
-            const hasVisualAid = getReviewModeVisualAids().some(aid => aid.visible && aid.path.length > 1);
+            const hasVisualAid = getReviewModeAvailableVisualAids().length > 0;
             if (!hasVisualAid) {
                 review.showVisualAid = false;
                 review.visualAidOnly = false;
@@ -9872,6 +10149,7 @@ The deletion becomes permanent when you save the diagram.`);
         setReviewModeOptionsOpen(review.optionsOpen);
         syncReviewModeMiniQuizUi();
         syncReviewModeAngleNavigation();
+        syncReviewModeVisualAidNavigation();
     }
 
     function openReviewModeImage(entryId = '') {
@@ -9901,6 +10179,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.spellUntilCorrectMiniQuiz = false;
         review.miniQuizScope = 'current';
         review.miniQuizVisualAidPolicy = 'exclude';
+        review.miniQuizCurrentVisualAidOnly = false;
         review.miniQuizMode = 'normal';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal', scope: 'current', targets: [] }, 'normal');
         review.labelScale = 1.5;
@@ -9921,6 +10200,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.visualAidStartedAt = 0;
         review.visualAidSelectedKind = '';
         review.visualAidSelectedId = '';
+        review.visualAidIdByAngle = {};
         review.revealedLabels = new Set();
         review.revealedLabelsByAngle = {};
         review.temporaryLabelPositions = {};
@@ -9955,6 +10235,8 @@ The deletion becomes permanent when you save the diagram.`);
         reviewModeShortcutDockDrag = null;
         reviewModeVisualAidDockDrag = null;
         review.showVisualAid = false;
+        review.miniQuizCurrentVisualAidOnly = false;
+        review.visualAidIdByAngle = {};
         review.miniQuizScope = 'current';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
         reviewModeLabelDrag = null;
@@ -9965,6 +10247,8 @@ The deletion becomes permanent when you save the diagram.`);
         elements.reviewModeOverlay?.setAttribute('aria-hidden', 'true');
         elements.reviewModeAngleNavigation?.classList.add('hidden');
         elements.reviewModeAngleNavigation?.setAttribute('aria-hidden', 'true');
+        elements.reviewModeVisualAidNavigation?.classList.add('hidden');
+        elements.reviewModeVisualAidNavigation?.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('review-mode-image-open');
         if (elements.reviewModeImage) {
             elements.reviewModeImage.onload = null;
@@ -13277,7 +13561,7 @@ The deletion becomes permanent when you save the diagram.`);
 
 
 
-    function renderImageEditorVisualAidLayer() {
+    function renderImageEditorVisualAidLayer({ animationFrame = false } = {}) {
         const editor = state.auth.imageEditor;
         const svg = elements.studioImageEditorVisualAidLayer;
         const canvas = elements.studioImageEditorCanvas;
@@ -13285,17 +13569,23 @@ The deletion becomes permanent when you save the diagram.`);
             if (svg) svg.classList.add('hidden');
             return;
         }
-        const aids = normalizeDiagramVisualAids(editor.visualAids || []);
+        if (animationFrame && diagramVisualAidPlaybackSurfaceCache.has(svg)) {
+            updateDiagramVisualAidPlaybackSurface(svg, editor.visualAidPreviewProgress);
+            renderImageEditorVisualAidPreviewSequence({ animationFrame: true });
+            return;
+        }
+        const storedAids = normalizeDiagramVisualAids(editor.visualAids || []);
+        const visibleId = normalizeSheetText(editor.sessionVisibleVisualAidId || '');
+        const aids = storedAids.map(aid => ({ ...aid, visible: aid.id === visibleId }));
         const activeAid = aids.find(aid => aid.id === editor.activeVisualAidId && aid.visible && aid.path.length > 1) || null;
         const width = Math.max(1, canvas.width || 1);
         const height = Math.max(1, canvas.height || 1);
-        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
         const previewOptions = editor.visualAidPreviewActive && activeAid
             ? { progress: editor.visualAidPreviewProgress, activeOnlyId: activeAid.id }
             : {};
-        svg.innerHTML = buildDiagramVisualAidSvgMarkup(aids, width, height, previewOptions);
+        renderDiagramVisualAidPlaybackSurface(svg, aids, width, height, previewOptions, { animationFrame });
         svg.classList.toggle('hidden', !aids.some(aid => aid.visible && aid.path.length > 1));
-        renderImageEditorVisualAidPreviewSequence();
+        renderImageEditorVisualAidPreviewSequence({ animationFrame });
     }
 
     function stopImageEditorVisualAidPreview({ reset = false, deactivate = false } = {}) {
@@ -13308,7 +13598,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (deactivate) editor.visualAidPreviewActive = false;
     }
 
-    function renderImageEditorVisualAidPreviewSequence() {
+    function renderImageEditorVisualAidPreviewSequence({ animationFrame = false } = {}) {
         const editor = state.auth.imageEditor;
         const list = elements.studioImageEditorVisualAidList;
         if (!editor || !list) return;
@@ -13316,7 +13606,7 @@ The deletion becomes permanent when you save the diagram.`);
         const sequence = list.querySelector('[data-visual-aid-preview-sequence]');
         const loopBtn = list.querySelector('[data-visual-aid-preview-action="loop"]');
         if (loopBtn) { loopBtn.classList.toggle('active', !!editor.visualAidPreviewLoop); loopBtn.setAttribute('aria-pressed', editor.visualAidPreviewLoop ? 'true' : 'false'); }
-        if (!sequence || !aid || !aid.visible || aid.path.length < 2) { if (sequence) sequence.innerHTML = ''; return; }
+        if (!sequence || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || aid.path.length < 2) { if (sequence) sequence.innerHTML = ''; return; }
         const items = getDiagramVisualAidSequenceItems(aid);
         const progress = normalizeDiagramVisualAidPosition(editor.visualAidPreviewProgress);
         let active = items.findIndex(item => item.type === 'point' && Math.abs(item.position - progress) <= 0.012);
@@ -13336,8 +13626,12 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const currentLabel = sequence.querySelector('.visual-aid-sequence-current strong');
         if (currentLabel) currentLabel.textContent = current?.name || aid.name;
-        sequence.querySelectorAll('.visual-aid-sequence-stop').forEach((button, index) => button.classList.toggle('is-active', index === active));
-        sequence.querySelector('.visual-aid-sequence-stop.is-active')?.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        const activeKey = current ? `${current.type}:${current.id}` : '';
+        if (sequence.dataset.visualAidActiveKey !== activeKey) {
+            sequence.dataset.visualAidActiveKey = activeKey;
+            sequence.querySelectorAll('.visual-aid-sequence-stop').forEach((button, index) => button.classList.toggle('is-active', index === active));
+            sequence.querySelector('.visual-aid-sequence-stop.is-active')?.scrollIntoView?.({ behavior: animationFrame ? 'auto' : 'smooth', inline: 'center', block: 'nearest' });
+        }
     }
 
     function resetImageEditorVisualAidPreview() {
@@ -13351,22 +13645,24 @@ The deletion becomes permanent when you save the diagram.`);
     function playImageEditorVisualAidPreview() {
         const editor = state.auth.imageEditor;
         const aid = getActiveImageEditorVisualAid(editor);
-        if (!editor || !aid || !aid.visible || aid.path.length < 2 || editor.visualAidPreviewPlaying) return;
+        if (!editor || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || aid.path.length < 2 || editor.visualAidPreviewPlaying) return;
         editor.visualAidPreviewActive = true;
         editor.visualAidPreviewPlaying = true;
         const duration = getDiagramVisualAidDurationMs(aid.speed);
         editor.visualAidPreviewStartedAt = performance.now() - (editor.visualAidPreviewProgress * duration);
-        const tick = now => {
-            if (!editor.visualAidPreviewPlaying) return;
-            editor.visualAidPreviewProgress = Math.min(1, (now - editor.visualAidPreviewStartedAt) / duration);
-            renderImageEditorVisualAidLayer();
-            if (editor.visualAidPreviewProgress >= 1) {
-                if (editor.visualAidPreviewLoop) { editor.visualAidPreviewProgress = 0; editor.visualAidPreviewStartedAt = now; }
-                else { stopImageEditorVisualAidPreview(); renderImageEditorVisualAidLayer(); return; }
-            }
-            editor.visualAidPreviewFrameId = requestAnimationFrame(tick);
-        };
-        editor.visualAidPreviewFrameId = requestAnimationFrame(tick);
+        // Mount the shared persistent surface once before RAF playback starts.
+        renderImageEditorVisualAidLayer();
+        startDiagramVisualAidPlaybackClock({
+            owner: editor,
+            playingKey: 'visualAidPreviewPlaying',
+            progressKey: 'visualAidPreviewProgress',
+            startedAtKey: 'visualAidPreviewStartedAt',
+            frameIdKey: 'visualAidPreviewFrameId',
+            loopKey: 'visualAidPreviewLoop',
+            duration,
+            renderFrame: () => renderImageEditorVisualAidLayer({ animationFrame: true }),
+            renderResting: () => renderImageEditorVisualAidLayer()
+        });
     }
 
     function renderImageEditorVisualAidPanel() {
@@ -13381,9 +13677,10 @@ The deletion becomes permanent when you save the diagram.`);
         list.innerHTML = aids.map((aid, index) => {
             const active = aid.id === editor.activeVisualAidId;
             const divisions = aid.divisions.map((division, divisionIndex) => `<div class="studio-visual-aid-subrow"><input data-visual-aid-division-name="${escapeHtml(division.id)}" value="${escapeHtml(division.name)}" aria-label="Division name"><input data-visual-aid-division-color="${escapeHtml(division.id)}" type="color" value="${escapeHtml(division.color)}" aria-label="Division color"><button type="button" data-visual-aid-delete-division="${escapeHtml(division.id)}" aria-label="Delete division">×</button></div>`).join('');
-            const points = aid.points.map(point => `<div class="studio-visual-aid-subrow studio-visual-aid-point-row"><span class="studio-visual-aid-point-dot" aria-hidden="true"></span><input data-visual-aid-point-name="${escapeHtml(point.id)}" value="${escapeHtml(point.name)}" aria-label="Point name"><button type="button" data-visual-aid-delete-point="${escapeHtml(point.id)}" aria-label="Delete point">×</button></div>`).join('');
-            const previewReady = aid.visible && aid.path.length > 1;
-            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Visual Aid name"><button type="button" class="studio-visual-aid-eye ${aid.visible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${aid.visible ? 'true':'false'}" title="${aid.visible ? 'Hide':'Show'} visual aid">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid">🗑</button></div>${active ? `<div class="studio-visual-aid-tools"><button type="button" data-visual-aid-tool="path" class="${editor.activeVisualAidTool==='path'?'active':''}">Draw Path</button><button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="24" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><label class="studio-visual-aid-arrow-toggle"><input data-visual-aid-arrows type="checkbox" ${aid.arrows?'checked':''}> Arrows</label></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button><button type="button" data-visual-aid-preview-action="loop" aria-label="Loop preview" aria-pressed="${editor.visualAidPreviewLoop?'true':'false'}" class="${editor.visualAidPreviewLoop?'active':''}" ${previewReady?'':'disabled'}>↻</button></div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-title">Divisions</div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-title">Points</div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
+            const points = aid.points.map((point, pointIndex) => `<div class="studio-visual-aid-subrow studio-visual-aid-point-row"><span class="studio-visual-aid-point-dot" aria-hidden="true"></span><input data-visual-aid-point-name="${escapeHtml(point.id)}" value="${escapeHtml(point.name)}" aria-label="Point name"><div class="studio-visual-aid-point-order"><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="up" aria-label="Move point earlier in sequence" ${pointIndex===0?'disabled':''}>↑</button><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="down" aria-label="Move point later in sequence" ${pointIndex===aid.points.length-1?'disabled':''}>↓</button></div><button type="button" data-visual-aid-delete-point="${escapeHtml(point.id)}" aria-label="Delete point">×</button></div>`).join('');
+            const sessionVisible = isImageEditorVisualAidSessionVisible(editor, aid.id);
+            const previewReady = sessionVisible && aid.path.length > 1;
+            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Visual Aid name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid">🗑</button></div>${active ? `<div class="studio-visual-aid-tools"><button type="button" data-visual-aid-tool="path" class="${editor.activeVisualAidTool==='path'?'active':''}">Draw Path</button><button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="24" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><label class="studio-visual-aid-arrow-toggle"><input data-visual-aid-arrows type="checkbox" ${aid.arrows?'checked':''}> Arrows</label></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button><button type="button" data-visual-aid-preview-action="loop" aria-label="Loop preview" aria-pressed="${editor.visualAidPreviewLoop?'true':'false'}" class="${editor.visualAidPreviewLoop?'active':''}" ${previewReady?'':'disabled'}>↻</button></div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-title">Divisions</div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-title">Points</div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
         }).join('') || '<div class="studio-visual-aid-empty">Add a Visual Aid, draw its path, then add divisions and named points.</div>';
         renderImageEditorVisualAidPreviewSequence();
     }
@@ -13401,12 +13698,13 @@ The deletion becomes permanent when you save the diagram.`);
     function addImageEditorVisualAid() {
         const editor = state.auth.imageEditor;
         if (!editor?.visualAidsEnabled) return;
-        const aids = normalizeDiagramVisualAids(editor.visualAids || []).map(item => ({ ...item, visible: false }));
+        const aids = normalizeDiagramVisualAids(editor.visualAids || []);
         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
         const aid = normalizeDiagramVisualAid({ name: `Visual Aid ${aids.length + 1}`, visible: true, defaultColor: '#8b5cf6', speed: 1, path: [] }, aids.length);
         aids.push(aid);
         editor.visualAids = aids;
         editor.activeVisualAidId = aid.id;
+        editor.sessionVisibleVisualAidId = aid.id;
         editor.activeVisualAidTool = 'path';
         editor.showVisualAidPanel = true;
         setImageEditorMode('visual-aid');
@@ -13423,7 +13721,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         const aid = getActiveImageEditorVisualAid(editor);
         const canvas = elements.studioImageEditorCanvas;
-        if (!aid || !aid.visible || !canvas) return null;
+        if (!aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || !canvas) return null;
         const target = getImageEditorVisualAidPointerPosition(point);
         let best = null;
         aid.points.forEach(item => {
@@ -14070,6 +14368,7 @@ The deletion becomes permanent when you save the diagram.`);
                 const tool = event.target.closest('[data-visual-aid-tool]');
                 const deleteDivision = event.target.closest('[data-visual-aid-delete-division]');
                 const deletePoint = event.target.closest('[data-visual-aid-delete-point]');
+                const movePoint = event.target.closest('[data-visual-aid-point-move]');
                 const previewAction = event.target.closest('[data-visual-aid-preview-action]');
                 const previewPosition = event.target.closest('[data-visual-aid-preview-position]');
                 let handled = false;
@@ -14083,8 +14382,8 @@ The deletion becomes permanent when you save the diagram.`);
                     const target = aids.find(item => item.id === id);
                     if (target) {
                         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
-                        const turnOn = !target.visible;
-                        aids = aids.map(item => ({ ...item, visible: turnOn ? item.id === id : (item.id === id ? false : item.visible) }));
+                        const turnOn = editor.sessionVisibleVisualAidId !== id;
+                        editor.sessionVisibleVisualAidId = turnOn ? id : '';
                         if (turnOn) editor.activeVisualAidId = id;
                         handled = true;
                     }
@@ -14094,12 +14393,27 @@ The deletion becomes permanent when you save the diagram.`);
                     const id = normalizeSheetText(remove.dataset.visualAidDelete || '');
                     editor.visualAids = aids.filter(item => item.id !== id);
                     if (editor.activeVisualAidId === id) editor.activeVisualAidId = editor.visualAids[0]?.id || '';
+                    if (editor.sessionVisibleVisualAidId === id) editor.sessionVisibleVisualAidId = editor.activeVisualAidId || '';
                     refreshImageEditorVisualAidUi();
                     return;
                 }
                 if (tool) { editor.activeVisualAidTool = normalizeSheetText(tool.dataset.visualAidTool || 'path'); setImageEditorMode('visual-aid'); handled = true; }
                 if (deleteDivision) { const aid = aids.find(item => item.id === editor.activeVisualAidId); if (aid) { aid.divisions = aid.divisions.filter(item => item.id !== deleteDivision.dataset.visualAidDeleteDivision); handled = true; } }
-                if (deletePoint) { const aid = aids.find(item => item.id === editor.activeVisualAidId); if (aid) { aid.points = aid.points.filter(item => item.id !== deletePoint.dataset.visualAidDeletePoint); handled = true; } }
+                if (deletePoint) { const aid = aids.find(item => item.id === editor.activeVisualAidId); if (aid) { aid.points = aid.points.filter(item => item.id !== deletePoint.dataset.visualAidDeletePoint).map((point, index) => ({ ...point, sequenceOrder: index })); handled = true; } }
+                if (movePoint) {
+                    const aid = aids.find(item => item.id === editor.activeVisualAidId);
+                    if (aid) {
+                        const id = normalizeSheetText(movePoint.dataset.visualAidPointMove || '');
+                        const index = aid.points.findIndex(point => point.id === id);
+                        const offset = movePoint.dataset.direction === 'up' ? -1 : 1;
+                        const nextIndex = index + offset;
+                        if (index >= 0 && nextIndex >= 0 && nextIndex < aid.points.length) {
+                            [aid.points[index], aid.points[nextIndex]] = [aid.points[nextIndex], aid.points[index]];
+                            aid.points = aid.points.map((point, pointIndex) => ({ ...point, sequenceOrder: pointIndex }));
+                            handled = true;
+                        }
+                    }
+                }
                 if (previewAction) {
                     const action = previewAction.dataset.visualAidPreviewAction;
                     if (action === 'play') playImageEditorVisualAidPreview();
@@ -14420,7 +14734,8 @@ The deletion becomes permanent when you save the diagram.`);
         editor.labels = normalizeImageEditorLabels(info.labels || []);
         editor.visualAidsEnabled = isImageEditorStandaloneDiagramTarget(editor);
         editor.visualAids = normalizeDiagramVisualAids(info.visualAids || []);
-        editor.activeVisualAidId = editor.visualAids.find(aid => aid.visible)?.id || editor.visualAids[0]?.id || '';
+        editor.activeVisualAidId = editor.visualAids[0]?.id || '';
+        editor.sessionVisibleVisualAidId = editor.activeVisualAidId;
         editor.showVisualAidPanel = false;
         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
         editor.visualAidPreviewLoop = false;
@@ -14787,8 +15102,7 @@ The deletion becomes permanent when you save the diagram.`);
                 return;
             }
             if (editor.activeVisualAidTool === 'point') {
-                aid.points.push({ id: createDiagramVisualAidId('point'), name: `Point ${aid.points.length + 1}`, position: nearest.position });
-                aid.points.sort((a,b)=>a.position-b.position);
+                aid.points.push({ id: createDiagramVisualAidId('point'), name: `Point ${aid.points.length + 1}`, position: nearest.position, sequenceOrder: aid.points.length });
                 editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
                 refreshImageEditorVisualAidUi();
                 setImageEditorStatus('Point added. Name it in the Visual Aid panel. Active Visual Aid points accept label connector snapping.');
@@ -15011,8 +15325,17 @@ The deletion becomes permanent when you save the diagram.`);
         if (editor.mode === 'visual-aid' && editor.visualAidsEnabled) {
             const aidIndex = normalizeDiagramVisualAids(editor.visualAids || []).findIndex(aid => aid.id === editor.activeVisualAidId);
             if (aidIndex >= 0) {
-                const aid = normalizeDiagramVisualAid(editor.visualAids[aidIndex], aidIndex);
+                let aid = normalizeDiagramVisualAid(editor.visualAids[aidIndex], aidIndex);
+                if (editor.activeVisualAidTool === 'path' && point && aid.path.length) {
+                    const finalPoint = getImageEditorVisualAidPointerPosition(point);
+                    const path = aid.path.slice();
+                    const last = path[path.length - 1];
+                    if (!last || Math.hypot(last.x - finalPoint.x, last.y - finalPoint.y) > 0.01) path.push(finalPoint);
+                    else path[path.length - 1] = finalPoint;
+                    aid = normalizeDiagramVisualAid({ ...aid, path }, aidIndex);
+                }
                 if (aid.path.length > 1 && !aid.divisions.length) aid.divisions.push({ id: createDiagramVisualAidId('division'), name: 'Division 1', position: 0, color: aid.defaultColor });
+                if (aid.path.length > 1) aid = ensureDiagramVisualAidEndpointPoints(aid);
                 editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
             }
             editor.activeVisualAidDraftPath = null;
@@ -38174,6 +38497,8 @@ if (elements.multiAngleCanvas) {
 // Phase 22MX: coordinated Review Mode pinch zoom, zoomed panning, and normal-size angle swipes.
 if (elements.reviewModePrevAngleBtn) elements.reviewModePrevAngleBtn.addEventListener('click', () => changeReviewModeAngle(-1));
 if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.addEventListener('click', () => changeReviewModeAngle(1));
+if (elements.reviewModePrevVisualAidBtn) elements.reviewModePrevVisualAidBtn.addEventListener('click', () => changeReviewModeVisualAid(-1));
+if (elements.reviewModeNextVisualAidBtn) elements.reviewModeNextVisualAidBtn.addEventListener('click', () => changeReviewModeVisualAid(1));
 if (elements.reviewModeResetZoomBtn) elements.reviewModeResetZoomBtn.addEventListener('click', () => resetReviewModeZoom({ animate: true, disableFocus: true }));
 
 const reviewModeGesturePointers = new Map();
@@ -38667,9 +38992,19 @@ if (elements.reviewModeMiniScopeAll) {
         const review = getReviewModeState();
         if (review.miniQuiz.active || !control.checked) return;
         review.miniQuizVisualAidPolicy = policy;
+        if (policy === 'exclude') review.miniQuizCurrentVisualAidOnly = false;
         syncReviewModeControls();
     });
 });
+
+if (elements.reviewModeMiniCurrentVisualAidOnlyToggle) {
+    elements.reviewModeMiniCurrentVisualAidOnlyToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || review.miniQuizVisualAidPolicy === 'exclude') return;
+        review.miniQuizCurrentVisualAidOnly = elements.reviewModeMiniCurrentVisualAidOnlyToggle.checked;
+        syncReviewModeControls();
+    });
+}
 
 if (elements.reviewModeMiniRandomizeToggle) {
     elements.reviewModeMiniRandomizeToggle.addEventListener('change', () => {

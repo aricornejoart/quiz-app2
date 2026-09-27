@@ -15377,3 +15377,33 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .review-mode-visual-aid-only-row:has(input:disabled) {
   opacity: .5;
 }
+
+/* ================= PHASE 23F.13: VISUAL AID NAVIGATION + POINT SEQUENCE ================= */
+.studio-visual-aid-point-row {
+  grid-template-columns: 18px minmax(0,1fr) auto 32px;
+}
+.studio-visual-aid-point-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.studio-visual-aid-point-order button {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  font-size: .82rem;
+}
+.studio-visual-aid-point-order button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+.review-mode-visual-aid-navigation .review-mode-angle-indicator {
+  max-width: min(300px, 34vw);
+}
+.diagram-visual-aid-quiz-highlight.is-review-selected {
+  animation: visualAidDivisionQuizFadePulse 1.2s ease-in-out infinite alternate;
+  filter: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .diagram-visual-aid-quiz-highlight.is-review-selected { animation: none; opacity: 1; }
+}

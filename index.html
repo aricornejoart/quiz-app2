@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f12" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f15" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23f12-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23f15-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1959,6 +1959,11 @@ MODIFICATION RULES FOR THIS APP
       </div>
       <button id="reviewModeResetZoomBtn" class="review-mode-toolbar-btn review-mode-reset-zoom-btn hidden" type="button" aria-label="Reset diagram zoom">Reset Zoom</button>
       <span id="reviewModeZoomPercent" class="review-mode-zoom-percent" aria-live="polite" aria-label="Current review zoom">100%</span>
+      <div id="reviewModeVisualAidNavigation" class="review-mode-angle-navigation review-mode-visual-aid-navigation hidden" aria-hidden="true">
+        <button id="reviewModePrevVisualAidBtn" type="button" class="review-mode-angle-btn" aria-label="Previous Visual Aid">‹</button>
+        <div id="reviewModeVisualAidIndicator" class="review-mode-angle-indicator" aria-live="polite"></div>
+        <button id="reviewModeNextVisualAidBtn" type="button" class="review-mode-angle-btn" aria-label="Next Visual Aid">›</button>
+      </div>
     </div>
     <div id="reviewModeOptionsPanel" class="review-mode-options-panel hidden" aria-hidden="true">
       <div class="review-mode-options-title">Review Options</div>
@@ -2100,6 +2105,13 @@ MODIFICATION RULES FOR THIS APP
           <span>Interactive Visual Aids Only</span>
         </label>
       </fieldset>
+      <label class="review-mode-switch-row review-mode-mini-setting-row review-mode-mini-current-visual-aid-row">
+        <span>Quiz only the current Visual Aid</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniCurrentVisualAidOnlyToggle" type="checkbox" role="switch" aria-label="Quiz only the currently selected Visual Aid">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
       <label class="review-mode-switch-row review-mode-mini-setting-row">
         <span>Randomize quiz items</span>
         <span class="review-mode-toggle-control">
@@ -2342,6 +2354,6 @@ MODIFICATION RULES FOR THIS APP
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23f12"></script>
+  <script src="script.js?v=23f15"></script>
 </body>
 </html>
