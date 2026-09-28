@@ -459,7 +459,9 @@ MODIFICATION RULES FOR THIS APP
                 visualAidStartedAt: 0,
                 visualAidSelectedKind: '',
                 visualAidSelectedId: '',
-                visualAidIdByAngle: {}
+                visualAidIdByAngle: {},
+                miniVisualPromptPosition: null,
+                suppressMiniVisualPromptClickUntil: 0
             },
             studioSavedImageMemoryLibrary: [],
             studioSavedImageSync: {
@@ -3253,8 +3255,11 @@ MODIFICATION RULES FOR THIS APP
             id: normalizeSheetText(point?.id) || createDiagramVisualAidId('point'),
             name: normalizeSheetText(point?.name || `Point ${pointIndex + 1}`).slice(0, 100) || `Point ${pointIndex + 1}`,
             position: normalizeDiagramVisualAidPosition(point?.position),
-            sequenceOrder: Number.isFinite(Number(point?.sequenceOrder)) ? Math.max(0, Number(point.sequenceOrder)) : pointIndex
+            sequenceOrder: Number.isFinite(Number(point?.sequenceOrder)) ? Math.max(0, Number(point.sequenceOrder)) : pointIndex,
+            ringColor: normalizeEditorHexColor(point?.ringColor || defaultColor, defaultColor),
+            pointStyle: normalizeSheetText(point?.pointStyle).toLowerCase() === 'solid' ? 'solid' : 'ring'
         })).sort((a, b) => a.sequenceOrder - b.sequenceOrder).map((point, pointIndex) => ({ ...point, sequenceOrder: pointIndex }));
+        const ball = source.ball === true;
         return {
             id: normalizeSheetText(source.id) || createDiagramVisualAidId('visual'),
             name: normalizeSheetText(source.name || `Visual Aid ${index + 1}`).slice(0, 100) || `Visual Aid ${index + 1}`,
@@ -3265,7 +3270,9 @@ MODIFICATION RULES FOR THIS APP
             defaultColor,
             thickness: Math.min(24, Math.max(2, Number(source.thickness) || 7)),
             speed: normalizeDiagramVisualAidSpeed(source.speed),
-            arrows: source.arrows !== false
+            arrows: ball ? false : source.arrows !== false,
+            ball,
+            ballColor: normalizeEditorHexColor(source.ballColor || defaultColor, defaultColor)
         };
     }
 
@@ -3553,8 +3560,9 @@ MODIFICATION RULES FOR THIS APP
             const masterMetrics = getDiagramVisualAidPathMetrics(aid);
             const svgMasterMetrics = getDiagramVisualAidSvgPathMetrics(masterMetrics, safeWidth, safeHeight);
             const masterPoints = svgMasterMetrics.pointsText;
-            const divisionQuizActive = !!(quizMode && quizTarget && quizTarget.aidId === aid.id && quizTarget.kind === 'visual-division');
-            const divisionQuizTargetId = divisionQuizActive ? normalizeSheetText(quizTarget.itemId || '') : '';
+            const divisionSelectionActive = !!(quizTarget && quizTarget.aidId === aid.id && quizTarget.kind === 'visual-division');
+            const divisionQuizActive = !!(quizMode && divisionSelectionActive);
+            const divisionTargetId = divisionSelectionActive ? normalizeSheetText(quizTarget.itemId || '') : '';
             const segmentPositions = [0, ...aid.divisions.map(item => item.position).filter(position => position > 0 && position < 1), 1].sort((x, y) => x - y);
             const segmentColors = segmentPositions.slice(0, -1).map(start => {
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
@@ -3566,7 +3574,7 @@ MODIFICATION RULES FOR THIS APP
             const baseOpacity = divisionQuizActive ? 0.32 : (animated ? 0.14 : 0.18);
             const maskId = `visualAidRevealMask_${surfaceSerial}_${aidIndex}`;
             const revealMaskWidth = Math.max(aid.thickness + 18, 24);
-            maskDefs.push(`<mask id="${maskId}" maskUnits="userSpaceOnUse" x="0" y="0" width="${safeWidth}" height="${safeHeight}"><polyline data-visual-aid-reveal-mask="${escapeHtml(aid.id)}" points="${masterPoints}" fill="none" stroke="#ffffff" stroke-width="${revealMaskWidth}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${svgMasterMetrics.total.toFixed(4)} ${svgMasterMetrics.total.toFixed(4)}" stroke-dashoffset="${svgMasterMetrics.total.toFixed(4)}"/></mask>`);
+            maskDefs.push(`<mask id="${maskId}" maskUnits="userSpaceOnUse" x="0" y="0" width="${safeWidth}" height="${safeHeight}"><polyline data-visual-aid-reveal-mask="${escapeHtml(aid.id)}" points="${masterPoints}" fill="none" stroke="#ffffff" stroke-width="${revealMaskWidth}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="${svgMasterMetrics.total.toFixed(4)} ${svgMasterMetrics.total.toFixed(4)}" stroke-dashoffset="${svgMasterMetrics.total.toFixed(4)}"/></mask>`);
             const base = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
                 const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
@@ -3575,11 +3583,10 @@ MODIFICATION RULES FOR THIS APP
             const colored = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
-                const isDivisionQuizTarget = divisionQuizActive && division?.id === divisionQuizTargetId;
-                const segmentOpacity = divisionQuizActive && !isDivisionQuizTarget ? 0.65 : 1;
-                const targetClass = isDivisionQuizTarget ? ' diagram-visual-aid-division-quiz-target' : '';
+                const isDivisionTarget = divisionSelectionActive && division?.id === divisionTargetId;
+                const segmentOpacity = isDivisionTarget ? 0 : (divisionQuizActive ? 0.65 : 1);
                 const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                return `<polyline class="diagram-visual-aid-animated-path${targetClass}" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${segmentOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
+                return `<polyline class="diagram-visual-aid-animated-path" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${segmentOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
             }).join('');
             const revealGlow = `<polyline points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" filter="url(#${glowId})" pointer-events="none"/>`;
             const startPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 0);
@@ -3602,10 +3609,19 @@ MODIFICATION RULES FOR THIS APP
                 const p = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, pointPosition);
                 const pointColor = colorAtPosition(pointPosition);
                 const hit = interactive ? ` data-review-visual-aid-kind="point" data-review-visual-aid-id="${escapeHtml(point.id)}" data-review-visual-aid-position="${pointPosition.toFixed(6)}" class="diagram-visual-aid-hit"` : '';
-                return `<g data-visual-aid-point-id="${escapeHtml(point.id)}" data-visual-aid-point-position="${pointPosition.toFixed(6)}" data-visual-aid-point-color="${pointColor}" opacity="0.3"${hit}><circle cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(5, aid.thickness * 1.05)}" fill="#111827" stroke="#ffffff" stroke-width="2"/><circle data-visual-aid-point-fill cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(2.5, aid.thickness * 0.45)}" fill="${aid.defaultColor}"/></g>`;
+                const pointOpacity = divisionQuizActive ? 0.6 : 1;
+                const pointOuterRadius = Math.max(5, aid.thickness * 1.05);
+                const pointInnerRadius = Math.max(2.5, aid.thickness * 0.45);
+                const pointRingWidth = Math.max(1.25, (pointOuterRadius - pointInnerRadius) * 0.78);
+                const pointRingRadius = Math.max(pointRingWidth / 2, pointOuterRadius - (pointRingWidth / 2));
+                const pointShape = point.pointStyle === 'solid'
+                    ? `<circle data-visual-aid-point-solid-outer cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${pointOuterRadius}" fill="${point.ringColor}" stroke="#ffffff" stroke-width="2"/><circle data-visual-aid-point-solid-inner cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${pointInnerRadius}" fill="${aid.defaultColor}"/>`
+                    : `<circle data-visual-aid-point-ring cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${pointRingRadius}" fill="none" stroke="${point.ringColor}" stroke-width="${pointRingWidth}"/>`;
+                return `<g data-visual-aid-point-id="${escapeHtml(point.id)}" data-visual-aid-point-position="${pointPosition.toFixed(6)}" data-visual-aid-point-color="${pointColor}" data-visual-aid-point-style="${escapeHtml(point.pointStyle)}" opacity="${pointOpacity}"${hit}>${pointShape}</g>`;
             }).join('');
             let boundaryArrows = '';
             let leadArrow = '';
+            let leadBall = '';
             if (aid.arrows) {
                 boundaryArrows = segmentPositions.slice(0, -1).map((start, index) => {
                     const end = segmentPositions[index + 1];
@@ -3614,6 +3630,8 @@ MODIFICATION RULES FOR THIS APP
                     return `<polyline data-visual-aid-boundary-arrow data-visual-aid-boundary-arrow-end="${end.toFixed(6)}" points="${arrowPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#${arrowId})" opacity="0" pointer-events="none"/>`;
                 }).join('');
                 leadArrow = `<polyline data-visual-aid-lead-arrow points="" fill="none" stroke="${segmentColors[0] || aid.defaultColor}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#${arrowId})" opacity="0" pointer-events="none"/>`;
+            } else if (aid.ball) {
+                leadBall = `<circle data-visual-aid-lead-ball cx="0" cy="0" r="${Math.max(1.5, aid.thickness * 0.75)}" fill="${aid.ballColor}" opacity="0" pointer-events="none"/>`;
             }
             let quizOverlay = '';
             if (quizTarget && quizTarget.aidId === aid.id) {
@@ -3627,7 +3645,7 @@ MODIFICATION RULES FOR THIS APP
                     const point = aid.points.find(item => item.id === quizTarget.itemId);
                     if (point) {
                         const p = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, point.position);
-                        quizOverlay = `<circle class="diagram-visual-aid-quiz-highlight is-point${reviewSelectionClass}" cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(10, aid.thickness * 1.8)}" fill="none" stroke="${colorAtPosition(point.position)}" stroke-width="4"${quizFilter}/>`;
+                        quizOverlay = `<circle class="diagram-visual-aid-quiz-highlight is-point${reviewSelectionClass}" cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${Math.max(10, aid.thickness * 1.8)}" fill="none" stroke="${point.ringColor}" stroke-width="4"${quizFilter}/>`;
                     }
                 } else if (quizTarget.kind === 'visual-division') {
                     const divisionIndex = aid.divisions.findIndex(item => item.id === quizTarget.itemId);
@@ -3636,13 +3654,13 @@ MODIFICATION RULES FOR THIS APP
                         const start = division.position;
                         const end = aid.divisions[divisionIndex + 1]?.position ?? 1;
                         const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                        quizOverlay = `<polyline class="diagram-visual-aid-quiz-highlight is-division${quizMode ? ' is-mini-quiz' : ''}${reviewSelectionClass}" points="${masterPoints}" fill="none" stroke="${division.color || aid.defaultColor}" stroke-width="${aid.thickness + 7}" stroke-linecap="round" stroke-linejoin="round" ${dash}${quizFilter}/>`;
+                        quizOverlay = `<polyline class="diagram-visual-aid-quiz-highlight is-division${quizMode ? ' is-mini-quiz' : ''}${reviewSelectionClass}" points="${masterPoints}" fill="none" stroke="${division.color || aid.defaultColor}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
                     }
                 }
             }
-            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g mask="url(#${maskId})" data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${leadArrow}${revealCap}${pointMarkup}${quizOverlay}</g>`;
+            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g mask="url(#${maskId})" data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}</g>`;
         }).join('');
-        const defs = `<defs><filter id="${glowId}"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="${quizGlowId}"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="${arrowId}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker>${maskDefs.join('')}</defs>`;
+        const defs = `<defs><filter id="${glowId}"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="${quizGlowId}"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="${arrowId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="1.5" markerHeight="1.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker>${maskDefs.join('')}</defs>`;
         return { markup: `${defs}${markup}`, runtimes, animated };
     }
 
@@ -3660,6 +3678,7 @@ MODIFICATION RULES FOR THIS APP
             runtime.maskPath = findDiagramVisualAidPlaybackNodeByData(svg, '[data-visual-aid-reveal-mask]', 'visualAidRevealMask', runtime.aid.id);
             runtime.revealCap = runtime.group?.querySelector?.('[data-visual-aid-reveal-cap]') || null;
             runtime.leadArrow = runtime.group?.querySelector?.('[data-visual-aid-lead-arrow]') || null;
+            runtime.leadBall = runtime.group?.querySelector?.('[data-visual-aid-lead-ball]') || null;
             runtime.boundaryArrowNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-boundary-arrow]') || []);
             runtime.pointNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-point-id]') || []);
         });
@@ -3673,9 +3692,10 @@ MODIFICATION RULES FOR THIS APP
         const currentProgress = Number.isFinite(Number(progress)) ? normalizeDiagramVisualAidPosition(progress) : 1;
         surface.runtimes.forEach(runtime => {
             const total = Math.max(0, Number(runtime.svgMasterMetrics?.total) || 0);
-            if (runtime.maskPath) runtime.maskPath.setAttribute('stroke-dashoffset', Math.max(0, total * (1 - currentProgress)).toFixed(4));
+            const visibleDistance = getDiagramVisualAidSvgDistanceAtPosition(runtime.masterMetrics, runtime.svgMasterMetrics, currentProgress);
+            if (runtime.maskPath) runtime.maskPath.setAttribute('stroke-dashoffset', Math.max(0, total - visibleDistance).toFixed(4));
             if (runtime.revealCap) {
-                if (currentProgress > 0.000001 && runtime.masterMetrics?.path?.length) {
+                if (!runtime.aid.arrows && !runtime.aid.ball && currentProgress > 0.000001 && runtime.masterMetrics?.path?.length) {
                     const lead = getDiagramVisualAidPointAtPositionFromMetrics(runtime.masterMetrics, currentProgress);
                     runtime.revealCap.setAttribute('cx', String((lead.x / 100) * runtime.width));
                     runtime.revealCap.setAttribute('cy', String((lead.y / 100) * runtime.height));
@@ -3691,9 +3711,7 @@ MODIFICATION RULES FOR THIS APP
                 const reachedKey = reached ? '1' : '0';
                 if (node.dataset.visualAidReached !== reachedKey) {
                     node.dataset.visualAidReached = reachedKey;
-                    node.setAttribute('opacity', String(runtime.divisionQuizActive ? (reached ? 0.6 : 0.3) : (reached ? 1 : 0.3)));
-                    const fill = node.querySelector('[data-visual-aid-point-fill]');
-                    if (fill) fill.setAttribute('fill', reached ? (node.dataset.visualAidPointColor || runtime.aid.defaultColor) : runtime.aid.defaultColor);
+                    node.setAttribute('opacity', String(runtime.divisionQuizActive ? 0.6 : 1));
                 }
             });
             runtime.boundaryArrowNodes.forEach(node => {
@@ -3714,6 +3732,17 @@ MODIFICATION RULES FOR THIS APP
                     runtime.leadArrow.setAttribute('opacity', '1');
                 } else {
                     runtime.leadArrow.setAttribute('opacity', '0');
+                }
+            }
+            if (runtime.leadBall) {
+                if (currentProgress > 0.000001 && runtime.masterMetrics?.path?.length) {
+                    const lead = getDiagramVisualAidPointAtPositionFromMetrics(runtime.masterMetrics, currentProgress);
+                    runtime.leadBall.setAttribute('cx', String((lead.x / 100) * runtime.width));
+                    runtime.leadBall.setAttribute('cy', String((lead.y / 100) * runtime.height));
+                    runtime.leadBall.setAttribute('fill', runtime.aid.ballColor || runtime.aid.defaultColor);
+                    runtime.leadBall.setAttribute('opacity', '1');
+                } else {
+                    runtime.leadBall.setAttribute('opacity', '0');
                 }
             }
         });
@@ -8034,6 +8063,8 @@ The deletion becomes permanent when you save the diagram.`);
         review.visualAidSelectedKind = ['path', 'point', 'division'].includes(review.visualAidSelectedKind) ? review.visualAidSelectedKind : '';
         review.visualAidSelectedId = normalizeSheetText(review.visualAidSelectedId || '');
         if (!review.visualAidIdByAngle || typeof review.visualAidIdByAngle !== 'object' || Array.isArray(review.visualAidIdByAngle)) review.visualAidIdByAngle = {};
+        if (!review.miniVisualPromptPosition || typeof review.miniVisualPromptPosition !== 'object' || Array.isArray(review.miniVisualPromptPosition)) review.miniVisualPromptPosition = null;
+        review.suppressMiniVisualPromptClickUntil = Math.max(0, Number(review.suppressMiniVisualPromptClickUntil) || 0);
         return review;
     }
 
@@ -9596,6 +9627,132 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
 
+    let reviewModeMiniVisualPromptDrag = null;
+
+    function getReviewModeMiniVisualPromptKey(details = null) {
+        const target = details?.target;
+        if (!target) return '';
+        return `${Number(target.angleIndex) || 0}:${normalizeSheetText(target.kind || '')}:${normalizeSheetText(target.visualAidId || '')}:${normalizeSheetText(target.visualItemId || '')}`;
+    }
+
+    function getReviewModeMiniVisualPromptAutoPosition(details = null, wrap = null) {
+        const aid = details?.aid;
+        const metrics = aid ? getDiagramVisualAidPathMetrics(aid) : null;
+        const stageRect = elements.reviewModeImageStage?.getBoundingClientRect?.();
+        const promptRect = wrap?.getBoundingClientRect?.();
+        const halfWidth = stageRect?.width && promptRect?.width ? Math.min(42, ((promptRect.width / 2) / stageRect.width) * 100) : 22;
+        const halfHeight = stageRect?.height && promptRect?.height ? Math.min(30, ((promptRect.height / 2) / stageRect.height) * 100) : 10;
+        const padX = Math.min(8, Math.max(3, halfWidth * 0.16));
+        const padY = Math.min(8, Math.max(3, halfHeight * 0.28));
+        const left = Math.min(50, halfWidth + padX);
+        const right = Math.max(50, 100 - halfWidth - padX);
+        const top = Math.min(50, halfHeight + padY);
+        const bottom = Math.max(50, 100 - halfHeight - padY);
+        const candidates = [
+            { x: 50, y: top }, { x: 50, y: bottom },
+            { x: left, y: 50 }, { x: right, y: 50 },
+            { x: left, y: top }, { x: right, y: top },
+            { x: left, y: bottom }, { x: right, y: bottom }
+        ];
+        const path = metrics?.path || [];
+        if (!path.length) return candidates[0];
+        const score = candidate => {
+            let minimum = Infinity;
+            const step = Math.max(1, Math.floor(path.length / 180));
+            for (let index = 0; index < path.length; index += step) {
+                const point = path[index];
+                const dx = Math.max(0, Math.abs(point.x - candidate.x) - halfWidth);
+                const dy = Math.max(0, Math.abs(point.y - candidate.y) - halfHeight);
+                minimum = Math.min(minimum, Math.hypot(dx, dy));
+            }
+            return minimum;
+        };
+        let best = candidates[0];
+        let bestScore = score(best);
+        candidates.slice(1).forEach(candidate => {
+            const candidateScore = score(candidate);
+            if (candidateScore > bestScore) { best = candidate; bestScore = candidateScore; }
+        });
+        return best;
+    }
+
+    function applyReviewModeMiniVisualPromptPosition(details = null) {
+        const wrap = elements.reviewModeLabelLayer?.querySelector?.('.review-mode-mini-visual-prompt-wrap');
+        if (!wrap || !details) return;
+        const review = getReviewModeState();
+        const key = getReviewModeMiniVisualPromptKey(details);
+        let position = review.miniVisualPromptPosition;
+        if (!position || position.key !== key || !Number.isFinite(Number(position.x)) || !Number.isFinite(Number(position.y))) {
+            const auto = getReviewModeMiniVisualPromptAutoPosition(details, wrap);
+            position = { key, x: auto.x, y: auto.y, userMoved: false };
+            review.miniVisualPromptPosition = position;
+        }
+        const stageRect = elements.reviewModeImageStage?.getBoundingClientRect?.();
+        const bounds = getReviewModeLabelDragBounds(stageRect, wrap);
+        const x = Math.min(bounds.maxX, Math.max(bounds.minX, Number(position.x) || 50));
+        const y = Math.min(bounds.maxY, Math.max(bounds.minY, Number(position.y) || 12));
+        if (x !== position.x || y !== position.y) review.miniVisualPromptPosition = { ...position, x, y };
+        wrap.style.left = `${x}%`;
+        wrap.style.top = `${y}%`;
+    }
+
+    function beginReviewModeMiniVisualPromptDrag(event, wrap) {
+        const review = getReviewModeState();
+        const details = getReviewModeMiniQuizVisualTargetDetails(review);
+        if (!wrap || !details || review.miniQuiz.complete || (event.button !== undefined && event.button !== 0)) return;
+        if (event.target.closest('[data-review-mini-answer], [data-review-mini-typed-input], [data-review-mini-typed-check], [data-review-mini-typed-next]')) return;
+        applyReviewModeMiniVisualPromptPosition(details);
+        const rect = elements.reviewModeImageStage?.getBoundingClientRect?.();
+        const position = review.miniVisualPromptPosition;
+        if (!rect?.width || !rect?.height || !position) return;
+        reviewModeMiniVisualPromptDrag = {
+            pointerId: event.pointerId,
+            wrap,
+            rect,
+            bounds: getReviewModeLabelDragBounds(rect, wrap),
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            startX: Number(position.x) || 50,
+            startY: Number(position.y) || 12,
+            key: position.key,
+            moved: false
+        };
+        wrap.classList.add('is-dragging');
+        try { wrap.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+
+    function moveReviewModeMiniVisualPromptDrag(event) {
+        const drag = reviewModeMiniVisualPromptDrag;
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+        drag.moved = true;
+        event.preventDefault();
+        const rawX = drag.startX + (dx / drag.rect.width) * 100;
+        const rawY = drag.startY + (dy / drag.rect.height) * 100;
+        const x = Math.min(drag.bounds.maxX, Math.max(drag.bounds.minX, rawX));
+        const y = Math.min(drag.bounds.maxY, Math.max(drag.bounds.minY, rawY));
+        const review = getReviewModeState();
+        review.miniVisualPromptPosition = { key: drag.key, x, y, userMoved: true };
+        drag.wrap.style.left = `${x}%`;
+        drag.wrap.style.top = `${y}%`;
+    }
+
+    function endReviewModeMiniVisualPromptDrag(event) {
+        const drag = reviewModeMiniVisualPromptDrag;
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        drag.wrap.classList.remove('is-dragging');
+        try { drag.wrap.releasePointerCapture(event.pointerId); } catch (_) {}
+        if (drag.moved) {
+            const review = getReviewModeState();
+            review.suppressMiniVisualPromptClickUntil = Date.now() + 700;
+            if (event.cancelable) event.preventDefault();
+        }
+        reviewModeMiniVisualPromptDrag = null;
+    }
+
+
     function stopReviewModeVisualAidAnimation() {
         const review = getReviewModeState();
         if (review.visualAidFrameId) cancelAnimationFrame(review.visualAidFrameId);
@@ -9784,6 +9941,19 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+
+    function updateReviewModeVisualAidScrubProgress(value = 0) {
+        const review = getReviewModeState();
+        review.visualAidProgress = normalizeDiagramVisualAidPosition(Number(value) / 1000);
+        review.visualAidStartedAt = 0;
+        if (!review.miniQuiz.active) {
+            review.visualAidSelectedKind = '';
+            review.visualAidSelectedId = '';
+        }
+        if (!updateReviewModeVisualAidPlaybackFrame(review)) renderReviewModeVisualAids();
+    }
+
+
     function resetReviewModeVisualAidAnimation() {
         stopReviewModeVisualAidAnimation();
         const review=getReviewModeState(); review.visualAidProgress=0; review.visualAidStartedAt=0; renderReviewModeVisualAids();
@@ -9925,6 +10095,7 @@ The deletion becomes permanent when you save the diagram.`);
                     const answerHtml = isRevealed ? renderMathChemTextToHtml(details.name) : '?';
                     layer.innerHTML = `<div class="review-mode-mini-visual-prompt-wrap${isRevealed ? ' is-revealed' : ''}">${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this item">✕</button>' : ''}<button type="button" class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-visual-prompt${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}" data-review-mini-visual-reveal aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know this item' : escapeHtml(prompt)}"><span class="review-mode-mini-visual-question">${escapeHtml(prompt)}</span><span class="review-mode-label-name">${answerHtml}</span></button>${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this item">✓</button>' : ''}</div>`;
                 }
+                applyReviewModeMiniVisualPromptPosition(details);
                 renderReviewModeDrawData();
                 renderReviewModeConnectors();
                 syncReviewModeMiniQuizUi();
@@ -10201,6 +10372,8 @@ The deletion becomes permanent when you save the diagram.`);
         review.visualAidSelectedKind = '';
         review.visualAidSelectedId = '';
         review.visualAidIdByAngle = {};
+        review.miniVisualPromptPosition = null;
+        review.suppressMiniVisualPromptClickUntil = 0;
         review.revealedLabels = new Set();
         review.revealedLabelsByAngle = {};
         review.temporaryLabelPositions = {};
@@ -10237,9 +10410,12 @@ The deletion becomes permanent when you save the diagram.`);
         review.showVisualAid = false;
         review.miniQuizCurrentVisualAidOnly = false;
         review.visualAidIdByAngle = {};
+        review.miniVisualPromptPosition = null;
+        review.suppressMiniVisualPromptClickUntil = 0;
         review.miniQuizScope = 'current';
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
         reviewModeLabelDrag = null;
+        reviewModeMiniVisualPromptDrag = null;
         resetReviewModeAngleLoading({ clearCache: true });
         resetReviewModeZoom();
         clearReviewModeOverlayLayers();
@@ -13677,10 +13853,10 @@ The deletion becomes permanent when you save the diagram.`);
         list.innerHTML = aids.map((aid, index) => {
             const active = aid.id === editor.activeVisualAidId;
             const divisions = aid.divisions.map((division, divisionIndex) => `<div class="studio-visual-aid-subrow"><input data-visual-aid-division-name="${escapeHtml(division.id)}" value="${escapeHtml(division.name)}" aria-label="Division name"><input data-visual-aid-division-color="${escapeHtml(division.id)}" type="color" value="${escapeHtml(division.color)}" aria-label="Division color"><button type="button" data-visual-aid-delete-division="${escapeHtml(division.id)}" aria-label="Delete division">×</button></div>`).join('');
-            const points = aid.points.map((point, pointIndex) => `<div class="studio-visual-aid-subrow studio-visual-aid-point-row"><span class="studio-visual-aid-point-dot" aria-hidden="true"></span><input data-visual-aid-point-name="${escapeHtml(point.id)}" value="${escapeHtml(point.name)}" aria-label="Point name"><div class="studio-visual-aid-point-order"><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="up" aria-label="Move point earlier in sequence" ${pointIndex===0?'disabled':''}>↑</button><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="down" aria-label="Move point later in sequence" ${pointIndex===aid.points.length-1?'disabled':''}>↓</button></div><button type="button" data-visual-aid-delete-point="${escapeHtml(point.id)}" aria-label="Delete point">×</button></div>`).join('');
+            const points = aid.points.map((point, pointIndex) => `<div class="studio-visual-aid-subrow studio-visual-aid-point-row"><label class="studio-visual-aid-point-color ${point.pointStyle === 'solid' ? 'is-solid' : 'is-ring'}" style="--point-ring-color:${escapeHtml(point.ringColor)};--point-center-color:${escapeHtml(aid.defaultColor)}" title="Change ${escapeHtml(point.name)} ring color"><span class="studio-visual-aid-point-ring-swatch" aria-hidden="true"></span><input data-visual-aid-point-ring-color="${escapeHtml(point.id)}" type="color" value="${escapeHtml(point.ringColor)}" aria-label="${escapeHtml(point.name)} color"></label><button type="button" class="studio-visual-aid-point-style-toggle" data-visual-aid-point-style-toggle="${escapeHtml(point.id)}" aria-label="Change ${escapeHtml(point.name)} between hollow and solid" title="${point.pointStyle === 'solid' ? 'Solid point — click for hollow ring' : 'Hollow ring — click for solid point'}">${point.pointStyle === 'solid' ? '●' : '○'}</button><input data-visual-aid-point-name="${escapeHtml(point.id)}" value="${escapeHtml(point.name)}" aria-label="Point name"><div class="studio-visual-aid-point-order"><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="up" aria-label="Move point earlier in sequence" ${pointIndex===0?'disabled':''}>↑</button><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="down" aria-label="Move point later in sequence" ${pointIndex===aid.points.length-1?'disabled':''}>↓</button></div><button type="button" data-visual-aid-delete-point="${escapeHtml(point.id)}" aria-label="Delete point">×</button></div>`).join('');
             const sessionVisible = isImageEditorVisualAidSessionVisible(editor, aid.id);
             const previewReady = sessionVisible && aid.path.length > 1;
-            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Visual Aid name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid">🗑</button></div>${active ? `<div class="studio-visual-aid-tools"><button type="button" data-visual-aid-tool="path" class="${editor.activeVisualAidTool==='path'?'active':''}">Draw Path</button><button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="24" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><label class="studio-visual-aid-arrow-toggle"><input data-visual-aid-arrows type="checkbox" ${aid.arrows?'checked':''}> Arrows</label></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button><button type="button" data-visual-aid-preview-action="loop" aria-label="Loop preview" aria-pressed="${editor.visualAidPreviewLoop?'true':'false'}" class="${editor.visualAidPreviewLoop?'active':''}" ${previewReady?'':'disabled'}>↻</button></div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-title">Divisions</div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-title">Points</div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
+            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Visual Aid name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid">🗑</button></div>${active ? `<div class="studio-visual-aid-tools"><button type="button" data-visual-aid-tool="path" class="${editor.activeVisualAidTool==='path'?'active':''}">Draw Path</button><button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="24" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls"><label class="studio-visual-aid-arrow-toggle"><input data-visual-aid-arrows type="checkbox" ${aid.arrows?'checked':''}> Arrow</label><label class="studio-visual-aid-ball-toggle"><input data-visual-aid-ball type="checkbox" ${aid.ball?'checked':''}> Ball</label>${aid.ball ? `<label class="studio-visual-aid-ball-color">Ball color <input data-visual-aid-ball-color type="color" value="${escapeHtml(aid.ballColor)}" aria-label="Ball color"></label>` : ''}</div></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button><button type="button" data-visual-aid-preview-action="loop" aria-label="Loop preview" aria-pressed="${editor.visualAidPreviewLoop?'true':'false'}" class="${editor.visualAidPreviewLoop?'active':''}" ${previewReady?'':'disabled'}>↻</button></div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-title">Divisions</div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-title">Points</div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
         }).join('') || '<div class="studio-visual-aid-empty">Add a Visual Aid, draw its path, then add divisions and named points.</div>';
         renderImageEditorVisualAidPreviewSequence();
     }
@@ -13700,7 +13876,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor?.visualAidsEnabled) return;
         const aids = normalizeDiagramVisualAids(editor.visualAids || []);
         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
-        const aid = normalizeDiagramVisualAid({ name: `Visual Aid ${aids.length + 1}`, visible: true, defaultColor: '#8b5cf6', speed: 1, path: [] }, aids.length);
+        const aid = normalizeDiagramVisualAid({ name: `Visual Aid ${aids.length + 1}`, visible: true, defaultColor: '#8b5cf6', speed: 1, arrows: false, ball: false, ballColor: '#8b5cf6', path: [] }, aids.length);
         aids.push(aid);
         editor.visualAids = aids;
         editor.activeVisualAidId = aid.id;
@@ -14369,6 +14545,7 @@ The deletion becomes permanent when you save the diagram.`);
                 const deleteDivision = event.target.closest('[data-visual-aid-delete-division]');
                 const deletePoint = event.target.closest('[data-visual-aid-delete-point]');
                 const movePoint = event.target.closest('[data-visual-aid-point-move]');
+                const pointStyleToggle = event.target.closest('[data-visual-aid-point-style-toggle]');
                 const previewAction = event.target.closest('[data-visual-aid-preview-action]');
                 const previewPosition = event.target.closest('[data-visual-aid-preview-position]');
                 let handled = false;
@@ -14414,6 +14591,14 @@ The deletion becomes permanent when you save the diagram.`);
                         }
                     }
                 }
+                if (pointStyleToggle) {
+                    const aid = aids.find(item => item.id === editor.activeVisualAidId);
+                    const point = aid?.points.find(item => item.id === normalizeSheetText(pointStyleToggle.dataset.visualAidPointStyleToggle || ''));
+                    if (point) {
+                        point.pointStyle = point.pointStyle === 'solid' ? 'ring' : 'solid';
+                        handled = true;
+                    }
+                }
                 if (previewAction) {
                     const action = previewAction.dataset.visualAidPreviewAction;
                     if (action === 'play') playImageEditorVisualAidPreview();
@@ -14457,6 +14642,7 @@ The deletion becomes permanent when you save the diagram.`);
                     const nextColor = normalizeEditorHexColor(event.target.value, previousColor);
                     aid.defaultColor = nextColor;
                     aid.divisions = aid.divisions.map(item => ({ ...item, color: item.color === previousColor ? nextColor : item.color }));
+                    if (aid.ballColor === previousColor) aid.ballColor = nextColor;
                     changed = true;
                 }
                 if (event.target.matches('[data-visual-aid-thickness]')) {
@@ -14473,12 +14659,34 @@ The deletion becomes permanent when you save the diagram.`);
                     if (value) value.textContent = `${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×`;
                     changed = true;
                 }
-                if (event.target.matches('[data-visual-aid-arrows]')) { aid.arrows = !!event.target.checked; changed = true; }
+                let refreshPanel = false;
+                if (event.target.matches('[data-visual-aid-arrows]')) {
+                    aid.arrows = !!event.target.checked;
+                    if (aid.arrows) aid.ball = false;
+                    changed = true;
+                    refreshPanel = true;
+                }
+                if (event.target.matches('[data-visual-aid-ball]')) {
+                    aid.ball = !!event.target.checked;
+                    if (aid.ball) aid.arrows = false;
+                    changed = true;
+                    refreshPanel = true;
+                }
+                if (event.target.matches('[data-visual-aid-ball-color]')) { aid.ballColor = normalizeEditorHexColor(event.target.value, aid.ballColor || aid.defaultColor); changed = true; }
                 if (event.target.matches('[data-visual-aid-division-name]')) { const item = aid.divisions.find(item => item.id === event.target.dataset.visualAidDivisionName); if (item) { item.name = event.target.value.slice(0, 100); changed = true; } }
                 if (event.target.matches('[data-visual-aid-division-color]')) { const item = aid.divisions.find(item => item.id === event.target.dataset.visualAidDivisionColor); if (item) { item.color = normalizeEditorHexColor(event.target.value, item.color); changed = true; } }
                 if (event.target.matches('[data-visual-aid-point-name]')) { const item = aid.points.find(item => item.id === event.target.dataset.visualAidPointName); if (item) { item.name = event.target.value.slice(0, 100); changed = true; } }
+                if (event.target.matches('[data-visual-aid-point-ring-color]')) {
+                    const item = aid.points.find(item => item.id === event.target.dataset.visualAidPointRingColor);
+                    if (item) {
+                        item.ringColor = normalizeEditorHexColor(event.target.value, item.ringColor || aid.defaultColor);
+                        event.target.closest('.studio-visual-aid-point-color')?.style.setProperty('--point-ring-color', item.ringColor);
+                        changed = true;
+                    }
+                }
                 if (!changed) return;
                 editor.visualAids = normalizeDiagramVisualAids(aids);
+                if (refreshPanel) renderImageEditorVisualAidPanel();
                 renderImageEditorVisualAidLayer();
                 if (restartPreview) playImageEditorVisualAidPreview();
             };
@@ -38804,13 +39012,25 @@ if (elements.reviewModeCloseBtn) {
         review.visualAidStartedAt = 0;
         renderReviewModeVisualAids();
     });
+    elements.reviewModeVisualAidSequence?.addEventListener('pointerdown', event => {
+        if (!event.target.matches('[data-review-visual-aid-scrubber]')) return;
+        const review = getReviewModeState();
+        const hadSelection = !review.miniQuiz.active && !!(review.visualAidSelectedKind && review.visualAidSelectedId);
+        stopReviewModeVisualAidAnimation();
+        review.visualAidStartedAt = 0;
+        if (!review.miniQuiz.active) { review.visualAidSelectedKind = ''; review.visualAidSelectedId = ''; }
+        // Remove a resting selection overlay once at scrub start. Every range input after this
+        // goes straight to the already-mounted shared playback surface.
+        if (hadSelection) renderReviewModeVisualAids();
+    });
     elements.reviewModeVisualAidSequence?.addEventListener('input', event => {
         if (!event.target.matches('[data-review-visual-aid-scrubber]')) return;
         stopReviewModeVisualAidAnimation();
-        const review = getReviewModeState();
-        review.visualAidProgress = normalizeDiagramVisualAidPosition(Number(event.target.value) / 1000);
-        if (!review.miniQuiz.active) { review.visualAidSelectedKind = ''; review.visualAidSelectedId = ''; }
-        review.visualAidStartedAt = 0;
+        updateReviewModeVisualAidScrubProgress(event.target.value);
+    });
+    elements.reviewModeVisualAidSequence?.addEventListener('change', event => {
+        if (!event.target.matches('[data-review-visual-aid-scrubber]')) return;
+        // Restore resting click-hit geometry once after the drag/keyboard scrub is committed.
         renderReviewModeVisualAids();
     });
     elements.reviewModeVisualAidSpeed?.addEventListener('change', () => {
@@ -39133,14 +39353,31 @@ if (elements.reviewModeShortcutGrip) {
 
 if (elements.reviewModeLabelLayer) {
     elements.reviewModeLabelLayer.addEventListener('pointerdown', event => {
+        const visualPrompt = event.target.closest('.review-mode-mini-visual-prompt-wrap');
+        if (visualPrompt) {
+            beginReviewModeMiniVisualPromptDrag(event, visualPrompt);
+            if (reviewModeMiniVisualPromptDrag) return;
+        }
         const marker = event.target.closest('[data-review-label-index]');
         if (marker?.classList.contains('review-mode-mini-typed-card') && event.target.closest('input, button')) return;
         if (marker) beginReviewModeLabelDrag(event, marker);
     });
-    elements.reviewModeLabelLayer.addEventListener('pointermove', moveReviewModeLabelDrag);
-    elements.reviewModeLabelLayer.addEventListener('pointerup', endReviewModeLabelDrag);
-    elements.reviewModeLabelLayer.addEventListener('pointercancel', endReviewModeLabelDrag);
-    elements.reviewModeLabelLayer.addEventListener('lostpointercapture', endReviewModeLabelDrag);
+    elements.reviewModeLabelLayer.addEventListener('pointermove', event => {
+        if (reviewModeMiniVisualPromptDrag) return moveReviewModeMiniVisualPromptDrag(event);
+        moveReviewModeLabelDrag(event);
+    });
+    elements.reviewModeLabelLayer.addEventListener('pointerup', event => {
+        if (reviewModeMiniVisualPromptDrag) return endReviewModeMiniVisualPromptDrag(event);
+        endReviewModeLabelDrag(event);
+    });
+    elements.reviewModeLabelLayer.addEventListener('pointercancel', event => {
+        if (reviewModeMiniVisualPromptDrag) return endReviewModeMiniVisualPromptDrag(event);
+        endReviewModeLabelDrag(event);
+    });
+    elements.reviewModeLabelLayer.addEventListener('lostpointercapture', event => {
+        if (reviewModeMiniVisualPromptDrag) return endReviewModeMiniVisualPromptDrag(event);
+        endReviewModeLabelDrag(event);
+    });
     elements.reviewModeLabelLayer.addEventListener('input', event => {
         const input = event.target.closest('[data-review-mini-typed-input]');
         if (!input) return;
@@ -39182,6 +39419,10 @@ if (elements.reviewModeLabelLayer) {
         if (visualReveal && review.miniQuiz.active && !review.miniQuiz.complete) {
             event.preventDefault();
             event.stopPropagation();
+            if (Date.now() < review.suppressMiniVisualPromptClickUntil) {
+                review.suppressMiniVisualPromptClickUntil = 0;
+                return;
+            }
             if (!review.typedMiniQuiz && !review.miniQuiz.answerRevealed) revealReviewModeMiniQuizAnswer();
             return;
         }
