@@ -543,6 +543,21 @@ MODIFICATION RULES FOR THIS APP
                 activeVisualAidId: '',
                 sessionVisibleVisualAidId: '',
                 activeVisualAidTool: 'path',
+                activeVisualAidPathMethod: 'brush',
+                visualAidPathMenuOpen: false,
+                visualAidCurveSelectedAnchorId: '',
+                visualAidCurveHover: null,
+                visualAidCurveDrag: null,
+                visualAidCurveAddMode: true,
+                visualAidPenForcedMode: '',
+                visualAidPenShiftHeld: false,
+                visualAidPenAltHeld: false,
+                visualAidPenDirectHeld: false,
+                visualAidLazyDragEnabled: false,
+                visualAidLazyDistance: 36,
+                visualAidLazyStep: 3,
+                visualAidLazyBrushPoint: null,
+                visualAidLazyBrushRawPoint: null,
                 activeVisualAidDivisionId: '',
                 activeVisualAidDraftPath: null,
                 visualAidPreviewProgress: 0,
@@ -3238,6 +3253,69 @@ MODIFICATION RULES FOR THIS APP
         return Math.min(1, Math.max(0, Number(value) || 0));
     }
 
+    const DIAGRAM_VISUAL_AID_MAX_CURVE_ANCHORS = 180;
+
+    function normalizeDiagramVisualAidCurveAnchor(anchor = {}, index = 0) {
+        const finiteOrNull = value => (value === null || value === undefined || value === '') ? null : (Number.isFinite(Number(value)) ? Math.min(100, Math.max(0, Number(value))) : null);
+        return {
+            id: normalizeSheetText(anchor?.id) || createDiagramVisualAidId('anchor'),
+            x: Math.min(100, Math.max(0, Number(anchor?.x) || 0)),
+            y: Math.min(100, Math.max(0, Number(anchor?.y) || 0)),
+            inX: finiteOrNull(anchor?.inX),
+            inY: finiteOrNull(anchor?.inY),
+            outX: finiteOrNull(anchor?.outX),
+            outY: finiteOrNull(anchor?.outY),
+            order: index
+        };
+    }
+
+    function normalizeDiagramVisualAidPathAuthoring(value = 'brush') {
+        return normalizeSheetText(value).toLowerCase() === 'curves' ? 'curves' : 'brush';
+    }
+
+    function getDiagramVisualAidCurveHandle(anchor, side = 'out') {
+        const x = side === 'in' ? anchor?.inX : anchor?.outX;
+        const y = side === 'in' ? anchor?.inY : anchor?.outY;
+        return x !== null && x !== undefined && y !== null && y !== undefined && Number.isFinite(Number(x)) && Number.isFinite(Number(y))
+            ? { x: Number(x), y: Number(y) }
+            : { x: Number(anchor?.x) || 0, y: Number(anchor?.y) || 0 };
+    }
+
+    function getDiagramVisualAidBezierPoint(p0, p1, p2, p3, t = 0) {
+        const u = 1 - t;
+        const uu = u * u;
+        const tt = t * t;
+        return {
+            x: (uu * u * p0.x) + (3 * uu * t * p1.x) + (3 * u * tt * p2.x) + (tt * t * p3.x),
+            y: (uu * u * p0.y) + (3 * uu * t * p1.y) + (3 * u * tt * p2.y) + (tt * t * p3.y)
+        };
+    }
+
+    function compileDiagramVisualAidCurvePath(anchors = []) {
+        const source = (Array.isArray(anchors) ? anchors : []).slice(0, DIAGRAM_VISUAL_AID_MAX_CURVE_ANCHORS).map(normalizeDiagramVisualAidCurveAnchor);
+        if (!source.length) return [];
+        if (source.length === 1) return [{ x: source[0].x, y: source[0].y }];
+        const result = [{ x: source[0].x, y: source[0].y }];
+        for (let index = 0; index < source.length - 1; index += 1) {
+            const a = source[index];
+            const b = source[index + 1];
+            const p0 = { x: a.x, y: a.y };
+            const p1 = getDiagramVisualAidCurveHandle(a, 'out');
+            const p2 = getDiagramVisualAidCurveHandle(b, 'in');
+            const p3 = { x: b.x, y: b.y };
+            const estimate = Math.hypot(p1.x-p0.x,p1.y-p0.y) + Math.hypot(p2.x-p1.x,p2.y-p1.y) + Math.hypot(p3.x-p2.x,p3.y-p2.y);
+            const steps = Math.max(10, Math.min(72, Math.ceil(estimate * 0.9)));
+            for (let step = 1; step <= steps; step += 1) {
+                if (result.length >= DIAGRAM_VISUAL_AID_MAX_PATH_POINTS) break;
+                result.push(normalizeDiagramVisualAidPathPoint(getDiagramVisualAidBezierPoint(p0,p1,p2,p3,step/steps)));
+            }
+            if (result.length >= DIAGRAM_VISUAL_AID_MAX_PATH_POINTS) break;
+        }
+        const last = source[source.length - 1];
+        if (result.length) result[result.length - 1] = { x: last.x, y: last.y };
+        return result;
+    }
+
     function normalizeDiagramVisualAidSpeed(value = 1) {
         const parsed = Number(value);
         return Math.min(3, Math.max(0.25, Number.isFinite(parsed) && parsed > 0 ? parsed : 1));
@@ -3266,11 +3344,16 @@ MODIFICATION RULES FOR THIS APP
             pointStyle: normalizeSheetText(point?.pointStyle).toLowerCase() === 'solid' ? 'solid' : 'ring'
         })).sort((a, b) => a.sequenceOrder - b.sequenceOrder).map((point, pointIndex) => ({ ...point, sequenceOrder: pointIndex }));
         const ball = source.ball === true;
+        const pathAuthoring = normalizeDiagramVisualAidPathAuthoring(source.pathAuthoring || source.pathMethod || 'brush');
+        const curveAnchors = (Array.isArray(source.curveAnchors) ? source.curveAnchors : []).slice(0, DIAGRAM_VISUAL_AID_MAX_CURVE_ANCHORS).map(normalizeDiagramVisualAidCurveAnchor);
         return {
             id: normalizeSheetText(source.id) || createDiagramVisualAidId('visual'),
             name: normalizeSheetText(source.name || `Visual Aid ${index + 1}`).slice(0, 100) || `Visual Aid ${index + 1}`,
             visible: source.visible !== false,
             path,
+            pathAuthoring,
+            curveAnchors,
+            curveFinished: source.curveFinished === true,
             divisions,
             points,
             defaultColor,
@@ -3318,6 +3401,7 @@ MODIFICATION RULES FOR THIS APP
     // from handwritten-card stroke processing and does not change saved path data.
     function getDiagramVisualAidRenderPath(aid = {}) {
         const source = (Array.isArray(aid?.path) ? aid.path : []).map(normalizeDiagramVisualAidPathPoint);
+        if (normalizeDiagramVisualAidPathAuthoring(aid?.pathAuthoring || 'brush') === 'curves') return source;
         if (source.length < 3) return source;
 
         // Remove extremely close pointer samples first so tiny hand/mouse jitter does not
@@ -7714,7 +7798,10 @@ The deletion becomes permanent when you save the diagram.`);
                 visualAidsLayerVisible: currentEditor.visualAidsLayerVisible !== false,
                 metadataPanelOpen: currentEditor.metadataPanelOpen === true,
                 labelInfoPanelOpen: currentEditor.labelInfoPanelOpen === true,
-                drawTool: currentEditor.drawTool
+                drawTool: currentEditor.drawTool,
+                visualAidLazyDragEnabled: currentEditor.visualAidLazyDragEnabled === true,
+                visualAidLazyDistance: currentEditor.visualAidLazyDistance,
+                visualAidLazyStep: currentEditor.visualAidLazyStep
             }
             : null;
         draft.editorSwitching = true;
@@ -7735,6 +7822,9 @@ The deletion becomes permanent when you save the diagram.`);
                 nextEditor.drawTool = ['paintbrush', 'eraser'].includes(normalizeSheetText(editorPreferences.drawTool))
                     ? normalizeSheetText(editorPreferences.drawTool)
                     : 'paintbrush';
+                nextEditor.visualAidLazyDragEnabled = editorPreferences.visualAidLazyDragEnabled === true;
+                nextEditor.visualAidLazyDistance = Math.min(120, Math.max(4, Number(editorPreferences.visualAidLazyDistance) || 36));
+                nextEditor.visualAidLazyStep = Math.min(20, Math.max(1, Number(editorPreferences.visualAidLazyStep) || 3));
                 elements.studioImageEditorDrawToolButtons?.forEach(button => button.classList.toggle('active', normalizeSheetText(button.dataset.imageEditorDrawTool) === nextEditor.drawTool));
                 setImageEditorMode(editorPreferences.mode || 'crop');
                 refreshImageEditorMetadataUi();
@@ -11958,6 +12048,21 @@ The deletion becomes permanent when you save the diagram.`);
             activeVisualAidId: '',
             sessionVisibleVisualAidId: '',
             activeVisualAidTool: 'path',
+            activeVisualAidPathMethod: 'brush',
+            visualAidPathMenuOpen: false,
+            visualAidCurveSelectedAnchorId: '',
+            visualAidCurveHover: null,
+            visualAidCurveDrag: null,
+            visualAidCurveAddMode: true,
+            visualAidPenForcedMode: '',
+            visualAidPenShiftHeld: false,
+            visualAidPenAltHeld: false,
+            visualAidPenDirectHeld: false,
+            visualAidLazyDragEnabled: false,
+            visualAidLazyDistance: 36,
+            visualAidLazyStep: 3,
+            visualAidLazyBrushPoint: null,
+            visualAidLazyBrushRawPoint: null,
             activeVisualAidDivisionId: '',
             activeVisualAidDraftPath: null,
             visualAidPreviewProgress: 0,
@@ -12217,6 +12322,10 @@ The deletion becomes permanent when you save the diagram.`);
             window.addEventListener('keydown', event => {
                 const editor = state.auth.imageEditor;
                 if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor) || isTypingTarget(event.target)) return;
+                if (handleImageEditorVisualAidPenKeyDown(event)) {
+                    event.preventDefault();
+                    return;
+                }
                 const isUndoShortcut = !event.altKey
                     && !event.shiftKey
                     && (event.ctrlKey || event.metaKey)
@@ -12244,6 +12353,7 @@ The deletion becomes permanent when you save the diagram.`);
                 nudgeImageEditorPan(direction[0], direction[1]);
             });
             window.addEventListener('keyup', event => {
+                handleImageEditorVisualAidPenKeyUp(event);
                 if (event.code !== 'Space') return;
                 const editor = state.auth.imageEditor;
                 if (editor) editor.spacePanHeld = false;
@@ -12989,6 +13099,10 @@ The deletion becomes permanent when you save the diagram.`);
             editor.isPanning = false;
             editor.panPointerId = null;
             applyImageEditorZoomTransform();
+        }
+        if (isImageEditorVisualAidCurveMode(editor) && editor?.visualAidCurveDrag) {
+            handleImageEditorVisualAidCurvePointerUp(event?.type === 'lostpointercapture' ? null : event);
+            return;
         }
         if (!editor?.activeDrawStroke) return;
         finishImageEditorActiveStroke(event?.type === 'lostpointercapture' ? null : event);
@@ -13819,9 +13933,9 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor?.open || !button) return;
         const popover = ensureImageEditorLayerVisibilityPopover();
         popover.dataset.layerVisibilityKind = normalizeSheetText(kind);
-        syncImageEditorLayerVisibilityPopover();
         popover.classList.remove('hidden');
         popover.setAttribute('aria-hidden', 'false');
+        syncImageEditorLayerVisibilityPopover();
         const rect = button.getBoundingClientRect();
         const estimatedWidth = 230;
         const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - estimatedWidth - 8));
@@ -13952,7 +14066,11 @@ The deletion becomes permanent when you save the diagram.`);
             ? { progress: editor.visualAidPreviewProgress, activeOnlyId: activeAid.id }
             : {};
         renderDiagramVisualAidPlaybackSurface(svg, aids, width, height, previewOptions, { animationFrame });
-        svg.classList.toggle('hidden', !aids.some(aid => aid.visible && aid.path.length > 1));
+        const penAid = aids.find(aid => aid.id === editor.activeVisualAidId) || null;
+        if (!animationFrame && penAid) renderImageEditorVisualAidPenOverlay(svg, penAid);
+        if (!animationFrame) renderImageEditorVisualAidLazyGuide(svg);
+        const hasCurveEditorGeometry = !!(isImageEditorVisualAidCurveMode(editor) && penAid && (penAid.curveAnchors || []).length);
+        svg.classList.toggle('hidden', !aids.some(aid => aid.visible && aid.path.length > 1) && !hasCurveEditorGeometry);
         renderImageEditorVisualAidPreviewSequence({ animationFrame });
     }
 
@@ -14048,7 +14166,16 @@ The deletion becomes permanent when you save the diagram.`);
             const points = aid.points.map((point, pointIndex) => `<div class="studio-visual-aid-subrow studio-visual-aid-point-row"><label class="studio-visual-aid-point-color ${point.pointStyle === 'solid' ? 'is-solid' : 'is-ring'}" style="--point-ring-color:${escapeHtml(point.ringColor)};--point-center-color:${escapeHtml(aid.defaultColor)}" title="Change ${escapeHtml(point.name)} ring color"><span class="studio-visual-aid-point-ring-swatch" aria-hidden="true"></span><input data-visual-aid-point-ring-color="${escapeHtml(point.id)}" type="color" value="${escapeHtml(point.ringColor)}" aria-label="${escapeHtml(point.name)} color"></label><button type="button" class="studio-visual-aid-point-style-toggle" data-visual-aid-point-style-toggle="${escapeHtml(point.id)}" aria-label="Change ${escapeHtml(point.name)} between hollow and solid" title="${point.pointStyle === 'solid' ? 'Solid point — click for hollow ring' : 'Hollow ring — click for solid point'}">${point.pointStyle === 'solid' ? '●' : '○'}</button><input data-visual-aid-point-name="${escapeHtml(point.id)}" value="${escapeHtml(point.name)}" aria-label="Point name"><div class="studio-visual-aid-point-order"><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="up" aria-label="Move point earlier in sequence" ${pointIndex===0?'disabled':''}>↑</button><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="down" aria-label="Move point later in sequence" ${pointIndex===aid.points.length-1?'disabled':''}>↓</button></div><button type="button" data-visual-aid-delete-point="${escapeHtml(point.id)}" aria-label="Delete point">×</button></div>`).join('');
             const sessionVisible = isImageEditorVisualAidSessionVisible(editor, aid.id);
             const previewReady = sessionVisible && aid.path.length > 1;
-            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Visual Aid name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid">🗑</button></div>${active ? `<div class="studio-visual-aid-tools"><button type="button" data-visual-aid-tool="path" class="${editor.activeVisualAidTool==='path'?'active':''}">Draw Path</button><button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="24" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls"><label class="studio-visual-aid-arrow-toggle"><input data-visual-aid-arrows type="checkbox" ${aid.arrows?'checked':''}> Arrow</label><label class="studio-visual-aid-ball-toggle"><input data-visual-aid-ball type="checkbox" ${aid.ball?'checked':''}> Ball</label>${aid.ball ? `<label class="studio-visual-aid-ball-color">Ball color <input data-visual-aid-ball-color type="color" value="${escapeHtml(aid.ballColor)}" aria-label="Ball color"></label>` : ''}</div></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button><button type="button" data-visual-aid-preview-action="loop" aria-label="Loop preview" aria-pressed="${editor.visualAidPreviewLoop?'true':'false'}" class="${editor.visualAidPreviewLoop?'active':''}" ${previewReady?'':'disabled'}>↻</button></div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-title">Divisions</div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-title">Points</div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
+            const pathMethod = active ? normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || aid.pathAuthoring || 'brush') : aid.pathAuthoring;
+            const pathMenuOpen = !!(active && editor.visualAidPathMenuOpen);
+            const curveMode = !!(active && editor.activeVisualAidTool === 'path' && pathMethod === 'curves');
+            const brushMode = !!(active && editor.activeVisualAidTool === 'path' && pathMethod === 'brush');
+            const lazyEnabled = editor.visualAidLazyDragEnabled === true;
+            const lazyDistance = Math.min(120, Math.max(4, Number(editor.visualAidLazyDistance) || 36));
+            const lazyStep = Math.min(20, Math.max(1, Number(editor.visualAidLazyStep) || 3));
+            const brushLazyUi = brushMode ? `<div class="studio-visual-aid-lazy-controls${lazyEnabled ? ' is-enabled' : ''}" aria-label="Brush Lazy Drag controls"><label class="studio-visual-aid-lazy-toggle"><input data-visual-aid-lazy-enabled type="checkbox" ${lazyEnabled?'checked':''}> Lazy Drag</label>${lazyEnabled ? `<label>Lazy Distance <input data-visual-aid-lazy-distance type="range" min="4" max="120" step="1" value="${lazyDistance}"><span data-visual-aid-lazy-distance-value>${lazyDistance}</span></label><label>Lazy Step <input data-visual-aid-lazy-step type="range" min="1" max="20" step="1" value="${lazyStep}"><span data-visual-aid-lazy-step-value>${lazyStep}</span></label>` : ''}</div>` : '';
+            const pathAuthoringUi = `<div class="studio-visual-aid-path-tool-wrap"><button type="button" data-visual-aid-path-menu-toggle class="${editor.activeVisualAidTool==='path'?'active':''}" aria-expanded="${pathMenuOpen?'true':'false'}">Draw Path <span aria-hidden="true">▾</span></button>${pathMenuOpen ? `<div class="studio-visual-aid-path-menu" role="menu"><button type="button" data-visual-aid-path-method="brush" class="${pathMethod==='brush'?'active':''}" role="menuitem">Brush</button><button type="button" data-visual-aid-path-method="curves" class="${pathMethod==='curves'?'active':''}" role="menuitem">Curves</button></div>` : ''}</div>${curveMode ? `<div class="studio-visual-aid-curve-controls" aria-label="Curves path controls"><button type="button" data-visual-aid-curve-action="add">Add</button><button type="button" data-visual-aid-curve-action="reset">Reset</button><button type="button" data-visual-aid-curve-action="finish" ${(aid.curveAnchors||[]).length<2?'disabled':''}>Finish</button></div>` : ''}${brushLazyUi}`;
+            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Visual Aid name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid">🗑</button></div>${active ? `<div class="studio-visual-aid-tools">${pathAuthoringUi}<button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="24" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls"><label class="studio-visual-aid-arrow-toggle"><input data-visual-aid-arrows type="checkbox" ${aid.arrows?'checked':''}> Arrow</label><label class="studio-visual-aid-ball-toggle"><input data-visual-aid-ball type="checkbox" ${aid.ball?'checked':''}> Ball</label>${aid.ball ? `<label class="studio-visual-aid-ball-color">Ball color <input data-visual-aid-ball-color type="color" value="${escapeHtml(aid.ballColor)}" aria-label="Ball color"></label>` : ''}</div></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button><button type="button" data-visual-aid-preview-action="loop" aria-label="Loop preview" aria-pressed="${editor.visualAidPreviewLoop?'true':'false'}" class="${editor.visualAidPreviewLoop?'active':''}" ${previewReady?'':'disabled'}>↻</button></div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-title">Divisions</div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-title">Points</div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
         }).join('') || '<div class="studio-visual-aid-empty">Add a Visual Aid, draw its path, then add divisions and named points.</div>';
         renderImageEditorVisualAidPreviewSequence();
     }
@@ -14076,6 +14203,10 @@ The deletion becomes permanent when you save the diagram.`);
         editor.activeVisualAidId = aid.id;
         editor.sessionVisibleVisualAidId = aid.id;
         editor.activeVisualAidTool = 'path';
+        editor.activeVisualAidPathMethod = 'brush';
+        editor.visualAidPathMenuOpen = false;
+        editor.visualAidCurveSelectedAnchorId = '';
+        editor.visualAidCurveAddMode = true;
         editor.showVisualAidPanel = true;
         setImageEditorMode('visual-aid');
         refreshImageEditorVisualAidUi();
@@ -14085,6 +14216,483 @@ The deletion becomes permanent when you save the diagram.`);
     function getImageEditorVisualAidPointerPosition(point) {
         const canvas = elements.studioImageEditorCanvas;
         return { x: Math.min(100, Math.max(0, (point.x / Math.max(1,canvas.width)) * 100)), y: Math.min(100, Math.max(0, (point.y / Math.max(1,canvas.height)) * 100)) };
+    }
+
+    function resetImageEditorVisualAidLazyBrushState(editor = state.auth.imageEditor) {
+        if (!editor) return;
+        editor.visualAidLazyBrushPoint = null;
+        editor.visualAidLazyBrushRawPoint = null;
+    }
+
+    function getImageEditorVisualAidLazyScreenPoint(point = {}) {
+        const canvas = elements.studioImageEditorCanvas;
+        const rect = canvas?.getBoundingClientRect?.();
+        return {
+            x: (Number(point.x) || 0) * Math.max(1, rect?.width || canvas?.width || 1) / 100,
+            y: (Number(point.y) || 0) * Math.max(1, rect?.height || canvas?.height || 1) / 100
+        };
+    }
+
+    function getImageEditorVisualAidLazyNormalizedPoint(point = {}) {
+        const canvas = elements.studioImageEditorCanvas;
+        const rect = canvas?.getBoundingClientRect?.();
+        const width = Math.max(1, rect?.width || canvas?.width || 1);
+        const height = Math.max(1, rect?.height || canvas?.height || 1);
+        return {
+            x: Math.min(100, Math.max(0, ((Number(point.x) || 0) / width) * 100)),
+            y: Math.min(100, Math.max(0, ((Number(point.y) || 0) / height) * 100))
+        };
+    }
+
+    function updateImageEditorVisualAidLazyBrush(normalized = {}) {
+        const editor = state.auth.imageEditor;
+        const draft = Array.isArray(editor?.activeVisualAidDraftPath) ? editor.activeVisualAidDraftPath : null;
+        if (!editor || !draft) return false;
+        const raw = normalizeDiagramVisualAidPathPoint(normalized);
+        editor.visualAidLazyBrushRawPoint = raw;
+        if (editor.visualAidLazyDragEnabled !== true) {
+            const last = draft[draft.length - 1];
+            if (!last || Math.hypot(last.x - raw.x, last.y - raw.y) >= 0.18) { draft.push(raw); return true; }
+            return false;
+        }
+        const radius = Math.min(120, Math.max(4, Number(editor.visualAidLazyDistance) || 36));
+        const step = Math.min(20, Math.max(1, Number(editor.visualAidLazyStep) || 3));
+        const currentTip = normalizeDiagramVisualAidPathPoint(editor.visualAidLazyBrushPoint || draft[draft.length - 1] || raw);
+        const tipScreen = getImageEditorVisualAidLazyScreenPoint(currentTip);
+        const rawScreen = getImageEditorVisualAidLazyScreenPoint(raw);
+        const dx = rawScreen.x - tipScreen.x;
+        const dy = rawScreen.y - tipScreen.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance <= radius + 0.001) return false;
+        const nextTipScreen = { x: rawScreen.x - ((dx / distance) * radius), y: rawScreen.y - ((dy / distance) * radius) };
+        const nextTip = getImageEditorVisualAidLazyNormalizedPoint(nextTipScreen);
+        editor.visualAidLazyBrushPoint = nextTip;
+        const lastStamp = normalizeDiagramVisualAidPathPoint(draft[draft.length - 1] || currentTip);
+        const lastStampScreen = getImageEditorVisualAidLazyScreenPoint(lastStamp);
+        const sx = nextTipScreen.x - lastStampScreen.x;
+        const sy = nextTipScreen.y - lastStampScreen.y;
+        const segmentDistance = Math.hypot(sx, sy);
+        if (segmentDistance < step) return false;
+        const stampCount = Math.max(1, Math.floor(segmentDistance / step));
+        for (let index = 1; index <= stampCount; index += 1) {
+            const travel = Math.min(segmentDistance, index * step);
+            const ratio = segmentDistance > 0 ? travel / segmentDistance : 1;
+            draft.push(getImageEditorVisualAidLazyNormalizedPoint({ x: lastStampScreen.x + (sx * ratio), y: lastStampScreen.y + (sy * ratio) }));
+        }
+        return true;
+    }
+
+    function renderImageEditorVisualAidLazyGuide(svg) {
+        const editor = state.auth.imageEditor;
+        const canvas = elements.studioImageEditorCanvas;
+        if (!svg || !canvas || !editor?.isDrawing || editor.visualAidLazyDragEnabled !== true || editor.activeVisualAidTool !== 'path' || normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || 'brush') !== 'brush') return;
+        const tip = editor.visualAidLazyBrushPoint;
+        const raw = editor.visualAidLazyBrushRawPoint;
+        if (!tip || !raw) return;
+        const sx = Math.max(1, canvas.width) / 100;
+        const sy = Math.max(1, canvas.height) / 100;
+        const x1 = tip.x * sx, y1 = tip.y * sy, x2 = raw.x * sx, y2 = raw.y * sy;
+        svg.insertAdjacentHTML('beforeend', `<g class="studio-visual-aid-lazy-guide" aria-hidden="true"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/><circle class="is-tip" cx="${x1}" cy="${y1}" r="4.5"/><circle class="is-pointer" cx="${x2}" cy="${y2}" r="3"/></g>`);
+    }
+
+    function isImageEditorVisualAidCurveMode(editor = state.auth.imageEditor) {
+        return !!(editor?.open && editor.mode === 'visual-aid' && editor.visualAidsEnabled && editor.activeVisualAidTool === 'path' && normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || 'brush') === 'curves');
+    }
+
+    function getImageEditorVisualAidCurvePixelPoint(point = {}) {
+        const canvas = elements.studioImageEditorCanvas;
+        return {
+            x: (Number(point.x) || 0) * Math.max(1, canvas?.width || 1) / 100,
+            y: (Number(point.y) || 0) * Math.max(1, canvas?.height || 1) / 100
+        };
+    }
+
+    function getImageEditorVisualAidCurveDistancePx(a = {}, b = {}) {
+        const ap = getImageEditorVisualAidCurvePixelPoint(a);
+        const bp = getImageEditorVisualAidCurvePixelPoint(b);
+        return Math.hypot(ap.x - bp.x, ap.y - bp.y);
+    }
+
+    function getImageEditorVisualAidCurveHover(aid, target) {
+        const editor = state.auth.imageEditor;
+        const anchors = (aid?.curveAnchors || []).map(normalizeDiagramVisualAidCurveAnchor);
+        const selectedId = normalizeSheetText(editor?.visualAidCurveSelectedAnchorId || '');
+        const threshold = 12;
+        const selected = anchors.find(anchor => anchor.id === selectedId);
+        if (selected) {
+            for (const side of ['in','out']) {
+                const handle = getDiagramVisualAidCurveHandle(selected, side);
+                const collapsed = Math.hypot(handle.x-selected.x, handle.y-selected.y) < 0.02;
+                if (!collapsed && getImageEditorVisualAidCurveDistancePx(handle, target) <= threshold) return { type: 'handle', anchorId: selected.id, handle: side };
+            }
+        }
+        let nearestAnchor = null;
+        anchors.forEach(anchor => {
+            const distance = getImageEditorVisualAidCurveDistancePx(anchor, target);
+            if (!nearestAnchor || distance < nearestAnchor.distance) nearestAnchor = { type: 'anchor', anchorId: anchor.id, distance };
+        });
+        if (nearestAnchor && nearestAnchor.distance <= threshold) return nearestAnchor;
+        let best = null;
+        for (let index = 0; index < anchors.length - 1; index += 1) {
+            const a = anchors[index];
+            const b = anchors[index + 1];
+            const p0 = { x:a.x, y:a.y };
+            const p1 = getDiagramVisualAidCurveHandle(a,'out');
+            const p2 = getDiagramVisualAidCurveHandle(b,'in');
+            const p3 = { x:b.x, y:b.y };
+            let localBest = { t:0, distance:Infinity };
+            for (let step=0; step<=28; step+=1) {
+                const t=step/28;
+                const point=getDiagramVisualAidBezierPoint(p0,p1,p2,p3,t);
+                const distance=getImageEditorVisualAidCurveDistancePx(point,target);
+                if (distance<localBest.distance) localBest={t,distance};
+            }
+            let span=1/28;
+            for (let pass=0; pass<4; pass+=1) {
+                const start=Math.max(0,localBest.t-span);
+                const end=Math.min(1,localBest.t+span);
+                for (let step=0; step<=8; step+=1) {
+                    const t=start+((end-start)*step/8);
+                    const point=getDiagramVisualAidBezierPoint(p0,p1,p2,p3,t);
+                    const distance=getImageEditorVisualAidCurveDistancePx(point,target);
+                    if (distance<localBest.distance) localBest={t,distance};
+                }
+                span/=4;
+            }
+            if (!best || localBest.distance<best.distance) best={ type:'segment', segmentIndex:index, t:localBest.t, distance:localBest.distance };
+        }
+        return best && best.distance <= 10 ? best : null;
+    }
+
+    function getImageEditorVisualAidPenMode(event = null, hover = null) {
+        const editor = state.auth.imageEditor;
+        const forced = normalizeSheetText(editor?.visualAidPenForcedMode || '').toLowerCase();
+        if (forced === 'add' || forced === 'delete') return forced;
+        const direct = !!(event?.metaKey || event?.ctrlKey || editor?.visualAidPenDirectHeld);
+        const convert = !!(event?.altKey || editor?.visualAidPenAltHeld);
+        if (direct) return 'direct';
+        if (convert) return 'convert';
+        if (hover?.type === 'anchor') return 'delete';
+        if (hover?.type === 'segment') return 'add';
+        return 'pen';
+    }
+
+    function setImageEditorVisualAidPenCursor(mode = 'pen') {
+        const canvas = elements.studioImageEditorCanvas;
+        if (!canvas) return;
+        if (!isImageEditorVisualAidCurveMode()) {
+            if (canvas.dataset.visualAidPenCursor) canvas.style.cursor = '';
+            delete canvas.dataset.visualAidPenCursor;
+            return;
+        }
+        const normalized = ['add','delete','direct','convert'].includes(mode) ? mode : 'pen';
+        if (canvas.dataset.visualAidPenCursor === normalized) return;
+        const marks = {
+            add: '<path d="M22 5v10M17 10h10"/>',
+            delete: '<path d="M17 10h10"/>',
+            direct: '<path d="M18 4l9 8-5 1 3 6-3 1-3-6-4 4z"/>',
+            convert: '<path d="M18 5c7 0 9 10 3 13"/>',
+            pen: ''
+        };
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g fill="white" stroke="#111827" stroke-width="1.5"><path d="M4 27l4-12L20 3l7 7-12 12z"/><circle cx="12" cy="19" r="2" fill="#111827"/></g><g fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round">${marks[normalized]}</g><g fill="none" stroke="#111827" stroke-width="1.4" stroke-linecap="round">${marks[normalized]}</g></svg>`;
+        canvas.style.cursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 28, crosshair`;
+        canvas.dataset.visualAidPenCursor = normalized;
+    }
+
+    function constrainImageEditorVisualAidCurvePoint(origin, point, shiftHeld = false) {
+        if (!shiftHeld) return { x:point.x, y:point.y };
+        const dx=point.x-origin.x;
+        const dy=point.y-origin.y;
+        const length=Math.hypot(dx,dy);
+        if (length < 0.001) return { x:origin.x, y:origin.y };
+        const step=Math.PI/4;
+        const angle=Math.round(Math.atan2(dy,dx)/step)*step;
+        return { x:origin.x + Math.cos(angle)*length, y:origin.y + Math.sin(angle)*length };
+    }
+
+    function splitDiagramVisualAidCurveSegment(anchors, segmentIndex, t) {
+        const items=anchors.map(normalizeDiagramVisualAidCurveAnchor);
+        const a=items[segmentIndex];
+        const b=items[segmentIndex+1];
+        if (!a || !b) return items;
+        const lerp=(p,q,n)=>({x:p.x+(q.x-p.x)*n,y:p.y+(q.y-p.y)*n});
+        const p0={x:a.x,y:a.y};
+        const p1=getDiagramVisualAidCurveHandle(a,'out');
+        const p2=getDiagramVisualAidCurveHandle(b,'in');
+        const p3={x:b.x,y:b.y};
+        const q0=lerp(p0,p1,t), q1=lerp(p1,p2,t), q2=lerp(p2,p3,t);
+        const r0=lerp(q0,q1,t), r1=lerp(q1,q2,t);
+        const mid=lerp(r0,r1,t);
+        a.outX=q0.x; a.outY=q0.y;
+        b.inX=q2.x; b.inY=q2.y;
+        const inserted={ id:createDiagramVisualAidId('anchor'), x:mid.x, y:mid.y, inX:r0.x, inY:r0.y, outX:r1.x, outY:r1.y };
+        items.splice(segmentIndex+1,0,inserted);
+        return items.map(normalizeDiagramVisualAidCurveAnchor);
+    }
+
+    function updateImageEditorVisualAidCurvePath(aidIndex, aid, { renderPanel = false } = {}) {
+        const editor=state.auth.imageEditor;
+        aid.pathAuthoring='curves';
+        aid.path=compileDiagramVisualAidCurvePath(aid.curveAnchors || []);
+        editor.visualAids[aidIndex]=normalizeDiagramVisualAid(aid,aidIndex);
+        if (renderPanel) renderImageEditorVisualAidPanel();
+        renderImageEditorVisualAidLayer();
+    }
+
+    function removeImageEditorVisualAidCurveAnchor(aidIndex, aid, anchorId) {
+        aid.curveAnchors=(aid.curveAnchors || []).filter(anchor=>anchor.id!==anchorId).map(normalizeDiagramVisualAidCurveAnchor);
+        if (state.auth.imageEditor.visualAidCurveSelectedAnchorId===anchorId) state.auth.imageEditor.visualAidCurveSelectedAnchorId='';
+        aid.curveFinished=false;
+        updateImageEditorVisualAidCurvePath(aidIndex,aid,{renderPanel:true});
+    }
+
+    function renderImageEditorVisualAidPenOverlay(svg, aid) {
+        const editor=state.auth.imageEditor;
+        const canvas=elements.studioImageEditorCanvas;
+        if (!svg || !canvas || !aid || !isImageEditorVisualAidCurveMode(editor) || aid.id!==editor.activeVisualAidId) return;
+        const anchors=(aid.curveAnchors || []).map(normalizeDiagramVisualAidCurveAnchor);
+        if (!anchors.length) return;
+        const sx=Math.max(1,canvas.width)/100;
+        const sy=Math.max(1,canvas.height)/100;
+        const selectedId=normalizeSheetText(editor.visualAidCurveSelectedAnchorId || '');
+        const selected=anchors.find(anchor=>anchor.id===selectedId);
+        let markup='<g class="studio-visual-aid-pen-overlay" aria-hidden="true">';
+        if (aid.curveFinished !== true && Array.isArray(aid.path) && aid.path.length > 1) {
+            const previewPoints = aid.path.map(point => `${point.x * sx},${point.y * sy}`).join(' ');
+            markup += `<polyline class="studio-visual-aid-pen-curve-preview" points="${previewPoints}" fill="none" stroke="${escapeHtml(aid.defaultColor)}" stroke-width="${aid.thickness}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }
+        if (selected) {
+            const px=selected.x*sx, py=selected.y*sy;
+            ['in','out'].forEach(side=>{
+                const handle=getDiagramVisualAidCurveHandle(selected,side);
+                if (Math.hypot(handle.x-selected.x,handle.y-selected.y)<0.02) return;
+                const hx=handle.x*sx, hy=handle.y*sy;
+                markup+=`<line class="studio-visual-aid-pen-handle-line" x1="${px}" y1="${py}" x2="${hx}" y2="${hy}"/><circle class="studio-visual-aid-pen-handle" cx="${hx}" cy="${hy}" r="5.5"/>`;
+            });
+        }
+        anchors.forEach(anchor=>{
+            const x=anchor.x*sx, y=anchor.y*sy;
+            markup+=`<rect class="studio-visual-aid-pen-anchor ${anchor.id===selectedId?'is-selected':''}" x="${x-5}" y="${y-5}" width="10" height="10" rx="1.5"/>`;
+        });
+        markup+='</g>';
+        svg.insertAdjacentHTML('beforeend',markup);
+    }
+
+    function handleImageEditorVisualAidCurvePointerDown(event, normalized, aidIndex, aid) {
+        const editor=state.auth.imageEditor;
+        if (!isImageEditorVisualAidCurveMode(editor)) return false;
+        const hover=getImageEditorVisualAidCurveHover(aid,normalized);
+        editor.visualAidCurveHover=hover;
+        const mode=getImageEditorVisualAidPenMode(event,hover);
+        setImageEditorVisualAidPenCursor(mode);
+        if (hover?.type==='handle') {
+            editor.visualAidCurveSelectedAnchorId=hover.anchorId;
+            editor.visualAidCurveDrag={ type:'handle', anchorId:hover.anchorId, handle:hover.handle, pointerId:event.pointerId };
+            editor.isDrawing=true;
+            captureImageEditorPointer(event);
+            renderImageEditorVisualAidLayer();
+            return true;
+        }
+        if (mode==='convert' && hover?.type==='anchor') {
+            const anchor=aid.curveAnchors.find(item=>item.id===hover.anchorId);
+            if (!anchor) return true;
+            editor.visualAidCurveSelectedAnchorId=anchor.id;
+            editor.visualAidCurveDrag={ type:'convert-anchor', anchorId:anchor.id, pointerId:event.pointerId, origin:{x:anchor.x,y:anchor.y}, moved:false };
+            editor.isDrawing=true;
+            captureImageEditorPointer(event);
+            renderImageEditorVisualAidLayer();
+            return true;
+        }
+        if (mode==='direct' && hover?.type==='anchor') {
+            const anchor=aid.curveAnchors.find(item=>item.id===hover.anchorId);
+            if (!anchor) return true;
+            editor.visualAidCurveSelectedAnchorId=anchor.id;
+            editor.visualAidCurveDrag={ type:'anchor', anchorId:anchor.id, pointerId:event.pointerId, start:{x:normalized.x,y:normalized.y}, original:{...anchor} };
+            editor.isDrawing=true;
+            captureImageEditorPointer(event);
+            renderImageEditorVisualAidLayer();
+            return true;
+        }
+        if ((mode==='delete' || hover?.type==='anchor') && hover?.type==='anchor') {
+            removeImageEditorVisualAidCurveAnchor(aidIndex,aid,hover.anchorId);
+            editor.visualAidPenForcedMode='';
+            setImageEditorStatus('Anchor deleted.');
+            return true;
+        }
+        if ((mode==='add' || hover?.type==='segment') && hover?.type==='segment') {
+            aid.curveAnchors=splitDiagramVisualAidCurveSegment(aid.curveAnchors || [],hover.segmentIndex,hover.t);
+            const inserted=aid.curveAnchors[hover.segmentIndex+1];
+            editor.visualAidCurveSelectedAnchorId=inserted?.id || '';
+            editor.visualAidCurveAddMode=true;
+            editor.visualAidPenForcedMode='';
+            aid.curveFinished=false;
+            updateImageEditorVisualAidCurvePath(aidIndex,aid,{renderPanel:true});
+            setImageEditorStatus('Anchor added without changing the curve shape.');
+            return true;
+        }
+        if (mode==='direct' || mode==='delete') return true;
+        if (aid.curveFinished && !editor.visualAidCurveAddMode) {
+            setImageEditorStatus('Click Add to continue this finished curve.');
+            return true;
+        }
+        const anchor=normalizeDiagramVisualAidCurveAnchor({ id:createDiagramVisualAidId('anchor'), x:normalized.x, y:normalized.y, inX:normalized.x, inY:normalized.y, outX:normalized.x, outY:normalized.y });
+        aid.curveAnchors=[...(aid.curveAnchors || []),anchor].map(normalizeDiagramVisualAidCurveAnchor);
+        aid.pathAuthoring='curves';
+        aid.curveFinished=false;
+        editor.visualAidCurveSelectedAnchorId=anchor.id;
+        editor.visualAidCurveDrag={ type:'new-handle', anchorId:anchor.id, pointerId:event.pointerId, origin:{x:anchor.x,y:anchor.y} };
+        editor.isDrawing=true;
+        updateImageEditorVisualAidCurvePath(aidIndex,aid);
+        captureImageEditorPointer(event);
+        return true;
+    }
+
+    function handleImageEditorVisualAidCurvePointerMove(event, normalized) {
+        const editor=state.auth.imageEditor;
+        if (!isImageEditorVisualAidCurveMode(editor)) return false;
+        const aidIndex=normalizeDiagramVisualAids(editor.visualAids || []).findIndex(aid=>aid.id===editor.activeVisualAidId);
+        if (aidIndex<0) return true;
+        const aid=normalizeDiagramVisualAid(editor.visualAids[aidIndex],aidIndex);
+        const drag=editor.visualAidCurveDrag;
+        if (!drag) {
+            const hover=getImageEditorVisualAidCurveHover(aid,normalized);
+            editor.visualAidCurveHover=hover;
+            setImageEditorVisualAidPenCursor(getImageEditorVisualAidPenMode(event,hover));
+            return true;
+        }
+        const anchor=aid.curveAnchors.find(item=>item.id===drag.anchorId);
+        if (!anchor) return true;
+        if (drag.type==='anchor') {
+            let deltaTarget=constrainImageEditorVisualAidCurvePoint(drag.start,normalized,!!event.shiftKey);
+            const dx=deltaTarget.x-drag.start.x, dy=deltaTarget.y-drag.start.y;
+            const target={x:Math.min(100,Math.max(0,drag.original.x+dx)),y:Math.min(100,Math.max(0,drag.original.y+dy))};
+            const appliedDx=target.x-drag.original.x, appliedDy=target.y-drag.original.y;
+            anchor.x=target.x; anchor.y=target.y;
+            if (Number.isFinite(drag.original.inX) && Number.isFinite(drag.original.inY)) { anchor.inX=drag.original.inX+appliedDx; anchor.inY=drag.original.inY+appliedDy; }
+            if (Number.isFinite(drag.original.outX) && Number.isFinite(drag.original.outY)) { anchor.outX=drag.original.outX+appliedDx; anchor.outY=drag.original.outY+appliedDy; }
+        } else if (drag.type==='convert-anchor') {
+            const target=constrainImageEditorVisualAidCurvePoint(anchor,normalized,!!event.shiftKey);
+            if (getImageEditorVisualAidCurveDistancePx(anchor,target) >= 2) drag.moved=true;
+            anchor.outX=target.x; anchor.outY=target.y;
+            anchor.inX=(anchor.x*2)-target.x; anchor.inY=(anchor.y*2)-target.y;
+        } else {
+            const target=constrainImageEditorVisualAidCurvePoint(anchor,normalized,!!event.shiftKey);
+            const side=drag.type==='new-handle' ? 'out' : drag.handle;
+            if (side==='in') { anchor.inX=target.x; anchor.inY=target.y; }
+            else { anchor.outX=target.x; anchor.outY=target.y; }
+            const breakHandles=!!event.altKey;
+            if (!breakHandles) {
+                const opposite={x:(anchor.x*2)-target.x,y:(anchor.y*2)-target.y};
+                if (side==='in') { anchor.outX=opposite.x; anchor.outY=opposite.y; }
+                else { anchor.inX=opposite.x; anchor.inY=opposite.y; }
+            }
+        }
+        aid.curveFinished=false;
+        updateImageEditorVisualAidCurvePath(aidIndex,aid);
+        return true;
+    }
+
+    function handleImageEditorVisualAidCurvePointerUp(event) {
+        const editor=state.auth.imageEditor;
+        if (!isImageEditorVisualAidCurveMode(editor) || !editor?.visualAidCurveDrag) return false;
+        const drag=editor.visualAidCurveDrag;
+        if (drag.type==='convert-anchor' && !drag.moved) {
+            const aids=normalizeDiagramVisualAids(editor.visualAids || []);
+            const aidIndex=aids.findIndex(aid=>aid.id===editor.activeVisualAidId);
+            const aid=aids[aidIndex];
+            const anchor=aid?.curveAnchors?.find(item=>item.id===drag.anchorId);
+            if (anchor) {
+                anchor.inX=anchor.x; anchor.inY=anchor.y; anchor.outX=anchor.x; anchor.outY=anchor.y;
+                aid.curveFinished=false;
+                updateImageEditorVisualAidCurvePath(aidIndex,aid);
+            }
+        }
+        editor.visualAidCurveDrag=null;
+        editor.isDrawing=false;
+        releaseImageEditorPointer(event || {});
+        renderImageEditorVisualAidLayer();
+        return true;
+    }
+
+    function finishImageEditorVisualAidCurvePath() {
+        const editor=state.auth.imageEditor;
+        if (!isImageEditorVisualAidCurveMode(editor)) return;
+        const aids=normalizeDiagramVisualAids(editor.visualAids || []);
+        const aidIndex=aids.findIndex(aid=>aid.id===editor.activeVisualAidId);
+        if (aidIndex<0) return;
+        let aid=aids[aidIndex];
+        if ((aid.curveAnchors || []).length<2) { setImageEditorStatus('Add at least two Pen anchors before Finish.'); return; }
+        aid.pathAuthoring='curves';
+        aid.path=compileDiagramVisualAidCurvePath(aid.curveAnchors);
+        aid.curveFinished=true;
+        if (aid.path.length>1 && !aid.divisions.length && !aid.points.length) aid.divisions.push({ id:createDiagramVisualAidId('division'), name:'Division 1', position:0, color:aid.defaultColor });
+        if (aid.path.length>1) aid=ensureDiagramVisualAidEndpointPoints(aid);
+        aids[aidIndex]=normalizeDiagramVisualAid(aid,aidIndex);
+        editor.visualAids=aids;
+        editor.visualAidCurveAddMode=false;
+        editor.visualAidCurveSelectedAnchorId=aid.curveAnchors?.[aid.curveAnchors.length-1]?.id || '';
+        refreshImageEditorVisualAidUi();
+        setImageEditorStatus('Curve path finished. It now uses the same Divisions, Points, Review, Mini Quiz, and animation system as Brush paths.');
+    }
+
+    function resetImageEditorVisualAidCurvePath() {
+        const editor=state.auth.imageEditor;
+        const aids=normalizeDiagramVisualAids(editor?.visualAids || []);
+        const aidIndex=aids.findIndex(aid=>aid.id===editor?.activeVisualAidId);
+        if (aidIndex<0) return;
+        aids[aidIndex]={...aids[aidIndex], pathAuthoring:'curves', curveAnchors:[], curveFinished:false, path:[]};
+        editor.visualAids=normalizeDiagramVisualAids(aids);
+        editor.visualAidCurveSelectedAnchorId='';
+        editor.visualAidCurveHover=null;
+        editor.visualAidCurveDrag=null;
+        editor.visualAidCurveAddMode=true;
+        refreshImageEditorVisualAidUi();
+        setImageEditorStatus('Curve path reset. Click the canvas to place the first Pen anchor.');
+    }
+
+    function handleImageEditorVisualAidPenKeyDown(event) {
+        const editor=state.auth.imageEditor;
+        if (!isImageEditorVisualAidCurveMode(editor)) return false;
+        const key=String(event.key || '');
+        const lower=key.toLowerCase();
+        if (key==='Shift') editor.visualAidPenShiftHeld=true;
+        if (key==='Alt') editor.visualAidPenAltHeld=true;
+        if (key==='Control' || key==='Meta') editor.visualAidPenDirectHeld=true;
+        if (lower==='p') {
+            editor.visualAidPenForcedMode='';
+            editor.visualAidCurveAddMode=true;
+            setImageEditorVisualAidPenCursor('pen');
+            return true;
+        }
+        if (key==='+' || key==='=') {
+            editor.visualAidPenForcedMode='add';
+            setImageEditorVisualAidPenCursor('add');
+            return true;
+        }
+        if (key==='-' || key==='_') {
+            editor.visualAidPenForcedMode='delete';
+            setImageEditorVisualAidPenCursor('delete');
+            return true;
+        }
+        if (key==='Delete' || key==='Backspace') {
+            editor.visualAidPenForcedMode='delete';
+            setImageEditorVisualAidPenCursor('delete');
+            return true;
+        }
+        setImageEditorVisualAidPenCursor(getImageEditorVisualAidPenMode(event,editor.visualAidCurveHover));
+        return false;
+    }
+
+    function handleImageEditorVisualAidPenKeyUp(event) {
+        const editor=state.auth.imageEditor;
+        if (!editor?.open) return false;
+        const key=String(event.key || '');
+        if (key==='Shift') editor.visualAidPenShiftHeld=false;
+        if (key==='Alt') editor.visualAidPenAltHeld=false;
+        if (key==='Control' || key==='Meta') editor.visualAidPenDirectHeld=false;
+        if (!isImageEditorVisualAidCurveMode(editor)) return false;
+        setImageEditorVisualAidPenCursor(getImageEditorVisualAidPenMode(null,editor.visualAidCurveHover));
+        return false;
     }
 
     function getNearestActiveVisualAidPointSnap(point) {
@@ -14132,6 +14740,8 @@ The deletion becomes permanent when you save the diagram.`);
         canvas.classList.toggle('is-draw-mode', isDrawActive);
         canvas.classList.toggle('is-connector-mode', isConnectorMode);
         canvas.classList.toggle('is-connector-anchor-dragging', isConnectorMode && editor?.draggingConnectorAnchor === true);
+        if (isImageEditorVisualAidCurveMode(editor)) setImageEditorVisualAidPenCursor(getImageEditorVisualAidPenMode(null, editor?.visualAidCurveHover));
+        else setImageEditorVisualAidPenCursor('pen');
     }
 
     function closeImageEditorSliderPopovers() {
@@ -14742,6 +15352,9 @@ The deletion becomes permanent when you save the diagram.`);
                 const visibility = event.target.closest('[data-visual-aid-visibility]');
                 const remove = event.target.closest('[data-visual-aid-delete]');
                 const tool = event.target.closest('[data-visual-aid-tool]');
+                const pathMenuToggle = event.target.closest('[data-visual-aid-path-menu-toggle]');
+                const pathMethodButton = event.target.closest('[data-visual-aid-path-method]');
+                const curveAction = event.target.closest('[data-visual-aid-curve-action]');
                 const deleteDivision = event.target.closest('[data-visual-aid-delete-division]');
                 const deletePoint = event.target.closest('[data-visual-aid-delete-point]');
                 const movePoint = event.target.closest('[data-visual-aid-point-move]');
@@ -14753,6 +15366,11 @@ The deletion becomes permanent when you save the diagram.`);
                     stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
                     editor.activeVisualAidId = normalizeSheetText(select.dataset.visualAidSelect || '');
                     editor.sessionVisibleVisualAidId = editor.activeVisualAidId;
+                    const selectedAid = aids.find(item => item.id === editor.activeVisualAidId);
+                    editor.activeVisualAidPathMethod = normalizeDiagramVisualAidPathAuthoring(selectedAid?.pathAuthoring || 'brush');
+                    editor.visualAidPathMenuOpen = false;
+                    editor.visualAidCurveSelectedAnchorId = selectedAid?.curveAnchors?.[selectedAid.curveAnchors.length - 1]?.id || '';
+                    editor.visualAidCurveAddMode = !(selectedAid?.curveFinished === true);
                     handled = true;
                 }
                 if (visibility) {
@@ -14775,7 +15393,58 @@ The deletion becomes permanent when you save the diagram.`);
                     refreshImageEditorVisualAidUi();
                     return;
                 }
-                if (tool) { editor.activeVisualAidTool = normalizeSheetText(tool.dataset.visualAidTool || 'path'); setImageEditorMode('visual-aid'); handled = true; }
+                if (pathMenuToggle) {
+                    editor.visualAidPathMenuOpen = !editor.visualAidPathMenuOpen;
+                    editor.activeVisualAidTool = 'path';
+                    setImageEditorMode('visual-aid');
+                    renderImageEditorVisualAidPanel();
+                    updateImageEditorCanvasPointerState();
+                    return;
+                }
+                if (pathMethodButton) {
+                    const method = normalizeDiagramVisualAidPathAuthoring(pathMethodButton.dataset.visualAidPathMethod || 'brush');
+                    const aid = aids.find(item => item.id === editor.activeVisualAidId);
+                    editor.activeVisualAidTool = 'path';
+                    editor.activeVisualAidPathMethod = method;
+                    editor.visualAidPathMenuOpen = false;
+                    editor.visualAidCurveHover = null;
+                    editor.visualAidCurveDrag = null;
+                    editor.visualAidPenForcedMode = '';
+                    resetImageEditorVisualAidLazyBrushState(editor);
+                    if (method === 'curves') {
+                        editor.visualAidCurveSelectedAnchorId = aid?.curveAnchors?.[aid.curveAnchors.length - 1]?.id || '';
+                        editor.visualAidCurveAddMode = !(aid?.curveFinished === true);
+                        setImageEditorStatus('Curves Pen active. Click for corners, drag while placing for smooth handles; Ctrl/Cmd edits anchors, Alt/Option converts handles, Shift constrains.');
+                    } else {
+                        editor.visualAidCurveSelectedAnchorId = '';
+                        editor.visualAidCurveAddMode = true;
+                        setImageEditorStatus('Brush path active. Draw directly with Apple Pencil, Cintiq, mouse, or touch.');
+                    }
+                    setImageEditorMode('visual-aid');
+                    refreshImageEditorVisualAidUi();
+                    return;
+                }
+                if (curveAction) {
+                    const action = normalizeSheetText(curveAction.dataset.visualAidCurveAction || '');
+                    if (action === 'add') {
+                        editor.visualAidCurveAddMode = true;
+                        editor.visualAidPenForcedMode = '';
+                        const aid = aids.find(item => item.id === editor.activeVisualAidId);
+                        editor.visualAidCurveSelectedAnchorId = aid?.curveAnchors?.[aid.curveAnchors.length - 1]?.id || editor.visualAidCurveSelectedAnchorId;
+                        setImageEditorStatus('Add mode ready. Click a blank area for the next anchor, or hover a segment for the + cursor.');
+                        updateImageEditorCanvasPointerState();
+                        return;
+                    }
+                    if (action === 'reset') { resetImageEditorVisualAidCurvePath(); return; }
+                    if (action === 'finish') { finishImageEditorVisualAidCurvePath(); return; }
+                }
+                if (tool) {
+                    editor.activeVisualAidTool = normalizeSheetText(tool.dataset.visualAidTool || 'path');
+                    editor.visualAidPathMenuOpen = false;
+                    setImageEditorMode('visual-aid');
+                    updateImageEditorCanvasPointerState();
+                    handled = true;
+                }
                 if (deleteDivision) { const aid = aids.find(item => item.id === editor.activeVisualAidId); if (aid) { aid.divisions = aid.divisions.filter(item => item.id !== deleteDivision.dataset.visualAidDeleteDivision); handled = true; } }
                 if (deletePoint) { const aid = aids.find(item => item.id === editor.activeVisualAidId); if (aid) { aid.points = aid.points.filter(item => item.id !== deletePoint.dataset.visualAidDeletePoint).map((point, index) => ({ ...point, sequenceOrder: index })); handled = true; } }
                 if (movePoint) {
@@ -14829,6 +15498,26 @@ The deletion becomes permanent when you save the diagram.`);
                     editor.visualAidPreviewProgress = normalizeDiagramVisualAidPosition(Number(event.target.value) / 1000);
                     editor.visualAidPreviewStartedAt = 0;
                     renderImageEditorVisualAidLayer();
+                    return;
+                }
+                if (event.target.matches('[data-visual-aid-lazy-enabled]')) {
+                    editor.visualAidLazyDragEnabled = !!event.target.checked;
+                    resetImageEditorVisualAidLazyBrushState(editor);
+                    renderImageEditorVisualAidPanel();
+                    renderImageEditorVisualAidLayer();
+                    setImageEditorStatus(editor.visualAidLazyDragEnabled ? 'Lazy Drag enabled. The Brush tip now follows the pointer through an elastic-string stabilizer.' : 'Lazy Drag disabled. Brush returned to direct drawing.');
+                    return;
+                }
+                if (event.target.matches('[data-visual-aid-lazy-distance]')) {
+                    editor.visualAidLazyDistance = Math.min(120, Math.max(4, Number(event.target.value) || 36));
+                    const value = event.target.closest('.studio-visual-aid-lazy-controls')?.querySelector('[data-visual-aid-lazy-distance-value]');
+                    if (value) value.textContent = String(editor.visualAidLazyDistance);
+                    return;
+                }
+                if (event.target.matches('[data-visual-aid-lazy-step]')) {
+                    editor.visualAidLazyStep = Math.min(20, Math.max(1, Number(event.target.value) || 3));
+                    const value = event.target.closest('.studio-visual-aid-lazy-controls')?.querySelector('[data-visual-aid-lazy-step-value]');
+                    if (value) value.textContent = String(editor.visualAidLazyStep);
                     return;
                 }
                 let aids = normalizeDiagramVisualAids(editor.visualAids || []);
@@ -15172,6 +15861,10 @@ The deletion becomes permanent when you save the diagram.`);
         editor.visualAids = normalizeDiagramVisualAids(info.visualAids || []);
         editor.activeVisualAidId = editor.visualAids[0]?.id || '';
         editor.sessionVisibleVisualAidId = editor.activeVisualAidId;
+        editor.activeVisualAidPathMethod = normalizeDiagramVisualAidPathAuthoring(editor.visualAids[0]?.pathAuthoring || 'brush');
+        editor.visualAidPathMenuOpen = false;
+        editor.visualAidCurveSelectedAnchorId = editor.visualAids[0]?.curveAnchors?.[editor.visualAids[0].curveAnchors.length - 1]?.id || '';
+        editor.visualAidCurveAddMode = !(editor.visualAids[0]?.curveFinished === true);
         editor.showVisualAidPanel = false;
         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
         editor.visualAidPreviewLoop = false;
@@ -15521,9 +16214,19 @@ The deletion becomes permanent when you save the diagram.`);
             if (aidIndex < 0) return;
             const aid = normalizeDiagramVisualAid(editor.visualAids[aidIndex], aidIndex);
             const normalized = getImageEditorVisualAidPointerPosition(point);
+            if (editor.activeVisualAidTool === 'path' && normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || aid.pathAuthoring || 'brush') === 'curves') {
+                if (handleImageEditorVisualAidCurvePointerDown(event, normalized, aidIndex, aid)) return;
+            }
             if (editor.activeVisualAidTool === 'path') {
+                editor.activeVisualAidPathMethod = 'brush';
                 editor.isDrawing = true;
                 editor.activeVisualAidDraftPath = [normalized];
+                editor.visualAidLazyBrushPoint = normalized;
+                editor.visualAidLazyBrushRawPoint = normalized;
+                aid.pathAuthoring = 'brush';
+                aid.curveAnchors = [];
+                aid.curveFinished = false;
+                editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
                 captureImageEditorPointer(event);
                 return;
             }
@@ -15636,12 +16339,17 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const point = getImageEditorCanvasPoint(event);
         if (!point) return;
+        if (editor?.mode === 'visual-aid' && editor.visualAidsEnabled && editor.activeVisualAidTool === 'path' && normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || 'brush') === 'curves') {
+            event.preventDefault();
+            const normalized = getImageEditorVisualAidPointerPosition(point);
+            handleImageEditorVisualAidCurvePointerMove(event, normalized);
+            return;
+        }
         if (editor?.mode === 'visual-aid' && editor.visualAidsEnabled && editor.isDrawing && editor.activeVisualAidTool === 'path') {
             event.preventDefault();
             const normalized = getImageEditorVisualAidPointerPosition(point);
             const draft = Array.isArray(editor.activeVisualAidDraftPath) ? editor.activeVisualAidDraftPath : (editor.activeVisualAidDraftPath = []);
-            const last = draft[draft.length - 1];
-            if (!last || Math.hypot(last.x-normalized.x,last.y-normalized.y) >= 0.18) draft.push(normalized);
+            updateImageEditorVisualAidLazyBrush(normalized);
             const aidIndex = normalizeDiagramVisualAids(editor.visualAids || []).findIndex(aid => aid.id === editor.activeVisualAidId);
             if (aidIndex >= 0) {
                 editor.visualAids[aidIndex] = normalizeDiagramVisualAid({ ...editor.visualAids[aidIndex], path: draft }, aidIndex);
@@ -15754,6 +16462,11 @@ The deletion becomes permanent when you save the diagram.`);
             applyImageEditorZoomTransform();
             return;
         }
+        if (isImageEditorVisualAidCurveMode(editor) && editor?.visualAidCurveDrag) {
+            event.preventDefault();
+            handleImageEditorVisualAidCurvePointerUp(event);
+            return;
+        }
         if (!editor?.isDrawing) return;
         const point = getImageEditorCanvasPoint(event);
         event.preventDefault();
@@ -15763,8 +16476,11 @@ The deletion becomes permanent when you save the diagram.`);
             const aidIndex = normalizeDiagramVisualAids(editor.visualAids || []).findIndex(aid => aid.id === editor.activeVisualAidId);
             if (aidIndex >= 0) {
                 let aid = normalizeDiagramVisualAid(editor.visualAids[aidIndex], aidIndex);
-                if (editor.activeVisualAidTool === 'path' && point && aid.path.length) {
-                    const finalPoint = getImageEditorVisualAidPointerPosition(point);
+                if (editor.activeVisualAidTool === 'path' && normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || 'brush') === 'brush' && point && aid.path.length) {
+                    const rawFinalPoint = getImageEditorVisualAidPointerPosition(point);
+                    const finalPoint = editor.visualAidLazyDragEnabled === true && editor.visualAidLazyBrushPoint
+                        ? normalizeDiagramVisualAidPathPoint(editor.visualAidLazyBrushPoint)
+                        : rawFinalPoint;
                     const path = aid.path.slice();
                     const last = path[path.length - 1];
                     if (!last || Math.hypot(last.x - finalPoint.x, last.y - finalPoint.y) > 0.01) path.push(finalPoint);
@@ -15776,6 +16492,7 @@ The deletion becomes permanent when you save the diagram.`);
                 editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
             }
             editor.activeVisualAidDraftPath = null;
+            resetImageEditorVisualAidLazyBrushState(editor);
             editor.dragStart = null;
             refreshImageEditorVisualAidUi();
             setImageEditorStatus('Visual Aid path saved. Add divisions, points, colors, and arrows from the panel.');
