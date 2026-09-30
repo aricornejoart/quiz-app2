@@ -432,6 +432,7 @@ MODIFICATION RULES FOR THIS APP
                 shortcutInfoOpen: false,
                 showVisualAid: false,
                 visualAidOnly: false,
+                visualAidDisplayFullPath: false,
                 visualAidDockEdge: 'bottom',
                 visualAidDockOffset: 0.5,
                 zoomScale: 1,
@@ -531,12 +532,14 @@ MODIFICATION RULES FOR THIS APP
                 draggingLabelIndex: null,
                 hoveredLabelIndex: null,
                 showLabelPanel: false,
+                labelsLayerVisible: true,
                 labelPanelWidth: 340,
                 labelPanelCanvasMinWidth: 0,
                 labelPanelAppliedWidth: 340,
                 visualAids: [],
                 visualAidsEnabled: false,
                 showVisualAidPanel: false,
+                visualAidsLayerVisible: true,
                 activeVisualAidId: '',
                 sessionVisibleVisualAidId: '',
                 activeVisualAidTool: 'path',
@@ -709,6 +712,8 @@ MODIFICATION RULES FOR THIS APP
         reviewModeShowShortcutDockToggle: document.getElementById('reviewModeShowShortcutDockToggle'),
         reviewModeShowVisualAidToggle: document.getElementById('reviewModeShowVisualAidToggle'),
         reviewModeVisualAidOnlyToggle: document.getElementById('reviewModeVisualAidOnlyToggle'),
+        reviewModeDisplayFullPathRow: document.getElementById('reviewModeDisplayFullPathRow'),
+        reviewModeDisplayFullPathToggle: document.getElementById('reviewModeDisplayFullPathToggle'),
         reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
         reviewModeLabelNumberToggle: document.getElementById('reviewModeLabelNumberToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
@@ -3216,6 +3221,7 @@ MODIFICATION RULES FOR THIS APP
     // ================= PHASE 23F — ANIMATED DIAGRAM VISUAL AIDS =================
     const DIAGRAM_VISUAL_AID_MAX_PATH_POINTS = 2500;
     const DIAGRAM_VISUAL_AID_MAX_ITEMS = 40;
+    const DIAGRAM_VISUAL_AID_DEFAULT_POINT_COLOR = '#6296fe';
 
     function createDiagramVisualAidId(prefix = 'visual') {
         return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -3256,7 +3262,7 @@ MODIFICATION RULES FOR THIS APP
             name: normalizeSheetText(point?.name || `Point ${pointIndex + 1}`).slice(0, 100) || `Point ${pointIndex + 1}`,
             position: normalizeDiagramVisualAidPosition(point?.position),
             sequenceOrder: Number.isFinite(Number(point?.sequenceOrder)) ? Math.max(0, Number(point.sequenceOrder)) : pointIndex,
-            ringColor: normalizeEditorHexColor(point?.ringColor || defaultColor, defaultColor),
+            ringColor: normalizeEditorHexColor(point?.ringColor || DIAGRAM_VISUAL_AID_DEFAULT_POINT_COLOR, DIAGRAM_VISUAL_AID_DEFAULT_POINT_COLOR),
             pointStyle: normalizeSheetText(point?.pointStyle).toLowerCase() === 'solid' ? 'solid' : 'ring'
         })).sort((a, b) => a.sequenceOrder - b.sequenceOrder).map((point, pointIndex) => ({ ...point, sequenceOrder: pointIndex }));
         const ball = source.ball === true;
@@ -3503,7 +3509,7 @@ MODIFICATION RULES FOR THIS APP
         for (let i = 0; i < boundaries.length - 1; i += 1) {
             const start = boundaries[i];
             const end = boundaries[i + 1];
-            const division = normalized.divisions.find(item => Math.abs(item.position - start) < 0.00001) || (i === 0 ? { id: `${normalized.id}_segment_0`, name: normalized.name } : null);
+            const division = normalized.divisions.find(item => Math.abs(item.position - start) < 0.00001) || null;
             if (division) divisionItems.push({ type: 'division', id: division.id, name: division.name, position: Math.min(1, start + ((end - start) / 2)), start, end });
         }
         let pointIndex = 0;
@@ -3545,6 +3551,8 @@ MODIFICATION RULES FOR THIS APP
         const interactive = options.interactive === true;
         const quizTarget = options.quizTarget && typeof options.quizTarget === 'object' ? options.quizTarget : null;
         const quizMode = options.quizMode === true;
+        const displayFullPathBallRequested = options.displayFullPathBall === true;
+        const pointPulseOnProgressRequested = options.pointPulseOnProgress === true;
         const animated = Number.isFinite(Number(options.progress));
         const reviewSelectionClass = quizTarget && !quizMode ? ' is-review-selected' : '';
         const surfaceSerial = ++diagramVisualAidPlaybackSurfaceSerial;
@@ -3553,13 +3561,13 @@ MODIFICATION RULES FOR THIS APP
         const arrowId = `visualAidArrow_${surfaceSerial}`;
         const quizFilter = quizMode ? ` filter="url(#${quizGlowId})"` : '';
         const runtimes = [];
-        const maskDefs = [];
         const normalizedAids = normalizeDiagramVisualAids(aids).filter(aid => aid.visible && (!activeOnlyId || aid.id === activeOnlyId));
         const markup = normalizedAids.map((aid, aidIndex) => {
             if (aid.path.length < 2) return '';
             const masterMetrics = getDiagramVisualAidPathMetrics(aid);
             const svgMasterMetrics = getDiagramVisualAidSvgPathMetrics(masterMetrics, safeWidth, safeHeight);
             const masterPoints = svgMasterMetrics.pointsText;
+            const displayFullPathBall = displayFullPathBallRequested;
             const divisionSelectionActive = !!(quizTarget && quizTarget.aidId === aid.id && quizTarget.kind === 'visual-division');
             const divisionQuizActive = !!(quizMode && divisionSelectionActive);
             const divisionTargetId = divisionSelectionActive ? normalizeSheetText(quizTarget.itemId || '') : '';
@@ -3568,13 +3576,10 @@ MODIFICATION RULES FOR THIS APP
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
                 return division?.color || aid.defaultColor;
             });
-            const runtime = { aid, masterMetrics, svgMasterMetrics, segmentPositions, segmentColors, divisionQuizActive, width: safeWidth, height: safeHeight, pointNodes: [], boundaryArrowNodes: [] };
+            const runtime = { aid, masterMetrics, svgMasterMetrics, segmentPositions, segmentColors, divisionQuizActive, displayFullPathBall, pointPulseOnProgress: pointPulseOnProgressRequested, width: safeWidth, height: safeHeight, pointNodes: [], pointPulseNodes: [], boundaryArrowNodes: [], revealSegmentNodes: [], lastProgress: null };
             runtimes.push(runtime);
             const colorAtPosition = position => getDiagramVisualAidPlaybackColorAtPosition(runtime, position);
             const baseOpacity = divisionQuizActive ? 0.32 : (animated ? 0.14 : 0.18);
-            const maskId = `visualAidRevealMask_${surfaceSerial}_${aidIndex}`;
-            const revealMaskWidth = Math.max(aid.thickness + 18, 24);
-            maskDefs.push(`<mask id="${maskId}" maskUnits="userSpaceOnUse" x="0" y="0" width="${safeWidth}" height="${safeHeight}"><polyline data-visual-aid-reveal-mask="${escapeHtml(aid.id)}" points="${masterPoints}" fill="none" stroke="#ffffff" stroke-width="${revealMaskWidth}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="${svgMasterMetrics.total.toFixed(4)} ${svgMasterMetrics.total.toFixed(4)}" stroke-dashoffset="${svgMasterMetrics.total.toFixed(4)}"/></mask>`);
             const base = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
                 const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
@@ -3585,14 +3590,17 @@ MODIFICATION RULES FOR THIS APP
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
                 const isDivisionTarget = divisionSelectionActive && division?.id === divisionTargetId;
                 const segmentOpacity = isDivisionTarget ? 0 : (divisionQuizActive ? 0.65 : 1);
-                const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                return `<polyline class="diagram-visual-aid-animated-path" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${segmentOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
+                const trailingGap = Math.max(10, svgMasterMetrics.total + 10);
+                const startDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, start);
+                const endDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, end);
+                return `<polyline class="diagram-visual-aid-animated-path" data-visual-aid-reveal-segment data-visual-aid-reveal-start-distance="${startDistance.toFixed(4)}" data-visual-aid-reveal-end-distance="${endDistance.toFixed(4)}" data-visual-aid-reveal-opacity="${segmentOpacity}" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="0 ${trailingGap.toFixed(4)}"/>`;
             }).join('');
-            const revealGlow = `<polyline points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" filter="url(#${glowId})" pointer-events="none"/>`;
+            const revealGlow = `<polyline data-visual-aid-reveal-glow points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="0 ${Math.max(10, svgMasterMetrics.total + 10).toFixed(4)}" filter="url(#${glowId})" pointer-events="none"/>`;
             const startPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 0);
             const endPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 1);
             const endpointRadius = Math.max(1, aid.thickness / 2);
-            const baseEndpoints = `<circle cx="${(startPoint.x / 100) * safeWidth}" cy="${(startPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" fill-opacity="${baseOpacity}"/><circle cx="${(endPoint.x / 100) * safeWidth}" cy="${(endPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[segmentColors.length - 1] || aid.defaultColor}" fill-opacity="${baseOpacity}"/>`;
+            const endpointOpacity = displayFullPathBall ? 1 : baseOpacity;
+            const baseEndpoints = `<circle cx="${(startPoint.x / 100) * safeWidth}" cy="${(startPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" fill-opacity="${endpointOpacity}"/><circle cx="${(endPoint.x / 100) * safeWidth}" cy="${(endPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[segmentColors.length - 1] || aid.defaultColor}" fill-opacity="${endpointOpacity}"/>`;
             const revealCap = `<circle data-visual-aid-reveal-cap cx="0" cy="0" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" filter="url(#${glowId})" opacity="0" pointer-events="none"/>`;
             let divisionHits = '';
             if (interactive) {
@@ -3614,15 +3622,21 @@ MODIFICATION RULES FOR THIS APP
                 const pointInnerRadius = Math.max(2.5, aid.thickness * 0.45);
                 const pointRingWidth = Math.max(1.25, (pointOuterRadius - pointInnerRadius) * 0.78);
                 const pointRingRadius = Math.max(pointRingWidth / 2, pointOuterRadius - (pointRingWidth / 2));
+                const pointPulse = pointPulseOnProgressRequested
+                    ? `<circle class="diagram-visual-aid-point-pulse" data-visual-aid-point-pulse data-visual-aid-point-position="${pointPosition.toFixed(6)}" cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${pointOuterRadius}" fill="none" stroke="${point.ringColor}" stroke-width="${Math.max(1.5, pointRingWidth * 0.7)}" opacity="0" pointer-events="none"/>`
+                    : '';
                 const pointShape = point.pointStyle === 'solid'
                     ? `<circle data-visual-aid-point-solid-outer cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${pointOuterRadius}" fill="${point.ringColor}" stroke="#ffffff" stroke-width="2"/><circle data-visual-aid-point-solid-inner cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${pointInnerRadius}" fill="${aid.defaultColor}"/>`
                     : `<circle data-visual-aid-point-ring cx="${(p.x / 100) * safeWidth}" cy="${(p.y / 100) * safeHeight}" r="${pointRingRadius}" fill="none" stroke="${point.ringColor}" stroke-width="${pointRingWidth}"/>`;
-                return `<g data-visual-aid-point-id="${escapeHtml(point.id)}" data-visual-aid-point-position="${pointPosition.toFixed(6)}" data-visual-aid-point-color="${pointColor}" data-visual-aid-point-style="${escapeHtml(point.pointStyle)}" opacity="${pointOpacity}"${hit}>${pointShape}</g>`;
+                return `<g data-visual-aid-point-id="${escapeHtml(point.id)}" data-visual-aid-point-position="${pointPosition.toFixed(6)}" data-visual-aid-point-color="${pointColor}" data-visual-aid-point-style="${escapeHtml(point.pointStyle)}" opacity="${pointOpacity}"${hit}>${pointPulse}${pointShape}</g>`;
             }).join('');
             let boundaryArrows = '';
             let leadArrow = '';
             let leadBall = '';
-            if (aid.arrows) {
+            if (displayFullPathBall) {
+                // Review full-path presentation always uses a Ball playhead, regardless of the aid's authored marker mode.
+                leadBall = `<circle data-visual-aid-lead-ball cx="0" cy="0" r="${Math.max(2.16, aid.thickness * 1.08)}" fill="${aid.ballColor || aid.defaultColor}" opacity="0" pointer-events="none"/>`;
+            } else if (aid.arrows) {
                 boundaryArrows = segmentPositions.slice(0, -1).map((start, index) => {
                     const end = segmentPositions[index + 1];
                     const arrowStart = Math.max(start, end - Math.min(0.03, Math.max(0.006, (end - start) * 0.28)));
@@ -3631,7 +3645,7 @@ MODIFICATION RULES FOR THIS APP
                 }).join('');
                 leadArrow = `<polyline data-visual-aid-lead-arrow points="" fill="none" stroke="${segmentColors[0] || aid.defaultColor}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#${arrowId})" opacity="0" pointer-events="none"/>`;
             } else if (aid.ball) {
-                leadBall = `<circle data-visual-aid-lead-ball cx="0" cy="0" r="${Math.max(1.5, aid.thickness * 0.75)}" fill="${aid.ballColor}" opacity="0" pointer-events="none"/>`;
+                leadBall = `<circle data-visual-aid-lead-ball cx="0" cy="0" r="${Math.max(2.16, aid.thickness * 1.08)}" fill="${aid.ballColor || aid.defaultColor}" opacity="0" pointer-events="none"/>`;
             }
             let quizOverlay = '';
             if (quizTarget && quizTarget.aidId === aid.id) {
@@ -3658,9 +3672,9 @@ MODIFICATION RULES FOR THIS APP
                     }
                 }
             }
-            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g mask="url(#${maskId})" data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}</g>`;
+            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}</g>`;
         }).join('');
-        const defs = `<defs><filter id="${glowId}"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="${quizGlowId}"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="${arrowId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="1.5" markerHeight="1.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker>${maskDefs.join('')}</defs>`;
+        const defs = `<defs><filter id="${glowId}"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="${quizGlowId}"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="${arrowId}" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="2.16" markerHeight="2.16" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>`;
         return { markup: `${defs}${markup}`, runtimes, animated };
     }
 
@@ -3675,15 +3689,24 @@ MODIFICATION RULES FOR THIS APP
         svg.innerHTML = surface.markup;
         surface.runtimes.forEach(runtime => {
             runtime.group = findDiagramVisualAidPlaybackNodeByData(svg, '[data-visual-aid-id]', 'visualAidId', runtime.aid.id);
-            runtime.maskPath = findDiagramVisualAidPlaybackNodeByData(svg, '[data-visual-aid-reveal-mask]', 'visualAidRevealMask', runtime.aid.id);
+            runtime.revealGlow = runtime.group?.querySelector?.('[data-visual-aid-reveal-glow]') || null;
+            runtime.revealSegmentNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-reveal-segment]') || []);
             runtime.revealCap = runtime.group?.querySelector?.('[data-visual-aid-reveal-cap]') || null;
             runtime.leadArrow = runtime.group?.querySelector?.('[data-visual-aid-lead-arrow]') || null;
             runtime.leadBall = runtime.group?.querySelector?.('[data-visual-aid-lead-ball]') || null;
             runtime.boundaryArrowNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-boundary-arrow]') || []);
             runtime.pointNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-point-id]') || []);
+            runtime.pointPulseNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-point-pulse]') || []);
         });
         diagramVisualAidPlaybackSurfaceCache.set(svg, surface);
         return surface;
+    }
+
+    function triggerDiagramVisualAidPointPulse(node = null) {
+        if (!node) return;
+        node.classList.remove('is-ball-pulsing');
+        void node.getBoundingClientRect();
+        node.classList.add('is-ball-pulsing');
     }
 
     function updateDiagramVisualAidPlaybackSurface(svg, progress = null) {
@@ -3692,10 +3715,38 @@ MODIFICATION RULES FOR THIS APP
         const currentProgress = Number.isFinite(Number(progress)) ? normalizeDiagramVisualAidPosition(progress) : 1;
         surface.runtimes.forEach(runtime => {
             const total = Math.max(0, Number(runtime.svgMasterMetrics?.total) || 0);
+            const trailingGap = Math.max(10, total + 10);
             const visibleDistance = getDiagramVisualAidSvgDistanceAtPosition(runtime.masterMetrics, runtime.svgMasterMetrics, currentProgress);
-            if (runtime.maskPath) runtime.maskPath.setAttribute('stroke-dashoffset', Math.max(0, total - visibleDistance).toFixed(4));
+            if (runtime.revealGlow) {
+                runtime.revealGlow.setAttribute('stroke-dasharray', `${Math.max(0, visibleDistance).toFixed(4)} ${trailingGap.toFixed(4)}`);
+                runtime.revealGlow.setAttribute('stroke-opacity', runtime.displayFullPathBall ? '0' : (currentProgress > 0.000001 ? '0.16' : '0'));
+            }
+            runtime.revealSegmentNodes.forEach(node => {
+                const startDistance = Math.max(0, Number(node.dataset.visualAidRevealStartDistance) || 0);
+                const endDistance = Math.max(startDistance, Number(node.dataset.visualAidRevealEndDistance) || startDistance);
+                const revealEndDistance = Math.min(endDistance, visibleDistance);
+                const baseOpacity = Math.min(1, Math.max(0, Number(node.dataset.visualAidRevealOpacity) || 0));
+                if (runtime.displayFullPathBall) {
+                    const length = Math.max(0, endDistance - startDistance);
+                    node.setAttribute('stroke-dasharray', startDistance <= 0.001
+                        ? `${length.toFixed(4)} ${trailingGap.toFixed(4)}`
+                        : `0 ${startDistance.toFixed(4)} ${length.toFixed(4)} ${trailingGap.toFixed(4)}`);
+                    node.setAttribute('stroke-opacity', String(baseOpacity));
+                    return;
+                }
+                if (revealEndDistance <= startDistance + 0.001 || baseOpacity <= 0) {
+                    node.setAttribute('stroke-opacity', '0');
+                    node.setAttribute('stroke-dasharray', `0 ${trailingGap.toFixed(4)}`);
+                    return;
+                }
+                const length = Math.max(0, revealEndDistance - startDistance);
+                node.setAttribute('stroke-dasharray', startDistance <= 0.001
+                    ? `${length.toFixed(4)} ${trailingGap.toFixed(4)}`
+                    : `0 ${startDistance.toFixed(4)} ${length.toFixed(4)} ${trailingGap.toFixed(4)}`);
+                node.setAttribute('stroke-opacity', String(baseOpacity));
+            });
             if (runtime.revealCap) {
-                if (!runtime.aid.arrows && !runtime.aid.ball && currentProgress > 0.000001 && runtime.masterMetrics?.path?.length) {
+                if (!runtime.displayFullPathBall && !runtime.aid.arrows && !runtime.aid.ball && currentProgress > 0.000001 && runtime.masterMetrics?.path?.length) {
                     const lead = getDiagramVisualAidPointAtPositionFromMetrics(runtime.masterMetrics, currentProgress);
                     runtime.revealCap.setAttribute('cx', String((lead.x / 100) * runtime.width));
                     runtime.revealCap.setAttribute('cy', String((lead.y / 100) * runtime.height));
@@ -3714,6 +3765,20 @@ MODIFICATION RULES FOR THIS APP
                     node.setAttribute('opacity', String(runtime.divisionQuizActive ? 0.6 : 1));
                 }
             });
+            if (runtime.pointPulseOnProgress && runtime.pointPulseNodes.length) {
+                const previousProgress = Number.isFinite(runtime.lastProgress) ? runtime.lastProgress : currentProgress;
+                const loopReset = previousProgress > 0.98 && currentProgress < 0.02;
+                if (!loopReset && Math.abs(currentProgress - previousProgress) > 0.000001) {
+                    const movingForward = currentProgress > previousProgress;
+                    runtime.pointPulseNodes.forEach(node => {
+                        const pointPosition = normalizeDiagramVisualAidPosition(node.dataset.visualAidPointPosition || 0);
+                        const crossed = movingForward
+                            ? pointPosition >= previousProgress - 0.0005 && pointPosition <= currentProgress + 0.0005
+                            : pointPosition <= previousProgress + 0.0005 && pointPosition >= currentProgress - 0.0005;
+                        if (crossed) triggerDiagramVisualAidPointPulse(node);
+                    });
+                }
+            }
             runtime.boundaryArrowNodes.forEach(node => {
                 const end = normalizeDiagramVisualAidPosition(node.dataset.visualAidBoundaryArrowEnd || 0);
                 const visibleKey = currentProgress >= end - 0.0005 ? '1' : '0';
@@ -3735,7 +3800,7 @@ MODIFICATION RULES FOR THIS APP
                 }
             }
             if (runtime.leadBall) {
-                if (currentProgress > 0.000001 && runtime.masterMetrics?.path?.length) {
+                if ((runtime.displayFullPathBall || currentProgress > 0.000001) && runtime.masterMetrics?.path?.length) {
                     const lead = getDiagramVisualAidPointAtPositionFromMetrics(runtime.masterMetrics, currentProgress);
                     runtime.leadBall.setAttribute('cx', String((lead.x / 100) * runtime.width));
                     runtime.leadBall.setAttribute('cy', String((lead.y / 100) * runtime.height));
@@ -3745,6 +3810,7 @@ MODIFICATION RULES FOR THIS APP
                     runtime.leadBall.setAttribute('opacity', '0');
                 }
             }
+            runtime.lastProgress = currentProgress;
         });
         return true;
     }
@@ -7644,6 +7710,8 @@ The deletion becomes permanent when you save the diagram.`);
             ? {
                 mode: currentEditor.mode,
                 showLabelPanel: currentEditor.showLabelPanel === true,
+                labelsLayerVisible: currentEditor.labelsLayerVisible !== false,
+                visualAidsLayerVisible: currentEditor.visualAidsLayerVisible !== false,
                 metadataPanelOpen: currentEditor.metadataPanelOpen === true,
                 labelInfoPanelOpen: currentEditor.labelInfoPanelOpen === true,
                 drawTool: currentEditor.drawTool
@@ -7660,6 +7728,8 @@ The deletion becomes permanent when you save the diagram.`);
             const nextEditor = state.auth.imageEditor;
             if (editorPreferences && nextEditor?.open) {
                 nextEditor.showLabelPanel = editorPreferences.showLabelPanel;
+                nextEditor.labelsLayerVisible = editorPreferences.labelsLayerVisible !== false;
+                nextEditor.visualAidsLayerVisible = editorPreferences.visualAidsLayerVisible !== false;
                 nextEditor.metadataPanelOpen = editorPreferences.metadataPanelOpen;
                 nextEditor.labelInfoPanelOpen = editorPreferences.labelInfoPanelOpen;
                 nextEditor.drawTool = ['paintbrush', 'eraser'].includes(normalizeSheetText(editorPreferences.drawTool))
@@ -8057,6 +8127,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.shortcutInfoOpen = review.shortcutInfoOpen === true;
         review.showVisualAid = review.showVisualAid === true;
         review.visualAidOnly = review.visualAidOnly === true;
+        review.visualAidDisplayFullPath = review.visualAidDisplayFullPath === true;
         review.visualAidDockEdge = ['left', 'right', 'top', 'bottom'].includes(review.visualAidDockEdge) ? review.visualAidDockEdge : 'bottom';
         const visualAidDockOffset = Number(review.visualAidDockOffset);
         review.visualAidDockOffset = Math.min(1, Math.max(0, Number.isFinite(visualAidDockOffset) ? visualAidDockOffset : 0.5));
@@ -9879,6 +9950,8 @@ The deletion becomes permanent when you save the diagram.`);
         renderDiagramVisualAidPlaybackSurface(layer, aids, width, height, {
             progress: review.visualAidProgress,
             activeOnlyId: activeAid?.id || '',
+            displayFullPathBall: !!(review.visualAidDisplayFullPath && !visualQuiz),
+            pointPulseOnProgress: !visualQuiz,
             // Review interaction geometry is mounted only while playback is stopped.
             interactive: !!activeAid && !review.miniQuiz.active && !review.visualAidPlaying,
             quizTarget: quizTarget || selectedTarget,
@@ -10255,6 +10328,17 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeVisualAidOnlyToggle.checked = review.visualAidOnly;
             elements.reviewModeVisualAidOnlyToggle.disabled = !review.showVisualAid || miniActive;
         }
+        if (elements.reviewModeDisplayFullPathRow || elements.reviewModeDisplayFullPathToggle) {
+            const activeVisualAid = getReviewModeActiveVisualAid();
+            const hasDisplayFullPathTarget = !!activeVisualAid;
+            const canDisplayFullPath = !!(review.showVisualAid && activeVisualAid && !miniActive);
+            elements.reviewModeDisplayFullPathRow?.classList.toggle('hidden', !hasDisplayFullPathTarget);
+            elements.reviewModeDisplayFullPathRow?.setAttribute('aria-hidden', hasDisplayFullPathTarget ? 'false' : 'true');
+            if (elements.reviewModeDisplayFullPathToggle) {
+                elements.reviewModeDisplayFullPathToggle.checked = review.visualAidDisplayFullPath;
+                elements.reviewModeDisplayFullPathToggle.disabled = !canDisplayFullPath;
+            }
+        }
         if (elements.reviewModeShowAllNamesToggle) {
             elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
             elements.reviewModeShowAllNamesToggle.disabled = miniActive;
@@ -10359,6 +10443,8 @@ The deletion becomes permanent when you save the diagram.`);
         review.shortcutDockOffset = 0.5;
         review.shortcutInfoOpen = false;
         review.showVisualAid = false;
+        review.visualAidOnly = false;
+        review.visualAidDisplayFullPath = false;
         review.visualAidDockEdge = 'bottom';
         review.visualAidDockOffset = 0.5;
         review.zoomScale = 1;
@@ -10408,6 +10494,8 @@ The deletion becomes permanent when you save the diagram.`);
         reviewModeShortcutDockDrag = null;
         reviewModeVisualAidDockDrag = null;
         review.showVisualAid = false;
+        review.visualAidOnly = false;
+        review.visualAidDisplayFullPath = false;
         review.miniQuizCurrentVisualAidOnly = false;
         review.visualAidIdByAngle = {};
         review.miniVisualPromptPosition = null;
@@ -11859,13 +11947,16 @@ The deletion becomes permanent when you save the diagram.`);
             draggingLabelIndex: null,
             hoveredLabelIndex: null,
             showLabelPanel: false,
+            labelsLayerVisible: true,
             labelPanelWidth: Number(state.auth.diagramLabelPanelWidth) || 340,
             labelPanelCanvasMinWidth: 0,
             labelPanelAppliedWidth: Number(state.auth.diagramLabelPanelWidth) || 340,
             visualAids: [],
             visualAidsEnabled: false,
             showVisualAidPanel: false,
+            visualAidsLayerVisible: true,
             activeVisualAidId: '',
+            sessionVisibleVisualAidId: '',
             activeVisualAidTool: 'path',
             activeVisualAidDivisionId: '',
             activeVisualAidDraftPath: null,
@@ -13080,10 +13171,10 @@ The deletion becomes permanent when you save the diagram.`);
         ctx.restore();
     }
 
-    function drawImageEditorDrawLayer(ctx, canvas = elements.studioImageEditorCanvas) {
+    function drawImageEditorDrawLayer(ctx, canvas = elements.studioImageEditorCanvas, { respectLayerVisibility = true } = {}) {
         const editor = state.auth.imageEditor;
         const strokes = cloneImageEditorDrawStrokes(editor?.drawStrokes || []);
-        if (!canvas || !strokes.length) return;
+        if ((respectLayerVisibility && editor?.labelsLayerVisible === false) || !canvas || !strokes.length) return;
         const labels = normalizeImageEditorLabels(editor?.labels || []);
         const maxLabelIndex = Math.max(labels.length - 1, 0);
         const grouped = new Map();
@@ -13112,7 +13203,7 @@ The deletion becomes permanent when you save the diagram.`);
         outputCanvas.height = baseCanvas.height;
         const ctx = outputCanvas.getContext('2d');
         ctx.drawImage(baseCanvas, 0, 0);
-        drawImageEditorDrawLayer(ctx, outputCanvas);
+        drawImageEditorDrawLayer(ctx, outputCanvas, { respectLayerVisibility: false });
         return outputCanvas;
     }
 
@@ -13455,6 +13546,7 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         const baseScreenScale = Math.max(0.0001, (canvas.offsetWidth || canvas.clientWidth || 1) / Math.max(1, canvas.width || 1));
+        const labelsLayerVisible = editor.labelsLayerVisible !== false;
         const connectorOptions = {
             outlineColor: '#ffffff',
             outlineExtraWidth: 2,
@@ -13468,15 +13560,15 @@ The deletion becomes permanent when you save the diagram.`);
         layers.svg.setAttribute('preserveAspectRatio', 'none');
         layers.svg.setAttribute('shape-rendering', 'geometricPrecision');
         layers.svg.dataset.vectorConnectorLayer = 'true';
-        layers.svg.innerHTML = buildDiagramConnectorSvgMarkup(editor.labels || [], canvas.width, canvas.height, baseScreenScale, connectorOptions);
-        layers.svg.classList.toggle('hidden', !normalizeDiagramLabels(editor.labels || []).some(label => !!normalizeDiagramConnector(label.connector)));
+        layers.svg.innerHTML = labelsLayerVisible ? buildDiagramConnectorSvgMarkup(editor.labels || [], canvas.width, canvas.height, baseScreenScale, connectorOptions) : '';
+        layers.svg.classList.toggle('hidden', !labelsLayerVisible || !normalizeDiagramLabels(editor.labels || []).some(label => !!normalizeDiagramConnector(label.connector)));
 
         if (layers.labelCanvas.width !== canvas.width) layers.labelCanvas.width = canvas.width;
         if (layers.labelCanvas.height !== canvas.height) layers.labelCanvas.height = canvas.height;
         const labelCtx = layers.labelCanvas.getContext('2d');
         labelCtx.clearRect(0, 0, layers.labelCanvas.width, layers.labelCanvas.height);
-        if (editor.labelsEnabled) drawImageEditorLabels(labelCtx, getImageEditorDisplayLabels(editor.labels || []), layers.labelCanvas);
-        layers.labelCanvas.classList.toggle('hidden', !editor.labelsEnabled);
+        if (editor.labelsEnabled && labelsLayerVisible) drawImageEditorLabels(labelCtx, getImageEditorDisplayLabels(editor.labels || []), layers.labelCanvas);
+        layers.labelCanvas.classList.toggle('hidden', !editor.labelsEnabled || !labelsLayerVisible);
     }
 
     function findImageEditorActiveConnectorAnchorAtPoint(point) {
@@ -13544,7 +13636,7 @@ The deletion becomes permanent when you save the diagram.`);
     function findImageEditorLabelIndexAtPoint(point) {
         const editor = state.auth.imageEditor;
         const canvas = elements.studioImageEditorCanvas;
-        if (!editor?.labels?.length || !canvas || !point) return -1;
+        if (!editor?.labels?.length || editor.labelsLayerVisible === false || !canvas || !point) return -1;
         const ctx = canvas.getContext('2d');
         ctx.save();
         ctx.font = '800 34px Arial';
@@ -13672,6 +13764,106 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    function ensureImageEditorLayerVisibilityPopover() {
+        let popover = document.getElementById('studioImageEditorLayerVisibilityPopover');
+        if (popover) return popover;
+        const overlay = elements.studioImageEditorOverlay || document.body;
+        popover = document.createElement('div');
+        popover.id = 'studioImageEditorLayerVisibilityPopover';
+        popover.className = 'studio-image-editor-layer-visibility-popover hidden';
+        popover.setAttribute('role', 'dialog');
+        popover.setAttribute('aria-hidden', 'true');
+        popover.innerHTML = '<div class="studio-image-editor-layer-visibility-title" data-layer-visibility-title></div><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-visibility-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span data-layer-visibility-state>Show</span></label><div class="studio-image-editor-layer-visibility-help" data-layer-visibility-help></div>';
+        overlay.appendChild(popover);
+        popover.addEventListener('click', event => event.stopPropagation());
+        popover.querySelector('[data-layer-visibility-input]')?.addEventListener('change', event => {
+            const kind = normalizeSheetText(popover.dataset.layerVisibilityKind || '');
+            setImageEditorLayerContentVisible(kind, !!event.target.checked);
+            syncImageEditorLayerVisibilityPopover();
+        });
+        return popover;
+    }
+
+    function closeImageEditorLayerVisibilityPopover() {
+        const popover = document.getElementById('studioImageEditorLayerVisibilityPopover');
+        if (!popover) return;
+        popover.classList.add('hidden');
+        popover.setAttribute('aria-hidden', 'true');
+        popover.dataset.layerVisibilityKind = '';
+    }
+
+    function isImageEditorLayerVisibilityPopoverOpen(kind = '') {
+        const popover = document.getElementById('studioImageEditorLayerVisibilityPopover');
+        return !!(popover && !popover.classList.contains('hidden') && normalizeSheetText(popover.dataset.layerVisibilityKind || '') === normalizeSheetText(kind));
+    }
+
+    function syncImageEditorLayerVisibilityPopover() {
+        const editor = state.auth.imageEditor;
+        const popover = document.getElementById('studioImageEditorLayerVisibilityPopover');
+        if (!editor || !popover || popover.classList.contains('hidden')) return;
+        const kind = normalizeSheetText(popover.dataset.layerVisibilityKind || '');
+        const isLabels = kind === 'labels';
+        const visible = isLabels ? editor.labelsLayerVisible !== false : editor.visualAidsLayerVisible !== false;
+        const input = popover.querySelector('[data-layer-visibility-input]');
+        const title = popover.querySelector('[data-layer-visibility-title]');
+        const stateText = popover.querySelector('[data-layer-visibility-state]');
+        const help = popover.querySelector('[data-layer-visibility-help]');
+        if (input) input.checked = visible;
+        if (title) title.textContent = isLabels ? 'Labels' : 'Visual Aids';
+        if (stateText) stateText.textContent = visible ? 'Show' : 'Hide';
+        if (help) help.textContent = isLabels ? 'Labels, connectors, and label drawings' : 'All Visual Aids in Diagram Creator';
+    }
+
+    function openImageEditorLayerVisibilityPopover(kind = '', button = null) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !button) return;
+        const popover = ensureImageEditorLayerVisibilityPopover();
+        popover.dataset.layerVisibilityKind = normalizeSheetText(kind);
+        syncImageEditorLayerVisibilityPopover();
+        popover.classList.remove('hidden');
+        popover.setAttribute('aria-hidden', 'false');
+        const rect = button.getBoundingClientRect();
+        const estimatedWidth = 230;
+        const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - estimatedWidth - 8));
+        popover.style.left = `${left}px`;
+        popover.style.top = `${Math.min(window.innerHeight - 120, rect.bottom + 8)}px`;
+    }
+
+    function setImageEditorLayerContentVisible(kind = '', visible = true) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open) return;
+        const show = visible !== false;
+        if (kind === 'labels') {
+            editor.labelsLayerVisible = show;
+            if (!show) {
+                finishImageEditorActiveStroke(null, { silent: true });
+                editor.activeDrawLabelIndex = null;
+                editor.activeConnectorLabelIndex = null;
+                editor.connectorStylePickerLabelIndex = null;
+                editor.draggingConnectorAnchor = false;
+                editor.hoveredLabelIndex = null;
+                editor.draggingLabelIndex = null;
+                if (editor.mode === 'labels' || editor.mode === 'connector') editor.mode = 'select';
+            }
+            renderImageEditorCanvas();
+            refreshImageEditorLabelUi();
+            setImageEditorStatus(show ? 'Showing labels, connectors, and label drawings.' : 'Hid labels, connectors, and label drawings for this Diagram Creator session.');
+            return;
+        }
+        if (kind === 'visual-aids') {
+            editor.visualAidsLayerVisible = show;
+            if (!show) {
+                stopImageEditorVisualAidPreview();
+                if (editor.mode === 'visual-aid') editor.mode = 'select';
+            } else if (!normalizeSheetText(editor.sessionVisibleVisualAidId || '') && normalizeSheetText(editor.activeVisualAidId || '')) {
+                editor.sessionVisibleVisualAidId = editor.activeVisualAidId;
+            }
+            refreshImageEditorVisualAidUi();
+            updateImageEditorCanvasPointerState();
+            setImageEditorStatus(show ? 'Showing Visual Aids.' : 'Hid all Visual Aids for this Diagram Creator session.');
+        }
+    }
+
     function renderImageEditorLabelList() {
         const editor = state.auth.imageEditor;
         if (!elements.studioImageEditorLabelList) return;
@@ -13741,7 +13933,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         const svg = elements.studioImageEditorVisualAidLayer;
         const canvas = elements.studioImageEditorCanvas;
-        if (!svg || !canvas || !editor?.visualAidsEnabled) {
+        if (!svg || !canvas || !editor?.visualAidsEnabled || editor.visualAidsLayerVisible === false) {
             if (svg) svg.classList.add('hidden');
             return;
         }
@@ -13866,6 +14058,8 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.studioImageEditorVisualAidBtn) {
             elements.studioImageEditorVisualAidBtn.hidden = !editor?.visualAidsEnabled;
             elements.studioImageEditorVisualAidBtn.classList.toggle('active', !!editor?.showVisualAidPanel);
+            elements.studioImageEditorVisualAidBtn.classList.toggle('content-hidden', editor?.visualAidsLayerVisible === false);
+            elements.studioImageEditorVisualAidBtn.setAttribute('aria-label', editor?.visualAidsLayerVisible === false ? 'Visual Aid panel — Visual Aids hidden in Diagram Creator' : 'Visual Aid panel — Visual Aids shown in Diagram Creator');
         }
         renderImageEditorVisualAidPanel();
         renderImageEditorVisualAidLayer();
@@ -13897,7 +14091,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         const aid = getActiveImageEditorVisualAid(editor);
         const canvas = elements.studioImageEditorCanvas;
-        if (!aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || !canvas) return null;
+        if (!aid || editor?.visualAidsLayerVisible === false || !isImageEditorVisualAidSessionVisible(editor, aid.id) || !canvas) return null;
         const target = getImageEditorVisualAidPointerPosition(point);
         let best = null;
         aid.points.forEach(item => {
@@ -14121,6 +14315,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.studioImageEditorLabelsBtn) {
             elements.studioImageEditorLabelsBtn.classList.toggle('active', shouldShowPanel);
             elements.studioImageEditorLabelsBtn.setAttribute('aria-pressed', shouldShowPanel ? 'true' : 'false');
+            elements.studioImageEditorLabelsBtn.classList.toggle('content-hidden', editor?.labelsLayerVisible === false);
         }
         applyImageEditorLabelPanelWidth();
         if (elements.studioImageEditorAddLabelBtn) elements.studioImageEditorAddLabelBtn.disabled = !editor?.labelsEnabled;
@@ -14520,6 +14715,11 @@ The deletion becomes permanent when you save the diagram.`);
             elements.studioImageEditorVisualAidBtn?.addEventListener('click', () => {
                 const editor = state.auth.imageEditor;
                 if (!editor?.visualAidsEnabled) return;
+                if (editor.showVisualAidPanel && !isImageEditorLayerVisibilityPopoverOpen('visual-aids')) {
+                    openImageEditorLayerVisibilityPopover('visual-aids', elements.studioImageEditorVisualAidBtn);
+                    return;
+                }
+                closeImageEditorLayerVisibilityPopover();
                 if (editor.showLabelPanel) captureImageEditorLabelPanelCanvasWidth(editor);
                 editor.showVisualAidPanel = !editor.showVisualAidPanel;
                 if (editor.showVisualAidPanel) {
@@ -14552,6 +14752,7 @@ The deletion becomes permanent when you save the diagram.`);
                 if (select) {
                     stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
                     editor.activeVisualAidId = normalizeSheetText(select.dataset.visualAidSelect || '');
+                    editor.sessionVisibleVisualAidId = editor.activeVisualAidId;
                     handled = true;
                 }
                 if (visibility) {
@@ -14693,11 +14894,27 @@ The deletion becomes permanent when you save the diagram.`);
             elements.studioImageEditorVisualAidList?.addEventListener('input', handleVisualAidControlInput);
             elements.studioImageEditorVisualAidList?.addEventListener('change', handleVisualAidControlInput);
         }
+        if (overlay.dataset.imageEditorLabelVisibilityEventsBound !== 'true') {
+            overlay.dataset.imageEditorLabelVisibilityEventsBound = 'true';
+            elements.studioImageEditorLabelsBtn?.addEventListener('click', () => {
+                const editor = state.auth.imageEditor;
+                if (!editor?.labelsEnabled) return;
+                if (editor.showLabelPanel && !isImageEditorLayerVisibilityPopoverOpen('labels')) {
+                    openImageEditorLayerVisibilityPopover('labels', elements.studioImageEditorLabelsBtn);
+                    return;
+                }
+                closeImageEditorLayerVisibilityPopover();
+                toggleImageEditorLabelPanel();
+            });
+        }
         if (overlay.dataset.imageEditorEventsBound === 'true') return;
         overlay.dataset.imageEditorEventsBound = 'true';
         elements.studioImageEditorCloseBtn?.addEventListener('click', handleStudioImageEditorCloseRequest);
         elements.studioImageEditorCancelBtn?.addEventListener('click', handleStudioImageEditorCloseRequest);
         overlay.addEventListener('click', event => {
+            if (!event.target.closest?.('#studioImageEditorLayerVisibilityPopover') && !event.target.closest?.('#studioImageEditorLabelsBtn') && !event.target.closest?.('#studioImageEditorVisualAidBtn')) {
+                closeImageEditorLayerVisibilityPopover();
+            }
             const metadataToggle = event.target.closest?.('#studioImageEditorMetadataToggleBtn');
             if (metadataToggle) {
                 event.preventDefault();
@@ -14718,8 +14935,19 @@ The deletion becomes permanent when you save the diagram.`);
             button.addEventListener('click', () => {
                 closeImageEditorSliderPopovers();
                 const tool = normalizeSheetText(button.dataset.imageEditorTool) || 'crop';
-                if (tool === 'labels') toggleImageEditorLabelPanel();
-                else setImageEditorMode(tool);
+                if (tool === 'labels') {
+                    if (overlay.dataset.imageEditorLabelVisibilityEventsBound === 'true') return;
+                    const editor = state.auth.imageEditor;
+                    if (editor?.showLabelPanel && !isImageEditorLayerVisibilityPopoverOpen('labels')) {
+                        openImageEditorLayerVisibilityPopover('labels', button);
+                        return;
+                    }
+                    closeImageEditorLayerVisibilityPopover();
+                    toggleImageEditorLabelPanel();
+                } else {
+                    closeImageEditorLayerVisibilityPopover();
+                    setImageEditorMode(tool);
+                }
             });
         });
 
@@ -14999,6 +15227,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function closeStudioImageEditor() {
+        closeImageEditorLayerVisibilityPopover();
         hideImageEditorLabelSuggestions();
         clearImageEditorDrawingSaveTimers(state.auth.imageEditor);
         closeImageEditorSliderPopovers();
@@ -15542,7 +15771,7 @@ The deletion becomes permanent when you save the diagram.`);
                     else path[path.length - 1] = finalPoint;
                     aid = normalizeDiagramVisualAid({ ...aid, path }, aidIndex);
                 }
-                if (aid.path.length > 1 && !aid.divisions.length) aid.divisions.push({ id: createDiagramVisualAidId('division'), name: 'Division 1', position: 0, color: aid.defaultColor });
+                if (aid.path.length > 1 && !aid.divisions.length && !aid.points.length) aid.divisions.push({ id: createDiagramVisualAidId('division'), name: 'Division 1', position: 0, color: aid.defaultColor });
                 if (aid.path.length > 1) aid = ensureDiagramVisualAidEndpointPoints(aid);
                 editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
             }
@@ -39112,6 +39341,18 @@ if (elements.reviewModeVisualAidOnlyToggle) {
     });
 }
 
+if (elements.reviewModeDisplayFullPathToggle) {
+    elements.reviewModeDisplayFullPathToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        const wasPlaying = !!review.visualAidPlaying;
+        if (wasPlaying) stopReviewModeVisualAidAnimation();
+        review.visualAidDisplayFullPath = elements.reviewModeDisplayFullPathToggle.checked;
+        renderReviewModeVisualAids();
+        syncReviewModeControls();
+        if (wasPlaying) playReviewModeVisualAidAnimation();
+    });
+}
+
 if (elements.reviewModeKeyboardShortcutsBtn) {
     elements.reviewModeKeyboardShortcutsBtn.addEventListener('click', () => {
         const review = getReviewModeState();
@@ -41322,7 +41563,10 @@ if (elements.studioImageEditorOverlay) {
 elements.studioImageEditorToolButtons?.forEach(button => {
     button.addEventListener('click', () => {
         const tool = normalizeSheetText(button.dataset.imageEditorTool) || 'crop';
-        if (tool === 'labels') toggleImageEditorLabelPanel();
+        if (tool === 'labels') {
+            if (elements.studioImageEditorOverlay?.dataset.imageEditorLabelVisibilityEventsBound === 'true') return;
+            toggleImageEditorLabelPanel();
+        }
         else setImageEditorMode(tool);
     });
 });
