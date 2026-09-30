@@ -1219,6 +1219,34 @@ MODIFICATION RULES FOR THIS APP
         return window.supabase?.createClient || null;
     }
 
+    let supabaseSdkLoadPromise = null;
+
+    function ensureSupabaseClientFactory(timeoutMs = 7000) {
+        const existing = getSupabaseClientFactory();
+        if (existing) return Promise.resolve(existing);
+        if (supabaseSdkLoadPromise) return supabaseSdkLoadPromise;
+        supabaseSdkLoadPromise = new Promise(resolve => {
+            let settled = false;
+            const finish = factory => {
+                if (settled) return;
+                settled = true;
+                resolve(factory || null);
+            };
+            let sdk = document.querySelector('script[data-study-bunny-supabase-sdk]');
+            if (!sdk) {
+                sdk = document.createElement('script');
+                sdk.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+                sdk.async = true;
+                sdk.dataset.studyBunnySupabaseSdk = 'true';
+                document.head.appendChild(sdk);
+            }
+            sdk.addEventListener('load', () => finish(getSupabaseClientFactory()), { once: true });
+            sdk.addEventListener('error', () => finish(null), { once: true });
+            window.setTimeout(() => finish(getSupabaseClientFactory()), Math.max(1000, Number(timeoutMs) || 7000));
+        });
+        return supabaseSdkLoadPromise;
+    }
+
     function setAuthStatus(message, variant = 'neutral') {
         if (!elements.authStatus) return;
         elements.authStatus.textContent = message;
@@ -3557,6 +3585,19 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    function getDiagramVisualAidSvgSliceData(masterMetrics = {}, width = 1, height = 1, startPosition = 0, endPosition = 1) {
+        const safeWidth = Math.max(1, Number(width) || 1);
+        const safeHeight = Math.max(1, Number(height) || 1);
+        const slice = getDiagramVisualAidPathSliceFromMetrics(masterMetrics, startPosition, endPosition);
+        const points = slice.map(point => ({
+            x: (point.x / 100) * safeWidth,
+            y: (point.y / 100) * safeHeight
+        }));
+        let total = 0;
+        for (let index = 1; index < points.length; index += 1) total += Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y);
+        return { points, total, pointsText: points.map(point => `${point.x},${point.y}`).join(' ') };
+    }
+
     function getDiagramVisualAidSvgDistanceAtPosition(masterMetrics = {}, svgMetrics = {}, position = 0) {
         if (!masterMetrics.path?.length || !svgMetrics.points?.length || masterMetrics.total <= 0.0001 || svgMetrics.total <= 0.0001) return 0;
         const target = normalizeDiagramVisualAidPosition(position) * masterMetrics.total;
@@ -3573,15 +3614,6 @@ MODIFICATION RULES FOR THIS APP
             svgTraveled += svgLength;
         }
         return svgMetrics.total;
-    }
-
-    function getDiagramVisualAidSvgDashAttrs(masterMetrics = {}, svgMetrics = {}, startPosition = 0, endPosition = 1) {
-        const start = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMetrics, startPosition);
-        const end = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMetrics, endPosition);
-        const length = Math.max(0, end - start);
-        const trailingGap = Math.max(10, svgMetrics.total + 10);
-        if (start <= 0.001) return `stroke-dasharray="${length.toFixed(4)} ${trailingGap.toFixed(4)}"`;
-        return `stroke-dasharray="0 ${start.toFixed(4)} ${length.toFixed(4)} ${trailingGap.toFixed(4)}"`;
     }
 
     function getDiagramVisualAidSequenceItems(aid = {}) {
@@ -3666,20 +3698,21 @@ MODIFICATION RULES FOR THIS APP
             const baseOpacity = divisionQuizActive ? 0.32 : (animated ? 0.14 : 0.18);
             const base = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
-                const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                return `<polyline points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${baseOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
+                const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
+                return `<polyline points="${slice.pointsText}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="${baseOpacity}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round"/>`;
             }).join('');
             const colored = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
                 const isDivisionTarget = divisionSelectionActive && division?.id === divisionTargetId;
                 const segmentOpacity = isDivisionTarget ? 0 : (divisionQuizActive ? 0.65 : 1);
-                const trailingGap = Math.max(10, svgMasterMetrics.total + 10);
+                const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
                 const startDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, start);
                 const endDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, end);
-                return `<polyline class="diagram-visual-aid-animated-path" data-visual-aid-reveal-segment data-visual-aid-reveal-start-distance="${startDistance.toFixed(4)}" data-visual-aid-reveal-end-distance="${endDistance.toFixed(4)}" data-visual-aid-reveal-opacity="${segmentOpacity}" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="0 ${trailingGap.toFixed(4)}"/>`;
+                const segmentGap = Math.max(10, slice.total + 10);
+                return `<polyline class="diagram-visual-aid-animated-path" data-visual-aid-reveal-segment data-visual-aid-reveal-start-distance="${startDistance.toFixed(4)}" data-visual-aid-reveal-end-distance="${endDistance.toFixed(4)}" data-visual-aid-reveal-length="${slice.total.toFixed(4)}" data-visual-aid-reveal-opacity="${segmentOpacity}" points="${slice.pointsText}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="1 ${segmentGap.toFixed(4)}"/>`;
             }).join('');
-            const revealGlow = `<polyline data-visual-aid-reveal-glow points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="0 ${Math.max(10, svgMasterMetrics.total + 10).toFixed(4)}" filter="url(#${glowId})" pointer-events="none"/>`;
+            const revealGlow = `<polyline data-visual-aid-reveal-glow points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="1 ${Math.max(10, svgMasterMetrics.total + 10).toFixed(4)}" filter="url(#${glowId})" pointer-events="none"/>`;
             const startPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 0);
             const endPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 1);
             const endpointRadius = Math.max(1, aid.thickness / 2);
@@ -3692,8 +3725,8 @@ MODIFICATION RULES FOR THIS APP
                     const start = division.position;
                     const end = aid.divisions[divisionIndex + 1]?.position ?? 1;
                     const mid = start + ((end - start) / 2);
-                    const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                    divisionHits += `<polyline class="diagram-visual-aid-hit-path" data-review-visual-aid-kind="division" data-review-visual-aid-id="${escapeHtml(division.id)}" data-review-visual-aid-position="${mid.toFixed(6)}" points="${masterPoints}" fill="none" stroke="transparent" stroke-width="${aid.thickness + 16}" stroke-linecap="round" stroke-linejoin="round" ${dash}/>`;
+                    const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
+                    divisionHits += `<polyline class="diagram-visual-aid-hit-path" data-review-visual-aid-kind="division" data-review-visual-aid-id="${escapeHtml(division.id)}" data-review-visual-aid-position="${mid.toFixed(6)}" points="${slice.pointsText}" fill="none" stroke="transparent" stroke-width="${aid.thickness + 16}" stroke-linecap="round" stroke-linejoin="round"/>`;
                 });
             }
             const pointMarkup = aid.points.map(point => {
@@ -3736,8 +3769,8 @@ MODIFICATION RULES FOR THIS APP
                 if (quizTarget.kind === 'visual-path') {
                     quizOverlay = segmentPositions.slice(0, -1).map((start, index) => {
                         const end = segmentPositions[index + 1];
-                        const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                        return `<polyline class="diagram-visual-aid-quiz-highlight is-path${reviewSelectionClass}" points="${masterPoints}" fill="none" stroke="${segmentColors[index]}" stroke-width="${aid.thickness + 7}" stroke-linecap="butt" stroke-linejoin="round" ${dash}${quizFilter}/>`;
+                        const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
+                        return `<polyline class="diagram-visual-aid-quiz-highlight is-path${reviewSelectionClass}" points="${slice.pointsText}" fill="none" stroke="${segmentColors[index]}" stroke-width="${aid.thickness + 7}" stroke-linecap="butt" stroke-linejoin="round"${quizFilter}/>`;
                     }).join('');
                 } else if (quizTarget.kind === 'visual-point') {
                     const point = aid.points.find(item => item.id === quizTarget.itemId);
@@ -3751,8 +3784,8 @@ MODIFICATION RULES FOR THIS APP
                     if (division) {
                         const start = division.position;
                         const end = aid.divisions[divisionIndex + 1]?.position ?? 1;
-                        const dash = getDiagramVisualAidSvgDashAttrs(masterMetrics, svgMasterMetrics, start, end);
-                        quizOverlay = `<polyline class="diagram-visual-aid-quiz-highlight is-division${quizMode ? ' is-mini-quiz' : ''}${reviewSelectionClass}" points="${masterPoints}" fill="none" stroke="${division.color || aid.defaultColor}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" ${dash}/>`;
+                        const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
+                        quizOverlay = `<polyline class="diagram-visual-aid-quiz-highlight is-division${quizMode ? ' is-mini-quiz' : ''}${reviewSelectionClass}" points="${slice.pointsText}" fill="none" stroke="${division.color || aid.defaultColor}" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round"/>`;
                     }
                 }
             }
@@ -3802,31 +3835,30 @@ MODIFICATION RULES FOR THIS APP
             const trailingGap = Math.max(10, total + 10);
             const visibleDistance = getDiagramVisualAidSvgDistanceAtPosition(runtime.masterMetrics, runtime.svgMasterMetrics, currentProgress);
             if (runtime.revealGlow) {
-                runtime.revealGlow.setAttribute('stroke-dasharray', `${Math.max(0, visibleDistance).toFixed(4)} ${trailingGap.toFixed(4)}`);
-                runtime.revealGlow.setAttribute('stroke-opacity', runtime.displayFullPathBall ? '0' : (currentProgress > 0.000001 ? '0.16' : '0'));
+                if (runtime.displayFullPathBall || currentProgress <= 0.000001) {
+                    runtime.revealGlow.setAttribute('stroke-opacity', '0');
+                } else {
+                    runtime.revealGlow.setAttribute('stroke-dasharray', `${Math.max(0.001, visibleDistance).toFixed(4)} ${trailingGap.toFixed(4)}`);
+                    runtime.revealGlow.setAttribute('stroke-opacity', '0.16');
+                }
             }
             runtime.revealSegmentNodes.forEach(node => {
                 const startDistance = Math.max(0, Number(node.dataset.visualAidRevealStartDistance) || 0);
                 const endDistance = Math.max(startDistance, Number(node.dataset.visualAidRevealEndDistance) || startDistance);
-                const revealEndDistance = Math.min(endDistance, visibleDistance);
+                const segmentLength = Math.max(0, Number(node.dataset.visualAidRevealLength) || (endDistance - startDistance));
+                const segmentGap = Math.max(10, segmentLength + 10);
                 const baseOpacity = Math.min(1, Math.max(0, Number(node.dataset.visualAidRevealOpacity) || 0));
                 if (runtime.displayFullPathBall) {
-                    const length = Math.max(0, endDistance - startDistance);
-                    node.setAttribute('stroke-dasharray', startDistance <= 0.001
-                        ? `${length.toFixed(4)} ${trailingGap.toFixed(4)}`
-                        : `0 ${startDistance.toFixed(4)} ${length.toFixed(4)} ${trailingGap.toFixed(4)}`);
+                    node.removeAttribute('stroke-dasharray');
                     node.setAttribute('stroke-opacity', String(baseOpacity));
                     return;
                 }
-                if (revealEndDistance <= startDistance + 0.001 || baseOpacity <= 0) {
+                const localVisible = Math.min(segmentLength, Math.max(0, visibleDistance - startDistance));
+                if (localVisible <= 0.001 || baseOpacity <= 0) {
                     node.setAttribute('stroke-opacity', '0');
-                    node.setAttribute('stroke-dasharray', `0 ${trailingGap.toFixed(4)}`);
                     return;
                 }
-                const length = Math.max(0, revealEndDistance - startDistance);
-                node.setAttribute('stroke-dasharray', startDistance <= 0.001
-                    ? `${length.toFixed(4)} ${trailingGap.toFixed(4)}`
-                    : `0 ${startDistance.toFixed(4)} ${length.toFixed(4)} ${trailingGap.toFixed(4)}`);
+                node.setAttribute('stroke-dasharray', `${localVisible.toFixed(4)} ${segmentGap.toFixed(4)}`);
                 node.setAttribute('stroke-opacity', String(baseOpacity));
             });
             if (runtime.revealCap) {
@@ -26751,9 +26783,9 @@ if (elements.openQuizStudioBtn) {
             return;
         }
 
-        const factory = getSupabaseClientFactory();
+        const factory = getSupabaseClientFactory() || await ensureSupabaseClientFactory();
         if (!factory) {
-            setAuthStatus('Supabase client library failed to load. Check your connection and reload.', 'error');
+            setAuthStatus('Supabase client library is unavailable. Study Bunny can still open, but account data needs a connection before it can load.', 'error');
             updateAuthUI();
             return;
         }
@@ -43574,6 +43606,7 @@ if (elements.optionsContainer) {
         loadHideAnswerFeedbackSettings();
         loadGlobalShuffleAnswersSettings();
         updateAuthUI();
+        openQuizStudioPage('home');
         await bootstrapSupabase();
 
         const list = await populateFolderDropdown();

@@ -13,6 +13,7 @@ MODIFICATION RULES FOR THIS APP
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Study Bunny</title>
   <meta name="theme-color" content="#1e1b2e">
+  <link rel="manifest" href="./manifest.webmanifest?v=23f27">
 
   <!-- Phase 22NF2.1: preserve the app palette during first paint and recover if the main stylesheet is delayed or missed. -->
   <style id="studyBunnyCriticalTheme">
@@ -46,7 +47,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f26" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f27" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +60,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23f26-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23f27-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -2360,7 +2361,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=23f26"></script>
+  <script src="script.js?v=23f27"></script>
 </body>
 </html>
