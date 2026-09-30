@@ -1220,30 +1220,100 @@ MODIFICATION RULES FOR THIS APP
     }
 
     let supabaseSdkLoadPromise = null;
+    let supabaseBootstrapPromise = null;
+    let supabaseSdkRecoveryTimerId = null;
 
-    function ensureSupabaseClientFactory(timeoutMs = 7000) {
+    const SUPABASE_SDK_SOURCES = [
+        { id: 'jsdelivr', src: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2' },
+        { id: 'unpkg', src: 'https://unpkg.com/@supabase/supabase-js@2' }
+    ];
+
+    function scheduleSupabaseSdkRecovery(delayMs = 1500) {
+        if (state.auth.client || !state.auth.configured || supabaseSdkRecoveryTimerId) return;
+        supabaseSdkRecoveryTimerId = window.setTimeout(() => {
+            supabaseSdkRecoveryTimerId = null;
+            if (state.auth.client || !state.auth.configured) return;
+            const factory = getSupabaseClientFactory();
+            if (factory) {
+                bootstrapSupabase({ timeoutMs: 1000, recovery: true }).catch(error => console.error(error));
+                return;
+            }
+            scheduleSupabaseSdkRecovery(2500);
+        }, Math.max(250, Number(delayMs) || 1500));
+    }
+
+    function ensureSupabaseSdkScript(source, retryFailed = false) {
+        if (!source?.id || !source?.src) return null;
+        let sdk = document.querySelector(`script[data-study-bunny-supabase-sdk="${source.id}"]`);
+        if (sdk && retryFailed && sdk.dataset.loadState === 'error') {
+            sdk.remove();
+            sdk = null;
+        }
+        if (sdk) return sdk;
+
+        sdk = document.createElement('script');
+        sdk.src = retryFailed ? `${source.src}${source.src.includes('?') ? '&' : '?'}sb_retry=${Date.now()}` : source.src;
+        sdk.async = true;
+        sdk.dataset.studyBunnySupabaseSdk = source.id;
+        sdk.dataset.loadState = 'loading';
+        sdk.addEventListener('load', () => {
+            sdk.dataset.loadState = 'loaded';
+            if (getSupabaseClientFactory()) {
+                scheduleSupabaseSdkRecovery(0);
+            }
+        }, { once: true });
+        sdk.addEventListener('error', () => {
+            sdk.dataset.loadState = 'error';
+        }, { once: true });
+        document.head.appendChild(sdk);
+        return sdk;
+    }
+
+    function ensureSupabaseClientFactory(timeoutMs = 7000, options = {}) {
         const existing = getSupabaseClientFactory();
         if (existing) return Promise.resolve(existing);
         if (supabaseSdkLoadPromise) return supabaseSdkLoadPromise;
+
+        const retryFailed = !!options.retryFailed;
         supabaseSdkLoadPromise = new Promise(resolve => {
             let settled = false;
+            let pollTimerId = null;
+            let fallbackTimerId = null;
+            const startedAt = Date.now();
+            const safeTimeoutMs = Math.max(1500, Number(timeoutMs) || 7000);
+
             const finish = factory => {
                 if (settled) return;
                 settled = true;
+                if (pollTimerId) window.clearTimeout(pollTimerId);
+                if (fallbackTimerId) window.clearTimeout(fallbackTimerId);
                 resolve(factory || null);
             };
-            let sdk = document.querySelector('script[data-study-bunny-supabase-sdk]');
-            if (!sdk) {
-                sdk = document.createElement('script');
-                sdk.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-                sdk.async = true;
-                sdk.dataset.studyBunnySupabaseSdk = 'true';
-                document.head.appendChild(sdk);
-            }
-            sdk.addEventListener('load', () => finish(getSupabaseClientFactory()), { once: true });
-            sdk.addEventListener('error', () => finish(null), { once: true });
-            window.setTimeout(() => finish(getSupabaseClientFactory()), Math.max(1000, Number(timeoutMs) || 7000));
+
+            const pollForFactory = () => {
+                const factory = getSupabaseClientFactory();
+                if (factory) {
+                    finish(factory);
+                    return;
+                }
+                if ((Date.now() - startedAt) >= safeTimeoutMs) {
+                    finish(null);
+                    return;
+                }
+                pollTimerId = window.setTimeout(pollForFactory, 200);
+            };
+
+            ensureSupabaseSdkScript(SUPABASE_SDK_SOURCES[0], retryFailed);
+            fallbackTimerId = window.setTimeout(() => {
+                if (!getSupabaseClientFactory()) {
+                    ensureSupabaseSdkScript(SUPABASE_SDK_SOURCES[1], retryFailed);
+                }
+            }, 1400);
+            pollForFactory();
+        }).finally(() => {
+            supabaseSdkLoadPromise = null;
         });
+
         return supabaseSdkLoadPromise;
     }
 
@@ -26774,43 +26844,69 @@ if (elements.openQuizStudioBtn) {
         }
     }
 
-    async function bootstrapSupabase() {
-        const { url, publishableKey, isConfigured } = getSupabaseConfig();
-        state.auth.configured = isConfigured;
+    async function bootstrapSupabase(options = {}) {
+        if (state.auth.client && state.auth.initialized) return true;
+        if (supabaseBootstrapPromise) return supabaseBootstrapPromise;
 
-        if (!isConfigured) {
-            updateAuthUI();
-            return;
-        }
+        supabaseBootstrapPromise = (async () => {
+            const { url, publishableKey, isConfigured } = getSupabaseConfig();
+            state.auth.configured = isConfigured;
 
-        const factory = getSupabaseClientFactory() || await ensureSupabaseClientFactory();
-        if (!factory) {
-            setAuthStatus('Supabase client library is unavailable. Study Bunny can still open, but account data needs a connection before it can load.', 'error');
-            updateAuthUI();
-            return;
-        }
-
-        try {
-            state.auth.client = factory(url, publishableKey);
-            state.auth.initialized = true;
-
-            state.auth.client.auth.onAuthStateChange((event, session) => {
-                syncAuthFromSession(session, event).catch(err => console.error(err));
-            });
-
-            const { data, error } = await state.auth.client.auth.getSession();
-            if (error) {
-                throw error;
+            if (!isConfigured) {
+                updateAuthUI();
+                return false;
             }
 
-            await syncAuthFromSession(data.session);
-        } catch (error) {
-            console.error(error);
-            state.auth.client = null;
-            state.auth.initialized = false;
-            setAuthStatus('Failed to initialize Supabase. Double-check your URL and publishable key.', 'error');
-            updateAuthUI();
+            const timeoutMs = Math.max(1000, Number(options.timeoutMs) || 7000);
+            const factory = getSupabaseClientFactory() || await ensureSupabaseClientFactory(timeoutMs, { retryFailed: !!options.retryFailed });
+            if (!factory) {
+                setAuthStatus('Supabase is taking longer to connect. Study Bunny will keep retrying automatically.', 'error');
+                updateAuthUI();
+                scheduleSupabaseSdkRecovery(1200);
+                return false;
+            }
+
+            try {
+                state.auth.client = factory(url, publishableKey);
+                state.auth.initialized = true;
+
+                state.auth.client.auth.onAuthStateChange((event, session) => {
+                    syncAuthFromSession(session, event).catch(err => console.error(err));
+                });
+
+                const { data, error } = await state.auth.client.auth.getSession();
+                if (error) {
+                    throw error;
+                }
+
+                await syncAuthFromSession(data.session);
+                return true;
+            } catch (error) {
+                console.error(error);
+                state.auth.client = null;
+                state.auth.initialized = false;
+                setAuthStatus('Failed to initialize Supabase. Study Bunny will retry when the connection is available.', 'error');
+                updateAuthUI();
+                scheduleSupabaseSdkRecovery(1800);
+                return false;
+            }
+        })().finally(() => {
+            supabaseBootstrapPromise = null;
+        });
+
+        return supabaseBootstrapPromise;
+    }
+
+    async function ensureSupabaseReadyForAuth() {
+        if (state.auth.client && state.auth.initialized) return true;
+        setAuthStatus('Connecting to Supabase...');
+        const ready = await bootstrapSupabase({ timeoutMs: 20000, retryFailed: true });
+        if (!ready || !state.auth.client) {
+            setAuthStatus('Supabase is still connecting. Study Bunny will keep retrying; try Sign In again in a moment.', 'error');
+            scheduleSupabaseSdkRecovery(1000);
+            return false;
         }
+        return true;
     }
 
     function getAuthFormValues() {
@@ -26821,7 +26917,7 @@ if (elements.openQuizStudioBtn) {
     }
 
     async function handleAuthSignUp() {
-        if (!state.auth.client) return;
+        if (!state.auth.client && !(await ensureSupabaseReadyForAuth())) return;
 
         const { email, password } = getAuthFormValues();
         if (!email || !password) {
@@ -26850,7 +26946,7 @@ if (elements.openQuizStudioBtn) {
     }
 
     async function handleAuthSignIn() {
-        if (!state.auth.client) return;
+        if (!state.auth.client && !(await ensureSupabaseReadyForAuth())) return;
 
         const { email, password } = getAuthFormValues();
         if (!email || !password) {
@@ -43563,6 +43659,16 @@ if (elements.completionChallengeLaterBtn) {
 
 window.addEventListener('resize', handleViewportChange);
 window.addEventListener('resize', queueOptionsScrollIndicatorUpdate);
+window.addEventListener('online', () => {
+    if (!state.auth.client) {
+        bootstrapSupabase({ timeoutMs: 12000, retryFailed: true }).catch(error => console.error(error));
+    }
+});
+window.addEventListener('pageshow', () => {
+    if (!state.auth.client) {
+        bootstrapSupabase({ timeoutMs: 8000, retryFailed: true }).catch(error => console.error(error));
+    }
+});
 window.addEventListener('orientationchange', handleViewportChange);
 window.addEventListener('orientationchange', queueOptionsScrollIndicatorUpdate);
 window.addEventListener('orientationchange', () => setTimeout(queueFlashcardZoomOverlayLabelSync, 320));
