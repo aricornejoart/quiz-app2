@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f29" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f30" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23f29-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23f30-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1989,6 +1989,13 @@ MODIFICATION RULES FOR THIS APP
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
+      <label class="review-mode-switch-row review-mode-visual-aid-labels-row">
+        <span>Visual Aid Labels</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeVisualAidLabelsToggle" type="checkbox" role="switch" aria-label="Show Visual Aid point and division labels" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
       <label class="review-mode-switch-row review-mode-visual-aid-only-row">
         <span>Visual Aid Only</span>
         <span class="review-mode-toggle-control">
@@ -2201,6 +2208,7 @@ MODIFICATION RULES FOR THIS APP
         <svg id="reviewModeVisualAidLayer" class="review-mode-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg>
         <svg id="reviewModeConnectorLayer" class="review-mode-connector-layer" aria-hidden="true" focusable="false"></svg>
         <div id="reviewModeLabelLayer" class="review-mode-label-layer" aria-label="Interactive diagram labels"></div>
+        <div id="reviewModeVisualAidLabelLayer" class="review-mode-visual-aid-label-layer" aria-live="polite" aria-hidden="true"></div>
       </div>
       <div id="reviewModeShortcutDock" class="review-mode-shortcut-dock" data-edge="right" aria-label="Review Mode shortcut controls">
         <button id="reviewModeShortcutGrip" class="review-mode-shortcut-grip" type="button" aria-label="Move shortcut controls"><span class="review-mode-shortcut-grip-dots" aria-hidden="true"></span></button>
@@ -2217,8 +2225,10 @@ MODIFICATION RULES FOR THIS APP
       </div>
       <div id="reviewModeVisualAidBar" class="review-mode-visual-aid-bar hidden" data-edge="bottom" aria-hidden="true" aria-label="Visual Aid animation controls">
         <button id="reviewModeVisualAidGrip" class="review-mode-visual-aid-grip" type="button" aria-label="Move Visual Aid controls"><span class="review-mode-shortcut-grip-dots" aria-hidden="true"></span></button>
-        <div class="review-mode-visual-aid-controls"><button id="reviewModeVisualAidPlayBtn" type="button" aria-label="Play animation" title="Play animation">▶</button><button id="reviewModeVisualAidPauseBtn" type="button" aria-label="Pause animation" title="Pause animation">⏸</button><button id="reviewModeVisualAidResetBtn" type="button" aria-label="Reset animation" title="Reset animation">↺</button><button id="reviewModeVisualAidLoopBtn" type="button" aria-label="Replay loop" title="Replay loop" aria-pressed="false">↻</button></div>
-        <label class="review-mode-visual-aid-speed">Speed <select id="reviewModeVisualAidSpeed" aria-label="Visual Aid animation speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option></select></label>
+        <div class="review-mode-visual-aid-left-controls">
+          <div class="review-mode-visual-aid-controls"><button id="reviewModeVisualAidPlayBtn" type="button" aria-label="Play animation" title="Play animation">▶</button><button id="reviewModeVisualAidPauseBtn" type="button" aria-label="Pause animation" title="Pause animation">⏸</button><button id="reviewModeVisualAidResetBtn" type="button" aria-label="Reset animation" title="Reset animation">↺</button><button id="reviewModeVisualAidLoopBtn" type="button" aria-label="Replay loop" title="Replay loop" aria-pressed="false">↻</button></div>
+          <label class="review-mode-visual-aid-speed">Speed <select id="reviewModeVisualAidSpeed" aria-label="Visual Aid animation speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option></select></label>
+        </div>
         <div id="reviewModeVisualAidSequence" class="review-mode-visual-aid-sequence" aria-label="Visual Aid sequence"></div>
       </div>
     </div>
@@ -2360,6 +2370,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=23f29"></script>
+  <script src="script.js?v=23f30"></script>
 </body>
 </html>

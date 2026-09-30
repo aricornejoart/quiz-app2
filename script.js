@@ -431,6 +431,7 @@ MODIFICATION RULES FOR THIS APP
                 shortcutDockOffset: 0.5,
                 shortcutInfoOpen: false,
                 showVisualAid: false,
+                visualAidLabels: true,
                 visualAidOnly: false,
                 visualAidDisplayFullPath: false,
                 visualAidDockEdge: 'bottom',
@@ -714,6 +715,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
         reviewModeConnectorLayer: document.getElementById('reviewModeConnectorLayer'),
         reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
+        reviewModeVisualAidLabelLayer: document.getElementById('reviewModeVisualAidLabelLayer'),
         reviewModeVisualAidLayer: document.getElementById('reviewModeVisualAidLayer'),
         reviewModeVisualAidBar: document.getElementById('reviewModeVisualAidBar'),
         reviewModeVisualAidSequence: document.getElementById('reviewModeVisualAidSequence'),
@@ -726,6 +728,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeShowAngleControlsToggle: document.getElementById('reviewModeShowAngleControlsToggle'),
         reviewModeShowShortcutDockToggle: document.getElementById('reviewModeShowShortcutDockToggle'),
         reviewModeShowVisualAidToggle: document.getElementById('reviewModeShowVisualAidToggle'),
+        reviewModeVisualAidLabelsToggle: document.getElementById('reviewModeVisualAidLabelsToggle'),
         reviewModeVisualAidOnlyToggle: document.getElementById('reviewModeVisualAidOnlyToggle'),
         reviewModeDisplayFullPathRow: document.getElementById('reviewModeDisplayFullPathRow'),
         reviewModeDisplayFullPathToggle: document.getElementById('reviewModeDisplayFullPathToggle'),
@@ -8393,6 +8396,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.shortcutDockOffset = Math.min(1, Math.max(0, Number.isFinite(shortcutDockOffset) ? shortcutDockOffset : 0.5));
         review.shortcutInfoOpen = review.shortcutInfoOpen === true;
         review.showVisualAid = review.showVisualAid === true;
+        review.visualAidLabels = review.visualAidLabels !== false;
         review.visualAidOnly = review.visualAidOnly === true;
         review.visualAidDisplayFullPath = review.visualAidDisplayFullPath === true;
         review.visualAidDockEdge = ['left', 'right', 'top', 'bottom'].includes(review.visualAidDockEdge) ? review.visualAidDockEdge : 'bottom';
@@ -9091,6 +9095,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.reviewModeVisualAidBar) { elements.reviewModeVisualAidBar.classList.add('hidden'); elements.reviewModeVisualAidBar.setAttribute('aria-hidden','true'); }
         if (elements.reviewModeVisualAidSequence) elements.reviewModeVisualAidSequence.innerHTML = '';
         if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
+        if (elements.reviewModeVisualAidLabelLayer) { elements.reviewModeVisualAidLabelLayer.innerHTML = ''; elements.reviewModeVisualAidLabelLayer.setAttribute('aria-hidden','true'); }
         if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         if (elements.reviewModeVisualAidLayer) elements.reviewModeVisualAidLayer.innerHTML = '';
         if (elements.reviewModeDrawCanvas) {
@@ -10162,6 +10167,106 @@ The deletion becomes permanent when you save the diagram.`);
         syncReviewModeControls();
     }
 
+    function getReviewModeVisualAidActiveItem(aid = null, progress = 0, visualQuiz = null) {
+        if (!aid) return null;
+        const items = getDiagramVisualAidSelectableItems(aid);
+        const review = getReviewModeState();
+        let activeItem = null;
+        if (visualQuiz) {
+            activeItem = items.find(item => item.type === visualQuiz.type && item.id === (visualQuiz.type === 'path' ? visualQuiz.aid.id : visualQuiz.item.id)) || null;
+        } else if (review.visualAidSelectedKind && review.visualAidSelectedId) {
+            activeItem = items.find(item => item.type === review.visualAidSelectedKind && item.id === review.visualAidSelectedId) || null;
+        }
+        if (!activeItem) {
+            const normalizedProgress = normalizeDiagramVisualAidPosition(progress);
+            activeItem = items.find(item => item.type === 'point' && Math.abs(item.position - normalizedProgress) <= 0.012)
+                || items.find(item => item.type === 'division' && normalizedProgress >= Number(item.start || 0) && (normalizedProgress < Number(item.end || 1) || normalizedProgress >= 0.999))
+                || items.filter(item => item.type !== 'path' && item.position <= normalizedProgress).slice(-1)[0]
+                || items[0]
+                || null;
+        }
+        return activeItem;
+    }
+
+    function clearReviewModeVisualAidAutoLabel() {
+        const layer = elements.reviewModeVisualAidLabelLayer;
+        if (!layer) return;
+        layer.innerHTML = '';
+        layer.dataset.visualAidLabelKey = '';
+        layer.setAttribute('aria-hidden','true');
+    }
+
+    function getReviewModeVisualAidLabelAutoPosition(aid = null, item = null, marker = null) {
+        if (!aid || !item || !marker) return { x: 50, y: 50 };
+        const stageRect = elements.reviewModeImageStage?.getBoundingClientRect?.();
+        const markerRect = marker.getBoundingClientRect?.();
+        const halfWidth = stageRect?.width && markerRect?.width ? Math.min(36, ((markerRect.width / 2) / stageRect.width) * 100) : 12;
+        const halfHeight = stageRect?.height && markerRect?.height ? Math.min(18, ((markerRect.height / 2) / stageRect.height) * 100) : 5;
+        const itemPosition = item.type === 'point'
+            ? normalizeDiagramVisualAidPosition(item.position)
+            : normalizeDiagramVisualAidPosition((Number(item.start || 0) + Number(item.end || item.position || 0)) / 2);
+        const anchor = getDiagramVisualAidPointAtPosition(aid, itemPosition);
+        const gapX = halfWidth + 2.5;
+        const gapY = halfHeight + 2.5;
+        const candidates = [
+            { x: anchor.x, y: anchor.y - gapY },
+            { x: anchor.x, y: anchor.y + gapY },
+            { x: anchor.x + gapX, y: anchor.y },
+            { x: anchor.x - gapX, y: anchor.y },
+            { x: anchor.x + gapX * .78, y: anchor.y - gapY * .78 },
+            { x: anchor.x - gapX * .78, y: anchor.y - gapY * .78 },
+            { x: anchor.x + gapX * .78, y: anchor.y + gapY * .78 },
+            { x: anchor.x - gapX * .78, y: anchor.y + gapY * .78 }
+        ];
+        const clampCandidate = candidate => ({
+            x: Math.min(100 - halfWidth - 1, Math.max(halfWidth + 1, candidate.x)),
+            y: Math.min(100 - halfHeight - 1, Math.max(halfHeight + 1, candidate.y))
+        });
+        const path = getDiagramVisualAidPathMetrics(aid).path || [];
+        const score = rawCandidate => {
+            const candidate = clampCandidate(rawCandidate);
+            let minimum = Infinity;
+            const step = Math.max(1, Math.floor(path.length / 220));
+            for (let index = 0; index < path.length; index += step) {
+                const point = path[index];
+                const dx = Math.max(0, Math.abs(point.x - candidate.x) - halfWidth);
+                const dy = Math.max(0, Math.abs(point.y - candidate.y) - halfHeight);
+                minimum = Math.min(minimum, Math.hypot(dx, dy));
+            }
+            const distanceFromTarget = Math.hypot(candidate.x - anchor.x, candidate.y - anchor.y);
+            return { candidate, score: minimum - (distanceFromTarget * .015) };
+        };
+        let best = score(candidates[0]);
+        candidates.slice(1).forEach(candidate => {
+            const result = score(candidate);
+            if (result.score > best.score) best = result;
+        });
+        return best.candidate;
+    }
+
+    function syncReviewModeVisualAidAutoLabel(aid = null, item = null) {
+        const review = getReviewModeState();
+        const layer = elements.reviewModeVisualAidLabelLayer;
+        const validItem = item && (item.type === 'point' || item.type === 'division') ? item : null;
+        const show = !!(layer && review.overlayOpen && review.showVisualAid && review.visualAidLabels && !review.miniQuiz.active && aid && validItem);
+        if (!show) { clearReviewModeVisualAidAutoLabel(); return; }
+        const key = `${aid.id}:${validItem.type}:${validItem.id}:${normalizeSheetText(validItem.name || '')}`;
+        if (layer.dataset.visualAidLabelKey !== key || !layer.firstElementChild) {
+            layer.innerHTML = `<div class="review-mode-visual-aid-auto-label">${renderMathChemTextToHtml(validItem.name || '')}</div>`;
+            layer.dataset.visualAidLabelKey = key;
+        }
+        layer.setAttribute('aria-hidden','false');
+        const marker = layer.firstElementChild;
+        if (!marker) return;
+        marker.style.left = '50%';
+        marker.style.top = '50%';
+        marker.style.visibility = 'hidden';
+        const position = getReviewModeVisualAidLabelAutoPosition(aid, validItem, marker);
+        marker.style.left = `${position.x}%`;
+        marker.style.top = `${position.y}%`;
+        marker.style.visibility = '';
+    }
+
     function updateReviewModeVisualAidPlaybackFrame(review = getReviewModeState()) {
         const layer = elements.reviewModeVisualAidLayer;
         const sequence = elements.reviewModeVisualAidSequence;
@@ -10179,17 +10284,13 @@ The deletion becomes permanent when you save the diagram.`);
         const surface = diagramVisualAidPlaybackSurfaceCache.get(layer);
         const activeAid = surface?.runtimes?.[0]?.aid || null;
         if (!activeAid) return true;
-        const items = getDiagramVisualAidSelectableItems(activeAid);
-        let activeItem = items.find(item => item.type === 'point' && Math.abs(item.position - progress) <= 0.012)
-            || items.find(item => item.type === 'division' && progress >= Number(item.start || 0) && (progress < Number(item.end || 1) || progress >= 0.999))
-            || items.filter(item => item.type !== 'path' && item.position <= progress).slice(-1)[0]
-            || items[0]
-            || null;
+        const activeItem = getReviewModeVisualAidActiveItem(activeAid, progress, null);
         const activeKey = activeItem ? `${activeItem.type}:${activeItem.id}` : '';
         if (sequence.dataset.visualAidActiveKey !== activeKey) {
             sequence.dataset.visualAidActiveKey = activeKey;
             sequence.querySelectorAll('.visual-aid-sequence-selection').forEach(button => button.classList.toggle('is-active', button.dataset.reviewVisualAidSelectKind === activeItem?.type && button.dataset.reviewVisualAidSelectId === activeItem?.id));
             sequence.querySelector('.visual-aid-sequence-selection.is-active')?.scrollIntoView?.({ behavior: 'auto', inline: 'center', block: 'nearest' });
+            syncReviewModeVisualAidAutoLabel(activeAid, activeItem);
         }
         return true;
     }
@@ -10236,24 +10337,12 @@ The deletion becomes permanent when you save the diagram.`);
             const items = activeAid ? getDiagramVisualAidSelectableItems(activeAid) : [];
             const progress = normalizeDiagramVisualAidPosition(review.visualAidProgress);
             const quizMasked = review.miniQuiz.active;
-            let activeItem = null;
-            if (visualQuiz) {
-                activeItem = items.find(item => item.type === visualQuiz.type && item.id === (visualQuiz.type === 'path' ? visualQuiz.aid.id : visualQuiz.item.id)) || null;
-            } else if (review.visualAidSelectedKind && review.visualAidSelectedId) {
-                activeItem = items.find(item => item.type === review.visualAidSelectedKind && item.id === review.visualAidSelectedId) || null;
-            }
-            if (!activeItem) {
-                activeItem = items.find(item => item.type === 'point' && Math.abs(item.position - progress) <= 0.012)
-                    || items.find(item => item.type === 'division' && progress >= Number(item.start || 0) && (progress < Number(item.end || 1) || progress >= 0.999))
-                    || items.filter(item => item.type !== 'path' && item.position <= progress).slice(-1)[0]
-                    || items[0]
-                    || null;
-            }
-            const sequenceKey = activeAid ? `${quizMasked ? 'quiz' : 'review'}::${items.map(item => `${item.type}:${item.id}:${item.name}:${Number(item.position).toFixed(4)}`).join('|')}` : '';
+            const activeItem = getReviewModeVisualAidActiveItem(activeAid, progress, visualQuiz);
+            const legendItems = quizMasked ? items : items.filter(item => item.type === 'point' || item.type === 'division');
+            const sequenceKey = activeAid ? `${quizMasked ? 'quiz' : 'review'}::${legendItems.map(item => `${item.type}:${item.id}:${item.name}:${Number(item.position).toFixed(4)}`).join('|')}` : '';
             const existingScrubber = sequence.querySelector('[data-review-visual-aid-scrubber]');
             if (activeAid && (!existingScrubber || sequence.dataset.visualAidSequenceKey !== sequenceKey)) {
-                const currentText = quizMasked ? 'Interactive Visual Aid' : (activeAid.name || 'Visual Aid');
-                sequence.innerHTML = `<div class="visual-aid-sequence-current"><strong>${escapeHtml(currentText)}</strong></div><div class="visual-aid-sequence-selections">${items.map(item => { const label = quizMasked ? (item.type === 'point' ? 'Point' : item.type === 'division' ? 'Division' : 'Path') : item.name; return `<button type="button" data-review-visual-aid-position="${Number(item.position).toFixed(6)}" data-review-visual-aid-select-kind="${item.type}" data-review-visual-aid-select-id="${escapeHtml(item.id)}" class="visual-aid-sequence-selection${activeItem && item.type === activeItem.type && item.id === activeItem.id ? ' is-active' : ''}" ${quizMasked ? 'aria-label="Interactive Visual Aid quiz item"' : `title="${escapeHtml(item.name)}"`}>${escapeHtml(label)}</button>`; }).join('')}</div><input class="visual-aid-sequence-scrubber" data-review-visual-aid-scrubber type="range" min="0" max="1000" step="1" value="${Math.round(progress * 1000)}" style="--visual-aid-progress:${(progress * 100).toFixed(2)}%" aria-label="Visual Aid animation position">`;
+                sequence.innerHTML = `<div class="visual-aid-sequence-selections">${legendItems.map(item => { const label = quizMasked ? (item.type === 'point' ? 'Point' : item.type === 'division' ? 'Division' : 'Path') : item.name; return `<button type="button" data-review-visual-aid-position="${Number(item.position).toFixed(6)}" data-review-visual-aid-select-kind="${item.type}" data-review-visual-aid-select-id="${escapeHtml(item.id)}" class="visual-aid-sequence-selection${activeItem && item.type === activeItem.type && item.id === activeItem.id ? ' is-active' : ''}" ${quizMasked ? 'aria-label="Interactive Visual Aid quiz item"' : `title="${escapeHtml(item.name)}"`}>${escapeHtml(label)}</button>`; }).join('')}</div><input class="visual-aid-sequence-scrubber" data-review-visual-aid-scrubber type="range" min="0" max="1000" step="1" value="${Math.round(progress * 1000)}" style="--visual-aid-progress:${(progress * 100).toFixed(2)}%" aria-label="Visual Aid animation position">`;
                 sequence.dataset.visualAidSequenceKey = sequenceKey;
             } else if (!activeAid) {
                 sequence.innerHTML = '';
@@ -10264,8 +10353,6 @@ The deletion becomes permanent when you save the diagram.`);
                 scrubber.value = String(Math.round(progress * 1000));
                 scrubber.style.setProperty('--visual-aid-progress', `${(progress * 100).toFixed(2)}%`);
             }
-            const currentLabel = sequence.querySelector('.visual-aid-sequence-current strong');
-            if (currentLabel) currentLabel.textContent = quizMasked ? 'Interactive Visual Aid' : (activeAid?.name || 'Visual Aid');
             const activeKey = activeItem ? `${activeItem.type}:${activeItem.id}` : '';
             if (sequence.dataset.visualAidActiveKey !== activeKey) {
                 sequence.dataset.visualAidActiveKey = activeKey;
@@ -10274,6 +10361,9 @@ The deletion becomes permanent when you save the diagram.`);
                 // on every playback frame. Smooth scrolling is reserved for direct/user renders.
                 sequence.querySelector('.visual-aid-sequence-selection.is-active')?.scrollIntoView?.({ behavior: animationFrame ? 'auto' : 'smooth', inline: 'center', block: 'nearest' });
             }
+            syncReviewModeVisualAidAutoLabel(activeAid, activeItem);
+        } else {
+            clearReviewModeVisualAidAutoLabel();
         }
         if (!animationFrame) {
             syncReviewModeVisualAidNavigation();
@@ -10591,6 +10681,10 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeShowVisualAidToggle.checked = review.showVisualAid;
             elements.reviewModeShowVisualAidToggle.disabled = !hasVisualAid;
         }
+        if (elements.reviewModeVisualAidLabelsToggle) {
+            elements.reviewModeVisualAidLabelsToggle.checked = review.visualAidLabels;
+            elements.reviewModeVisualAidLabelsToggle.disabled = !review.showVisualAid || miniActive;
+        }
         if (elements.reviewModeVisualAidOnlyToggle) {
             elements.reviewModeVisualAidOnlyToggle.checked = review.visualAidOnly;
             elements.reviewModeVisualAidOnlyToggle.disabled = !review.showVisualAid || miniActive;
@@ -10710,6 +10804,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.shortcutDockOffset = 0.5;
         review.shortcutInfoOpen = false;
         review.showVisualAid = false;
+        review.visualAidLabels = true;
         review.visualAidOnly = false;
         review.visualAidDisplayFullPath = false;
         review.visualAidDockEdge = 'bottom';
@@ -10761,6 +10856,7 @@ The deletion becomes permanent when you save the diagram.`);
         reviewModeShortcutDockDrag = null;
         reviewModeVisualAidDockDrag = null;
         review.showVisualAid = false;
+        review.visualAidLabels = true;
         review.visualAidOnly = false;
         review.visualAidDisplayFullPath = false;
         review.miniQuizCurrentVisualAidOnly = false;
@@ -40243,11 +40339,21 @@ if (elements.reviewModeShowVisualAidToggle) {
         if (!review.showVisualAid) {
             review.visualAidOnly = false;
             stopReviewModeVisualAidAnimation();
+            clearReviewModeVisualAidAutoLabel();
         }
         review.visualAidProgress = 0;
         review.visualAidSpeed = null;
         review.visualAidStartedAt = 0;
         renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeVisualAidLabelsToggle) {
+    elements.reviewModeVisualAidLabelsToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.visualAidLabels = elements.reviewModeVisualAidLabelsToggle.checked;
+        renderReviewModeVisualAids();
         syncReviewModeControls();
     });
 }
