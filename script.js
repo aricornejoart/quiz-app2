@@ -3668,6 +3668,58 @@ MODIFICATION RULES FOR THIS APP
         return { points, total, pointsText: points.map(point => `${point.x},${point.y}`).join(' ') };
     }
 
+    // Phase 23F.29: Safari/WebKit-safe progressive reveal helpers.
+    // The cumulative distances are cached once when the persistent SVG surface
+    // mounts. Animation frames then expose only the literal traveled prefix of
+    // the active polyline—no SVG dash animation is involved.
+    function createDiagramVisualAidSvgPolylineGeometry(points = []) {
+        const source = Array.isArray(points) ? points : [];
+        const cumulative = source.length ? [0] : [];
+        let total = 0;
+        for (let index = 1; index < source.length; index += 1) {
+            total += Math.hypot(source[index].x - source[index - 1].x, source[index].y - source[index - 1].y);
+            cumulative.push(total);
+        }
+        return {
+            points: source,
+            cumulative,
+            total,
+            fullPointsText: source.map(point => `${point.x},${point.y}`).join(' ')
+        };
+    }
+
+    function getDiagramVisualAidSvgPrefixPointsText(geometry = {}, visibleDistance = 0) {
+        const source = Array.isArray(geometry.points) ? geometry.points : [];
+        const cumulative = Array.isArray(geometry.cumulative) ? geometry.cumulative : [];
+        const total = Math.max(0, Number(geometry.total) || 0);
+        if (!source.length) return '';
+        const target = Math.min(total, Math.max(0, Number(visibleDistance) || 0));
+        if (source.length === 1 || target <= 0.000001) return `${source[0].x},${source[0].y}`;
+        if (target >= total - 0.000001) return geometry.fullPointsText || source.map(point => `${point.x},${point.y}`).join(' ');
+        let low = 1;
+        let high = cumulative.length - 1;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            if ((cumulative[middle] || 0) < target) low = middle + 1;
+            else high = middle;
+        }
+        const segmentIndex = low;
+        const previousIndex = Math.max(0, segmentIndex - 1);
+        const startDistance = cumulative[previousIndex] || 0;
+        const endDistance = cumulative[segmentIndex] || startDistance;
+        const span = Math.max(0.000001, endDistance - startDistance);
+        const ratio = Math.min(1, Math.max(0, (target - startDistance) / span));
+        const a = source[previousIndex];
+        const b = source[segmentIndex] || a;
+        const endpoint = {
+            x: a.x + ((b.x - a.x) * ratio),
+            y: a.y + ((b.y - a.y) * ratio)
+        };
+        const prefix = source.slice(0, segmentIndex);
+        prefix.push(endpoint);
+        return prefix.map(point => `${point.x},${point.y}`).join(' ');
+    }
+
     function getDiagramVisualAidSvgDistanceAtPosition(masterMetrics = {}, svgMetrics = {}, position = 0) {
         if (!masterMetrics.path?.length || !svgMetrics.points?.length || masterMetrics.total <= 0.0001 || svgMetrics.total <= 0.0001) return 0;
         const target = normalizeDiagramVisualAidPosition(position) * masterMetrics.total;
@@ -3762,7 +3814,7 @@ MODIFICATION RULES FOR THIS APP
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
                 return division?.color || aid.defaultColor;
             });
-            const runtime = { aid, masterMetrics, svgMasterMetrics, segmentPositions, segmentColors, divisionQuizActive, displayFullPathBall, pointPulseOnProgress: pointPulseOnProgressRequested, width: safeWidth, height: safeHeight, pointNodes: [], pointPulseNodes: [], boundaryArrowNodes: [], revealSegmentNodes: [], lastProgress: null };
+            const runtime = { aid, masterMetrics, svgMasterMetrics, masterRevealGeometry: createDiagramVisualAidSvgPolylineGeometry(svgMasterMetrics.points), segmentPositions, segmentColors, divisionQuizActive, displayFullPathBall, pointPulseOnProgress: pointPulseOnProgressRequested, width: safeWidth, height: safeHeight, pointNodes: [], pointPulseNodes: [], boundaryArrowNodes: [], revealSegmentNodes: [], revealSegmentGeometries: [], lastProgress: null };
             runtimes.push(runtime);
             const colorAtPosition = position => getDiagramVisualAidPlaybackColorAtPosition(runtime, position);
             const baseOpacity = divisionQuizActive ? 0.32 : (animated ? 0.14 : 0.18);
@@ -3779,10 +3831,16 @@ MODIFICATION RULES FOR THIS APP
                 const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
                 const startDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, start);
                 const endDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, end);
-                const segmentGap = Math.max(10, slice.total + 10);
-                return `<polyline class="diagram-visual-aid-animated-path" data-visual-aid-reveal-segment data-visual-aid-reveal-start-distance="${startDistance.toFixed(4)}" data-visual-aid-reveal-end-distance="${endDistance.toFixed(4)}" data-visual-aid-reveal-length="${slice.total.toFixed(4)}" data-visual-aid-reveal-opacity="${segmentOpacity}" points="${slice.pointsText}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="1 ${segmentGap.toFixed(4)}"/>`;
+                const revealGeometry = createDiagramVisualAidSvgPolylineGeometry(slice.points);
+                runtime.revealSegmentGeometries.push({
+                    ...revealGeometry,
+                    startDistance,
+                    endDistance
+                });
+                const initialPoints = slice.points.length ? `${slice.points[0].x},${slice.points[0].y}` : '';
+                return `<polyline class="diagram-visual-aid-animated-path" data-visual-aid-reveal-segment data-visual-aid-reveal-index="${index}" data-visual-aid-reveal-start-distance="${startDistance.toFixed(4)}" data-visual-aid-reveal-end-distance="${endDistance.toFixed(4)}" data-visual-aid-reveal-length="${slice.total.toFixed(4)}" data-visual-aid-reveal-opacity="${segmentOpacity}" points="${initialPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round"/>`;
             }).join('');
-            const revealGlow = `<polyline data-visual-aid-reveal-glow points="${masterPoints}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="1 ${Math.max(10, svgMasterMetrics.total + 10).toFixed(4)}" filter="url(#${glowId})" pointer-events="none"/>`;
+            const revealGlow = `<polyline data-visual-aid-reveal-glow points="" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" filter="url(#${glowId})" pointer-events="none"/>`;
             const startPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 0);
             const endPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 1);
             const endpointRadius = Math.max(1, aid.thickness / 2);
@@ -3878,6 +3936,10 @@ MODIFICATION RULES FOR THIS APP
             runtime.group = findDiagramVisualAidPlaybackNodeByData(svg, '[data-visual-aid-id]', 'visualAidId', runtime.aid.id);
             runtime.revealGlow = runtime.group?.querySelector?.('[data-visual-aid-reveal-glow]') || null;
             runtime.revealSegmentNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-reveal-segment]') || []);
+            runtime.revealSegmentNodes.forEach((node, index) => {
+                const geometry = runtime.revealSegmentGeometries[index] || null;
+                if (geometry) geometry.node = node;
+            });
             runtime.revealCap = runtime.group?.querySelector?.('[data-visual-aid-reveal-cap]') || null;
             runtime.leadArrow = runtime.group?.querySelector?.('[data-visual-aid-lead-arrow]') || null;
             runtime.leadBall = runtime.group?.querySelector?.('[data-visual-aid-lead-ball]') || null;
@@ -3901,34 +3963,47 @@ MODIFICATION RULES FOR THIS APP
         if (!surface) return false;
         const currentProgress = Number.isFinite(Number(progress)) ? normalizeDiagramVisualAidPosition(progress) : 1;
         surface.runtimes.forEach(runtime => {
-            const total = Math.max(0, Number(runtime.svgMasterMetrics?.total) || 0);
-            const trailingGap = Math.max(10, total + 10);
             const visibleDistance = getDiagramVisualAidSvgDistanceAtPosition(runtime.masterMetrics, runtime.svgMasterMetrics, currentProgress);
             if (runtime.revealGlow) {
                 if (runtime.displayFullPathBall || currentProgress <= 0.000001) {
                     runtime.revealGlow.setAttribute('stroke-opacity', '0');
+                    runtime.revealGlow.setAttribute('points', '');
                 } else {
-                    runtime.revealGlow.setAttribute('stroke-dasharray', `${Math.max(0.001, visibleDistance).toFixed(4)} ${trailingGap.toFixed(4)}`);
+                    runtime.revealGlow.setAttribute('points', getDiagramVisualAidSvgPrefixPointsText(runtime.masterRevealGeometry, visibleDistance));
                     runtime.revealGlow.setAttribute('stroke-opacity', '0.16');
                 }
             }
-            runtime.revealSegmentNodes.forEach(node => {
-                const startDistance = Math.max(0, Number(node.dataset.visualAidRevealStartDistance) || 0);
-                const endDistance = Math.max(startDistance, Number(node.dataset.visualAidRevealEndDistance) || startDistance);
-                const segmentLength = Math.max(0, Number(node.dataset.visualAidRevealLength) || (endDistance - startDistance));
-                const segmentGap = Math.max(10, segmentLength + 10);
+            runtime.revealSegmentNodes.forEach((node, index) => {
+                const geometry = runtime.revealSegmentGeometries[index] || null;
+                const startDistance = Math.max(0, Number(geometry?.startDistance ?? node.dataset.visualAidRevealStartDistance) || 0);
+                const endDistance = Math.max(startDistance, Number(geometry?.endDistance ?? node.dataset.visualAidRevealEndDistance) || startDistance);
+                const segmentLength = Math.max(0, Number(geometry?.total ?? node.dataset.visualAidRevealLength) || (endDistance - startDistance));
                 const baseOpacity = Math.min(1, Math.max(0, Number(node.dataset.visualAidRevealOpacity) || 0));
-                if (runtime.displayFullPathBall) {
-                    node.removeAttribute('stroke-dasharray');
+                if (!geometry?.points?.length || baseOpacity <= 0) {
+                    node.setAttribute('stroke-opacity', '0');
+                    node.dataset.visualAidRevealState = 'hidden';
+                    return;
+                }
+                if (runtime.displayFullPathBall || visibleDistance >= endDistance - 0.001) {
+                    if (node.dataset.visualAidRevealState !== 'complete') {
+                        node.setAttribute('points', geometry.fullPointsText);
+                        node.dataset.visualAidRevealState = 'complete';
+                    }
                     node.setAttribute('stroke-opacity', String(baseOpacity));
                     return;
                 }
-                const localVisible = Math.min(segmentLength, Math.max(0, visibleDistance - startDistance));
-                if (localVisible <= 0.001 || baseOpacity <= 0) {
+                if (visibleDistance <= startDistance + 0.001) {
+                    if (node.dataset.visualAidRevealState !== 'hidden') {
+                        const first = geometry.points[0];
+                        node.setAttribute('points', `${first.x},${first.y}`);
+                        node.dataset.visualAidRevealState = 'hidden';
+                    }
                     node.setAttribute('stroke-opacity', '0');
                     return;
                 }
-                node.setAttribute('stroke-dasharray', `${localVisible.toFixed(4)} ${segmentGap.toFixed(4)}`);
+                const localVisible = Math.min(segmentLength, Math.max(0, visibleDistance - startDistance));
+                node.setAttribute('points', getDiagramVisualAidSvgPrefixPointsText(geometry, localVisible));
+                node.dataset.visualAidRevealState = 'partial';
                 node.setAttribute('stroke-opacity', String(baseOpacity));
             });
             if (runtime.revealCap) {
