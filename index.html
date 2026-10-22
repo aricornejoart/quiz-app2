@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f30" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f41_75" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23f30-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23f41_75-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -765,14 +765,14 @@ MODIFICATION RULES FOR THIS APP
                       <button id="diagramCreatorChooseBtn" type="button" class="auth-action-btn auth-primary-btn">Choose Image</button>
                       <button id="diagramCreatorChooseMultiBtn" type="button" class="auth-action-btn auth-secondary-btn">Choose Multi-Angle Images</button>
                     </div>
-                    <div class="studio-diagram-creator-help">Choose one image for the original Diagram Creator, or choose multiple transparent images to build one standardized multi-angle diagram.</div>
+                    <div class="studio-diagram-creator-help">Choose one image or multiple angles. Both start in Canvas Setup, where original source files up to 20 MB stay local. Only flattened images of 3 MB or less are uploaded; canvas dimensions and format can be adjusted before saving.</div>
 
                     <section id="multiAngleCreatorPanel" class="multi-angle-creator-panel hidden" aria-hidden="true">
                       <div class="multi-angle-creator-heading">
                         <div>
-                          <div class="multi-angle-creator-eyebrow">Phase 22NP</div>
-                          <div class="multi-angle-creator-title">Multi-Angle Canvas Setup</div>
-                          <div class="multi-angle-creator-note">Every angle uses one shared canvas and background color. Finish framing before adding labels for the most consistent rotation.</div>
+                          <div class="multi-angle-creator-eyebrow">Phase 23F.41.30 · Unified Canvas Setup</div>
+                          <div class="multi-angle-creator-title">Canvas Setup · Single or Multi-Angle</div>
+                          <div class="multi-angle-creator-note">Adjust framing, dimensions, background and WebP / PNG / JPEG conversion locally before flattening. Only the final canonical image is uploaded. Saved flattened images require a new source to reframe.</div>
                         </div>
                         <button id="multiAngleCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel Set</button>
                       </div>
@@ -787,32 +787,53 @@ MODIFICATION RULES FOR THIS APP
                           <div id="multiAngleCanvasWrap" class="multi-angle-canvas-wrap">
                             <canvas id="multiAngleCanvas" class="multi-angle-canvas" width="1100" height="1500" aria-label="Multi-angle canvas preview"></canvas>
                           </div>
-                          <div class="multi-angle-preview-help">Drag the subject to reposition it. Transparent areas are rendered on the shared background color.</div>
+                          <div class="multi-angle-preview-help">The bright outline shows the exact saved canvas boundary. Drag the subject to position it before flattening; alignment guides are preview-only.</div>
                         </div>
 
                         <div class="multi-angle-controls-column">
                           <div class="multi-angle-control-group">
-                            <div class="multi-angle-control-title">Shared canvas</div>
-                            <div class="multi-angle-dimension-row">
-                              <label><span>Width</span><input id="multiAngleCanvasWidth" type="number" min="300" max="3000" step="10" value="1100"></label>
-                              <label><span>Height</span><input id="multiAngleCanvasHeight" type="number" min="300" max="3000" step="10" value="1500"></label>
-                              <button id="multiAngleApplyDimensionsBtn" type="button" class="auth-action-btn auth-secondary-btn">Apply</button>
-                            </div>
-                            <label class="multi-angle-background-control"><span>Background</span><input id="multiAngleBackgroundInput" type="color" value="#000000" aria-label="Shared multi-angle background color"><strong id="multiAngleBackgroundValue">#000000</strong></label>
-                          </div>
-
-                          <div class="multi-angle-control-group">
-                            <div class="multi-angle-control-title">Active angle</div>
+                            <div class="multi-angle-control-title">1. Subject size &amp; position · <span id="multiAnglePositionActiveName">Angle 1 of 1</span></div>
                             <label class="multi-angle-name-field"><span>Angle name</span><input id="multiAngleNameInput" type="text" maxlength="80" placeholder="Anterior, lateral, posterior..."></label>
-                            <label><span>Subject size <strong id="multiAngleScaleValue">100%</strong></span><input id="multiAngleScaleInput" type="range" min="35" max="180" step="1" value="100"></label>
+                            <label><span>Subject size <strong id="multiAngleScaleValue">100%</strong></span><input id="multiAngleScaleInput" type="range" min="10" max="180" step="1" value="100"></label>
                             <label><span>Horizontal position <strong id="multiAngleXValue">0%</strong></span><input id="multiAngleXInput" type="range" min="-45" max="45" step="1" value="0"></label>
                             <label><span>Vertical position <strong id="multiAngleYValue">0%</strong></span><input id="multiAngleYInput" type="range" min="-45" max="45" step="1" value="0"></label>
                             <div class="multi-angle-inline-actions">
-                              <button id="multiAngleFitBtn" type="button" class="auth-action-btn auth-secondary-btn">Fit Subject</button>
+                              <button id="multiAngleFitBtn" type="button" class="auth-action-btn auth-secondary-btn">Reset Size</button>
                               <button id="multiAngleCenterBtn" type="button" class="auth-action-btn auth-secondary-btn">Center</button>
                               <button id="multiAngleMatchSizeBtn" type="button" class="auth-action-btn auth-secondary-btn">Match Size to All</button>
                             </div>
                           </div>
+
+                          <div class="multi-angle-control-group">
+                            <div class="multi-angle-control-title">2. Canvas dimensions · Active angle</div>
+                            <div class="multi-angle-dimension-row multi-angle-dimension-fields">
+                              <label><span>Width (px)</span><input id="multiAngleWidthInput" type="number" min="1" max="3000" step="1" inputmode="numeric"></label>
+                              <label><span>Height (px)</span><input id="multiAngleHeightInput" type="number" min="1" max="3000" step="1" inputmode="numeric"></label>
+                            </div>
+                            <label class="multi-angle-check-row multi-angle-same-dimensions"><input id="multiAngleSameDimensionsToggle" type="checkbox"><span>Keep canvas dimensions the same across all angles</span></label>
+                            <div class="multi-angle-export-note">When enabled, this angle's width and height apply to every unflattened angle. Subject size and position stay independent. Flattened angles cannot be resized without re-uploading.</div>
+                            <div class="multi-angle-inline-actions"><button id="multiAngleAutoExpandBtn" type="button" class="auth-action-btn auth-secondary-btn">Expand to Fit Subject</button><button id="multiAngleResetCanvasBtn" type="button" class="auth-action-btn auth-secondary-btn">Original Dimensions</button></div>
+                            <div id="multiAngleFinalBoundaryText" class="multi-angle-canvas-spec" aria-live="polite">Final image: —</div>
+                          </div>
+
+                          <div class="multi-angle-control-group">
+                            <div class="multi-angle-control-title">3. Final background · Active angle</div>
+                            <label class="multi-angle-background-control"><span>Canvas fill</span><input id="multiAngleBackgroundInput" type="color" value="#000000" aria-label="Canvas background color"><strong id="multiAngleBackgroundValue">#000000</strong></label>
+                            <label class="multi-angle-check-row"><input id="multiAngleTransparentToggle" type="checkbox"><span>Transparent canvas background (PNG/WebP only)</span></label>
+                          </div>
+
+                          <div class="multi-angle-control-group">
+                            <div class="multi-angle-control-title">4. Final image quality · Active angle</div>
+                            <label class="multi-angle-format-choice"><span>Flattened format</span><select id="multiAngleFormatSelect"><option value="webp" selected>WebP — optimized (recommended)</option><option value="png">PNG — pixel-lossless</option><option value="jpeg">JPEG — optimized</option></select></label>
+                            <label class="multi-angle-quality-choice"><span>Compression quality <strong id="multiAngleQualityValue">88%</strong></span><input id="multiAngleQualityInput" type="range" min="60" max="100" step="1" value="88"></label>
+                            <img id="multiAngleConvertedPreview" class="multi-angle-converted-preview hidden" alt="Locally encoded output preview. No upload occurs until saving.">
+                            <div class="multi-angle-export-metrics"><div>Current image <strong id="multiAngleCurrentBytes">Calculating…</strong></div><div>Flattened preview <strong id="multiAngleEstimateBytes" aria-live="polite">Calculating…</strong></div></div>
+                            <div class="multi-angle-export-note">Actual encoded sizes are calculated locally; nothing uploads during adjustment. Final flattened image limit: 3 MB per angle. PNG stays lossless; WebP/JPEG are quality-adjustable lossy formats. True lossless WebP requires a dedicated encoder and is not offered as PNG-in-WebP disguise.</div>
+                          </div>
+
+                          <div id="multiAngleFlattenNotice" class="multi-angle-flatten-notice hidden" role="status">This image is already flattened. Its canvas and position are locked. Re-upload the original to prepare a new flattened image.</div>
+                          <input id="multiAngleReplaceInput" type="file" accept="image/png,image/jpeg,image/webp,image/*" class="hidden" aria-label="Re-upload original for current angle">
+                          <button id="multiAngleReplaceBtn" type="button" class="auth-action-btn auth-secondary-btn multi-angle-replace-btn hidden">Re-upload Original for This Angle</button>
 
                           <div class="multi-angle-control-group">
                             <div class="multi-angle-control-title">Alignment options</div>
@@ -828,6 +849,7 @@ MODIFICATION RULES FOR THIS APP
                             <button id="multiAngleDeleteAngleBtn" type="button" class="auth-action-btn auth-secondary-btn multi-angle-delete-angle-btn">Delete Angle</button>
                             <button id="multiAngleToggleListBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-expanded="false">Show Angles</button>
                           </div>
+                          <div class="multi-angle-export-note">Add Images lets you upload originals or reuse Saved Images. Unchanged Saved Image angles reuse their existing full-size file instead of creating another one.</div>
                         </div>
                       </div>
 
@@ -837,7 +859,7 @@ MODIFICATION RULES FOR THIS APP
                       </div>
 
                       <div class="multi-angle-save-row">
-                        <button id="multiAngleSaveSetBtn" type="button" class="auth-action-btn auth-primary-btn">Send Multi-Angle Diagram to Saved Images</button>
+                        <button id="multiAngleSaveSetBtn" type="button" class="auth-action-btn auth-primary-btn">Flatten, Save &amp; Edit Labels + Drawings</button>
                       </div>
                     </section>
                   </div>
@@ -846,6 +868,8 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-review-filter-panel studio-diagram-library-filter-panel" aria-label="Diagram Creator Saved Image filters">
                       <label class="studio-review-filter-wide"><span>Search everything</span><input id="diagramCreatorSearchInput" type="search" autocomplete="off" placeholder="Search diagram names, subjects, tags, or label names"></label>
                       <label><span>Diagram name</span><input id="diagramCreatorDiagramNameFilter" type="search" autocomplete="off" placeholder="Long Bone Anatomy"></label>
+                      <label><span>Class</span><select id="diagramCreatorClassFilter"><option value="">All classes</option></select></label>
+                      <label><span>Folder</span><select id="diagramCreatorFolderFilter"><option value="">All folders</option></select></label>
                       <label><span>Subject</span><input id="diagramCreatorSubjectFilter" type="search" autocomplete="off" placeholder="Long bone"></label>
                       <label><span>Type</span><select id="diagramCreatorAnatomyTypeFilter"><option value="">All types</option><option value="bone">Bone</option><option value="muscle">Muscle</option><option value="tissue">Tissue</option><option value="cartilage">Cartilage</option><option value="organ">Organ</option><option value="joint">Joint</option><option value="ligament">Ligament</option><option value="cell">Cell</option><option value="body region">Body region</option><option value="organ system">Organ system</option><option value="other">Other</option></select></label>
                       <label><span>Organ system</span><select id="diagramCreatorOrganSystemFilter"><option value="">All systems</option><option value="skeletal">Skeletal</option><option value="muscular">Muscular</option><option value="nervous">Nervous</option><option value="cardiovascular">Cardiovascular</option><option value="respiratory">Respiratory</option><option value="digestive">Digestive</option><option value="urinary">Urinary</option><option value="reproductive">Reproductive</option><option value="endocrine">Endocrine</option><option value="lymphatic">Lymphatic</option><option value="integumentary">Integumentary</option><option value="special senses">Special senses</option><option value="other">Other</option></select></label>
@@ -855,8 +879,18 @@ MODIFICATION RULES FOR THIS APP
                       <label><span>Tags</span><input id="diagramCreatorTagsFilter" type="search" autocomplete="off" placeholder="epiphysis, compact bone"></label>
                       <div class="studio-review-filter-actions"><button id="diagramCreatorClearFiltersBtn" type="button" class="auth-action-btn auth-secondary-btn">Clear Filters</button></div>
                     </div>
+                    <div class="studio-saved-image-quick-filters" data-study-quick-filters="diagram" role="group" aria-label="Saved Image quick filters">
+                      <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pinned" aria-pressed="false">Pinned</button>
+                      <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pending" aria-pressed="false">Pending</button>
+                    </div>
                     <div id="diagramCreatorSearchCount" class="studio-review-search-count" aria-live="polite"></div>
                     <div id="diagramCreatorImageGrid" class="studio-diagram-library-grid"></div>
+                    <div id="diagramCreatorPagination" class="studio-saved-image-pagination hidden" aria-hidden="true" aria-label="Saved Image pages">
+                      <button id="diagramCreatorPagePrevBtn" type="button" class="studio-saved-image-page-arrow" aria-label="Show previous 10 Saved Images">‹</button>
+                      <span id="diagramCreatorPageStatus" class="studio-saved-image-page-status" aria-live="polite">Page 1 of 1</span>
+                      <button id="diagramCreatorPageNextBtn" type="button" class="studio-saved-image-page-arrow" aria-label="Show next 10 Saved Images">›</button>
+                      <button id="diagramCreatorShowAllBtn" type="button" class="auth-action-btn auth-secondary-btn studio-saved-image-show-all" aria-pressed="false">Show All</button>
+                    </div>
                   </div>
                 </section>
               </section>
@@ -868,6 +902,8 @@ MODIFICATION RULES FOR THIS APP
                   <div class="studio-review-filter-panel" aria-label="Review Mode image filters">
                     <label class="studio-review-filter-wide"><span>Search everything</span><input id="reviewModeSearchInput" type="search" autocomplete="off" placeholder="Search diagram names, subjects, tags, or label names"></label>
                     <label><span>Diagram name</span><input id="reviewModeDiagramNameFilter" type="search" autocomplete="off" placeholder="Long Bone Anatomy"></label>
+                    <label><span>Class</span><select id="reviewModeClassFilter"><option value="">All classes</option></select></label>
+                    <label><span>Folder</span><select id="reviewModeFolderFilter"><option value="">All folders</option></select></label>
                     <label><span>Subject</span><input id="reviewModeSubjectFilter" type="search" autocomplete="off" placeholder="Long bone"></label>
                     <label><span>Type</span><select id="reviewModeAnatomyTypeFilter"><option value="">All types</option><option value="bone">Bone</option><option value="muscle">Muscle</option><option value="tissue">Tissue</option><option value="cartilage">Cartilage</option><option value="organ">Organ</option><option value="joint">Joint</option><option value="ligament">Ligament</option><option value="cell">Cell</option><option value="body region">Body region</option><option value="organ system">Organ system</option><option value="other">Other</option></select></label>
                     <label><span>Organ system</span><select id="reviewModeOrganSystemFilter"><option value="">All systems</option><option value="skeletal">Skeletal</option><option value="muscular">Muscular</option><option value="nervous">Nervous</option><option value="cardiovascular">Cardiovascular</option><option value="respiratory">Respiratory</option><option value="digestive">Digestive</option><option value="urinary">Urinary</option><option value="reproductive">Reproductive</option><option value="endocrine">Endocrine</option><option value="lymphatic">Lymphatic</option><option value="integumentary">Integumentary</option><option value="special senses">Special senses</option><option value="other">Other</option></select></label>
@@ -877,8 +913,18 @@ MODIFICATION RULES FOR THIS APP
                     <label><span>Tags</span><input id="reviewModeTagsFilter" type="search" autocomplete="off" placeholder="epiphysis, compact bone"></label>
                     <div class="studio-review-filter-actions"><button id="reviewModeClearFiltersBtn" type="button" class="auth-action-btn auth-secondary-btn">Clear Filters</button></div>
                   </div>
-                  <div id="reviewModeSearchCount" class="studio-review-search-count" aria-live="polite"></div>
+                  <div class="studio-saved-image-quick-filters" data-study-quick-filters="review" role="group" aria-label="Saved Image quick filters">
+                      <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pinned" aria-pressed="false">Pinned</button>
+                      <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pending" aria-pressed="false">Pending</button>
+                    </div>
+                    <div id="reviewModeSearchCount" class="studio-review-search-count" aria-live="polite"></div>
                   <div id="reviewModeImageGrid" class="studio-review-image-grid"></div>
+                  <div id="reviewModePagination" class="studio-saved-image-pagination hidden" aria-hidden="true" aria-label="Review Saved Image pages">
+                    <button id="reviewModePagePrevBtn" type="button" class="studio-saved-image-page-arrow" aria-label="Show previous 10 Saved Images">‹</button>
+                    <span id="reviewModePageStatus" class="studio-saved-image-page-status" aria-live="polite">Page 1 of 1</span>
+                    <button id="reviewModePageNextBtn" type="button" class="studio-saved-image-page-arrow" aria-label="Show next 10 Saved Images">›</button>
+                    <button id="reviewModeShowAllBtn" type="button" class="auth-action-btn auth-secondary-btn studio-saved-image-show-all" aria-pressed="false">Show All</button>
+                  </div>
                 </section>
               </section>
 
@@ -1657,20 +1703,16 @@ MODIFICATION RULES FOR THIS APP
                         <button id="flashcardHandwrittenSizeBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn studio-handwritten-size-trigger" aria-label="Stroke thickness" title="Stroke thickness">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"></path></svg>
                         </button>
+                        <button id="flashcardHandwrittenClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-clear-btn" title="Clear handwriting on this side" aria-label="Clear handwriting on this side">Clear</button>
                         <div id="flashcardHandwrittenColorPresets" class="studio-handwritten-color-presets" aria-label="Saved brush colors"></div>
                         <button id="flashcardHandwrittenSaveColorBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" title="Add color preset" aria-label="Add color preset">+</button>
                         <button id="flashcardHandwrittenAddImageBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" aria-label="Attach image" title="Attach image">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                         </button>
                         <button id="flashcardHandwrittenRemoveImageBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Remove image" title="Remove image">×</button>
-                        <div class="studio-handwritten-toggle-pair" aria-label="Side content mode">
-                          <span>Handwritten</span>
-                          <label class="toggle-switch" for="flashcardHandwrittenSideMode" aria-label="Toggle between handwritten and typed side content">
-                            <input id="flashcardHandwrittenSideMode" type="checkbox" role="switch">
-                            <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
-                          </label>
-                          <span>Typed</span>
-                        </div>
+                        <button id="flashcardHandwrittenSettingsBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" aria-label="Writing mode settings" title="Writing mode settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="flashcardHandwrittenSettingsPopover">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"></path><path d="m19.4 15.1.1.1 1.5 1.2-1.5 2.6-1.9-.6a8.9 8.9 0 0 1-2 1.2l-.4 2h-3l-.4-2a8.9 8.9 0 0 1-2-1.2l-1.9.6-1.5-2.6 1.5-1.2a9 9 0 0 1 0-2.4l-1.5-1.2L7.9 9l1.9.6a8.9 8.9 0 0 1 2-1.2l.4-2h3l.4 2a8.9 8.9 0 0 1 2 1.2l1.9-.6 1.5 2.6-1.5 1.2a9 9 0 0 1 0 2.3Z" transform="translate(-1.5 -2)"></path></svg>
+                        </button>
                         <div class="studio-handwritten-toggle-pair" aria-label="Image layout">
                           <span>Half</span>
                           <label class="toggle-switch" for="flashcardHandwrittenImageLayout" aria-label="Toggle between half and full image layout">
@@ -1690,6 +1732,16 @@ MODIFICATION RULES FOR THIS APP
                           <button id="flashcardHandwrittenSelectionLassoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-selection-choice" data-handwritten-selection-type="lasso" aria-pressed="false">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7c3-3 10-3 12 1 2 4-2 8-7 9-5 1-8-1-7-4 1-2 4-2 6 0"></path><path d="m10 13 2 7"></path></svg><span>Lasso</span>
                           </button>
+                        </div>
+                        <div id="flashcardHandwrittenSettingsPopover" class="studio-handwritten-floating-popover studio-handwritten-settings-popover hidden" role="dialog" aria-label="Writing mode settings">
+                          <div class="studio-handwritten-toggle-pair" aria-label="Side content mode">
+                            <span>Handwritten</span>
+                            <label class="toggle-switch" for="flashcardHandwrittenSideMode" aria-label="Toggle between handwritten and typed side content">
+                              <input id="flashcardHandwrittenSideMode" type="checkbox" role="switch">
+                              <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+                            </label>
+                            <span>Typed</span>
+                          </div>
                         </div>
                         <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Stroke thickness">
                           <div class="studio-handwritten-popover-title"><strong id="flashcardHandwrittenSizeLabel">Pen thickness</strong><span id="flashcardHandwrittenSizeValue">1.1 mm</span></div>
@@ -1964,6 +2016,16 @@ MODIFICATION RULES FOR THIS APP
         <div id="reviewModeVisualAidIndicator" class="review-mode-angle-indicator" aria-live="polite"></div>
         <button id="reviewModeNextVisualAidBtn" type="button" class="review-mode-angle-btn" aria-label="Next Visual Aid">›</button>
       </div>
+      <div class="review-mode-quiz-actions">
+        <button id="reviewModePinBtn" class="review-mode-toolbar-btn review-mode-pin-btn" type="button" disabled aria-pressed="false" aria-label="Reveal exactly one label to pin" title="Reveal exactly one label first">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg>
+        </button>
+        <button id="reviewModeStartQuizBtn" class="review-mode-toolbar-btn review-mode-start-quiz-btn" type="button" aria-label="Start Mini Quiz" title="Start Mini Quiz">Start Quiz</button>
+        <div id="reviewModeMiniQuizControls" class="review-mode-mini-quiz-controls hidden" aria-hidden="true">
+          <button id="reviewModeMiniQuizRestartBtn" type="button">Restart Quiz</button>
+          <button id="reviewModeMiniQuizEndBtn" type="button">End Quiz</button>
+        </div>
+      </div>
     </div>
     <div id="reviewModeOptionsPanel" class="review-mode-options-panel hidden" aria-hidden="true">
       <div class="review-mode-options-title">Review Options</div>
@@ -2018,6 +2080,34 @@ MODIFICATION RULES FOR THIS APP
         </span>
       </label>
       <label class="review-mode-switch-row">
+        <span>Solo labels</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeSoloLabelsToggle" type="checkbox" role="switch" aria-label="Solo labels: reveal only one label at a time" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Pinned labels only</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModePinnedLabelsOnlyToggle" type="checkbox" role="switch" aria-label="Only show and quiz pinned labels">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Pin all shared labels</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModePinAllSharedLabelsToggle" type="checkbox" role="switch" aria-label="Pin or unpin matching labels across all angles of this saved image">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
+        <span>Allow label movement</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeAllowLabelMovementToggle" type="checkbox" role="switch" aria-label="Allow labels to be moved temporarily">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row">
         <span>Label number</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeLabelNumberToggle" type="checkbox" role="switch" aria-label="Show label numbers instead of question marks">
@@ -2067,40 +2157,53 @@ MODIFICATION RULES FOR THIS APP
         </span>
       </label>
       <label class="review-mode-switch-row">
+        <span>2-State Focus <small>(optional Normal → Detail → Off)</small></span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeTwoLevelFocusToggle" type="checkbox" role="switch" aria-label="Enable two Focus zoom levels; off by default">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <div class="review-mode-focus-settings">
+        <label for="reviewModeNormalFocusZoom">Normal Focus <strong id="reviewModeNormalFocusZoomValue">200%</strong></label>
+        <input id="reviewModeNormalFocusZoom" type="range" min="100" max="700" step="25" value="200" aria-label="Normal Focus zoom level">
+        <div id="reviewModeDetailFocusZoomRow" class="review-mode-detail-zoom-row hidden">
+          <label for="reviewModeDetailFocusZoom">Detail Focus <strong id="reviewModeDetailFocusZoomValue">700%</strong></label>
+          <input id="reviewModeDetailFocusZoom" type="range" min="100" max="700" step="25" value="700" aria-label="Detail Focus zoom level">
+        </div>
+        <small>Labels marked for Detail Focus automatically use the detail level, even in single Focus mode.</small>
+      </div>
+      <label class="review-mode-switch-row">
         <span>Show all label drawings</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeShowAllDrawingsToggle" type="checkbox" role="switch" aria-label="Show drawings for all labels">
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
-      <div class="review-mode-size-row">
-        <span>Label size</span>
-        <div class="review-mode-size-controls">
-          <button id="reviewModeLabelSizeDownBtn" type="button" aria-label="Decrease label size">−</button>
-          <span id="reviewModeLabelSizeValue" aria-live="polite">150%</span>
-          <button id="reviewModeLabelSizeUpBtn" type="button" aria-label="Increase label size">+</button>
-        </div>
-      </div>
-      <div class="review-mode-options-help">Drag labels to rearrange them temporarily, including during Mini Quiz; the answer buttons move with the active label. Connector anchors stay fixed. Label descriptions appear with revealed names when enabled.</div>
+      <label class="review-mode-small-labels-range">
+        <span>Label Size <output id="reviewModeLabelSizeValue">100%</output></span>
+        <input id="reviewModeLabelSizeSlider" type="range" min="25" max="200" step="5" value="100" aria-label="Review and Mini Quiz label size">
+        <small>Starts at the label size saved in Diagram Creator. Keyboard + / − and floating controls adjust by 5% (25–200%). Changes here are temporary.</small>
+      </label>
+      <div class="review-mode-options-help">Labels stay inside the visible diagram automatically. Solo labels reveals one name at a time, while Show all label names overrides it. Turn on Allow label movement only when you want temporary manual placement; in Review Mode or Mini Quiz, tap to reveal or hold 250 ms to move. Connector anchors stay fixed. Label descriptions appear with revealed names when enabled.</div>
       <button id="reviewModeKeyboardShortcutsBtn" class="review-mode-keyboard-shortcuts-btn" type="button" aria-expanded="false" aria-controls="reviewModeKeyboardShortcutsPanel">Keyboard Shortcuts</button>
       <div id="reviewModeKeyboardShortcutsPanel" class="review-mode-keyboard-shortcuts-panel hidden" aria-hidden="true">
-        <div><span>Increase label size</span><kbd>+</kbd></div>
-        <div><span>Decrease label size</span><kbd>−</kbd></div>
+        <div><span>Increase Label Size (5%)</span><kbd>+</kbd></div>
+        <div><span>Decrease Label Size (5%)</span><kbd>−</kbd></div>
         <div><span>Show/hide color</span><kbd>D</kbd></div>
         <div><span>Show/hide connector lines</span><kbd>C</kbd></div>
         <div><span>Show/hide all</span><kbd>A</kbd></div>
         <div><span>Show/hide shortcut controls</span><kbd>H</kbd></div>
-        <div><span>Focus on/off</span><kbd>Space</kbd></div>
+        <div><span>Focus toggle (or optional two-level cycle)</span><kbd>Space</kbd></div>
         <div><span>Correct + next Mini Quiz question</span><kbd>→</kbd></div>
       </div>
       <fieldset id="reviewModeMiniQuizScope" class="review-mode-mini-quiz-scope hidden" aria-hidden="true">
         <legend>Quiz scope</legend>
         <label>
-          <input id="reviewModeMiniScopeCurrent" type="radio" name="reviewModeMiniQuizScopeChoice" value="current" checked>
+          <input id="reviewModeMiniScopeCurrent" type="radio" name="reviewModeMiniQuizScopeChoice" value="current">
           <span>Current angle</span>
         </label>
         <label>
-          <input id="reviewModeMiniScopeAll" type="radio" name="reviewModeMiniQuizScopeChoice" value="all">
+          <input id="reviewModeMiniScopeAll" type="radio" name="reviewModeMiniQuizScopeChoice" value="all" checked>
           <span>All angles</span>
         </label>
       </fieldset>
@@ -2141,6 +2244,27 @@ MODIFICATION RULES FOR THIS APP
         </span>
       </label>
       <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Pinned labels only</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniPinnedLabelsOnlyToggle" type="checkbox" role="switch" aria-label="Only quiz pinned labels (synchronized with Review Options)">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Include label categories</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniQuizLabelInformationToggle" type="checkbox" role="switch" aria-label="Include label categories as Mini Quiz questions">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
+        <span>Identify structure for category</span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeMiniIdentifyStructureForCategoryToggle" type="checkbox" role="switch" aria-label="Also identify the structure in each category question">
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-switch-row review-mode-mini-setting-row">
         <span>Require typed answers</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeMiniTypedToggle" type="checkbox" role="switch" aria-label="Require typed answers for the mini quiz">
@@ -2164,7 +2288,7 @@ MODIFICATION RULES FOR THIS APP
       <label class="review-mode-switch-row review-mode-mini-setting-row">
         <span>Progress Mode</span>
         <span class="review-mode-toggle-control">
-          <input id="reviewModeMiniProgressToggle" type="checkbox" role="switch" aria-label="Use Progress Mode for the mini quiz">
+          <input id="reviewModeMiniProgressToggle" type="checkbox" role="switch" aria-label="Use Progress Mode for the mini quiz" checked>
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
@@ -2191,13 +2315,20 @@ MODIFICATION RULES FOR THIS APP
       </label>
       <button id="reviewModeTakeMiniQuizBtn" class="review-mode-take-mini-quiz-btn" type="button">Take Mini Quiz</button>
     </div>
-    <div id="reviewModeMiniQuizControls" class="review-mode-mini-quiz-controls hidden" aria-hidden="true">
-      <button id="reviewModeMiniQuizRestartBtn" type="button">Restart Quiz</button>
-      <button id="reviewModeMiniQuizEndBtn" type="button">End Quiz</button>
+    <div id="reviewModeMiniQuizRoundCheckpoint" class="review-mode-mini-quiz-round-checkpoint hidden" role="dialog" aria-modal="true" aria-labelledby="reviewModeMiniQuizCheckpointTitle" aria-hidden="true">
+      <div class="review-mode-mini-quiz-checkpoint-card">
+        <div id="reviewModeMiniQuizCheckpointTitle" class="review-mode-mini-quiz-checkpoint-title">Progress Round Complete</div>
+        <p id="reviewModeMiniQuizCheckpointSummary" class="review-mode-mini-quiz-checkpoint-summary"></p>
+        <button id="reviewModeMiniQuizPinMissedBtn" class="review-mode-mini-quiz-checkpoint-button" type="button">Pin all incorrect labels</button>
+        <button id="reviewModeMiniQuizResetPinsBtn" class="review-mode-mini-quiz-checkpoint-button review-mode-mini-quiz-checkpoint-reset" type="button">Reset pinned labels</button>
+        <p id="reviewModeMiniQuizCheckpointStatus" class="review-mode-mini-quiz-checkpoint-status" aria-live="polite"></p>
+        <button id="reviewModeMiniQuizTryAgainBtn" class="review-mode-mini-quiz-checkpoint-button review-mode-mini-quiz-checkpoint-primary" type="button">Try Again</button>
+      </div>
     </div>
     <div id="reviewModeMiniQuizComplete" class="review-mode-mini-quiz-complete hidden" aria-hidden="true">
       <div class="review-mode-mini-quiz-complete-card">
         <div class="review-mode-mini-quiz-complete-title">Mini Quiz Complete</div>
+        <div id="reviewModeMiniQuizMasteredNotice" class="review-mode-mini-quiz-mastered-notice hidden" role="status" aria-live="polite">MASTERED</div>
         <button id="reviewModeMiniQuizNextAngleBtn" class="review-mode-mini-quiz-next-angle-btn hidden" type="button">Quiz Next Angle</button>
       </div>
     </div>
@@ -2216,6 +2347,8 @@ MODIFICATION RULES FOR THIS APP
           <button id="reviewModeShortcutHideBtn" type="button">Hide</button>
           <button id="reviewModeShortcutLabelUpBtn" type="button" aria-label="Increase label size">+</button>
           <button id="reviewModeShortcutLabelDownBtn" type="button" aria-label="Decrease label size">−</button>
+          <button id="reviewModeShortcutSmallLabelsBtn" type="button" aria-label="Set label size to 160%" title="Set label size to 160%" aria-pressed="false">Big Labels</button>
+          <button id="reviewModeShortcutMovementBtn" type="button" aria-pressed="false" aria-label="Move Labels" title="Toggle 250 ms hold-to-move">Move<br>Labels</button>
           <button id="reviewModeShortcutColorBtn" type="button">Color On</button>
           <button id="reviewModeShortcutLinesBtn" type="button">Lines On</button>
           <button id="reviewModeShortcutAllBtn" type="button" aria-pressed="false">Show All</button>
@@ -2226,7 +2359,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="reviewModeVisualAidBar" class="review-mode-visual-aid-bar hidden" data-edge="bottom" aria-hidden="true" aria-label="Visual Aid animation controls">
         <button id="reviewModeVisualAidGrip" class="review-mode-visual-aid-grip" type="button" aria-label="Move Visual Aid controls"><span class="review-mode-shortcut-grip-dots" aria-hidden="true"></span></button>
         <div class="review-mode-visual-aid-left-controls">
-          <div class="review-mode-visual-aid-controls"><button id="reviewModeVisualAidPlayBtn" type="button" aria-label="Play animation" title="Play animation">▶</button><button id="reviewModeVisualAidPauseBtn" type="button" aria-label="Pause animation" title="Pause animation">⏸</button><button id="reviewModeVisualAidResetBtn" type="button" aria-label="Reset animation" title="Reset animation">↺</button><button id="reviewModeVisualAidLoopBtn" type="button" aria-label="Replay loop" title="Replay loop" aria-pressed="false">↻</button></div>
+          <div class="review-mode-visual-aid-controls"><button id="reviewModeVisualAidPlayBtn" type="button" aria-label="Play animation" title="Play animation">▶</button><button id="reviewModeVisualAidPauseBtn" type="button" aria-label="Pause animation" title="Pause animation">⏸</button><button id="reviewModeVisualAidResetBtn" type="button" aria-label="Reset animation" title="Reset animation">↺</button><button id="reviewModeVisualAidLoopBtn" type="button" aria-label="Replay loop" title="Replay loop" aria-pressed="true">↻</button></div>
           <label class="review-mode-visual-aid-speed">Speed <select id="reviewModeVisualAidSpeed" aria-label="Visual Aid animation speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option></select></label>
         </div>
         <div id="reviewModeVisualAidSequence" class="review-mode-visual-aid-sequence" aria-label="Visual Aid sequence"></div>
@@ -2260,16 +2393,15 @@ MODIFICATION RULES FOR THIS APP
             </div>
           </div>
           <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness">
-            <button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button>
+            <button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">2</span></button>
             <div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness">
-              <label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Connector thickness"></label>
+              <label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="0.25" max="24" step="0.25" value="2" aria-label="Connector thickness"></label>
             </div>
           </div>
           <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
             <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
             <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
           </div>
-          <span id="studioImageEditorDrawActiveLabelValue" class="studio-image-editor-draw-active-label" aria-live="polite">Choose label Draw</span>
           <div class="studio-image-editor-slider-popover" data-image-editor-popover="size">
             <button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button>
             <div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size">
@@ -2294,7 +2426,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
       <div class="studio-image-editor-workspace">
         <div id="studioImageEditorVisualAidPanel" class="studio-image-editor-visual-aid-panel hidden" aria-label="Animated Visual Aids">
-          <div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">Only one Visual Aid can be visible at a time. The active visible aid accepts label connector snapping.</div></div><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button></div>
+          <div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">One Visual Aid preset is visible at a time. A preset can contain multiple paths; the active path accepts label connector snapping.</div></div><div class="studio-visual-aid-header-buttons"><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button><button id="studioImageEditorAddFlowFillBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Flow Fill Visual Aid</button></div></div>
           <div id="studioImageEditorVisualAidList" class="studio-image-editor-visual-aid-list"></div>
         </div>
         <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
@@ -2302,6 +2434,7 @@ MODIFICATION RULES FOR THIS APP
           <svg id="studioImageEditorVisualAidLayer" class="studio-image-editor-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg>
           <svg id="studioImageEditorConnectorLayer" class="studio-image-editor-connector-layer hidden" aria-hidden="true" focusable="false"></svg>
           <canvas id="studioImageEditorLabelOverlayCanvas" class="studio-image-editor-label-overlay-canvas hidden" aria-hidden="true"></canvas>
+          <button id="studioImageEditorVisualAidClosePathBtn" type="button" class="studio-visual-aid-close-path-snap hidden" aria-label="Close Visual Aid path" title="Close path"><span aria-hidden="true">↔</span></button>
         </div>
         <div id="studioImageEditorLabelPanel" class="studio-image-editor-label-panel hidden" aria-label="Image labels">
           <div class="studio-image-editor-label-panel-header">
@@ -2309,6 +2442,18 @@ MODIFICATION RULES FOR THIS APP
             <div class="studio-image-editor-label-panel-actions">
               <button id="studioImageEditorAddLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Label</button>
               <button id="studioImageEditorRemoveLastLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last</button>
+              <div class="studio-label-transfer-wrap">
+                <button id="studioImageEditorTransferLabelsBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-haspopup="menu" aria-expanded="false" aria-controls="studioImageEditorTransferLabelsMenu">Transfer Labels</button>
+                <div id="studioImageEditorTransferLabelsMenu" class="studio-label-transfer-menu hidden" role="menu" aria-label="Transfer and save reusable labels" hidden>
+                  <button type="button" role="menuitem" data-label-transfer-target="all">To All Angles</button>
+                  <button type="button" role="menuitem" data-label-transfer-target="next">To Next Angle</button>
+                  <div class="studio-label-transfer-divider" aria-hidden="true"></div>
+                  <button type="button" role="menuitem" data-label-transfer-target="save-set">Save Label Set</button>
+                  <button type="button" role="menuitem" data-label-transfer-target="load-set">Load Label Set</button>
+                  <div id="studioImageEditorLabelSetSubmenu" class="studio-label-set-submenu" aria-live="polite"></div>
+                  <button type="button" role="menuitem" data-label-transfer-target="cancel">Cancel</button>
+                </div>
+              </div>
             </div>
           </div>
           <div id="studioImageEditorLabelList" class="studio-image-editor-label-list"></div>
@@ -2323,6 +2468,14 @@ MODIFICATION RULES FOR THIS APP
         </div>
         <div class="studio-image-editor-metadata-grid">
           <label><span>Diagram name</span><input id="studioImageEditorDiagramName" type="text" maxlength="120" placeholder="Anterior skull sutures"></label>
+          <div id="studioImageEditorClassField" class="studio-image-editor-metadata-select-with-add">
+            <label><span>Class</span><select id="studioImageEditorClassSelect"><option value="__none__">No class / General</option></select><input id="studioImageEditorClassNewInput" class="hidden" hidden type="text" maxlength="120" autocomplete="off" placeholder="New class name" aria-label="New class name"></label>
+            <button id="studioImageEditorAddClassBtn" type="button" class="studio-image-editor-metadata-add-btn" aria-label="Create a new class" title="Create a new class">+</button>
+          </div>
+          <div id="studioImageEditorFolderField" class="studio-image-editor-metadata-select-with-add">
+            <label><span>Folder</span><select id="studioImageEditorFolderSelect"><option value="">No folder</option></select><input id="studioImageEditorFolderNewInput" class="hidden" hidden type="text" maxlength="120" autocomplete="off" placeholder="New folder name" aria-label="New folder name"></label>
+            <button id="studioImageEditorAddFolderBtn" type="button" class="studio-image-editor-metadata-add-btn" aria-label="Create a new folder" title="Create a new folder">+</button>
+          </div>
           <label><span>Subject name</span><input id="studioImageEditorSubjectName" type="text" maxlength="120" placeholder="Coronal suture or long bone"></label>
           <label><span>Type</span>
             <select id="studioImageEditorAnatomyType">
@@ -2360,16 +2513,16 @@ MODIFICATION RULES FOR THIS APP
           <select id="studioImageEditorAngleSelect" aria-label="Save current angle and open another angle"></select>
           <button id="studioImageEditorNextAngleBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-label="Save and open next angle">›</button>
         </div>
-        <label id="studioImageEditorMultiAngleBackground" class="studio-image-editor-angle-background hidden"><span>Background</span><input id="studioImageEditorMultiAngleBackgroundInput" type="color" value="#000000" aria-label="Shared multi-angle background color"><strong id="studioImageEditorMultiAngleBackgroundValue">#000000</strong></label>
+        <label id="studioImageEditorMultiAngleBackground" class="studio-image-editor-angle-background hidden"><span>Flattened Background</span><input id="studioImageEditorMultiAngleBackgroundInput" type="color" value="#000000" aria-label="Flattened multi-angle background color"><strong id="studioImageEditorMultiAngleBackgroundValue">#000000</strong></label>
         <button id="studioImageEditorCanvasSetupBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Canvas Setup</button>
-        <button id="studioImageEditorSaveDiagramBtn" type="button" class="auth-action-btn auth-primary-btn hidden">Save Diagram</button>
-        <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
+        <button id="studioImageEditorSaveDiagramBtn" type="button" class="auth-action-btn auth-primary-btn hidden">Save &amp; Exit</button>
+        <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Save &amp; Exit</button>
         <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
         <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
       </div>
     </div>
   </div>
 
-  <script src="script.js?v=23f30"></script>
+  <script src="script.js?v=23f41_75"></script>
 </body>
 </html>

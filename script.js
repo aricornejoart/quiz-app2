@@ -29,6 +29,7 @@ MODIFICATION RULES FOR THIS APP
         hideAnswerFeedbackStorageKey: 'studyBunnyHideAnswerFeedbackSettingsV1',
         globalShuffleAnswersStorageKey: 'studyBunnyGlobalShuffleAnswersSettingsV1',
         diagramColorPresetsStorageKey: 'studyBunnyDiagramColorPresetsV1',
+        visualAidPresetsStorageKey: 'studyBunnyVisualAidPresetsV1',
         handwrittenToolPrefsStorageKey: 'studyBunnyHandwritingToolPrefsV1',
         classifyItemCount: 50,
         classifyClassCount: 50,
@@ -132,6 +133,12 @@ MODIFICATION RULES FOR THIS APP
     const IMAGE_EDITOR_DRAW_BACKUP_MAX_BYTES = 1_750_000;
     const IMAGE_EDITOR_COLOR_PRESET_MAX = 12;
     const IMAGE_EDITOR_COLOR_PRESET_METADATA_KEY = 'study_bunny_diagram_color_presets';
+    const VISUAL_AID_PRESET_TABLE = 'user_visual_aid_presets';
+    const VISUAL_AID_PRESET_MAX = 24;
+    const STUDIO_LABEL_SET_TABLE = 'user_label_sets';
+    const STUDIO_SHARED_LABEL_TABLE = 'user_shared_label_information';
+    const STUDIO_LABEL_SET_LIMIT = 80;
+    const DIAGRAM_VISUAL_AID_MAX_BALLS = 16;
 
     const state = {
         questions: [],
@@ -328,9 +335,14 @@ MODIFICATION RULES FOR THIS APP
                 angles: [],
                 activeIndex: 0,
                 canvas: { width: 1100, height: 1500, background: '#000000' },
+                backgroundDirty: false,
                 metadata: {},
+                classId: '',
+                folderId: '',
+                savedChangeSignature: '',
                 editingEntryId: '',
                 originalEntry: null,
+                legacySourceRefs: new Set(),
                 listOpen: false,
                 guidesVisible: true,
                 settingAnchor: false,
@@ -341,6 +353,8 @@ MODIFICATION RULES FOR THIS APP
             diagramCreatorLibrary: {
                 view: 'new',
                 searchQuery: '',
+                page: 0,
+                showAll: false,
                 filters: {
                     diagramName: '',
                     subjectName: '',
@@ -409,7 +423,9 @@ MODIFICATION RULES FOR THIS APP
                 fileInput: null,
                 view: 'choice',
                 searchQuery: '',
-                filters: { anatomyType: '', organSystem: '', location: '' }
+                filters: { anatomyType: '', organSystem: '', location: '', classId: '', folderId: '' },
+                page: 0,
+                showAll: false
             },
             reviewMode: {
                 activeEntryId: '',
@@ -418,14 +434,27 @@ MODIFICATION RULES FOR THIS APP
                 optionsOpen: false,
                 showAngleControls: true,
                 showAllNames: false,
+                soloLabels: true,
+                pinnedLabelsOnly: false,
+                pinAllSharedLabels: false,
+                pinSelectedLabelIndex: -1,
+                allowLabelMovement: false,
                 showDrawData: false,
                 showConnectors: true,
                 showConnectorContrast: true,
                 focusMode: false,
+                twoLevelFocus: false,
+                normalFocusZoom: 200,
+                detailFocusZoom: 700,
+                focusTier: 'normal',
+                focusTargetKey: '',
                 focusLabelIndex: -1,
                 focusRestoreZoom: null,
+                miniQuizFocusRestore: null,
+                libraryPage: 0,
+                libraryShowAll: false,
                 includeLabelDescriptions: true,
-                labelScale: 1.5,
+                labelSize: 1,
                 shortcutDockVisible: true,
                 shortcutDockEdge: 'right',
                 shortcutDockOffset: 0.5,
@@ -443,19 +472,22 @@ MODIFICATION RULES FOR THIS APP
                 revealedLabelsByAngle: {},
                 temporaryLabelPositions: {},
                 temporaryLabelPositionsByAngle: {},
-                miniQuizMode: 'normal',
-                miniQuizScope: 'current',
+                autoLabelPositions: {},
+                miniQuizMode: 'progress',
+                miniQuizScope: 'all',
                 miniQuizVisualAidPolicy: 'exclude',
                 miniQuizCurrentVisualAidOnly: false,
                 randomizeMiniQuiz: true,
                 allowDuplicateMiniQuiz: false,
+                quizLabelInformation: false,
+                identifyStructureForCategory: false,
                 typedMiniQuiz: false,
                 rapidMiniQuiz: false,
                 spellUntilCorrectMiniQuiz: false,
                 miniQuiz: null,
                 visualAidProgress: 0,
                 visualAidPlaying: false,
-                visualAidLoop: false,
+                visualAidLoop: true,
                 visualAidSpeed: null,
                 visualAidFrameId: 0,
                 visualAidStartedAt: 0,
@@ -479,6 +511,11 @@ MODIFICATION RULES FOR THIS APP
             diagramColorPresetUpdatedAt: 0,
             diagramColorPresetSyncTimerId: null,
             diagramColorPresetSyncInFlight: null,
+            visualAidPresets: [],
+            visualAidPresetSync: { loadedUserId: '', tableUnavailable: false, inFlight: null },
+            labelSets: [],
+            sharedLabelInformation: [],
+            labelLibrarySync: { loadedUserId: '', setTableUnavailable: false, infoTableUnavailable: false, infoLoaded: false, infoReconcile: null, inFlight: null, lastLoadedAt: 0 },
             imageEditor: {
                 open: false,
                 target: null,
@@ -494,12 +531,13 @@ MODIFICATION RULES FOR THIS APP
                 dragStart: null,
                 history: [],
                 arrowColor: '#000000',
-                lineThickness: 7,
+                lineThickness: 2,
                 zoomScale: 1,
                 zoomX: 0,
                 zoomY: 0,
                 panMode: false,
                 isPanning: false,
+                shiftPanHeld: false,
                 panPointerId: null,
                 panStartClientX: 0,
                 panStartClientY: 0,
@@ -520,13 +558,17 @@ MODIFICATION RULES FOR THIS APP
                 labels: [],
                 labelsEnabled: false,
                 metadata: {},
+                savedImageClassId: '',
+                savedImageFolderId: '',
                 metadataEnabled: false,
                 metadataPanelOpen: false,
                 labelInfoEnabled: false,
                 labelInfoPanelOpen: false,
                 labelInfoExpandedIndex: null,
+                labelInfoDirtyKeys: new Set(),
                 activeConnectorLabelIndex: null,
                 connectorStylePickerLabelIndex: null,
+                quickMultiAnchorLabelIndex: null,
                 pendingConnectorStyle: 'straight',
                 pendingConnectorEndpoint: 'none',
                 draggingConnectorAnchor: false,
@@ -534,9 +576,14 @@ MODIFICATION RULES FOR THIS APP
                 hoveredLabelIndex: null,
                 showLabelPanel: false,
                 labelsLayerVisible: true,
-                labelPanelWidth: 340,
+                ghostLabelsEnabled: false,
+                ghostLabelOpacity: 0.35,
+                singleLabelViewEnabled: false,
+                labelSize: 1,
+                ghostActiveLabelIndex: 0,
+                labelPanelWidth: 410,
                 labelPanelCanvasMinWidth: 0,
-                labelPanelAppliedWidth: 340,
+                labelPanelAppliedWidth: 410,
                 visualAids: [],
                 visualAidsEnabled: false,
                 showVisualAidPanel: false,
@@ -563,10 +610,13 @@ MODIFICATION RULES FOR THIS APP
                 activeVisualAidDraftPath: null,
                 visualAidPreviewProgress: 0,
                 visualAidPreviewPlaying: false,
-                visualAidPreviewLoop: false,
+                visualAidPreviewLoop: true,
                 visualAidPreviewFrameId: 0,
                 visualAidPreviewStartedAt: 0,
-                visualAidPreviewActive: false
+                visualAidPreviewActive: false,
+                visualAidPresetLibraryId: '',
+                visualAidBallMenuId: '',
+                visualAidBallMenuKind: ''
             },
             imageEditorDomBound: false,
             studioDiagramSharing: {
@@ -640,12 +690,26 @@ MODIFICATION RULES FOR THIS APP
         multiAnglePrevBtn: document.getElementById('multiAnglePrevBtn'),
         multiAngleNextBtn: document.getElementById('multiAngleNextBtn'),
         multiAngleIndicator: document.getElementById('multiAngleIndicator'),
-        multiAngleCanvasWidth: document.getElementById('multiAngleCanvasWidth'),
+        multiAnglePositionActiveName: document.getElementById('multiAnglePositionActiveName'),
         multiAngleBackgroundInput: document.getElementById('multiAngleBackgroundInput'),
         multiAngleBackgroundValue: document.getElementById('multiAngleBackgroundValue'),
-        multiAngleCanvasHeight: document.getElementById('multiAngleCanvasHeight'),
-        multiAngleApplyDimensionsBtn: document.getElementById('multiAngleApplyDimensionsBtn'),
         multiAngleNameInput: document.getElementById('multiAngleNameInput'),
+        multiAngleWidthInput: document.getElementById('multiAngleWidthInput'),
+        multiAngleHeightInput: document.getElementById('multiAngleHeightInput'),
+        multiAngleSameDimensionsToggle: document.getElementById('multiAngleSameDimensionsToggle'),
+        multiAngleAutoExpandBtn: document.getElementById('multiAngleAutoExpandBtn'),
+        multiAngleResetCanvasBtn: document.getElementById('multiAngleResetCanvasBtn'),
+        multiAngleFinalBoundaryText: document.getElementById('multiAngleFinalBoundaryText'),
+        multiAngleFormatSelect: document.getElementById('multiAngleFormatSelect'),
+        multiAngleTransparentToggle: document.getElementById('multiAngleTransparentToggle'),
+        multiAngleQualityInput: document.getElementById('multiAngleQualityInput'),
+        multiAngleQualityValue: document.getElementById('multiAngleQualityValue'),
+        multiAngleConvertedPreview: document.getElementById('multiAngleConvertedPreview'),
+        multiAngleCurrentBytes: document.getElementById('multiAngleCurrentBytes'),
+        multiAngleEstimateBytes: document.getElementById('multiAngleEstimateBytes'),
+        multiAngleFlattenNotice: document.getElementById('multiAngleFlattenNotice'),
+        multiAngleReplaceBtn: document.getElementById('multiAngleReplaceBtn'),
+        multiAngleReplaceInput: document.getElementById('multiAngleReplaceInput'),
         multiAngleScaleInput: document.getElementById('multiAngleScaleInput'),
         multiAngleScaleValue: document.getElementById('multiAngleScaleValue'),
         multiAngleXInput: document.getElementById('multiAngleXInput'),
@@ -672,6 +736,8 @@ MODIFICATION RULES FOR THIS APP
         diagramCreatorSavedView: document.getElementById('diagramCreatorSavedView'),
         diagramCreatorSearchInput: document.getElementById('diagramCreatorSearchInput'),
         diagramCreatorDiagramNameFilter: document.getElementById('diagramCreatorDiagramNameFilter'),
+        diagramCreatorClassFilter: document.getElementById('diagramCreatorClassFilter'),
+        diagramCreatorFolderFilter: document.getElementById('diagramCreatorFolderFilter'),
         diagramCreatorSubjectFilter: document.getElementById('diagramCreatorSubjectFilter'),
         diagramCreatorAnatomyTypeFilter: document.getElementById('diagramCreatorAnatomyTypeFilter'),
         diagramCreatorOrganSystemFilter: document.getElementById('diagramCreatorOrganSystemFilter'),
@@ -682,8 +748,15 @@ MODIFICATION RULES FOR THIS APP
         diagramCreatorClearFiltersBtn: document.getElementById('diagramCreatorClearFiltersBtn'),
         diagramCreatorSearchCount: document.getElementById('diagramCreatorSearchCount'),
         diagramCreatorImageGrid: document.getElementById('diagramCreatorImageGrid'),
+        diagramCreatorPagination: document.getElementById('diagramCreatorPagination'),
+        diagramCreatorPagePrevBtn: document.getElementById('diagramCreatorPagePrevBtn'),
+        diagramCreatorPageNextBtn: document.getElementById('diagramCreatorPageNextBtn'),
+        diagramCreatorPageStatus: document.getElementById('diagramCreatorPageStatus'),
+        diagramCreatorShowAllBtn: document.getElementById('diagramCreatorShowAllBtn'),
         reviewModeSearchInput: document.getElementById('reviewModeSearchInput'),
         reviewModeDiagramNameFilter: document.getElementById('reviewModeDiagramNameFilter'),
+        reviewModeClassFilter: document.getElementById('reviewModeClassFilter'),
+        reviewModeFolderFilter: document.getElementById('reviewModeFolderFilter'),
         reviewModeSubjectFilter: document.getElementById('reviewModeSubjectFilter'),
         reviewModeAnatomyTypeFilter: document.getElementById('reviewModeAnatomyTypeFilter'),
         reviewModeOrganSystemFilter: document.getElementById('reviewModeOrganSystemFilter'),
@@ -694,9 +767,16 @@ MODIFICATION RULES FOR THIS APP
         reviewModeClearFiltersBtn: document.getElementById('reviewModeClearFiltersBtn'),
         reviewModeSearchCount: document.getElementById('reviewModeSearchCount'),
         reviewModeImageGrid: document.getElementById('reviewModeImageGrid'),
+        reviewModePagination: document.getElementById('reviewModePagination'),
+        reviewModePagePrevBtn: document.getElementById('reviewModePagePrevBtn'),
+        reviewModePageNextBtn: document.getElementById('reviewModePageNextBtn'),
+        reviewModePageStatus: document.getElementById('reviewModePageStatus'),
+        reviewModeShowAllBtn: document.getElementById('reviewModeShowAllBtn'),
         reviewModeOverlay: document.getElementById('reviewModeOverlay'),
         reviewModeCloseBtn: document.getElementById('reviewModeCloseBtn'),
         reviewModeOptionsBtn: document.getElementById('reviewModeOptionsBtn'),
+        reviewModePinBtn: document.getElementById('reviewModePinBtn'),
+        reviewModeStartQuizBtn: document.getElementById('reviewModeStartQuizBtn'),
         reviewModeOptionsPanel: document.getElementById('reviewModeOptionsPanel'),
         reviewModeActiveTitle: document.getElementById('reviewModeActiveTitle'),
         reviewModeImageViewport: document.getElementById('reviewModeImageViewport'),
@@ -733,6 +813,11 @@ MODIFICATION RULES FOR THIS APP
         reviewModeDisplayFullPathRow: document.getElementById('reviewModeDisplayFullPathRow'),
         reviewModeDisplayFullPathToggle: document.getElementById('reviewModeDisplayFullPathToggle'),
         reviewModeShowAllNamesToggle: document.getElementById('reviewModeShowAllNamesToggle'),
+        reviewModeSoloLabelsToggle: document.getElementById('reviewModeSoloLabelsToggle'),
+        reviewModePinnedLabelsOnlyToggle: document.getElementById('reviewModePinnedLabelsOnlyToggle'),
+        reviewModeMiniPinnedLabelsOnlyToggle: document.getElementById('reviewModeMiniPinnedLabelsOnlyToggle'),
+        reviewModePinAllSharedLabelsToggle: document.getElementById('reviewModePinAllSharedLabelsToggle'),
+        reviewModeAllowLabelMovementToggle: document.getElementById('reviewModeAllowLabelMovementToggle'),
         reviewModeLabelNumberToggle: document.getElementById('reviewModeLabelNumberToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
@@ -740,6 +825,12 @@ MODIFICATION RULES FOR THIS APP
         reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
         reviewModeShowConnectorContrastToggle: document.getElementById('reviewModeShowConnectorContrastToggle'),
         reviewModeFocusToggle: document.getElementById('reviewModeFocusToggle'),
+        reviewModeTwoLevelFocusToggle: document.getElementById('reviewModeTwoLevelFocusToggle'),
+        reviewModeNormalFocusZoom: document.getElementById('reviewModeNormalFocusZoom'),
+        reviewModeNormalFocusZoomValue: document.getElementById('reviewModeNormalFocusZoomValue'),
+        reviewModeDetailFocusZoom: document.getElementById('reviewModeDetailFocusZoom'),
+        reviewModeDetailFocusZoomValue: document.getElementById('reviewModeDetailFocusZoomValue'),
+        reviewModeDetailFocusZoomRow: document.getElementById('reviewModeDetailFocusZoomRow'),
         reviewModeMiniQuizScope: document.getElementById('reviewModeMiniQuizScope'),
         reviewModeMiniScopeCurrent: document.getElementById('reviewModeMiniScopeCurrent'),
         reviewModeMiniScopeAll: document.getElementById('reviewModeMiniScopeAll'),
@@ -750,6 +841,8 @@ MODIFICATION RULES FOR THIS APP
         reviewModeMiniCurrentVisualAidOnlyToggle: document.getElementById('reviewModeMiniCurrentVisualAidOnlyToggle'),
         reviewModeMiniRandomizeToggle: document.getElementById('reviewModeMiniRandomizeToggle'),
         reviewModeMiniAllowDuplicatesToggle: document.getElementById('reviewModeMiniAllowDuplicatesToggle'),
+        reviewModeMiniQuizLabelInformationToggle: document.getElementById('reviewModeMiniQuizLabelInformationToggle'),
+        reviewModeMiniIdentifyStructureForCategoryToggle: document.getElementById('reviewModeMiniIdentifyStructureForCategoryToggle'),
         reviewModeMiniTypedToggle: document.getElementById('reviewModeMiniTypedToggle'),
         reviewModeMiniRapidRow: document.getElementById('reviewModeMiniRapidRow'),
         reviewModeMiniRapidToggle: document.getElementById('reviewModeMiniRapidToggle'),
@@ -763,10 +856,16 @@ MODIFICATION RULES FOR THIS APP
         reviewModeMiniQuizControls: document.getElementById('reviewModeMiniQuizControls'),
         reviewModeMiniQuizRestartBtn: document.getElementById('reviewModeMiniQuizRestartBtn'),
         reviewModeMiniQuizEndBtn: document.getElementById('reviewModeMiniQuizEndBtn'),
+        reviewModeMiniQuizRoundCheckpoint: document.getElementById('reviewModeMiniQuizRoundCheckpoint'),
+        reviewModeMiniQuizCheckpointSummary: document.getElementById('reviewModeMiniQuizCheckpointSummary'),
+        reviewModeMiniQuizCheckpointStatus: document.getElementById('reviewModeMiniQuizCheckpointStatus'),
+        reviewModeMiniQuizPinMissedBtn: document.getElementById('reviewModeMiniQuizPinMissedBtn'),
+        reviewModeMiniQuizResetPinsBtn: document.getElementById('reviewModeMiniQuizResetPinsBtn'),
+        reviewModeMiniQuizTryAgainBtn: document.getElementById('reviewModeMiniQuizTryAgainBtn'),
         reviewModeMiniQuizComplete: document.getElementById('reviewModeMiniQuizComplete'),
+        reviewModeMiniQuizMasteredNotice: document.getElementById('reviewModeMiniQuizMasteredNotice'),
         reviewModeMiniQuizNextAngleBtn: document.getElementById('reviewModeMiniQuizNextAngleBtn'),
-        reviewModeLabelSizeDownBtn: document.getElementById('reviewModeLabelSizeDownBtn'),
-        reviewModeLabelSizeUpBtn: document.getElementById('reviewModeLabelSizeUpBtn'),
+        reviewModeLabelSizeSlider: document.getElementById('reviewModeLabelSizeSlider'),
         reviewModeLabelSizeValue: document.getElementById('reviewModeLabelSizeValue'),
         reviewModeKeyboardShortcutsBtn: document.getElementById('reviewModeKeyboardShortcutsBtn'),
         reviewModeKeyboardShortcutsPanel: document.getElementById('reviewModeKeyboardShortcutsPanel'),
@@ -777,6 +876,8 @@ MODIFICATION RULES FOR THIS APP
         reviewModeShortcutShowBtn: document.getElementById('reviewModeShortcutShowBtn'),
         reviewModeShortcutLabelUpBtn: document.getElementById('reviewModeShortcutLabelUpBtn'),
         reviewModeShortcutLabelDownBtn: document.getElementById('reviewModeShortcutLabelDownBtn'),
+        reviewModeShortcutSmallLabelsBtn: document.getElementById('reviewModeShortcutSmallLabelsBtn'),
+        reviewModeShortcutMovementBtn: document.getElementById('reviewModeShortcutMovementBtn'),
         reviewModeShortcutColorBtn: document.getElementById('reviewModeShortcutColorBtn'),
         reviewModeShortcutLinesBtn: document.getElementById('reviewModeShortcutLinesBtn'),
         reviewModeShortcutAllBtn: document.getElementById('reviewModeShortcutAllBtn'),
@@ -921,6 +1022,9 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenSideSelect: document.getElementById('flashcardHandwrittenSideSelect'),
         flashcardHandwrittenFlipBtn: document.getElementById('flashcardHandwrittenFlipBtn'),
         flashcardHandwrittenSideMode: document.getElementById('flashcardHandwrittenSideMode'),
+        flashcardHandwrittenSettingsBtn: document.getElementById('flashcardHandwrittenSettingsBtn'),
+        flashcardHandwrittenSettingsPopover: document.getElementById('flashcardHandwrittenSettingsPopover'),
+        flashcardHandwrittenClearBtn: document.getElementById('flashcardHandwrittenClearBtn'),
         flashcardHandwrittenUndoBtn: document.getElementById('flashcardHandwrittenUndoBtn'),
         flashcardHandwrittenRedoBtn: document.getElementById('flashcardHandwrittenRedoBtn'),
         flashcardHandwrittenSizeBtn: document.getElementById('flashcardHandwrittenSizeBtn'),
@@ -1019,6 +1123,7 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorVisualAidPanel: document.getElementById('studioImageEditorVisualAidPanel'),
         studioImageEditorVisualAidList: document.getElementById('studioImageEditorVisualAidList'),
         studioImageEditorAddVisualAidBtn: document.getElementById('studioImageEditorAddVisualAidBtn'),
+        studioImageEditorVisualAidClosePathBtn: document.getElementById('studioImageEditorVisualAidClosePathBtn'),
         studioImageEditorZoomControls: document.getElementById('studioImageEditorZoomControls'),
         studioImageEditorZoomOutBtn: document.getElementById('studioImageEditorZoomOutBtn'),
         studioImageEditorZoomResetBtn: document.getElementById('studioImageEditorZoomResetBtn'),
@@ -1057,7 +1162,6 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorDrawToolButtons: Array.from(document.querySelectorAll('[data-image-editor-draw-tool]')),
         studioImageEditorDrawSizeInput: document.getElementById('studioImageEditorDrawSizeInput'),
         studioImageEditorDrawSizeValue: document.getElementById('studioImageEditorDrawSizeValue'),
-        studioImageEditorDrawActiveLabelValue: document.getElementById('studioImageEditorDrawActiveLabelValue'),
         studioImageEditorPaintTransparencyInput: document.getElementById('studioImageEditorPaintTransparencyInput'),
         studioImageEditorPaintTransparencyValue: document.getElementById('studioImageEditorPaintTransparencyValue'),
         studioImageEditorLabelsBtn: document.getElementById('studioImageEditorLabelsBtn'),
@@ -1069,6 +1173,14 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorLabelInfoList: document.getElementById('studioImageEditorLabelInfoList'),
         studioImageEditorLabelInfoToggleBtn: document.getElementById('studioImageEditorLabelInfoToggleBtn'),
         studioImageEditorDiagramName: document.getElementById('studioImageEditorDiagramName'),
+        studioImageEditorClassField: document.getElementById('studioImageEditorClassField'),
+        studioImageEditorClassSelect: document.getElementById('studioImageEditorClassSelect'),
+        studioImageEditorClassNewInput: document.getElementById('studioImageEditorClassNewInput'),
+        studioImageEditorAddClassBtn: document.getElementById('studioImageEditorAddClassBtn'),
+        studioImageEditorFolderField: document.getElementById('studioImageEditorFolderField'),
+        studioImageEditorFolderSelect: document.getElementById('studioImageEditorFolderSelect'),
+        studioImageEditorFolderNewInput: document.getElementById('studioImageEditorFolderNewInput'),
+        studioImageEditorAddFolderBtn: document.getElementById('studioImageEditorAddFolderBtn'),
         studioImageEditorSubjectName: document.getElementById('studioImageEditorSubjectName'),
         studioImageEditorAnatomyType: document.getElementById('studioImageEditorAnatomyType'),
         studioImageEditorOrganSystem: document.getElementById('studioImageEditorOrganSystem'),
@@ -2332,10 +2444,26 @@ MODIFICATION RULES FOR THIS APP
         return normalizedName || fallback;
     }
 
+    function getCanonicalImageFileNameForValue(fileName = '', value = '') {
+        const normalizedName = normalizeSheetText(fileName) || 'image';
+        const dataMatch = normalizeSheetText(value).match(/^data:([^;,]+)/i);
+        const mimeType = normalizeSheetText(dataMatch?.[1] || '').toLowerCase();
+        if (!mimeType) return normalizedName;
+        const extension = getMediaExtensionFromMime(mimeType);
+        if (!extension || extension === 'bin') return normalizedName;
+        const currentExtension = (normalizedName.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
+        const compatible = mimeType === 'image/jpeg'
+            ? ['jpg', 'jpeg', 'jpe'].includes(currentExtension)
+            : currentExtension === extension;
+        if (compatible) return normalizedName;
+        const base = normalizedName.replace(/\.[a-z0-9]+$/i, '') || 'image';
+        return `${base}.${extension}`;
+    }
+
     function getSafeMediaFileName(originalName, mimeType, usageContext = 'image') {
         const sanitizedOriginal = sanitizeStorageFileName(originalName, '');
         if (sanitizedOriginal && /\.[a-z0-9]+$/i.test(sanitizedOriginal)) {
-            return sanitizedOriginal;
+            return sanitizeStorageFileName(getCanonicalImageFileNameForValue(sanitizedOriginal, `data:${mimeType};base64,`), sanitizedOriginal);
         }
         const baseName = sanitizeStorageFileName(sanitizedOriginal || usageContext || 'image', 'image').replace(/\.[a-z0-9]+$/i, '');
         return `${baseName}.${getMediaExtensionFromMime(mimeType)}`;
@@ -2421,6 +2549,9 @@ MODIFICATION RULES FOR THIS APP
 
         const blob = getDataUrlBlob(normalizedDataUrl);
         const mimeType = blob.type || 'application/octet-stream';
+        if (/^image\//i.test(mimeType) && blob.size > STUDY_BUNNY_IMAGE_MAX_BYTES) {
+            throw new Error('Images must be 3 MB or smaller.');
+        }
         const assetId = createMediaAssetId();
         const fileName = getSafeMediaFileName(options.originalName || options.label || '', mimeType, options.usageContext || 'image');
         const objectPath = `${state.auth.user.id}/${assetId}/${fileName}`;
@@ -3073,7 +3204,7 @@ MODIFICATION RULES FOR THIS APP
         return `${alphabet[index % alphabet.length]}${Math.floor(index / alphabet.length) + 1}`;
     }
 
-    const DIAGRAM_CONNECTOR_STYLES = new Set(['straight', 'curved', 'elbow', 'angled']);
+    const DIAGRAM_CONNECTOR_STYLES = new Set(['straight', 'curved', 'elbow', 'angled', 'bracket', 'multi']);
 
     function normalizeDiagramConnectorStyle(style = '') {
         const normalized = normalizeSheetText(style || '').toLowerCase();
@@ -3097,25 +3228,69 @@ MODIFICATION RULES FOR THIS APP
     function normalizeDiagramConnector(connector = null) {
         const source = connector && typeof connector === 'object' ? connector : null;
         if (!source) return null;
-        const anchorXValue = Number(source.anchorX ?? source.targetX ?? source.x);
-        const anchorYValue = Number(source.anchorY ?? source.targetY ?? source.y);
-        if (!Number.isFinite(anchorXValue) || !Number.isFinite(anchorYValue)) return null;
         const style = getDiagramConnectorStyle(source);
-        return {
+        const bracketStartXValue = Number(source.bracketStartX ?? source.regionStartX);
+        const bracketStartYValue = Number(source.bracketStartY ?? source.regionStartY);
+        const bracketEndXValue = Number(source.bracketEndX ?? source.regionEndX);
+        const bracketEndYValue = Number(source.bracketEndY ?? source.regionEndY);
+        const multiTargets = style === 'multi' && Array.isArray(source.targets)
+            ? source.targets.slice(0, 32).map(target => ({
+                x: Number(target?.x), y: Number(target?.y)
+            })).filter(target => Number.isFinite(target.x) && Number.isFinite(target.y))
+                .map(target => ({ x: Math.min(100, Math.max(0, target.x)), y: Math.min(100, Math.max(0, target.y)) }))
+            : [];
+        const hasBracketGeometry = style === 'bracket'
+            && Number.isFinite(bracketStartXValue)
+            && Number.isFinite(bracketStartYValue)
+            && Number.isFinite(bracketEndXValue)
+            && Number.isFinite(bracketEndYValue)
+            && Math.hypot(bracketEndXValue - bracketStartXValue, bracketEndYValue - bracketStartYValue) > 0.0001;
+        if (style === 'bracket' && !hasBracketGeometry) return null;
+        if (style === 'multi' && !multiTargets.length) return null;
+        let anchorXValue = Number(source.anchorX ?? source.targetX ?? source.x);
+        let anchorYValue = Number(source.anchorY ?? source.targetY ?? source.y);
+        if (style === 'multi') {
+            anchorXValue = multiTargets[0].x;
+            anchorYValue = multiTargets[0].y;
+        }
+        if (hasBracketGeometry) {
+            anchorXValue = (bracketStartXValue + bracketEndXValue) / 2;
+            anchorYValue = (bracketStartYValue + bracketEndYValue) / 2;
+        }
+        if (!Number.isFinite(anchorXValue) || !Number.isFinite(anchorYValue)) return null;
+        const normalized = {
             anchorX: Math.min(100, Math.max(0, anchorXValue)),
             anchorY: Math.min(100, Math.max(0, anchorYValue)),
             color: normalizeEditorHexColor(source.color || source.strokeColor || '#000000', '#000000'),
-            thickness: Math.min(24, Math.max(1, Number(source.thickness ?? source.lineWidth ?? 7) || 7)),
-            ...(style !== 'straight' ? { style } : {}),
-            ...(getDiagramConnectorEndpoint(source) === 'none' ? { endpoint: 'none' } : {}),
-            ...(normalizeSheetText(source.visualAidId || source.snapVisualAidId || '') ? { visualAidId: normalizeSheetText(source.visualAidId || source.snapVisualAidId || '') } : {}),
-            ...(normalizeSheetText(source.visualAidPointId || source.snapVisualAidPointId || '') ? { visualAidPointId: normalizeSheetText(source.visualAidPointId || source.snapVisualAidPointId || '') } : {})
+            thickness: Math.min(24, Math.max(0.25, Number(source.thickness ?? source.lineWidth ?? 7) || 7)),
+            ...(style !== 'straight' ? { style } : {})
         };
+        if (style === 'multi') normalized.targets = multiTargets;
+        if (hasBracketGeometry) {
+            normalized.bracketStartX = Math.min(100, Math.max(0, bracketStartXValue));
+            normalized.bracketStartY = Math.min(100, Math.max(0, bracketStartYValue));
+            normalized.bracketEndX = Math.min(100, Math.max(0, bracketEndXValue));
+            normalized.bracketEndY = Math.min(100, Math.max(0, bracketEndYValue));
+            normalized.bracketSide = Number(source.bracketSide) < 0 ? -1 : 1;
+            normalized.endpoint = 'none';
+        } else {
+            if (getDiagramConnectorEndpoint(source) === 'none') normalized.endpoint = 'none';
+            const visualAidId = normalizeSheetText(source.visualAidId || source.snapVisualAidId || '');
+            const visualAidPointId = normalizeSheetText(source.visualAidPointId || source.snapVisualAidPointId || '');
+            if (visualAidId) normalized.visualAidId = visualAidId;
+            if (visualAidPointId) normalized.visualAidPointId = visualAidPointId;
+        }
+        return normalized;
     }
 
     const DIAGRAM_LABEL_INFO_CATEGORY_LIMIT = 24;
     const DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX = 80;
     const DIAGRAM_LABEL_INFO_CATEGORY_BODY_MAX = 2000;
+    const DIAGRAM_LABEL_QUESTION_PROMPT_MAX = 200;
+
+    function normalizeDiagramLabelQuestionPrompt(value = '') {
+        return String(value ?? '').replace(/\s*\r?\n\s*/g, ' ').slice(0, DIAGRAM_LABEL_QUESTION_PROMPT_MAX);
+    }
 
     function normalizeDiagramLabelInfoBody(value = '') {
         return String(value ?? '')
@@ -3188,6 +3363,9 @@ MODIFICATION RULES FOR THIS APP
             return {
                 label: displayMathChemTextForEditor(normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index))) || getDiagramLabelName(index),
                 description,
+                questionPrompt: normalizeDiagramLabelQuestionPrompt(label?.questionPrompt || ''),
+                // Phase 23F.41.34: per-angle/per-label focus preference; never shared by label name.
+                ...(label?.detailFocus === true ? { detailFocus: true } : {}),
                 ...(infoCategories.length ? { infoCategories } : {}),
                 x: Math.min(100, Math.max(0, Number(label?.x ?? label?.left ?? 50) || 50)),
                 y: Math.min(100, Math.max(0, Number(label?.y ?? label?.top ?? 50) || 50)),
@@ -3231,6 +3409,115 @@ MODIFICATION RULES FOR THIS APP
         const point = value => Number(value).toFixed(3);
         const scale = Math.max(0.0001, Number(screenScale) || 1);
 
+        const buildLeftRightAngledLeaderPath = (target = anchor, endInset = 0) => {
+            const leaderDx = target.x - labelPoint.x;
+            const leaderDy = target.y - labelPoint.y;
+            const leaderDistance = Math.max(1, Math.hypot(leaderDx, leaderDy));
+            const minSegment = 16 / scale;
+            const maxSegment = 80 / scale;
+            const desiredLength = Math.min(maxSegment, Math.max(minSegment, leaderDistance * 0.30));
+            const horizontalDistance = Math.abs(leaderDx);
+            const transitionBand = 14 / scale;
+            const sideDirection = leaderDx > 0
+                ? 1
+                : leaderDx < 0
+                    ? -1
+                    : (labelPoint.x <= safeWidth * 0.5 ? 1 : -1);
+            if (horizontalDistance <= transitionBand) {
+                const hiddenStubLength = Math.min(7 / scale, Math.max(3 / scale, leaderDistance * 0.08));
+                const bend = { x: labelPoint.x + (sideDirection * hiddenStubLength), y: labelPoint.y };
+                const endPoint = getConnectorEndpointInsetPoint(target, bend, endInset);
+                return `M ${point(labelPoint.x)} ${point(labelPoint.y)} L ${point(bend.x)} ${point(bend.y)} L ${point(endPoint.x)} ${point(endPoint.y)}`;
+            }
+            const sideLength = Math.min(desiredLength, Math.max(1 / scale, horizontalDistance * 0.48));
+            const bend = { x: labelPoint.x + (sideDirection * sideLength), y: labelPoint.y };
+            const endPoint = getConnectorEndpointInsetPoint(target, bend, endInset);
+            return `M ${point(labelPoint.x)} ${point(labelPoint.y)} L ${point(bend.x)} ${point(bend.y)} L ${point(endPoint.x)} ${point(endPoint.y)}`;
+        };
+
+        if (style === 'multi') {
+            const targets = normalizedConnector.targets.map(target => ({
+                x: (target.x / 100) * safeWidth,
+                y: (target.y / 100) * safeHeight
+            }));
+            const primary = targets[0];
+            // One angled stem from the label reaches a shared junction. Every
+            // landmark branch begins at exactly that junction (including the first).
+            // Derive the junction from the whole target group so the branch geometry
+            // stays stable if a label moves or the diagram is reopened.
+            const center = {
+                x: targets.reduce((sum, target) => sum + target.x, 0) / targets.length,
+                y: targets.reduce((sum, target) => sum + target.y, 0) / targets.length
+            };
+            const centerDx = labelPoint.x - center.x;
+            const centerDy = labelPoint.y - center.y;
+            const centerDistance = Math.hypot(centerDx, centerDy);
+            const junctionOffset = Math.min(140 / scale, centerDistance * 0.52);
+            const junction = centerDistance > 0.0001
+                ? {
+                    x: center.x + (centerDx / centerDistance) * junctionOffset,
+                    y: center.y + (centerDy / centerDistance) * junctionOffset
+                }
+                : { x: center.x, y: center.y };
+            const toJunctionX = junction.x - labelPoint.x;
+            const side = toJunctionX < 0 ? -1 : 1;
+            const stemLength = Math.min(48 / scale, Math.abs(toJunctionX) * 0.42);
+            const bend = { x: labelPoint.x + side * stemLength, y: labelPoint.y };
+            const buildMultiPath = (endInset = 0) => {
+                let path = `M ${point(labelPoint.x)} ${point(labelPoint.y)} L ${point(bend.x)} ${point(bend.y)} L ${point(junction.x)} ${point(junction.y)}`;
+                targets.forEach(target => {
+                    const tip = getConnectorEndpointInsetPoint(target, junction, endInset);
+                    path += ` M ${point(junction.x)} ${point(junction.y)} L ${point(tip.x)} ${point(tip.y)}`;
+                });
+                return path;
+            };
+            return {
+                path: buildMultiPath(0),
+                buildPath: buildMultiPath,
+                anchor: primary,
+                junction,
+                endpoints: targets,
+                color: normalizedConnector.color || '#000000',
+                thickness: Math.min(24, Math.max(0.25, Number(normalizedConnector.thickness) || 7)) / scale,
+                screenScale: scale,
+                endpoint: getDiagramConnectorEndpoint(normalizedConnector),
+                canDragAnchor: false,
+                isMulti: true
+            };
+        }
+
+        if (style === 'bracket') {
+            const start = {
+                x: (normalizedConnector.bracketStartX / 100) * safeWidth,
+                y: (normalizedConnector.bracketStartY / 100) * safeHeight
+            };
+            const end = {
+                x: (normalizedConnector.bracketEndX / 100) * safeWidth,
+                y: (normalizedConnector.bracketEndY / 100) * safeHeight
+            };
+            const spanX = end.x - start.x;
+            const spanY = end.y - start.y;
+            const spanLength = Math.max(0.0001, Math.hypot(spanX, spanY));
+            const normalX = (-spanY / spanLength) * (normalizedConnector.bracketSide < 0 ? -1 : 1);
+            const normalY = (spanX / spanLength) * (normalizedConnector.bracketSide < 0 ? -1 : 1);
+            const capLength = Math.min(12 / scale, Math.max(4 / scale, spanLength * 0.14), spanLength * 0.30);
+            const capStart = { x: start.x + (normalX * capLength), y: start.y + (normalY * capLength) };
+            const capEnd = { x: end.x + (normalX * capLength), y: end.y + (normalY * capLength) };
+            const leaderPath = buildLeftRightAngledLeaderPath(anchor, 0);
+            const bracketPath = `M ${point(capStart.x)} ${point(capStart.y)} L ${point(start.x)} ${point(start.y)} L ${point(end.x)} ${point(end.y)} L ${point(capEnd.x)} ${point(capEnd.y)} ${leaderPath}`;
+            return {
+                path: bracketPath,
+                buildPath: () => bracketPath,
+                anchor,
+                color: normalizedConnector.color || '#000000',
+                thickness: Math.min(24, Math.max(0.25, Number(normalizedConnector.thickness) || 7)) / scale,
+                screenScale: scale,
+                endpoint: 'none',
+                canDragAnchor: false,
+                isBracket: true
+            };
+        }
+
         const buildPath = (endInset = 0) => {
             let path = `M ${point(labelPoint.x)} ${point(labelPoint.y)}`;
             if (style === 'curved') {
@@ -3249,12 +3536,7 @@ MODIFICATION RULES FOR THIS APP
                 const endPoint = getConnectorEndpointInsetPoint(anchor, tangentStart, endInset);
                 path += ` L ${point(midX)} ${point(labelPoint.y)} L ${point(midX)} ${point(anchor.y)} L ${point(endPoint.x)} ${point(endPoint.y)}`;
             } else if (style === 'angled') {
-                const minSegment = 24 / scale;
-                const maxSegment = 80 / scale;
-                const horizontalLength = Math.min(maxSegment, Math.max(minSegment, distance * 0.30));
-                const bend = { x: labelPoint.x + direction * horizontalLength, y: labelPoint.y };
-                const endPoint = getConnectorEndpointInsetPoint(anchor, bend, endInset);
-                path += ` L ${point(bend.x)} ${point(bend.y)} L ${point(endPoint.x)} ${point(endPoint.y)}`;
+                return buildLeftRightAngledLeaderPath(anchor, endInset);
             } else {
                 const endPoint = getConnectorEndpointInsetPoint(anchor, labelPoint, endInset);
                 path += ` L ${point(endPoint.x)} ${point(endPoint.y)}`;
@@ -3268,10 +3550,18 @@ MODIFICATION RULES FOR THIS APP
             buildPath,
             anchor,
             color: normalizedConnector.color || '#000000',
-            thickness: Math.min(24, Math.max(1, Number(normalizedConnector.thickness) || 7)) / normalizedScreenScale,
+            thickness: Math.min(24, Math.max(0.25, Number(normalizedConnector.thickness) || 7)) / normalizedScreenScale,
             screenScale: normalizedScreenScale,
             endpoint: getDiagramConnectorEndpoint(normalizedConnector)
         };
+    }
+
+    // White contrast is 200% of the colored stroke through 2px, then capped
+    // at 2 additional screen pixels. Return only the EXTRA width (not total).
+    function getDiagramConnectorContrastExtraWidth(screenThickness = 0, maxExtraWidth = 2) {
+        const thickness = Math.max(0, Number(screenThickness) || 0);
+        const cap = Math.max(0, Number(maxExtraWidth) || 0);
+        return Math.min(thickness, cap);
     }
 
     function buildDiagramConnectorSvgMarkup(labels = [], width = 1, height = 1, screenScale = 1, options = {}) {
@@ -3283,17 +3573,23 @@ MODIFICATION RULES FOR THIS APP
         const activeRingThicknessFactor = Math.max(0, Number(options?.activeRingThicknessFactor) || 0.85);
         const activeRingLineWidth = Math.max(0.5, Number(options?.activeRingLineWidth) || 2.25);
         const precisionAttrs = 'shape-rendering="geometricPrecision" vector-effect="none"';
+        const ghostActiveIndex = Number.isInteger(options?.ghostActiveIndex) ? options.ghostActiveIndex : -1;
+        const ghostOpacity = Number.isFinite(options?.ghostInactiveOpacity) ? Math.max(0, Math.min(1, options.ghostInactiveOpacity)) : 1;
         return normalizeDiagramLabels(labels || []).map((label, index) => {
             const geometry = getDiagramConnectorSvgGeometry(label.connector, label, width, height, screenScale);
             if (!geometry) return '';
             const scale = Math.max(0.0001, geometry.screenScale || 1);
             const screenThickness = geometry.thickness * scale;
             const radius = Math.max(4 / scale, geometry.thickness * 0.9);
-            const outlineWidth = outlineColor && outlineExtraWidth > 0
-                ? geometry.thickness + (outlineExtraWidth / scale)
+            // 200% white backing up through 2px; above that, preserve the
+            // original 2px additional-width cap. Scale in screen pixels so
+            // zooming never silently changes the intended stroke ratio.
+            const effectiveOutlineExtra = getDiagramConnectorContrastExtraWidth(screenThickness, outlineExtraWidth);
+            const outlineWidth = outlineColor && effectiveOutlineExtra > 0
+                ? geometry.thickness + (effectiveOutlineExtra / scale)
                 : 0;
             const outlineEndInset = outlineWidth > 0
-                ? (outlineExtraWidth / 2) / scale
+                ? (effectiveOutlineExtra / 2) / scale
                 : 0;
             const outlinePathData = outlineWidth > 0 && typeof geometry.buildPath === 'function'
                 ? geometry.buildPath(outlineEndInset)
@@ -3302,13 +3598,14 @@ MODIFICATION RULES FOR THIS APP
                 ? `<path d="${outlinePathData}" fill="none" stroke="${outlineColor}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round" ${precisionAttrs}></path>`
                 : '';
             const endpoint = geometry.endpoint === 'ball'
-                ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}" ${precisionAttrs}></circle>`
+                ? (geometry.endpoints || [geometry.anchor]).map(target => `<circle cx="${target.x.toFixed(3)}" cy="${target.y.toFixed(3)}" r="${radius.toFixed(3)}" fill="${geometry.color}" ${precisionAttrs}></circle>`).join('')
                 : '';
             const activeRingRadius = (activeRingExtraRadius + (screenThickness * activeRingThicknessFactor)) / scale;
-            const activeRing = index === activeConnectorIndex
+            const activeRing = index === activeConnectorIndex && geometry.canDragAnchor !== false
                 ? `<circle cx="${geometry.anchor.x.toFixed(3)}" cy="${geometry.anchor.y.toFixed(3)}" r="${activeRingRadius.toFixed(3)}" fill="none" stroke="${activeRingColor}" stroke-width="${(activeRingLineWidth / scale).toFixed(3)}" ${precisionAttrs}></circle>`
                 : '';
-            return `<g data-diagram-connector-index="${index}" ${precisionAttrs}>${outlinePath}<path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round" ${precisionAttrs}></path>${endpoint}${activeRing}</g>`;
+            const ghostAttr = ghostActiveIndex >= 0 && index !== ghostActiveIndex && ghostOpacity < 1 ? ` opacity="${ghostOpacity}"` : '';
+            return `<g data-diagram-connector-index="${index}"${ghostAttr} ${precisionAttrs}>${outlinePath}<path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round" ${precisionAttrs}></path>${endpoint}${activeRing}</g>`;
         }).join('');
     }
 
@@ -3426,6 +3723,58 @@ MODIFICATION RULES FOR THIS APP
         return 6000 / normalizeDiagramVisualAidSpeed(speed);
     }
 
+    function getDiagramVisualAidTrailingFraction(aid = {}) {
+        const normalized = normalizeDiagramVisualAid(aid);
+        if (!normalized.trailingEnabled) return 0;
+        return Math.min(1, Math.max(0.05, Number(normalized.trailingLength) / 100));
+    }
+
+    function getDiagramVisualAidPlaybackLeadProgress(aid = {}, playbackProgress = 0) {
+        const normalizedProgress = normalizeDiagramVisualAidPosition(playbackProgress);
+        const trailingFraction = getDiagramVisualAidTrailingFraction(aid);
+        if (trailingFraction <= 0) return normalizedProgress;
+        return Math.min(1, normalizedProgress * (1 + trailingFraction));
+    }
+
+    function getDiagramVisualAidPlaybackTrailProgress(aid = {}, playbackProgress = 0) {
+        const trailingFraction = getDiagramVisualAidTrailingFraction(aid);
+        const leadProgress = getDiagramVisualAidPlaybackLeadProgress(aid, playbackProgress);
+        if (trailingFraction <= 0) return 0;
+        return Math.max(0, leadProgress - trailingFraction);
+    }
+
+    function getDiagramVisualAidPlaybackDurationMs(aid = {}) {
+        const normalized = normalizeDiagramVisualAid(aid);
+        if (normalized.flowFillType === 'flow-fill') return (normalized.flowDurationSec * 1000) / normalizeDiagramVisualAidSpeed(normalized.speed);
+        const trailingFraction = getDiagramVisualAidTrailingFraction(normalized);
+        return getDiagramVisualAidDurationMs(normalized.speed) * (1 + trailingFraction);
+    }
+
+    function normalizeDiagramVisualAidBallDirection(value = 'forward') {
+        return normalizeSheetText(value).toLowerCase() === 'reverse' ? 'reverse' : 'forward';
+    }
+
+    function normalizeDiagramVisualAidBallFunction(value = 'loop') {
+        return normalizeSheetText(value).toLowerCase() === 'stop' ? 'stop' : 'loop';
+    }
+
+    function normalizeDiagramVisualAidBall(ball = {}, index = 0, defaultColor = '#8b5cf6') {
+        const source = ball && typeof ball === 'object' ? ball : {};
+        return {
+            id: normalizeSheetText(source.id) || createDiagramVisualAidId('ball'),
+            name: normalizeSheetText(source.name || `Ball ${index + 1}`).slice(0, 80) || `Ball ${index + 1}`,
+            position: normalizeDiagramVisualAidPosition(source.position),
+            direction: normalizeDiagramVisualAidBallDirection(source.direction),
+            function: normalizeDiagramVisualAidBallFunction(source.function || source.behavior),
+            color: normalizeEditorHexColor(source.color || source.ballColor || defaultColor, defaultColor),
+            legacyAuto: source.legacyAuto === true
+        };
+    }
+
+    function isDiagramVisualAidLegacyAutoBall(ball = {}) {
+        return !!(ball && typeof ball === 'object' && ball.legacyAuto === true);
+    }
+
     function normalizeDiagramVisualAid(aid = {}, index = 0) {
         const source = aid && typeof aid === 'object' ? aid : {};
         const path = (Array.isArray(source.path) ? source.path : []).slice(0, DIAGRAM_VISUAL_AID_MAX_PATH_POINTS).map(normalizeDiagramVisualAidPathPoint);
@@ -3447,6 +3796,11 @@ MODIFICATION RULES FOR THIS APP
         const ball = source.ball === true;
         const pathAuthoring = normalizeDiagramVisualAidPathAuthoring(source.pathAuthoring || source.pathMethod || 'brush');
         const curveAnchors = (Array.isArray(source.curveAnchors) ? source.curveAnchors : []).slice(0, DIAGRAM_VISUAL_AID_MAX_CURVE_ANCHORS).map(normalizeDiagramVisualAidCurveAnchor);
+        let balls = (Array.isArray(source.balls) ? source.balls : []).slice(0, DIAGRAM_VISUAL_AID_MAX_BALLS).map((item, ballIndex) => normalizeDiagramVisualAidBall(item, ballIndex, defaultColor));
+        if (source.multipleBalls === true) balls = balls.filter(item => !isDiagramVisualAidLegacyAutoBall(item));
+        if (!balls.length && source.ball === true && source.multipleBalls !== true) balls = [normalizeDiagramVisualAidBall({ position: 0, direction: 'forward', function: 'stop', color: source.ballColor || defaultColor, legacyAuto: true }, 0, defaultColor)];
+        const presetInstanceId = normalizeSheetText(source.presetInstanceId || source.visualAidPresetInstanceId || '');
+        const presetName = normalizeSheetText(source.presetName || source.visualAidPresetName || '').slice(0, 100);
         return {
             id: normalizeSheetText(source.id) || createDiagramVisualAidId('visual'),
             name: normalizeSheetText(source.name || `Visual Aid ${index + 1}`).slice(0, 100) || `Visual Aid ${index + 1}`,
@@ -3458,28 +3812,306 @@ MODIFICATION RULES FOR THIS APP
             divisions,
             points,
             defaultColor,
-            thickness: Math.min(24, Math.max(2, Number(source.thickness) || 7)),
+            thickness: Math.min(48, Math.max(2, Number(source.thickness) || 7)),
             speed: normalizeDiagramVisualAidSpeed(source.speed),
-            arrows: ball ? false : source.arrows !== false,
-            ball,
-            ballColor: normalizeEditorHexColor(source.ballColor || defaultColor, defaultColor)
+            arrows: ball || balls.length ? false : source.arrows !== false,
+            ball: ball || balls.length > 0,
+            ballColor: normalizeEditorHexColor(source.ballColor || defaultColor, defaultColor),
+            balls,
+            presetInstanceId,
+            presetName,
+            pathOrder: Math.max(0, Number.isFinite(Number(source.pathOrder)) ? Number(source.pathOrder) : index),
+            closedPath: source.closedPath === true,
+            completePath: source.completePath === true || source.displayFullPath === true,
+            multipleBalls: source.multipleBalls === true,
+            divisionColorSync: source.divisionColorSync === true,
+            ballFollowsDivisionOrder: source.ballFollowsDivisionOrder === true,
+            multiplePaths: source.multiplePaths === true,
+            continueToNextPath: source.continueToNextPath === true,
+            trailingEnabled: source.trailingEnabled === true,
+            trailingLength: Math.min(100, Math.max(5, Number(source.trailingLength) || 30)),
+            ...(source.flowFillType === 'flow-fill' ? normalizeFlowFillData(source, path, defaultColor) : {})
         };
+    }
+
+    // Make direction chevrons a visibly darker shade of their own flow path.
+    // Reducing RGB channels darkens a color; custom colors remain available.
+    function getFlowFillMatchingArrowColor(color = '#60a5fa') {
+        const hex = normalizeEditorHexColor(color, '#60a5fa');
+        const channels = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+        return `#${channels.map(value => Math.round(value * 0.57).toString(16).padStart(2, '0')).join('')}`;
+    }
+
+    // Phase 23F.41: Flow Fill is a separate type; ordinary Path Visual Aids do not acquire these fields.
+    function normalizeFlowFillData(source = {}, activePath = [], defaultColor = '#8b5cf6') {
+        const activeId = normalizeSheetText(source.flowActiveItemId || '');
+        const items = (Array.isArray(source.flowItems) ? source.flowItems : []).slice(0, 24).map((raw, index) => {
+            const item = raw && typeof raw === 'object' ? raw : {};
+            const type = item.type === 'connection' ? 'connection' : 'region';
+            const id = normalizeSheetText(item.id) || createDiagramVisualAidId('flow-item');
+            return {
+                id, type,
+                name: normalizeSheetText(item.name || `${type === 'region' ? 'Region' : 'Flow Path'} ${index + 1}`).slice(0, 100),
+                path: (Array.isArray(item.path) ? item.path : []).slice(0, DIAGRAM_VISUAL_AID_MAX_PATH_POINTS).map(normalizeDiagramVisualAidPathPoint),
+                color: normalizeEditorHexColor(item.color || defaultColor, defaultColor),
+                ...(type === 'connection' ? {
+                    thickness: Math.min(80, Math.max(2, Number(item.thickness ?? 30) || 30)),
+                    endArrow: item.endArrow === true,
+                    continuousArrows: item.continuousArrows === true,
+                    revealOnTransfer: item.revealOnTransfer === true,
+                    continuousArrowCount: Math.min(24, Math.max(0.25, Math.round(Number(item.continuousArrowCount ?? 6) || 6))),
+                    // Existing explicit custom arrow colors remain custom. White
+                    // was the old default and migrates to matching the path.
+                    arrowColorSync: item.arrowColorSync === true || (item.arrowColorSync == null && (!item.arrowColor || item.arrowColor.toLowerCase() === '#ffffff')),
+                    arrowColor: normalizeEditorHexColor(item.arrowColor || getFlowFillMatchingArrowColor(item.color || defaultColor), getFlowFillMatchingArrowColor(item.color || defaultColor))
+                } : {}),
+                initialFill: Math.min(100, Math.max(0, Number(item.initialFill) || 0)),
+                // Every Fill Region has an editable substance for its built-in contents question.
+                // Existing regions default to the neutral word Fluid; never infer a specific substance.
+                ...(type === 'region' ? { fillContents: (normalizeSheetText(item.fillContents || '') || 'Fluid').slice(0, 200) } : {}),
+                // 0 degrees keeps the original vertical fill shape: anchored at the bottom.
+                fillAngle: ((Number(item.fillAngle ?? 0) % 360) + 360) % 360 || 0,
+                emptyAngle: ((Number(item.emptyAngle ?? 0) % 360) + 360) % 360 || 0,
+                fromId: normalizeSheetText(item.fromId || ''),
+                toId: normalizeSheetText(item.toId || ''),
+                question: normalizeSheetText(item.question || '').slice(0, 400),
+                answer: normalizeSheetText(item.answer || '').slice(0, 300)
+            };
+        });
+        const selected = items.find(item => item.id === activeId);
+        if (selected) selected.path = activePath.slice();
+        const actions = (Array.isArray(source.flowActions) ? source.flowActions : []).slice(0, 60).map((raw, index) => {
+            const action = raw && typeof raw === 'object' ? raw : {};
+            const type = ['fill', 'empty', 'hold', 'transfer'].includes(action.type) ? action.type : 'fill';
+            const start = Math.min(60, Math.max(0, Number(action.start) || 0));
+            const end = Math.min(60, Math.max(start + 0.1, Number(action.end) || (start + 2)));
+            return {
+                id: normalizeSheetText(action.id) || createDiagramVisualAidId('flow-action'),
+                type, name: normalizeSheetText(action.name || `${type[0].toUpperCase()}${type.slice(1)} ${index + 1}`).slice(0, 100),
+                regionId: normalizeSheetText(action.regionId || ''),
+                fromId: normalizeSheetText(action.fromId || ''),
+                toId: normalizeSheetText(action.toId || ''),
+                pathId: normalizeSheetText(action.pathId || ''),
+                start, end,
+                targetFill: Math.min(100, Math.max(0, Number(action.targetFill ?? (type === 'empty' ? 0 : 100)))),
+                amount: Math.min(100, Math.max(0, Number(action.amount ?? 100))),
+                question: normalizeSheetText(action.question || '').slice(0, 400),
+                answer: normalizeSheetText(action.answer || '').slice(0, 300)
+            };
+        }).sort((a,b)=>a.start-b.start || a.end-b.end);
+        return {flowFillType:'flow-fill',flowActiveItemId: selected?.id || items[0]?.id || '', flowItems:items,flowActions:actions,
+            flowDurationSec: Math.min(60,Math.max(2,Number(source.flowDurationSec) || 10))};
+    }
+
+    // Shape-local half-plane fill: one clipped quadrilateral works for any angle,
+    // concave region, canvas aspect ratio, and 0%-to-100% fill level.
+    // Angle 0 = bottom origin (the original vertical fill), 90 = right origin.
+    function getFlowFillDirectionalPolygon(points = [], amount = 0, angle = 0) {
+        if (points.length < 3) return '';
+        const theta = (Number(angle) || 0) * Math.PI / 180;
+        const nx = Math.sin(theta), ny = Math.cos(theta);
+        const tx = Math.cos(theta), ty = -Math.sin(theta);
+        let minNormal = Infinity, maxNormal = -Infinity, minAcross = Infinity, maxAcross = -Infinity;
+        points.forEach(point => {
+            const normal = point.x * nx + point.y * ny;
+            const across = point.x * tx + point.y * ty;
+            minNormal = Math.min(minNormal, normal);
+            maxNormal = Math.max(maxNormal, normal);
+            minAcross = Math.min(minAcross, across);
+            maxAcross = Math.max(maxAcross, across);
+        });
+        const fraction = Math.min(1, Math.max(0, Number(amount) || 0));
+        const cutoff = maxNormal - (maxNormal - minNormal) * fraction;
+        const margin = 0.02;
+        const corners = [[minAcross-margin,cutoff],[maxAcross+margin,cutoff],
+            [maxAcross+margin,maxNormal+margin],[minAcross-margin,maxNormal+margin]];
+        return corners.map(([across,normal]) => `${(across*tx+normal*nx).toFixed(3)},${(across*ty+normal*ny).toFixed(3)}`).join(' ');
+    }
+
+    function getFlowFillRegionMotionMode(aid, regionId, time) {
+        let motion = 'fill'; // Preserve the original fill projection for untouched diagrams.
+        (aid.flowActions || []).forEach(action => {
+            if (action.start > time || action.type === 'hold') return;
+            if (action.type === 'transfer') {
+                if (action.fromId === regionId) motion = 'empty';
+                if (action.toId === regionId) motion = 'fill';
+            } else if (action.regionId === regionId) {
+                motion = action.type === 'empty' ? 'empty' : 'fill';
+            }
+        });
+        return motion;
+    }
+
+    function hasFlowFillGeometry(aid = {}) {
+        return aid.flowFillType === 'flow-fill' && (aid.flowItems || []).some(item => item.path?.length >= (item.type === 'region' ? 3 : 2));
+    }
+
+    function evaluateFlowFill(aid = {}, progress = 0) {
+        const time = Math.max(0, Math.min(1, Number(progress) || 0)) * (Number(aid.flowDurationSec) || 10);
+        const fill = new Map((aid.flowItems || []).filter(item=>item.type==='region').map(item=>[item.id,item.initialFill]));
+        const transfers = new Map();
+        (aid.flowActions || []).slice().sort((a,b)=>a.start-b.start || a.end-b.end).forEach(action=>{
+            if (time <= action.start) return;
+            const fraction = Math.min(1,Math.max(0,(time-action.start)/Math.max(.1,action.end-action.start)));
+            if (action.type === 'fill' || action.type === 'empty') {
+                const before=fill.get(action.regionId);
+                if (before != null) fill.set(action.regionId, before+(action.targetFill-before)*fraction);
+            } else if (action.type === 'transfer') {
+                const before = fill.get(action.fromId), destination = fill.get(action.toId);
+                if (before == null || destination == null || action.fromId === action.toId) return;
+                const available = Math.min(before,100-destination);
+                const moved = Math.min(available, before*action.amount/100)*fraction;
+                fill.set(action.fromId, before-moved);
+                fill.set(action.toId,destination+moved);
+                if(action.pathId) transfers.set(action.pathId,Math.max(transfers.get(action.pathId)||0,fraction));
+            }
+        });
+        return {time,fill,transfers};
+    }
+
+    // Match each Flow Path to its actual Transfer schedule. Local progress is
+    // independent from the overall animation length, so a path that begins at
+    // 6s does not animate or display its continuous arrows before 6s.
+    function getFlowFillPathTransferState(aid, pathId, time) {
+        const actions = (aid.flowActions || []).filter(action => action.type === 'transfer' && action.pathId === pathId);
+        const started = actions.some(action => time >= action.start);
+        const active = actions.find(action => time >= action.start && time < action.end) || null;
+        const fraction = active ? Math.min(1, Math.max(0, (time - active.start) / Math.max(0.1, active.end - active.start))) : 0;
+        return { started, active, fraction };
+    }
+
+    function getFlowFillPolylinePrefix(points = [], progress = 0) {
+        if (points.length < 2 || progress <= 0) return '';
+        const lengths = [];
+        let total = 0;
+        for (let i=1;i<points.length;i++) {const d=Math.hypot(points[i].x-points[i-1].x,points[i].y-points[i-1].y);lengths.push(d);total+=d;}
+        let remain=Math.max(0,Math.min(1,progress))*total;
+        const output=[`${points[0].x},${points[0].y}`];
+        for(let i=1;i<points.length;i++){
+            const d=lengths[i-1];
+            if(remain<d){ const f=d>0?remain/d:0;output.push(`${points[i-1].x+(points[i].x-points[i-1].x)*f},${points[i-1].y+(points[i].y-points[i-1].y)*f}`);return output.join(' '); }
+            output.push(`${points[i].x},${points[i].y}`);remain-=d;
+        }
+        return output.join(' ');
+    }
+
+    // Phase 23F.41.3: a Flow Path's filled end arrow is part of the path,
+    // while its separate moving chevrons always fit inside the stroke.
+    function getFlowFillRouteMetrics(points = []) {
+        const segments = [];
+        let total = 0;
+        for (let i = 1; i < points.length; i += 1) {
+            const a = points[i - 1], b = points[i];
+            const length = Math.hypot(b.x - a.x, b.y - a.y);
+            if (length < 0.001) continue;
+            segments.push({ a, b, begin: total, length });
+            total += length;
+        }
+        return { segments, total };
+    }
+
+    function getFlowFillRoutePoint(metrics, distance) {
+        if (!metrics.segments.length) return null;
+        const d = Math.max(0, Math.min(metrics.total, distance));
+        let low = 0, high = metrics.segments.length - 1;
+        while (low < high) {
+            const mid = (low + high) >> 1;
+            if (metrics.segments[mid].begin + metrics.segments[mid].length < d) low = mid + 1;
+            else high = mid;
+        }
+        const segment = metrics.segments[low];
+        const t = Math.max(0, Math.min(1, (d - segment.begin) / segment.length));
+        return {
+            x: segment.a.x + (segment.b.x - segment.a.x) * t,
+            y: segment.a.y + (segment.b.y - segment.a.y) * t,
+            dx: (segment.b.x - segment.a.x) / segment.length,
+            dy: (segment.b.y - segment.a.y) / segment.length
+        };
+    }
+
+    function getFlowFillEndpointArrowData(metrics, thickness) {
+        if (!metrics.segments.length || metrics.total <= 0) return null;
+        const width = Math.min(80, Math.max(2, Number(thickness) || 30));
+        // Keep a visible stem even on shorter paths. A filled tapered head
+        // replaces the end of the stroke; its tip is the actual drawn endpoint.
+        const length = Math.min(width * 1.4, metrics.total * 0.62);
+        const base = getFlowFillRoutePoint(metrics, metrics.total - length);
+        const tip = getFlowFillRoutePoint(metrics, metrics.total);
+        const dx = tip.dx, dy = tip.dy;
+        const wing = Math.min(width * 0.88, Math.max(length * 1.25, width * 0.48));
+        const path = `M${(base.x - dy * wing).toFixed(2)} ${(base.y + dx * wing).toFixed(2)}L${tip.x.toFixed(2)} ${tip.y.toFixed(2)}L${(base.x + dy * wing).toFixed(2)} ${(base.y - dx * wing).toFixed(2)}Z`;
+        return { path, stemFraction: (metrics.total - length) / metrics.total, stemLength: metrics.total - length };
+    }
+
+    function getFlowFillChevronAtDistance(metrics, distance, thickness, spacing) {
+        if (!metrics.segments.length || metrics.total <= 0) return '';
+        const center = getFlowFillRoutePoint(metrics, distance);
+        if (!center) return '';
+        const stroke = Math.max(1, Math.min(thickness * 0.10, spacing * 0.16));
+        const back = Math.min(thickness * 0.72, spacing * 0.57);
+        const wing = Math.min(thickness * 0.31 - stroke * 0.2, spacing * 0.30);
+        const dx = center.dx, dy = center.dy;
+        const x = center.x - dx * back, y = center.y - dy * back;
+        const leftX = x - dy * wing, leftY = y + dx * wing;
+        const rightX = x + dy * wing, rightY = y - dx * wing;
+        return `M${leftX.toFixed(2)} ${leftY.toFixed(2)}L${center.x.toFixed(2)} ${center.y.toFixed(2)}L${rightX.toFixed(2)} ${rightY.toFixed(2)} `;
+    }
+
+    function getFlowFillRepeatedChevronPath(metrics, thickness, count = 6, progress = 0, durationSec = 10, endArrow = false) {
+        if (!metrics.segments.length || metrics.total <= 0) return '';
+        const quantity = Math.min(24, Math.max(0.25, Math.round(Number(count) || 6)));
+        // The filled tip belongs to the route as well. Reserve only its
+        // final tapered point, not the entire arrowhead: a short thick route
+        // still leaves enough room for visible interior directional arrows.
+        const visibleLength = endArrow
+            ? metrics.total - Math.min(metrics.total * 0.16, thickness * 0.25)
+            : metrics.total;
+        // Always render the requested arrow count. Shrink each chevron to fit
+        // its slot on a short route, rather than removing every arrow when a
+        // thick line consumes the old fixed margins.
+        const slot = visibleLength / quantity;
+        const margin = Math.min(thickness * 0.10, slot * 0.15);
+        const usable = Math.max(0.001, visibleLength - margin * 2);
+        const interval = usable / quantity;
+        const phase = ((Math.max(0, Math.min(1, Number(progress) || 0)) * metrics.total * 1.3) % interval + interval) % interval;
+        const paths = [];
+        for (let i = 0; i < quantity; i += 1) {
+            const distance = margin + (((i + 0.5) * interval + phase) % usable);
+            const d = getFlowFillChevronAtDistance(metrics, distance, thickness, interval);
+            if (d) paths.push(d);
+        }
+        return paths.join('');
+    }
+
+    function getDiagramVisualAidGroupKey(aid = {}) {
+        const normalized = normalizeDiagramVisualAid(aid);
+        return normalized.multiplePaths && normalized.presetInstanceId ? normalized.presetInstanceId : normalized.id;
+    }
+
+    function getDiagramVisualAidGroup(aids = [], aidOrId = null) {
+        const normalizedAids = (Array.isArray(aids) ? aids : []).map(normalizeDiagramVisualAid);
+        const targetId = typeof aidOrId === 'string' ? normalizeSheetText(aidOrId) : normalizeSheetText(aidOrId?.id || '');
+        const target = normalizedAids.find(item => item.id === targetId) || (aidOrId && typeof aidOrId === 'object' ? normalizeDiagramVisualAid(aidOrId) : null);
+        if (!target) return [];
+        if (!(target.multiplePaths && target.presetInstanceId)) return [target];
+        return normalizedAids.filter(item => item.multiplePaths && item.presetInstanceId === target.presetInstanceId).sort((a, b) => a.pathOrder - b.pathOrder || a.name.localeCompare(b.name));
     }
 
     function normalizeDiagramVisualAids(value = []) {
         const aids = (Array.isArray(value) ? value : []).slice(0, DIAGRAM_VISUAL_AID_MAX_ITEMS).map(normalizeDiagramVisualAid);
-        let visibleFound = false;
+        let visibleGroupKey = '';
         return aids.map(aid => {
             if (!aid.visible) return aid;
-            if (visibleFound) return { ...aid, visible: false };
-            visibleFound = true;
-            return aid;
+            const key = getDiagramVisualAidGroupKey(aid);
+            if (!visibleGroupKey) { visibleGroupKey = key; return aid; }
+            return key === visibleGroupKey ? aid : { ...aid, visible: false };
         });
     }
 
     function ensureDiagramVisualAidEndpointPoints(aid = {}) {
         const normalized = normalizeDiagramVisualAid(aid);
         if (normalized.path.length < 2) return normalized;
+        if (normalized.closedPath) return mergeDiagramVisualAidClosedEndpointPoints(normalized);
         const points = normalized.points.map(point => ({ ...point }));
         let start = points.find(point => point.position <= 0.001);
         if (!start) {
@@ -3498,12 +4130,121 @@ MODIFICATION RULES FOR THIS APP
         return normalizeDiagramVisualAid({ ...normalized, points: points.map((point, index) => ({ ...point, sequenceOrder: index })) });
     }
 
+    const DIAGRAM_VISUAL_AID_CLOSE_SNAP_DISTANCE_PX = 30;
+
+    function mergeDiagramVisualAidClosedEndpointPoints(aid = {}) {
+        const normalized = normalizeDiagramVisualAid(aid);
+        const points = normalized.points.map(point => ({ ...point }));
+        let start = points.find(point => point.position <= 0.001) || null;
+        const end = points.find(point => point.position >= 0.999 && (!start || point.id !== start.id)) || null;
+        if (!start && end) {
+            start = { ...end, position: 0 };
+        } else if (!start) {
+            start = {
+                id: createDiagramVisualAidId('point'),
+                name: 'Point 1',
+                position: 0,
+                sequenceOrder: 0,
+                ringColor: DIAGRAM_VISUAL_AID_DEFAULT_POINT_COLOR,
+                pointStyle: 'ring'
+            };
+        } else {
+            start.position = 0;
+            if (end) {
+                const startNameLooksAutomatic = /^Point\s+\d+$/i.test(normalizeSheetText(start.name));
+                const endNameLooksAutomatic = /^Point\s+\d+$/i.test(normalizeSheetText(end.name));
+                if (startNameLooksAutomatic && !endNameLooksAutomatic) start.name = end.name;
+            }
+        }
+        const remaining = points.filter(point => point.id !== start.id && (!end || point.id !== end.id) && point.position < 0.999);
+        return normalizeDiagramVisualAid({
+            ...normalized,
+            closedPath: true,
+            points: [start, ...remaining].map((point, index) => ({ ...point, sequenceOrder: index }))
+        });
+    }
+
+    function getImageEditorVisualAidClosePathCandidate(editor = state.auth.imageEditor) {
+        const canvas = elements.studioImageEditorCanvas;
+        const wrap = elements.studioImageEditorCanvasWrap;
+        if (!editor?.open || editor.mode !== 'visual-aid' || editor.activeVisualAidTool !== 'path' || !editor.visualAidsEnabled || !editor.showVisualAidPanel || !canvas || !wrap) return null;
+        const aid = getActiveImageEditorVisualAid(editor);
+        if (!aid || aid.closedPath || aid.path.length < 3) return null;
+        const start = normalizeDiagramVisualAidPathPoint(aid.path[0]);
+        const end = normalizeDiagramVisualAidPathPoint(aid.path[aid.path.length - 1]);
+        const canvasRect = canvas.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        if (!canvasRect.width || !canvasRect.height || !wrapRect.width || !wrapRect.height) return null;
+        const startX = canvasRect.left + ((start.x / 100) * canvasRect.width);
+        const startY = canvasRect.top + ((start.y / 100) * canvasRect.height);
+        const endX = canvasRect.left + ((end.x / 100) * canvasRect.width);
+        const endY = canvasRect.top + ((end.y / 100) * canvasRect.height);
+        const distance = Math.hypot(endX - startX, endY - startY);
+        if (distance > DIAGRAM_VISUAL_AID_CLOSE_SNAP_DISTANCE_PX) return null;
+        const offset = 13;
+        const centerX = ((startX + endX) / 2) - wrapRect.left + offset;
+        const centerY = ((startY + endY) / 2) - wrapRect.top - offset;
+        return {
+            aid,
+            left: Math.min(Math.max(14, centerX), Math.max(14, wrapRect.width - 14)),
+            top: Math.min(Math.max(14, centerY), Math.max(14, wrapRect.height - 14)),
+            distance
+        };
+    }
+
+    function updateImageEditorVisualAidClosePathSnap() {
+        const button = elements.studioImageEditorVisualAidClosePathBtn;
+        if (!button) return;
+        const editor = state.auth.imageEditor;
+        const candidate = getImageEditorVisualAidClosePathCandidate(editor);
+        const hideForPlayback = !!(editor?.visualAidPreviewActive);
+        if (!candidate || hideForPlayback) {
+            button.classList.add('hidden');
+            button.disabled = false;
+            delete button.dataset.visualAidId;
+            return;
+        }
+        button.style.left = `${candidate.left}px`;
+        button.style.top = `${candidate.top}px`;
+        button.dataset.visualAidId = candidate.aid.id;
+        button.disabled = !!editor?.isDrawing;
+        button.classList.remove('hidden');
+    }
+
+    function closeActiveImageEditorVisualAidPath() {
+        const editor = state.auth.imageEditor;
+        const candidate = getImageEditorVisualAidClosePathCandidate(editor);
+        if (!candidate || editor?.isDrawing) return;
+        const aids = normalizeDiagramVisualAids(editor.visualAids || []);
+        const aidIndex = aids.findIndex(item => item.id === candidate.aid.id);
+        if (aidIndex < 0) return;
+        pushImageEditorLabelHistory();
+        aids[aidIndex] = candidate.aid.flowFillType === 'flow-fill'
+            ? normalizeDiagramVisualAid({...aids[aidIndex],closedPath:true},aidIndex)
+            : mergeDiagramVisualAidClosedEndpointPoints(aids[aidIndex]);
+        editor.visualAids = normalizeDiagramVisualAids(aids);
+        editor.activeVisualAidId = aids[aidIndex].id;
+        stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
+        refreshImageEditorVisualAidUi();
+        setImageEditorStatus(candidate.aid.flowFillType === 'flow-fill' ? 'Flow Fill region outline closed.' : 'Path closed. The start and end now share one endpoint point; you can still add divisions, points, and balls normally.');
+    }
+
     // Phase 23F.9: render-only smoothing for Visual Aid geometry. This is isolated
     // from handwritten-card stroke processing and does not change saved path data.
     function getDiagramVisualAidRenderPath(aid = {}) {
         const source = (Array.isArray(aid?.path) ? aid.path : []).map(normalizeDiagramVisualAidPathPoint);
-        if (normalizeDiagramVisualAidPathAuthoring(aid?.pathAuthoring || 'brush') === 'curves') return source;
-        if (source.length < 3) return source;
+        const applyClosedPath = value => {
+            const output = Array.isArray(value) ? value.map(point => ({ ...point })) : [];
+            if (aid?.closedPath === true && output.length > 1) {
+                const first = output[0];
+                const last = output[output.length - 1];
+                if (Math.hypot((last?.x || 0) - (first?.x || 0), (last?.y || 0) - (first?.y || 0)) > 0.0001) output.push({ ...first });
+                else output[output.length - 1] = { ...first };
+            }
+            return output;
+        };
+        if (normalizeDiagramVisualAidPathAuthoring(aid?.pathAuthoring || 'brush') === 'curves') return applyClosedPath(source);
+        if (source.length < 3) return applyClosedPath(source);
 
         // Remove extremely close pointer samples first so tiny hand/mouse jitter does not
         // become visible as a chain of sharp micro-turns. Keep both real endpoints.
@@ -3514,7 +4255,7 @@ MODIFICATION RULES FOR THIS APP
             if (Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.16) compact.push(point);
         }
         compact.push(source[source.length - 1]);
-        if (compact.length < 3) return compact;
+        if (compact.length < 3) return applyClosedPath(compact);
 
         // Bound render complexity without touching the saved points.
         const maxControls = 480;
@@ -3553,7 +4294,7 @@ MODIFICATION RULES FOR THIS APP
         }
         output[0] = { ...source[0] };
         output[output.length - 1] = { ...source[source.length - 1] };
-        return output;
+        return applyClosedPath(output);
     }
 
     function getDiagramVisualAidPathMetrics(aid = {}) {
@@ -3723,6 +4464,50 @@ MODIFICATION RULES FOR THIS APP
         return prefix.map(point => `${point.x},${point.y}`).join(' ');
     }
 
+    function getDiagramVisualAidSvgRangePointsText(geometry = {}, startDistance = 0, endDistance = 0) {
+        const source = Array.isArray(geometry.points) ? geometry.points : [];
+        const cumulative = Array.isArray(geometry.cumulative) ? geometry.cumulative : [];
+        const total = Math.max(0, Number(geometry.total) || 0);
+        if (!source.length) return '';
+        const safeStart = Math.max(0, Math.min(total, Number(startDistance) || 0));
+        const safeEnd = Math.max(safeStart, Math.min(total, Number(endDistance) || 0));
+        if (source.length === 1) return `${source[0].x},${source[0].y}`;
+        if (safeEnd - safeStart <= 0.000001) return getDiagramVisualAidSvgPrefixPointsText(geometry, safeEnd);
+        const locate = target => {
+            if (target <= 0.000001) return { index: 1, point: source[0] };
+            if (target >= total - 0.000001) return { index: source.length - 1, point: source[source.length - 1] };
+            let low = 1;
+            let high = cumulative.length - 1;
+            while (low < high) {
+                const middle = Math.floor((low + high) / 2);
+                if ((cumulative[middle] || 0) < target) low = middle + 1;
+                else high = middle;
+            }
+            const segmentIndex = low;
+            const previousIndex = Math.max(0, segmentIndex - 1);
+            const startDistanceAtSegment = cumulative[previousIndex] || 0;
+            const endDistanceAtSegment = cumulative[segmentIndex] || startDistanceAtSegment;
+            const span = Math.max(0.000001, endDistanceAtSegment - startDistanceAtSegment);
+            const ratio = Math.min(1, Math.max(0, (target - startDistanceAtSegment) / span));
+            const a = source[previousIndex];
+            const b = source[segmentIndex] || a;
+            return {
+                index: segmentIndex,
+                point: {
+                    x: a.x + ((b.x - a.x) * ratio),
+                    y: a.y + ((b.y - a.y) * ratio)
+                }
+            };
+        };
+        const start = locate(safeStart);
+        const end = locate(safeEnd);
+        const points = [start.point];
+        for (let index = start.index; index < end.index; index += 1) points.push(source[index]);
+        const last = points[points.length - 1];
+        if (Math.abs(last.x - end.point.x) > 0.0001 || Math.abs(last.y - end.point.y) > 0.0001) points.push(end.point);
+        return points.map(point => `${point.x},${point.y}`).join(' ');
+    }
+
     function getDiagramVisualAidSvgDistanceAtPosition(masterMetrics = {}, svgMetrics = {}, position = 0) {
         if (!masterMetrics.path?.length || !svgMetrics.points?.length || masterMetrics.total <= 0.0001 || svgMetrics.total <= 0.0001) return 0;
         const target = normalizeDiagramVisualAidPosition(position) * masterMetrics.total;
@@ -3743,6 +4528,10 @@ MODIFICATION RULES FOR THIS APP
 
     function getDiagramVisualAidSequenceItems(aid = {}) {
         const normalized = normalizeDiagramVisualAid(aid);
+        if (normalized.flowFillType === 'flow-fill') return [
+            ...normalized.flowItems.filter(item=>item.path.length >= (item.type==='region'?3:2)).map((item,index)=>({type:item.type==='region'?'flow-region':'flow-path',id:item.id,name:item.name,position:index/Math.max(1,normalized.flowItems.length)})),
+            ...normalized.flowActions.map(action=>({type:'flow-fill',id:action.id,name:action.name,position:action.start/normalized.flowDurationSec}))
+        ];
         const sequencedPoints = normalized.points.map(point => ({ type: 'point', id: point.id, name: point.name, position: point.position, sequenceOrder: point.sequenceOrder }));
         const pointSlots = normalized.points.slice().sort((a, b) => a.position - b.position).map(point => ({ type: 'point-slot', position: point.position }));
         const divisionItems = [];
@@ -3759,6 +4548,7 @@ MODIFICATION RULES FOR THIS APP
 
     function getDiagramVisualAidSelectableItems(aid = {}) {
         const normalized = normalizeDiagramVisualAid(aid);
+        if (normalized.flowFillType === 'flow-fill') return getDiagramVisualAidSequenceItems(normalized);
         return [{ type: 'path', id: normalized.id, name: normalized.name, position: 0.5 }, ...getDiagramVisualAidSequenceItems(normalized)];
     }
 
@@ -3768,7 +4558,14 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function isImageEditorVisualAidSessionVisible(editor = state.auth.imageEditor, aidId = '') {
-        return !!normalizeSheetText(aidId) && normalizeSheetText(editor?.sessionVisibleVisualAidId || '') === normalizeSheetText(aidId);
+        const id = normalizeSheetText(aidId);
+        const visibleId = normalizeSheetText(editor?.sessionVisibleVisualAidId || '');
+        if (!id || !visibleId) return false;
+        if (id === visibleId) return true;
+        const aids = normalizeDiagramVisualAids(editor?.visualAids || []);
+        const visibleAid = aids.find(item => item.id === visibleId);
+        const targetAid = aids.find(item => item.id === id);
+        return !!(visibleAid && targetAid && visibleAid.multiplePaths && visibleAid.presetInstanceId && visibleAid.presetInstanceId === targetAid.presetInstanceId);
     }
 
     // Phase 23F.15: one persistent SVG playback surface is shared by Diagram Creator
@@ -3783,6 +4580,89 @@ MODIFICATION RULES FOR THIS APP
         let index = segmentPositions.findIndex((start, itemIndex) => itemIndex < segmentPositions.length - 1 && target >= start && target <= segmentPositions[itemIndex + 1]);
         if (index < 0) index = Math.max(0, segmentColors.length - 1);
         return segmentColors[index] || runtime.aid?.defaultColor || '#8b5cf6';
+    }
+
+    function getDiagramVisualAidDivisionBoundaries(aid = {}) {
+        const normalized = normalizeDiagramVisualAid(aid);
+        return [0, ...normalized.divisions.map(item => item.position).filter(position => position > 0 && position < 1), 1].sort((a, b) => a - b);
+    }
+
+    function diagramVisualAidPositionToDivisionPhase(aid = {}, position = 0) {
+        const boundaries = getDiagramVisualAidDivisionBoundaries(aid);
+        const target = normalizeDiagramVisualAidPosition(position);
+        const count = Math.max(1, boundaries.length - 1);
+        let index = boundaries.findIndex((start, itemIndex) => itemIndex < boundaries.length - 1 && target >= start && target <= boundaries[itemIndex + 1] + 0.000001);
+        if (index < 0) index = count - 1;
+        const start = boundaries[index];
+        const end = boundaries[index + 1] ?? 1;
+        const local = end > start ? Math.min(1, Math.max(0, (target - start) / (end - start))) : 0;
+        return (index + local) / count;
+    }
+
+    function diagramVisualAidDivisionPhaseToPosition(aid = {}, phase = 0) {
+        const boundaries = getDiagramVisualAidDivisionBoundaries(aid);
+        const count = Math.max(1, boundaries.length - 1);
+        const normalized = normalizeDiagramVisualAidPosition(phase);
+        if (normalized >= 0.999999) return 1;
+        const scaled = normalized * count;
+        const index = Math.min(count - 1, Math.max(0, Math.floor(scaled)));
+        const local = scaled - index;
+        const start = boundaries[index];
+        const end = boundaries[index + 1] ?? 1;
+        return normalizeDiagramVisualAidPosition(start + ((end - start) * local));
+    }
+
+    function getDiagramVisualAidBallTravelState(runtime = {}, ball = {}, progress = 0, groupRuntimes = []) {
+        const aid = runtime.aid || {};
+        const direction = normalizeDiagramVisualAidBallDirection(ball.direction);
+        const behavior = normalizeDiagramVisualAidBallFunction(ball.function);
+        const p = normalizeDiagramVisualAidPosition(progress);
+        const useDivisionOrder = aid.ballFollowsDivisionOrder === true;
+        const startPhase = useDivisionOrder ? diagramVisualAidPositionToDivisionPhase(aid, ball.position) : normalizeDiagramVisualAidPosition(ball.position);
+        const group = aid.multiplePaths && aid.continueToNextPath && aid.presetInstanceId
+            ? groupRuntimes.filter(item => item.aid?.presetInstanceId === aid.presetInstanceId).sort((a, b) => a.aid.pathOrder - b.aid.pathOrder)
+            : [runtime];
+        if (group.length <= 1) {
+            let phase = direction === 'reverse' ? startPhase - p : startPhase + p;
+            if (behavior === 'loop') phase = ((phase % 1) + 1) % 1;
+            else phase = Math.min(1, Math.max(0, phase));
+            const position = useDivisionOrder ? diagramVisualAidDivisionPhaseToPosition(aid, phase) : phase;
+            return { runtime, position };
+        }
+        const startIndex = Math.max(0, group.findIndex(item => item.aid.id === aid.id));
+        const count = group.length;
+        let absolute = startIndex + startPhase + (direction === 'reverse' ? -(p * count) : (p * count));
+        if (behavior === 'loop') absolute = ((absolute % count) + count) % count;
+        else absolute = Math.min(count, Math.max(0, absolute));
+        let pathIndex;
+        let localPhase;
+        if (absolute >= count) { pathIndex = count - 1; localPhase = 1; }
+        else { pathIndex = Math.min(count - 1, Math.max(0, Math.floor(absolute))); localPhase = absolute - pathIndex; }
+        const targetRuntime = group[pathIndex] || runtime;
+        const position = targetRuntime.aid.ballFollowsDivisionOrder
+            ? diagramVisualAidDivisionPhaseToPosition(targetRuntime.aid, localPhase)
+            : normalizeDiagramVisualAidPosition(localPhase);
+        return { runtime: targetRuntime, position };
+    }
+
+    function updateDiagramVisualAidBehaviorBalls(svg, progress = 0) {
+        const surface = diagramVisualAidPlaybackSurfaceCache.get(svg);
+        if (!surface?.behaviorBallNodes?.length) return false;
+        const runtimes = surface.runtimes || [];
+        surface.behaviorBallNodes.forEach(record => {
+            const originRuntime = runtimes.find(item => item.aid.id === record.aidId);
+            if (!originRuntime || !record.node) { if (record.node) record.node.setAttribute('opacity', '0'); return; }
+            const ball = originRuntime.aid.balls.find(item => item.id === record.ballId);
+            if (!ball) { record.node.setAttribute('opacity', '0'); return; }
+            const state = getDiagramVisualAidBallTravelState(originRuntime, ball, progress, runtimes);
+            const targetRuntime = state.runtime || originRuntime;
+            const point = getDiagramVisualAidPointAtPositionFromMetrics(targetRuntime.masterMetrics, state.position);
+            record.node.setAttribute('cx', String((point.x / 100) * targetRuntime.width));
+            record.node.setAttribute('cy', String((point.y / 100) * targetRuntime.height));
+            record.node.setAttribute('fill', targetRuntime.aid.divisionColorSync ? getDiagramVisualAidPlaybackColorAtPosition(targetRuntime, state.position) : ball.color);
+            record.node.setAttribute('opacity', '1');
+        });
+        return true;
     }
 
     function createDiagramVisualAidPlaybackSurface(aids = [], width = 1, height = 1, options = {}) {
@@ -3804,11 +4684,48 @@ MODIFICATION RULES FOR THIS APP
         const runtimes = [];
         const normalizedAids = normalizeDiagramVisualAids(aids).filter(aid => aid.visible && (!activeOnlyId || aid.id === activeOnlyId));
         const markup = normalizedAids.map((aid, aidIndex) => {
+            if (aid.flowFillType === 'flow-fill') {
+                if (!hasFlowFillGeometry(aid)) return '';
+                const prefix = `flowFill_${surfaceSerial}_${aidIndex}`;
+                const regions = aid.flowItems.filter(item=>item.type==='region' && item.path.length>=3);
+                const routes = aid.flowItems.filter(item=>item.type==='connection' && item.path.length>=2);
+                const clipDefs = regions.map((item,index)=>{
+                    const coords=item.path.map(pt=>`${pt.x*safeWidth/100},${pt.y*safeHeight/100}`).join(' ');
+                    return `<clipPath id="${prefix}_clip${index}"><polygon points="${coords}"/></clipPath>`;
+                }).join('');
+                const regionMarkup = regions.map((item,index)=>{
+                    const coords=item.path.map(pt=>`${pt.x*safeWidth/100},${pt.y*safeHeight/100}`).join(' ');
+                    const selected=quizTarget?.aidId===aid.id && (quizTarget.kind==='visual-flow-region' && quizTarget.itemId===item.id);
+                    return `<g data-flow-region-id="${escapeHtml(item.id)}"><polygon points="${coords}" fill="${item.color}" fill-opacity="0.06" stroke="${item.color}" stroke-width="${selected?4:2.2}" stroke-opacity="${selected?1:.85}"/><polygon data-flow-fill-id="${escapeHtml(item.id)}" points="" fill="${item.color}" opacity="0.82" clip-path="url(#${prefix}_clip${index})"/><polygon points="${coords}" fill="none" stroke="${item.color}" stroke-width="${selected?4:2}" opacity="${selected?1:.85}"/></g>`;
+                }).join('');
+                const routeMarkup=routes.map(item=>{
+                    const points=item.path.map(pt=>({x:pt.x*safeWidth/100,y:pt.y*safeHeight/100}));
+                    const coords=points.map(pt=>`${pt.x},${pt.y}`).join(' ');
+                    const selected=quizTarget?.aidId===aid.id && quizTarget.kind==='visual-flow-path' && quizTarget.itemId===item.id;
+                    const thickness=Math.min(80,Math.max(2,Number(item.thickness)||30));
+                    const metrics=getFlowFillRouteMetrics(points);
+                    const tip=item.endArrow?getFlowFillEndpointArrowData(metrics,thickness):null;
+                    const body=tip?getFlowFillPolylinePrefix(points,tip.stemFraction):coords;
+                    const count=Math.min(24,Math.max(1,Number(item.continuousArrowCount)||6));
+                    const spacing=metrics.total/Math.max(1,count);
+                    const arrowWidth=Math.max(1,Math.min(thickness*0.10,spacing*0.16));
+                    // Filled head and stem use the same flow-path color and scale together.
+                    const endArrow=tip ? `<path data-flow-end-arrow-id="${escapeHtml(item.id)}" d="${tip.path}" fill="${item.color}" fill-opacity="${selected?1:.52}" pointer-events="none"/>` : '';
+                    const repeated=item.continuousArrows ? `<path data-flow-continuous-arrows-id="${escapeHtml(item.id)}" d="${getFlowFillRepeatedChevronPath(metrics,thickness,count,0,aid.flowDurationSec,item.endArrow)}" stroke="${item.arrowColorSync ? getFlowFillMatchingArrowColor(item.color) : item.arrowColor}" stroke-width="${arrowWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>` : '';
+                    return `<g data-flow-path-id="${escapeHtml(item.id)}"><polyline points="${body}" fill="none" stroke="${item.color}" stroke-opacity="${selected?1:.52}" stroke-width="${thickness}" stroke-linecap="round" stroke-linejoin="round"/><polyline data-flow-stream-id="${escapeHtml(item.id)}" points="" fill="none" stroke="${item.color}" stroke-width="${thickness}" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>${endArrow}${repeated}</g>`;
+                }).join('');
+                runtimes.push({aid,flowFill:true,width:safeWidth,height:safeHeight,quizPathTargetId:quizTarget?.aidId===aid.id && quizTarget.kind==='visual-flow-path' ? quizTarget.itemId : '',regionNodes:[],regionGeometry:new Map(regions.map(item=>[item.id,item.path.map(pt=>({x:pt.x*safeWidth/100,y:pt.y*safeHeight/100}))])),pathNodes:[],endArrowNodes:[],streamNodes:[],continuousArrowNodes:[],streamGeometry:new Map(routes.map(item=>[item.id,item.path.map(pt=>({x:pt.x*safeWidth/100,y:pt.y*safeHeight/100}))]))});
+                const activeAction=quizTarget?.aidId===aid.id && quizTarget.kind==='visual-flow-fill' ? aid.flowActions.find(item=>item.id===quizTarget.itemId):null;
+                const actionRegion=activeAction && (activeAction.regionId||activeAction.toId);
+                const activeRegion=regions.find(item=>item.id===actionRegion);
+                const highlight=activeRegion?`<polygon points="${activeRegion.path.map(pt=>`${pt.x*safeWidth/100},${pt.y*safeHeight/100}`).join(' ')}" fill="none" stroke="#fbbf24" stroke-width="4" opacity="0.95"/>`:'';
+                return `<g data-visual-aid-id="${escapeHtml(aid.id)}" data-flow-fill-aid="true"><defs>${clipDefs}</defs>${regionMarkup}${routeMarkup}${highlight}</g>`;
+            }
             if (aid.path.length < 2) return '';
             const masterMetrics = getDiagramVisualAidPathMetrics(aid);
             const svgMasterMetrics = getDiagramVisualAidSvgPathMetrics(masterMetrics, safeWidth, safeHeight);
             const masterPoints = svgMasterMetrics.pointsText;
-            const displayFullPathBall = displayFullPathBallRequested;
+            const displayFullPathBall = displayFullPathBallRequested && !aid.balls.length;
             const divisionSelectionActive = !!(quizTarget && quizTarget.aidId === aid.id && quizTarget.kind === 'visual-division');
             const divisionQuizActive = !!(quizMode && divisionSelectionActive);
             const divisionTargetId = divisionSelectionActive ? normalizeSheetText(quizTarget.itemId || '') : '';
@@ -3817,10 +4734,11 @@ MODIFICATION RULES FOR THIS APP
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
                 return division?.color || aid.defaultColor;
             });
-            const runtime = { aid, masterMetrics, svgMasterMetrics, masterRevealGeometry: createDiagramVisualAidSvgPolylineGeometry(svgMasterMetrics.points), segmentPositions, segmentColors, divisionQuizActive, displayFullPathBall, pointPulseOnProgress: pointPulseOnProgressRequested, width: safeWidth, height: safeHeight, pointNodes: [], pointPulseNodes: [], boundaryArrowNodes: [], revealSegmentNodes: [], revealSegmentGeometries: [], lastProgress: null };
+            const completePath = aid.completePath === true;
+            const runtime = { aid, masterMetrics, svgMasterMetrics, masterRevealGeometry: createDiagramVisualAidSvgPolylineGeometry(svgMasterMetrics.points), segmentPositions, segmentColors, divisionQuizActive, displayFullPathBall, completePath, pointPulseOnProgress: pointPulseOnProgressRequested, width: safeWidth, height: safeHeight, pointNodes: [], pointPulseNodes: [], boundaryArrowNodes: [], revealSegmentNodes: [], revealSegmentGeometries: [], lastProgress: null };
             runtimes.push(runtime);
             const colorAtPosition = position => getDiagramVisualAidPlaybackColorAtPosition(runtime, position);
-            const baseOpacity = divisionQuizActive ? 0.32 : (animated ? 0.14 : 0.18);
+            const baseOpacity = divisionQuizActive ? 0.32 : (completePath ? 1 : (animated ? 0.14 : 0.18));
             const base = segmentPositions.slice(0, -1).map((start, index) => {
                 const end = segmentPositions[index + 1];
                 const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
@@ -3830,7 +4748,7 @@ MODIFICATION RULES FOR THIS APP
                 const end = segmentPositions[index + 1];
                 const division = aid.divisions.find(item => Math.abs(item.position - start) < 0.00001);
                 const isDivisionTarget = divisionSelectionActive && division?.id === divisionTargetId;
-                const segmentOpacity = isDivisionTarget ? 0 : (divisionQuizActive ? 0.65 : 1);
+                const segmentOpacity = completePath ? 0 : (isDivisionTarget ? 0 : (divisionQuizActive ? 0.65 : 1));
                 const slice = getDiagramVisualAidSvgSliceData(masterMetrics, safeWidth, safeHeight, start, end);
                 const startDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, start);
                 const endDistance = getDiagramVisualAidSvgDistanceAtPosition(masterMetrics, svgMasterMetrics, end);
@@ -3843,13 +4761,13 @@ MODIFICATION RULES FOR THIS APP
                 const initialPoints = slice.points.length ? `${slice.points[0].x},${slice.points[0].y}` : '';
                 return `<polyline class="diagram-visual-aid-animated-path" data-visual-aid-reveal-segment data-visual-aid-reveal-index="${index}" data-visual-aid-reveal-start-distance="${startDistance.toFixed(4)}" data-visual-aid-reveal-end-distance="${endDistance.toFixed(4)}" data-visual-aid-reveal-length="${slice.total.toFixed(4)}" data-visual-aid-reveal-opacity="${segmentOpacity}" points="${initialPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round"/>`;
             }).join('');
-            const revealGlow = `<polyline data-visual-aid-reveal-glow points="" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" filter="url(#${glowId})" pointer-events="none"/>`;
+            const revealGlow = completePath ? '' : `<polyline data-visual-aid-reveal-glow points="" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width="${aid.thickness + 2}" stroke-linecap="butt" stroke-linejoin="round" filter="url(#${glowId})" pointer-events="none"/>`;
             const startPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 0);
             const endPoint = getDiagramVisualAidPointAtPositionFromMetrics(masterMetrics, 1);
             const endpointRadius = Math.max(1, aid.thickness / 2);
             const endpointOpacity = displayFullPathBall ? 1 : baseOpacity;
             const baseEndpoints = `<circle cx="${(startPoint.x / 100) * safeWidth}" cy="${(startPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" fill-opacity="${endpointOpacity}"/><circle cx="${(endPoint.x / 100) * safeWidth}" cy="${(endPoint.y / 100) * safeHeight}" r="${endpointRadius}" fill="${segmentColors[segmentColors.length - 1] || aid.defaultColor}" fill-opacity="${endpointOpacity}"/>`;
-            const revealCap = `<circle data-visual-aid-reveal-cap cx="0" cy="0" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" filter="url(#${glowId})" opacity="0" pointer-events="none"/>`;
+            const revealCap = completePath ? '' : `<circle data-visual-aid-reveal-cap cx="0" cy="0" r="${endpointRadius}" fill="${segmentColors[0] || aid.defaultColor}" filter="url(#${glowId})" opacity="0" pointer-events="none"/>`;
             let divisionHits = '';
             if (interactive) {
                 aid.divisions.forEach((division, divisionIndex) => {
@@ -3892,7 +4810,7 @@ MODIFICATION RULES FOR THIS APP
                     return `<polyline data-visual-aid-boundary-arrow data-visual-aid-boundary-arrow-end="${end.toFixed(6)}" points="${arrowPoints}" fill="none" stroke="${segmentColors[index]}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#${arrowId})" opacity="0" pointer-events="none"/>`;
                 }).join('');
                 leadArrow = `<polyline data-visual-aid-lead-arrow points="" fill="none" stroke="${segmentColors[0] || aid.defaultColor}" stroke-opacity="0" stroke-width="${aid.thickness}" stroke-linecap="butt" stroke-linejoin="round" marker-end="url(#${arrowId})" opacity="0" pointer-events="none"/>`;
-            } else if (aid.ball) {
+            } else if (aid.ball && !aid.balls.length) {
                 leadBall = `<circle data-visual-aid-lead-ball cx="0" cy="0" r="${Math.max(2.16, aid.thickness * 1.08)}" fill="${aid.ballColor || aid.defaultColor}" opacity="0" pointer-events="none"/>`;
             }
             let quizOverlay = '';
@@ -3922,8 +4840,13 @@ MODIFICATION RULES FOR THIS APP
             }
             return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}</g>`;
         }).join('');
+        const behaviorBalls = normalizedAids.flatMap(aid => {
+            const balls = aid.multipleBalls ? aid.balls : aid.balls.slice(0, 1);
+            return balls.map(ball => ({ aidId: aid.id, ballId: ball.id, radius: Math.max(2.16, aid.thickness * 1.08), color: ball.color }));
+        });
+        const behaviorBallMarkup = behaviorBalls.length ? `<g data-visual-aid-behavior-ball-layer>${behaviorBalls.map(item => `<circle data-visual-aid-behavior-ball data-visual-aid-origin-id="${escapeHtml(item.aidId)}" data-visual-aid-ball-id="${escapeHtml(item.ballId)}" cx="0" cy="0" r="${item.radius}" fill="${item.color}" opacity="0" pointer-events="none"/>`).join('')}</g>` : '';
         const defs = `<defs><filter id="${glowId}"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="${quizGlowId}"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="${arrowId}" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="2.16" markerHeight="2.16" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>`;
-        return { markup: `${defs}${markup}`, runtimes, animated };
+        return { markup: `${defs}${markup}${behaviorBallMarkup}`, runtimes, animated, behaviorBalls };
     }
 
     function findDiagramVisualAidPlaybackNodeByData(root, selector, dataKey, value) {
@@ -3937,6 +4860,15 @@ MODIFICATION RULES FOR THIS APP
         svg.innerHTML = surface.markup;
         surface.runtimes.forEach(runtime => {
             runtime.group = findDiagramVisualAidPlaybackNodeByData(svg, '[data-visual-aid-id]', 'visualAidId', runtime.aid.id);
+            if (runtime.flowFill) {
+                runtime.regionNodes=Array.from(runtime.group?.querySelectorAll?.('[data-flow-fill-id]')||[]);
+                runtime.pathNodes=Array.from(runtime.group?.querySelectorAll?.('[data-flow-path-id]')||[]);
+                runtime.endArrowNodes=Array.from(runtime.group?.querySelectorAll?.('[data-flow-end-arrow-id]')||[]);
+                runtime.streamNodes=Array.from(runtime.group?.querySelectorAll?.('[data-flow-stream-id]')||[]);
+                runtime.continuousArrowNodes=Array.from(runtime.group?.querySelectorAll?.('[data-flow-continuous-arrows-id]')||[]);
+                runtime.flowRouteMetrics=new Map(Array.from(runtime.streamGeometry.entries()).map(([id,points])=>[id,getFlowFillRouteMetrics(points)]));
+                return;
+            }
             runtime.revealGlow = runtime.group?.querySelector?.('[data-visual-aid-reveal-glow]') || null;
             runtime.revealSegmentNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-reveal-segment]') || []);
             runtime.revealSegmentNodes.forEach((node, index) => {
@@ -3950,6 +4882,11 @@ MODIFICATION RULES FOR THIS APP
             runtime.pointNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-point-id]') || []);
             runtime.pointPulseNodes = Array.from(runtime.group?.querySelectorAll?.('[data-visual-aid-point-pulse]') || []);
         });
+        surface.behaviorBallNodes = Array.from(svg.querySelectorAll('[data-visual-aid-behavior-ball]')).map(node => ({
+            node,
+            aidId: normalizeSheetText(node.dataset.visualAidOriginId || ''),
+            ballId: normalizeSheetText(node.dataset.visualAidBallId || '')
+        }));
         diagramVisualAidPlaybackSurfaceCache.set(svg, surface);
         return surface;
     }
@@ -3964,11 +4901,65 @@ MODIFICATION RULES FOR THIS APP
     function updateDiagramVisualAidPlaybackSurface(svg, progress = null) {
         const surface = diagramVisualAidPlaybackSurfaceCache.get(svg);
         if (!surface) return false;
-        const currentProgress = Number.isFinite(Number(progress)) ? normalizeDiagramVisualAidPosition(progress) : 1;
+        const playbackProgress = Number.isFinite(Number(progress)) ? normalizeDiagramVisualAidPosition(progress) : 1;
         surface.runtimes.forEach(runtime => {
+            if(runtime.flowFill){
+                const frame=evaluateFlowFill(runtime.aid, progress == null ? 0 : playbackProgress);
+                runtime.regionNodes.forEach(node=>{
+                    const id=node.dataset.flowFillId;
+                    const amount=Math.max(0,Math.min(100,frame.fill.get(id)||0))/100;
+                    const item=runtime.aid.flowItems.find(row=>row.id===id);
+                    const mode=getFlowFillRegionMotionMode(runtime.aid,id,frame.time);
+                    const angle=mode==='empty' ? item?.emptyAngle : item?.fillAngle;
+                    const geometry=runtime.regionGeometry.get(id)||[];
+                    node.setAttribute('points',getFlowFillDirectionalPolygon(geometry,amount,angle));
+                });
+                // In static Diagram Creator authoring, show all paths so they
+                // remain easy to edit. Preview / Review / Mini Quiz obey the
+                // individual Transfer action associated with each path.
+                const authoring = progress == null;
+                const pathStates = new Map();
+                runtime.pathNodes.forEach(node=>{
+                    const id=node.dataset.flowPathId;
+                    const item=runtime.aid.flowItems.find(row=>row.id===id);
+                    if(!item)return;
+                    const transfer=getFlowFillPathTransferState(runtime.aid,id,frame.time);
+                    pathStates.set(id,transfer);
+                    const showPath=authoring || runtime.quizPathTargetId===id || !item.revealOnTransfer || transfer.started;
+                    node.setAttribute('visibility',showPath?'visible':'hidden');
+                });
+                runtime.endArrowNodes.forEach(node=>{
+                    const transfer=pathStates.get(node.dataset.flowEndArrowId);
+                    // The integrated end arrow appears as soon as transfer
+                    // starts, then remains attached to the visible route.
+                    node.setAttribute('visibility',authoring || runtime.quizPathTargetId===node.dataset.flowEndArrowId || transfer?.started ? 'visible':'hidden');
+                });
+                runtime.continuousArrowNodes.forEach(node=>{
+                    const id=node.dataset.flowContinuousArrowsId;
+                    const item=runtime.aid.flowItems.find(row=>row.id===id);
+                    const metrics=runtime.flowRouteMetrics.get(id);
+                    const transfer=pathStates.get(id);
+                    const show=authoring || !!transfer?.active;
+                    node.setAttribute('visibility',show?'visible':'hidden');
+                    if(item && metrics && show) node.setAttribute('d',getFlowFillRepeatedChevronPath(metrics,item.thickness,item.continuousArrowCount,authoring?0:transfer.fraction,runtime.aid.flowDurationSec,item.endArrow));
+                });
+                runtime.streamNodes.forEach(node=>{
+                    const id=node.dataset.flowStreamId;
+                    const transfer=pathStates.get(id);
+                    const geometry=runtime.streamGeometry.get(id)||[];
+                    const route=runtime.aid.flowItems.find(row=>row.id===id);
+                    const metrics=runtime.flowRouteMetrics.get(id);
+                    const stemFraction=route?.endArrow && metrics ? getFlowFillEndpointArrowData(metrics,route.thickness)?.stemFraction ?? 1 : 1;
+                    node.setAttribute('points',transfer?.active?getFlowFillPolylinePrefix(geometry,transfer.fraction*stemFraction):'');
+                });
+                return;
+            }
+            const currentProgress = getDiagramVisualAidPlaybackLeadProgress(runtime.aid, playbackProgress);
+            const trailingProgress = getDiagramVisualAidPlaybackTrailProgress(runtime.aid, playbackProgress);
             const visibleDistance = getDiagramVisualAidSvgDistanceAtPosition(runtime.masterMetrics, runtime.svgMasterMetrics, currentProgress);
+            const trailingDistance = getDiagramVisualAidSvgDistanceAtPosition(runtime.masterMetrics, runtime.svgMasterMetrics, trailingProgress);
             if (runtime.revealGlow) {
-                if (runtime.displayFullPathBall || currentProgress <= 0.000001) {
+                if (runtime.displayFullPathBall || currentProgress <= 0.000001 || trailingProgress > 0.000001) {
                     runtime.revealGlow.setAttribute('stroke-opacity', '0');
                     runtime.revealGlow.setAttribute('points', '');
                 } else {
@@ -3987,7 +4978,7 @@ MODIFICATION RULES FOR THIS APP
                     node.dataset.visualAidRevealState = 'hidden';
                     return;
                 }
-                if (runtime.displayFullPathBall || visibleDistance >= endDistance - 0.001) {
+                if (runtime.displayFullPathBall || (trailingDistance <= startDistance + 0.001 && visibleDistance >= endDistance - 0.001)) {
                     if (node.dataset.visualAidRevealState !== 'complete') {
                         node.setAttribute('points', geometry.fullPointsText);
                         node.dataset.visualAidRevealState = 'complete';
@@ -3995,7 +4986,7 @@ MODIFICATION RULES FOR THIS APP
                     node.setAttribute('stroke-opacity', String(baseOpacity));
                     return;
                 }
-                if (visibleDistance <= startDistance + 0.001) {
+                if (visibleDistance <= startDistance + 0.001 || trailingDistance >= endDistance - 0.001) {
                     if (node.dataset.visualAidRevealState !== 'hidden') {
                         const first = geometry.points[0];
                         node.setAttribute('points', `${first.x},${first.y}`);
@@ -4004,8 +4995,14 @@ MODIFICATION RULES FOR THIS APP
                     node.setAttribute('stroke-opacity', '0');
                     return;
                 }
-                const localVisible = Math.min(segmentLength, Math.max(0, visibleDistance - startDistance));
-                node.setAttribute('points', getDiagramVisualAidSvgPrefixPointsText(geometry, localVisible));
+                const localStart = Math.min(segmentLength, Math.max(0, trailingDistance - startDistance));
+                const localEnd = Math.min(segmentLength, Math.max(0, visibleDistance - startDistance));
+                if (localEnd - localStart <= 0.001) {
+                    node.setAttribute('stroke-opacity', '0');
+                    node.dataset.visualAidRevealState = 'hidden';
+                    return;
+                }
+                node.setAttribute('points', getDiagramVisualAidSvgRangePointsText(geometry, localStart, localEnd));
                 node.dataset.visualAidRevealState = 'partial';
                 node.setAttribute('stroke-opacity', String(baseOpacity));
             });
@@ -4045,7 +5042,10 @@ MODIFICATION RULES FOR THIS APP
             }
             runtime.boundaryArrowNodes.forEach(node => {
                 const end = normalizeDiagramVisualAidPosition(node.dataset.visualAidBoundaryArrowEnd || 0);
-                const visibleKey = currentProgress >= end - 0.0005 ? '1' : '0';
+                // During playback the moving lead arrow is the only arrowhead;
+                // division-end markers must not remain behind as the trail advances.
+                const playingPath = progress !== null && progress !== undefined && Number.isFinite(Number(progress));
+                const visibleKey = !playingPath && currentProgress >= end - 0.0005 ? '1' : '0';
                 if (node.dataset.visualAidArrowVisible !== visibleKey) {
                     node.dataset.visualAidArrowVisible = visibleKey;
                     node.setAttribute('opacity', visibleKey);
@@ -4084,10 +5084,12 @@ MODIFICATION RULES FOR THIS APP
         const progress = Number.isFinite(Number(options.progress)) ? normalizeDiagramVisualAidPosition(options.progress) : null;
         if (animationFrame && diagramVisualAidPlaybackSurfaceCache.has(svg)) {
             updateDiagramVisualAidPlaybackSurface(svg, progress);
+            updateDiagramVisualAidBehaviorBalls(svg, progress);
             return;
         }
         mountDiagramVisualAidPlaybackSurface(svg, aids, width, height, options);
         updateDiagramVisualAidPlaybackSurface(svg, progress);
+        updateDiagramVisualAidBehaviorBalls(svg, progress);
     }
 
     function startDiagramVisualAidPlaybackClock({ owner, playingKey, progressKey, startedAtKey, frameIdKey, loopKey, duration, renderFrame, renderResting }) {
@@ -4141,7 +5143,13 @@ MODIFICATION RULES FOR THIS APP
 
     // ================= PHASE 22MT MULTI-ANGLE DIAGRAM MODEL =================
     const MULTI_ANGLE_DEFAULT_CANVAS = Object.freeze({ width: 1100, height: 1500, background: '#000000' });
-    const STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION = 1;
+    const STUDY_BUNNY_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+    // Phase 23F.41.30: oversized source files stay entirely local in Canvas Setup.
+    // This does not relax the cloud upload/flattened-image 3 MB guard.
+    const STUDY_BUNNY_CANVAS_SOURCE_MAX_BYTES = 20 * 1024 * 1024;
+    const STUDY_BUNNY_CANVAS_BATCH_MAX_BYTES = 60 * 1024 * 1024;
+    const STUDY_BUNNY_CANVAS_SOURCE_MAX_PIXELS = 36 * 1000 * 1000;
+    const STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION = 2;
 
     function createMultiAngleId(prefix = 'angle') {
         return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -4164,7 +5172,7 @@ MODIFICATION RULES FOR THIS APP
     function normalizeMultiAngleFraming(value = {}) {
         const source = value && typeof value === 'object' ? value : {};
         return {
-            scale: Math.min(1.8, Math.max(0.35, Number(source.scale) || 1)),
+            scale: Math.min(1.8, Math.max(0.1, Number(source.scale) || 1)),
             offsetX: Math.min(0.45, Math.max(-0.45, Number(source.offsetX) || 0)),
             offsetY: Math.min(0.45, Math.max(-0.45, Number(source.offsetY) || 0)),
             useAnchor: source.useAnchor === true,
@@ -4185,6 +5193,15 @@ MODIFICATION RULES FOR THIS APP
             width: Math.min(width - x, Math.max(1, Number(source.width) || width)),
             height: Math.min(height - y, Math.max(1, Number(source.height) || height))
         };
+    }
+
+    // Phase 23F.41.51: one saved per-angle multiplier, never a binary Small Labels flag.
+    // Existing diagrams without this field retain their original 100% appearance.
+    function normalizeDiagramLabelSize(value) {
+        const size = Number(value);
+        return Number.isFinite(size) && size > 0
+            ? Math.max(0.25, Math.min(2, Math.round(size * 20) / 20))
+            : 1;
     }
 
     function normalizeStudioSavedImageAngle(angle = {}, index = 0, fallback = {}) {
@@ -4211,6 +5228,7 @@ MODIFICATION RULES FOR THIS APP
             thumbnailBytes: Math.max(0, Math.round(Number(source.thumbnailBytes) || 0)),
             thumbnailVersion: Math.max(0, Math.round(Number(source.thumbnailVersion) || (thumbnailValue ? STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION : 0))),
             labels: normalizeDiagramLabels(source.labels || []),
+            labelSize: normalizeDiagramLabelSize(source.labelSize ?? fallback.labelSize),
             visualAids: normalizeDiagramVisualAids(source.visualAids || source.visual_aids || []),
             drawStrokes: cloneImageEditorDrawStrokes(source.drawStrokes || source.strokes || []),
             framing: normalizeMultiAngleFraming(source.framing || {}),
@@ -4239,6 +5257,7 @@ MODIFICATION RULES FOR THIS APP
             thumbnailBytes: normalized.thumbnailBytes || 0,
             thumbnailVersion: normalized.thumbnailVersion || 0,
             labels: normalized.labels,
+            labelSize: normalized.labelSize,
             visualAids: normalized.visualAids,
             drawStrokes: normalized.drawStrokes
         }, 0, normalized);
@@ -5208,7 +6227,7 @@ MODIFICATION RULES FOR THIS APP
         let svg = elements.diagramStudyImageWrap?.querySelector?.('.diagram-study-connector-layer');
         if (!svg && hasConnectors) svg = ensureDiagramStudyConnectorLayer();
         if (!svg) return;
-        renderDiagramConnectorSvgLayer(svg, drafts, elements.questionImage, elements.diagramStudyImageWrap, true);
+        renderDiagramConnectorSvgLayer(svg, drafts, elements.questionImage, elements.diagramStudyImageWrap, true, { outlineColor: '#ffffff', outlineExtraWidth: 2 });
     }
 
     function renderDiagramStudyLabels(labels = []) {
@@ -5362,6 +6381,52 @@ MODIFICATION RULES FOR THIS APP
         }
 
         return refs;
+    }
+
+    async function getFlashcardMediaReferencesInUse(refs) {
+        const candidates = Array.from(new Set(Array.from(refs || []).filter(isSupabaseMediaReference)));
+        const used = new Set();
+        if (!state.auth.client || !candidates.length) return used;
+        try {
+            const [{ data: termRows, error: termError }, { data: definitionRows, error: definitionError }] = await Promise.all([
+                state.auth.client.from('flashcard_questions').select('term_image_url').in('term_image_url', candidates),
+                state.auth.client.from('flashcard_questions').select('definition_image_url').in('definition_image_url', candidates)
+            ]);
+            if (termError) throw termError;
+            if (definitionError) throw definitionError;
+            (termRows || []).forEach(row => collectSupabaseMediaReferences(row?.term_image_url, used));
+            (definitionRows || []).forEach(row => collectSupabaseMediaReferences(row?.definition_image_url, used));
+            return used;
+        } catch (error) {
+            // Migration cleanup must fail closed: if usage cannot be verified,
+            // retain every candidate instead of risking a broken flashcard.
+            console.warn('Could not verify legacy Saved Image reuse; retaining old media assets.', error);
+            candidates.forEach(ref => used.add(ref));
+            return used;
+        }
+    }
+
+
+    async function cleanupReplacedStudioSavedImageMedia(originalEntry = null, replacementEntry = null, options = {}) {
+        const previousRefs = collectSupabaseMediaReferences(originalEntry, new Set());
+        for (const ref of (options.additionalPreviousRefs || [])) {
+            if (isSupabaseMediaReference(ref)) previousRefs.add(ref);
+        }
+        const nextRefs = collectSupabaseMediaReferences(replacementEntry, new Set());
+        const replacedRefs = new Set(Array.from(previousRefs).filter(ref => !nextRefs.has(ref)));
+        if (!replacedRefs.size) return 0;
+
+        const replacementKey = getStudioSavedImageSyncKey(replacementEntry || {});
+        const protectedRefs = collectStudioFlashcardEditorMediaReferences();
+        getStudioSavedImageLibraryForPicker().forEach(item => {
+            if (replacementKey && getStudioSavedImageSyncKey(item) === replacementKey) return;
+            collectSupabaseMediaReferences(item, protectedRefs);
+        });
+        nextRefs.forEach(ref => protectedRefs.add(ref));
+        const flashcardRefs = await getFlashcardMediaReferencesInUse(replacedRefs);
+        flashcardRefs.forEach(ref => protectedRefs.add(ref));
+        await deleteSupabaseMediaReferences(replacedRefs, { protectedRefs });
+        return replacedRefs.size;
     }
 
     async function deleteSupabaseMediaReferences(refs, options = {}) {
@@ -5584,8 +6649,7 @@ MODIFICATION RULES FOR THIS APP
     function setStudioFlashcardTermImageState(dataUrl = '', label = 'No term image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
         if (state.auth.handwrittenFlashcardEnabled && normalizeSheetText(dataUrl) && state.auth.handwrittenPendingImageLayout?.side === 'term') {
             const pending = state.auth.handwrittenPendingImageLayout;
-            const existing = getHandwrittenSideStrokesFromEditorState('term');
-            if (existing.length) setHandwrittenSideState('term', { strokes: [] });
+            // Phase 23F.32.3: image attachment/layout never destroys vector ink.
             setHandwrittenSideState('term', { imageLayout: pending.layout });
             state.auth.handwrittenPendingImageLayout = null;
         }
@@ -5626,8 +6690,7 @@ MODIFICATION RULES FOR THIS APP
     function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
         if (state.auth.handwrittenFlashcardEnabled && normalizeSheetText(dataUrl) && state.auth.handwrittenPendingImageLayout?.side === 'definition') {
             const pending = state.auth.handwrittenPendingImageLayout;
-            const existing = getHandwrittenSideStrokesFromEditorState('definition');
-            if (existing.length) setHandwrittenSideState('definition', { strokes: [] });
+            // Phase 23F.32.3: image attachment/layout never destroys vector ink.
             setHandwrittenSideState('definition', { imageLayout: pending.layout });
             state.auth.handwrittenPendingImageLayout = null;
         }
@@ -5667,10 +6730,11 @@ MODIFICATION RULES FOR THIS APP
 
 
     // ================= STUDIO SAVED IMAGE PICKER =================
-    // Phase 22LA: Flashcards-only reusable image snapshots. Images enter this library from
-    // Edit Image > Send to Saved Images, not from the flashcard question-list controls.
+    // Saved Images are reusable canonical diagram snapshots available from every image-entry point.
+    // Phase 23F.33 keeps browsing paged and thumbnail-only by default to protect Storage egress.
     const STUDIO_SAVED_IMAGE_LIBRARY_KEY = 'study_bunny_saved_image_library_v1';
     const STUDIO_SAVED_IMAGE_LIBRARY_LIMIT = 40;
+    const STUDIO_SAVED_IMAGE_PAGE_SIZE = 10;
     const STUDIO_SAVED_IMAGE_USER_CACHE_KEY_PREFIX = 'study_bunny_saved_image_library_v2_';
     const STUDIO_SAVED_IMAGE_LEGACY_OWNER_KEY = 'study_bunny_saved_image_library_v1_owner';
     const STUDIO_SAVED_IMAGE_MIGRATION_KEY_PREFIX = 'study_bunny_saved_image_library_migrated_v1_';
@@ -5678,9 +6742,12 @@ MODIFICATION RULES FOR THIS APP
     const STUDIO_SAVED_IMAGE_PENDING_DELETE_KEY_PREFIX = 'study_bunny_saved_image_pending_deletes_v1_';
     const STUDIO_SAVED_IMAGE_REMOTE_TABLE = 'saved_images';
     const STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_SIDE = 720;
-    const STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_BYTES = 250 * 1024;
-    const STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220" viewBox="0 0 360 220"><rect width="360" height="220" fill="#17131f"/><rect x="10" y="10" width="340" height="200" rx="16" fill="#211a2d" stroke="#665a76" stroke-width="2"/><path d="M115 145l42-43 31 29 25-24 42 38H115z" fill="#665a76"/><circle cx="226" cy="77" r="16" fill="#827391"/><text x="180" y="187" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" fill="#d8cee2">Preview created when opened</text></svg>')}`;
+    const STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_BYTES = 100 * 1024;
+    const STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220" viewBox="0 0 360 220"><rect width="360" height="220" fill="#17131f"/><rect x="10" y="10" width="340" height="200" rx="16" fill="#211a2d" stroke="#665a76" stroke-width="2"/><path d="M115 145l42-43 31 29 25-24 42 38H115z" fill="#665a76"/><circle cx="226" cy="77" r="16" fill="#827391"/><text x="180" y="178" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" fill="#d8cee2">Preview unavailable</text><text x="180" y="197" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#d8cee2">Open image to repair</text></svg>')}`;
     const studioSavedImageThumbnailJobs = new Map();
+    // Phase 23F.41.22: failed preview loads are tracked per Saved Image, not
+    // mistaken for healthy thumbnail references. Browsing never rebuilds them.
+    const studioSavedImageThumbnailRepairNeeded = new Map();
 
     function getSavedImageFileNameFromLabel(label = '', fallback = 'saved-image.png') {
         const text = normalizeSheetText(label);
@@ -5707,6 +6774,520 @@ MODIFICATION RULES FOR THIS APP
         return `saved_img_live_${Math.abs(hash).toString(36)}`;
     }
 
+    // Phase 23F.41.24: pins live in Saved Image JSON, not raster media or quiz stars.
+    // Keep an angle/label-index plus a name fingerprint to avoid reusing a pin on
+    // a different label after authoring removes or reorders labels.
+    function normalizeSavedImagePinnedLabels(value = {}) {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const result = {};
+        Object.entries(source).forEach(([angleId, records]) => {
+            const safeAngleId = normalizeSheetText(angleId).slice(0, 120);
+            if (!safeAngleId || !Array.isArray(records)) return;
+            const normalized = records.map(record => ({
+                index: Number(record?.index),
+                key: normalizeSheetText(record?.key || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase()
+            })).filter(record => Number.isInteger(record.index) && record.index >= 0 && !!record.key);
+            if (normalized.length) result[safeAngleId] = normalized.filter((record, index) =>
+                normalized.findIndex(item => item.index === record.index && item.key === record.key) === index);
+        });
+        return result;
+    }
+
+    // Phase 23F.41.58: metadata-only per-angle Mini Quiz mastery.
+    // Store a compact content fingerprint, never a second raster or a full label snapshot.
+    function normalizeSavedImageMasteredAngles(value = {}) {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const result = {};
+        Object.entries(source).slice(0, 100).forEach(([angleId, signature]) => {
+            const id = normalizeSheetText(angleId).slice(0, 120);
+            const token = normalizeSheetText(signature).slice(0, 40);
+            if (id && /^[0-9a-f]{8}:[0-9]+$/.test(token)) result[id] = token;
+        });
+        return result;
+    }
+
+    function getSavedImageAngleMasterySignature(angle) {
+        const data = JSON.stringify(normalizeDiagramLabels(angle?.labels || []));
+        let hash = 2166136261;
+        for (let i = 0; i < data.length; i += 1) {
+            hash ^= data.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return `${(hash >>> 0).toString(16).padStart(8, '0')}:${data.length}`;
+    }
+
+    // Phase 23F.41.60: duplicate-free Mini Quiz mastery follows unique regular
+    // label names rather than every repeated angle instance. The compact record
+    // is bound to the entire authored label/connector/info snapshot, so editing
+    // never silently keeps old mastery. No canonical media is duplicated.
+    function normalizeSavedImageMasteredUniqueLabels(value = {}) {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const signature = normalizeSheetText(source.signature || '');
+        const keys = (Array.isArray(source.keys) ? source.keys : []).slice(0, 2500)
+            .map(key => normalizeSheetText(key).replace(/\s+/g, ' ').trim().toLocaleLowerCase().slice(0, 240))
+            .filter(Boolean);
+        return { signature: /^[0-9a-f]{8}:[0-9]+$/.test(signature) ? signature : '', keys: [...new Set(keys)] };
+    }
+
+    function getSavedImageUniqueMasterySignature(entry) {
+        const data = getSavedImageMasteryAuthoredSignature(entry);
+        let hash = 2166136261;
+        for (let i = 0; i < data.length; i += 1) {
+            hash ^= data.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return `${(hash >>> 0).toString(16).padStart(8, '0')}:${data.length}`;
+    }
+
+    function getSavedImageUniqueLabelKeys(entry) {
+        return new Set(getStudioSavedImageAngles(entry).flatMap(angle =>
+            normalizeDiagramLabels(angle.labels || []).map(label => normalizeReviewModeMiniQuizLabelKey(label.label)).filter(Boolean)));
+    }
+
+    function getSavedImageCreditedUniqueLabelKeys(entry) {
+        const credited = new Set();
+        const unique = normalizeSavedImageMasteredUniqueLabels(entry?.masteredUniqueLabels);
+        if (unique.signature && unique.signature === getSavedImageUniqueMasterySignature(entry)) {
+            unique.keys.forEach(key => credited.add(key));
+        }
+        // Older .58/.59 successful angle certificates remain valid and can
+        // contribute unique names without requiring a repeat of those quizzes.
+        const mastered = normalizeSavedImageMasteredAngles(entry?.masteredAnglesById || {});
+        getStudioSavedImageAngles(entry).forEach(angle => {
+            if (mastered[normalizeSheetText(angle.id)] !== getSavedImageAngleMasterySignature(angle)) return;
+            normalizeDiagramLabels(angle.labels || []).forEach(label => {
+                const key = normalizeReviewModeMiniQuizLabelKey(label.label);
+                if (key) credited.add(key);
+            });
+        });
+        return credited;
+    }
+
+    function getSavedImageMasteryStatus(entry) {
+        const angles = getStudioSavedImageAngles(entry);
+        const required = getSavedImageUniqueLabelKeys(entry);
+        if (!required.size) return false;
+        const credited = getSavedImageCreditedUniqueLabelKeys(entry);
+        return [...required].every(key => credited.has(key));
+    }
+
+
+    // Phase 23F.41.64 — per-Saved-Image spaced-repetition FOUNDATION.
+    // The clock stores a preference only. iOS/watch push delivery requires a
+    // separate subscribed-device/server sender phase; never imply push is live.
+    // Progress is metadata-only: no media operations, thumbnails or image fetches.
+    function normalizeSavedImageSpacedReview(value = {}) {
+        const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const iso = v => typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v) && Number.isFinite(Date.parse(v)) ? v.slice(0, 40) : '';
+        const day = v => typeof v === 'string' && /^\d{4}-\d\d-\d\d$/.test(v) && !Number.isNaN(new Date(`${v}T12:00:00`).getTime()) ? v : '';
+        const signature = normalizeSheetText(raw.signature || '');
+        const stages = {};
+        Object.entries(raw.stages && typeof raw.stages === 'object' && !Array.isArray(raw.stages) ? raw.stages : {})
+            .slice(0, 120).forEach(([key, record]) => {
+                if (!/^(?:d1|d2|d4|d6|w1|w2|w4|m1|m2|q\d+)$/.test(key) || !record) return;
+                const firstAt = iso(record.firstAt), secondAt = iso(record.secondAt);
+                if (firstAt && secondAt && Date.parse(secondAt) - Date.parse(firstAt) >= 6 * 60 * 60 * 1000) {
+                    stages[key] = { firstAt, secondAt };
+                }
+            });
+        return {
+            signature: /^[0-9a-f]{8}:[0-9]+$/.test(signature) ? signature : '',
+            startedOn: day(raw.startedOn),
+            timeZone: normalizeSheetText(raw.timeZone || '').slice(0, 80),
+            reminderEnabled: raw.reminderEnabled === true,
+            stages, everMastered: raw.everMastered === true,
+            firstAt: iso(raw.firstAt),
+            cycleDay: day(raw.cycleDay),
+            cycleKeys: [...new Set((Array.isArray(raw.cycleKeys) ? raw.cycleKeys : [])
+                .slice(0, 2500).map(key => normalizeReviewModeMiniQuizLabelKey(key)).filter(Boolean))]
+        };
+    }
+
+    function getSpacedReviewLocalDay(date = new Date()) {
+        const d = date instanceof Date ? date : new Date(date);
+        if (!Number.isFinite(d.getTime())) return '';
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    function addSpacedReviewDays(day, amount) {
+        const date = new Date(`${day}T12:00:00`);
+        date.setDate(date.getDate() + amount);
+        return getSpacedReviewLocalDay(date);
+    }
+    function addSpacedReviewMonths(day, amount) {
+        const date = new Date(`${day}T12:00:00`);
+        const wantedDay = date.getDate();
+        date.setDate(1);
+        date.setMonth(date.getMonth() + amount);
+        const targetMonth = date.getMonth();
+        date.setDate(Math.min(wantedDay, new Date(date.getFullYear(), targetMonth + 1, 0).getDate()));
+        return getSpacedReviewLocalDay(date);
+    }
+    function getSpacedReviewDayDifference(a, b) {
+        return Math.round((Date.parse(`${a}T12:00:00`) - Date.parse(`${b}T12:00:00`)) / 86400000);
+    }
+    function getSavedImageSpacedReviewStages(startedOn, throughDay = getSpacedReviewLocalDay(), recordedStages = {}) {
+        if (!startedOn) return [];
+        const at = amount => addSpacedReviewDays(startedOn, amount);
+        // Day 6 may be completed on Day 6 or Day 7. In either case the
+        // subsequent weekly schedule starts the following day, guaranteeing
+        // a FULL seven days for Week 1. No other daily grace periods apply.
+        const day6Finished = getSpacedReviewLocalDay(recordedStages?.d6?.secondAt || '');
+        const weekShift = day6Finished === at(6) ? 1 : 0;
+        const weeklyAt = amount => at(amount + weekShift);
+        const stages = [
+            ['d1','Day 1',at(0),at(1)], ['d2','Day 2',at(1),at(2)],
+            ['d4','Day 4 · Mastery milestone',at(3),at(4)], ['d6','Day 6',at(5),at(7)],
+            ['w1','Week 1',weeklyAt(6),weeklyAt(13)], ['w2','Week 2',weeklyAt(13),weeklyAt(20)],
+            // Week 3 is intentionally a rest week.
+            ['w4','Week 4',weeklyAt(27),weeklyAt(34)]
+        ];
+        const monthStart = weeklyAt(34);
+        stages.push(['m1','Monthly review 1',monthStart,addSpacedReviewMonths(monthStart,1)]);
+        stages.push(['m2','Monthly review 2',addSpacedReviewMonths(monthStart,1),addSpacedReviewMonths(monthStart,2)]);
+        const quarterlyStart = addSpacedReviewMonths(monthStart,2);
+        for (let n = 0; n < 40; n++) {
+            const begin = addSpacedReviewMonths(quarterlyStart,n*3);
+            if (begin > throughDay && n > 0) break;
+            stages.push([`q${n + 1}`,`Quarterly review ${n + 1}`,begin,addSpacedReviewMonths(quarterlyStart,(n+1)*3)]);
+        }
+        return stages.map(([id,label,start,end]) => ({id,label,start,end}));
+    }
+    function getSavedImageSpacedReviewStatus(entry, now = new Date()) {
+        const raw = normalizeSavedImageSpacedReview(entry?.spacedReview || {});
+        const signature = getSavedImageUniqueMasterySignature(entry);
+        const valid = raw.signature === signature;
+        const data = valid ? raw : { ...normalizeSavedImageSpacedReview(), reminderEnabled: raw.reminderEnabled };
+        const today = getSpacedReviewLocalDay(now);
+        const stages = getSavedImageSpacedReviewStages(data.startedOn, today, data.stages);
+        const current = stages.find(stage => !data.stages[stage.id]) || null;
+        const overdue = !!(current && today >= current.end);
+        // Phase 23F.41.69: there is no post-MASTERED recovery shortcut.
+        // Any expired required window invalidates the ENTIRE current cycle.
+        const recovery = false;
+        const initialMiss = overdue;
+        const inWindow = !!(current && today >= current.start && today < current.end);
+        const firstAt = data.firstAt && getSpacedReviewLocalDay(data.firstAt) === today ? data.firstAt : '';
+        const nextAt = firstAt ? new Date(Date.parse(firstAt) + 6 * 3600000) : null;
+        const eligible = !!(recovery || initialMiss || inWindow);
+        return { data, today, current, stages, overdue, recovery, initialMiss, inWindow,
+            firstAt, nextAt, eligible,
+            mastered: data.everMastered && !overdue && !!data.stages.d4 && getSavedImageMasteryStatus(entry) };
+    }
+    // Phase 23F.41.69 — Pinned / Pending are metadata-only Saved Image filters.
+    // Pending is actionable, never completed or resting. A first Day 1 pass
+    // qualifies; after Day 1 was completed, a newly opened review at 0/2
+    // also qualifies. An expired cycle with established history needs restart.
+    function isSavedImageStudyPending(entry, now = new Date()) {
+        const progress = getSavedImageSpacedReviewStatus(entry, now);
+        const { data, today, current } = progress;
+        if (!data.startedOn || !current) return false;
+        if (Object.values(data.stages).some(record =>
+            record?.secondAt && getSpacedReviewLocalDay(record.secondAt) === today)) return false;
+        if (progress.overdue) return !!data.stages.d1 || data.everMastered;
+        if (!progress.inWindow) return false; // rest day, skipped week, future stage
+        if (progress.firstAt) return true;
+        return !!data.stages.d1;
+    }
+    function getSavedImageStudyFilterRank(entry, now = new Date()) {
+        const progress = getSavedImageSpacedReviewStatus(entry, now);
+        return progress.firstAt && progress.inWindow ? 0 : 1;
+    }
+    function matchesSavedImageQuickFilters(entry, prefix) {
+        const filters = document.querySelector(`[data-study-quick-filters="${prefix}"]`);
+        if (!filters) return true;
+        if (filters.querySelector('[data-study-quick-filter="pinned"]')?.getAttribute('aria-pressed') === 'true' && !getSavedImagePinnedCount(entry)) return false;
+        if (filters.querySelector('[data-study-quick-filter="pending"]')?.getAttribute('aria-pressed') === 'true' && !isSavedImageStudyPending(entry)) return false;
+        return true;
+    }
+    function isSavedImagePendingQuickFilterOn(prefix) {
+        return document.querySelector(`[data-study-quick-filters="${prefix}"] [data-study-quick-filter="pending"]`)?.getAttribute('aria-pressed') === 'true';
+    }
+    function getSavedImageRibbonKind(entry) {
+        if (!getSavedImageMasteryStatus(entry)) return '';
+        return getSavedImageSpacedReviewStatus(entry).mastered ? 'mastered' : 'learning';
+    }
+    function renderSavedImageStudyRibbon(entry) {
+        const kind = getSavedImageRibbonKind(entry);
+        return kind === 'mastered'
+            ? '<span class="studio-mastered-ribbon" aria-label="Spaced repetition mastered">MASTERED</span>'
+            : kind === 'learning'
+                ? '<span class="studio-mastered-ribbon studio-learning-ribbon" aria-label="Correct label coverage; spaced repetition learning">LEARNING</span>'
+                : '';
+    }
+    // Phase 23F.41.65: compact progress content; the grid retains only a hidden
+    // template. A single fixed-position popup is mounted at document.body on click.
+    function renderSavedImageStudyProgress(entry) {
+        const progress = getSavedImageSpacedReviewStatus(entry);
+        const { data, current, today } = progress;
+        const status = progress.mastered ? 'MASTERED' : 'LEARNING';
+        const pending = progress.stages.filter(stage => !data.stages[stage.id]);
+        const currentStage = current || { label: 'Day 1' };
+        // Phase 23F.41.68: after 2/2, the scheduler advances internally,
+        // but the Progress popup keeps TODAY'S completed milestone visible
+        // through local midnight. No changes to the saved study schedule.
+        const completedToday = [...progress.stages].reverse().find(stage =>
+            data.stages[stage.id]?.secondAt &&
+            getSpacedReviewLocalDay(data.stages[stage.id].secondAt) === today) || null;
+        const completedTodayNext = completedToday?.id === 'd2'
+            ? { label: 'Day 3 (Rest Day)', rest: true }
+            : completedToday?.id === 'd4'
+                ? { label: 'Day 5 (Rest Day)', rest: true }
+                : completedToday?.id === 'w2'
+                    ? { label: 'Week 3 (Rest Week)', rest: true }
+                    : current;
+        const nextStage = completedToday ? completedTodayNext : !data.startedOn ? { label: 'Day 2' } :
+            (data.startedOn && current && !progress.overdue && today < current.start) ? current :
+            pending.length > 1 ? pending[1] : null;
+        const rest = !completedToday && !!(data.startedOn && current && !progress.overdue && today < current.start);
+        const currentName = completedToday ? completedToday.label.replace(/ · Mastery milestone$/, '') :
+            progress.initialMiss ? 'Restart Day 1' : rest
+            ? (current.id === 'w4' ? 'Rest week' : 'Rest day') : currentStage.label.replace(/ · Mastery milestone$/, '');
+        const count = completedToday ? 2 : (progress.firstAt && progress.eligible ? 1 : 0);
+        // Phase 23F.41.66: display a computed local retry time, never a fixed
+        // clock example. The second quiz must still happen on the SAME day.
+        // If the 6-hour threshold falls after midnight, do not imply that
+        // tomorrow's pass can count toward the current 2/2 requirement.
+        let takeAgainNotice = '';
+        if (!rest && count === 1 && progress.nextAt && Number.isFinite(progress.nextAt.getTime())) {
+            if (getSpacedReviewLocalDay(progress.nextAt) !== today) {
+                takeAgainNotice = 'Too late for 2/2 today';
+            } else if (progress.nextAt.getTime() <= Date.now()) {
+                takeAgainNotice = 'Ready to take again';
+            } else {
+                const clock = new Intl.DateTimeFormat(undefined, {
+                    hour: 'numeric', minute: '2-digit', hour12: true
+                }).format(progress.nextAt);
+                takeAgainNotice = `Take again at ${clock}`;
+            }
+        }
+        const buildBar = (heading, name, completed, isRest = false, notice = '') => `<div class="studio-spaced-review-block">
+            <div class="studio-spaced-review-bar-heading"><span class="studio-spaced-review-heading-text">${escapeHtml(heading)} — ${escapeHtml(name)}</span>${notice ? `<span class="studio-spaced-review-next-at">${escapeHtml(notice)}</span>` : ''}${isRest ? '' : `<span class="studio-spaced-review-count">${completed}/2</span>`}</div>
+            ${isRest ? '' : `<div class="studio-spaced-review-track" role="progressbar" aria-label="${escapeHtml(heading)} ${escapeHtml(name)}" aria-valuemin="0" aria-valuemax="2" aria-valuenow="${completed}"><span class="studio-spaced-review-fill" style="width:${completed * 50}%"></span></div>`}
+        </div>`;
+        return `<div class="studio-spaced-review-progress" hidden data-study-progress-panel="${escapeHtml(entry.id)}">
+            <div class="studio-spaced-review-status ${progress.mastered ? 'is-mastered' : ''}">${status}</div>
+            ${buildBar('Current', currentName, count, rest, takeAgainNotice)}
+            ${nextStage ? buildBar('Next', nextStage.label.replace(/ · Mastery milestone$/, ''), 0, nextStage.rest === true) : ''}
+        </div>`;
+    }
+    function renderSavedImageReminderToggle(entry, prefix) {
+        const enabled = normalizeSavedImageSpacedReview(entry.spacedReview).reminderEnabled;
+        return `<button type="button" class="studio-image-reminder-toggle ${enabled ? 'is-on' : ''}" data-${prefix}-study-reminder="${escapeHtml(entry.id)}" aria-label="${enabled ? 'Turn off' : 'Request'} study reminders" aria-pressed="${enabled}" title="${enabled ? 'Reminder preference on (push setup pending)' : 'Reminder preference off'}">◷</button>`;
+    }
+    function toggleSavedImageStudyReminder(entryId) {
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === normalizeSheetText(entryId));
+        if (!entry) return;
+        const old = normalizeSavedImageSpacedReview(entry.spacedReview);
+        replaceStudioSavedImageLibraryEntry(entry, { ...entry, spacedReview: { ...old, reminderEnabled: !old.reminderEnabled } });
+        renderDiagramCreatorSavedImages();
+        renderReviewModeLibrary();
+    }
+    let activeSavedImageProgressPopup = null;
+    let activeSavedImageProgressButton = null;
+    let savedImageProgressExitTimer = null;
+    let savedImageProgressRefreshTimer = null;
+    function closeSavedImageStudyProgressPopup() {
+        clearTimeout(savedImageProgressRefreshTimer);
+        savedImageProgressRefreshTimer = null;
+        clearTimeout(savedImageProgressExitTimer);
+        savedImageProgressExitTimer = null;
+        activeSavedImageProgressPopup?.remove();
+        if (activeSavedImageProgressButton?.isConnected) {
+            activeSavedImageProgressButton.setAttribute('aria-expanded', 'false');
+            activeSavedImageProgressButton.removeAttribute('aria-controls');
+        }
+        activeSavedImageProgressPopup = null;
+        activeSavedImageProgressButton = null;
+    }
+    function toggleSavedImageStudyProgress(panelId, grid) {
+        const button = Array.from(grid?.querySelectorAll('[data-study-progress]') || [])
+            .find(el => el.dataset.studyProgress === panelId);
+        const source = Array.from(grid?.querySelectorAll('[data-study-progress-panel]') || [])
+            .find(el => el.dataset.studyProgressPanel === panelId);
+        if (!button || !source) return;
+        const wasOpen = button === activeSavedImageProgressButton;
+        closeSavedImageStudyProgressPopup();
+        if (wasOpen) return;
+        const popup = document.createElement('div');
+        popup.className = 'studio-spaced-review-popover';
+        popup.id = 'studio-saved-image-progress-popup';
+        popup.setAttribute('role', 'dialog');
+        popup.setAttribute('aria-label', 'Study progress');
+        // Refresh the snapshot at click time so a long-open Saved Images page
+        // never shows an old 6-hour eligibility message.
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
+        const freshMarkup = entry ? renderSavedImageStudyProgress(entry) : '';
+        if (freshMarkup) {
+            const template = document.createElement('template');
+            template.innerHTML = freshMarkup;
+            popup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || source.innerHTML;
+        } else {
+            popup.innerHTML = source.innerHTML;
+        }
+        document.body.appendChild(popup);
+        const rect = button.getBoundingClientRect();
+        const width = Math.min(320, Math.max(220, window.innerWidth - 24));
+        popup.style.width = `${width}px`;
+        const height = popup.getBoundingClientRect().height;
+        const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+        const placeAbove = window.innerHeight - rect.bottom < height + 6 && rect.top >= height + 6;
+        const desiredTop = placeAbove ? rect.top - height - 4 : rect.bottom + 4;
+        const top = Math.max(12, Math.min(desiredTop, window.innerHeight - height - 12));
+        popup.style.left = `${left}px`;
+        popup.style.top = `${top}px`;
+        activeSavedImageProgressPopup = popup;
+        activeSavedImageProgressButton = button;
+        button.setAttribute('aria-expanded', 'true');
+        button.setAttribute('aria-controls', popup.id);
+        scheduleSavedImageProgressPopupRefresh(panelId);
+    }
+    // Keep an already-open popup fresh at local midnight or the six-hour
+    // eligibility threshold, without re-rendering the Saved Images grid.
+    function scheduleSavedImageProgressPopupRefresh(panelId) {
+        clearTimeout(savedImageProgressRefreshTimer);
+        if (!activeSavedImageProgressPopup) return;
+        const now = new Date();
+        const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
+        const nextAt = entry ? getSavedImageSpacedReviewStatus(entry, now).nextAt : null;
+        let refreshAt = midnight.getTime();
+        if (nextAt && nextAt.getTime() > now.getTime()) refreshAt = Math.min(refreshAt, nextAt.getTime());
+        savedImageProgressRefreshTimer = setTimeout(() => {
+            if (!activeSavedImageProgressPopup || !activeSavedImageProgressButton?.isConnected) {
+                closeSavedImageStudyProgressPopup();
+                return;
+            }
+            const freshEntry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
+            if (!freshEntry) { closeSavedImageStudyProgressPopup(); return; }
+            const template = document.createElement('template');
+            template.innerHTML = renderSavedImageStudyProgress(freshEntry);
+            activeSavedImageProgressPopup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || '';
+            const rect = activeSavedImageProgressButton.getBoundingClientRect();
+            const popup = activeSavedImageProgressPopup;
+            const height = popup.getBoundingClientRect().height;
+            const placeAbove = window.innerHeight - rect.bottom < height + 6 && rect.top >= height + 6;
+            popup.style.top = `${Math.max(12, Math.min(placeAbove ? rect.top - height - 4 : rect.bottom + 4, window.innerHeight - height - 12))}px`;
+            scheduleSavedImageProgressPopupRefresh(panelId);
+        }, Math.max(100, refreshAt - now.getTime() + 120));
+    }
+    // Clicking a Progress button is the only way to open the popup. Pointer exit
+    // (mouse/trackpad/hover-capable stylus) or clicking away closes it. Touch
+    // scrolling must never make a newly tapped popup disappear by accident.
+    document.addEventListener('pointermove', event => {
+        if (!activeSavedImageProgressPopup || event.pointerType === 'touch') return;
+        if (!activeSavedImageProgressButton?.isConnected) { closeSavedImageStudyProgressPopup(); return; }
+        const inRect = (rect, padding = 9) => event.clientX >= rect.left - padding &&
+            event.clientX <= rect.right + padding && event.clientY >= rect.top - padding &&
+            event.clientY <= rect.bottom + padding;
+        if (inRect(activeSavedImageProgressButton.getBoundingClientRect()) ||
+            inRect(activeSavedImageProgressPopup.getBoundingClientRect())) {
+            clearTimeout(savedImageProgressExitTimer);
+            savedImageProgressExitTimer = null;
+        } else if (!savedImageProgressExitTimer) {
+            // Short grace avoids losing the popup while crossing the 4px gap
+            // between the button and a popup flipped above it.
+            savedImageProgressExitTimer = setTimeout(closeSavedImageStudyProgressPopup, 110);
+        }
+    });
+    document.addEventListener('click', event => {
+        if (!activeSavedImageProgressPopup) return;
+        if (event.target.closest?.('[data-study-progress]')) return;
+        if (activeSavedImageProgressPopup.contains(event.target)) return;
+        closeSavedImageStudyProgressPopup();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeSavedImageStudyProgressPopup();
+    });
+    window.addEventListener('resize', closeSavedImageStudyProgressPopup);
+    window.addEventListener('scroll', closeSavedImageStudyProgressPopup, true);
+    function recordSavedImageSpacedReviewPass(entry, correctKeys, now = new Date()) {
+        const required = getSavedImageUniqueLabelKeys(entry);
+        if (!required.size || !correctKeys.size) return entry.spacedReview;
+        const status = getSavedImageSpacedReviewStatus(entry, now);
+        let data = { ...status.data, stages: { ...status.data.stages } };
+        const today = status.today;
+        if (!data.startedOn || status.initialMiss) {
+            const reminderEnabled = data.reminderEnabled;
+            data = { ...normalizeSavedImageSpacedReview(), reminderEnabled, startedOn: today,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+                signature: getSavedImageUniqueMasterySignature(entry) };
+        }
+        const active = getSavedImageSpacedReviewStatus({ ...entry, spacedReview: data }, now);
+        const cycle = new Set(data.cycleDay === today ? data.cycleKeys : []);
+        correctKeys.forEach(key => { if (required.has(key)) cycle.add(key); });
+        data.cycleDay = today;
+        data.cycleKeys = [...cycle];
+        if (![...required].every(key => cycle.has(key))) return data;
+        // A complete full-image pass has been recorded. The next full pass
+        // must re-answer all the required regular labels, not just one angle.
+        data.cycleKeys = [];
+        const stage = active.current;
+        if (!stage || !active.inWindow) return data;
+        const stamp = now.toISOString();
+        if (!data.firstAt || getSpacedReviewLocalDay(data.firstAt) !== today) {
+            data.firstAt = stamp;
+        } else if (now.getTime() - Date.parse(data.firstAt) >= 6 * 3600000) {
+            data.stages[stage.id] = { firstAt: data.firstAt, secondAt: stamp };
+            data.firstAt = '';
+            if (stage.id === 'd4') data.everMastered = true;
+        }
+        return data;
+    }
+    function recordSavedImageSpacedReviewMiss(entry) {
+        // Revocation of an ordinary correct label automatically hides either
+        // ribbon through existing .60 mastery checks. Do not erase the schedule;
+        // Progress Mode Try Again can restore correct coverage in the same run.
+        return entry;
+    }
+
+    function getSavedImagePinnedCount(entry) {
+        const pins = normalizeSavedImagePinnedLabels(entry?.pinnedLabelsByAngle || {});
+        return getStudioSavedImageAngles(entry).reduce((total, angle) => {
+            const labels = normalizeDiagramLabels(angle.labels || []);
+            const records = pins[normalizeSheetText(angle.id)] || [];
+            return total + records.filter(record => labels[record.index] &&
+                normalizeSheetText(labels[record.index].label).replace(/\s+/g, ' ').trim().toLocaleLowerCase() === record.key).length;
+        }, 0);
+    }
+
+    function resetSavedImagePinsById(entryId) {
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === normalizeSheetText(entryId));
+        if (!entry || !getSavedImagePinnedCount(entry)) return false;
+        if (!window.confirm('Reset ALL pinned labels for this saved image across every angle? This will not affect Mini Quiz mastery.')) return false;
+        const saved = replaceStudioSavedImageLibraryEntry(entry, { ...entry, pinnedLabelsByAngle: {} });
+        if (!saved) return false;
+        const review = getReviewModeState();
+        if (review.activeEntryId === saved.id) {
+            invalidateReviewModeMiniQuizEntrySnapshot();
+            cacheReviewModePinsForEntry(saved);
+            syncReviewModePinButton();
+        }
+        renderReviewModeLibrary();
+        renderDiagramCreatorSavedImages();
+        if (state.auth.studioSavedImagePicker?.view === 'saved') renderStudioSavedImagePicker();
+        return true;
+    }
+
+    function getSavedImageMasteryAuthoredSignature(entry) {
+        // Deliberately exclude pin state, image metadata, zoom, review settings, and
+        // label-size preferences; include every authored label/connector/info field.
+        return JSON.stringify(getStudioSavedImageAngles(entry).map(angle => [
+            normalizeSheetText(angle.id), normalizeDiagramLabels(angle.labels || [])
+        ]));
+    }
+
+    function getSavedImageMasteryForReplacement(original, updated) {
+        return original && getSavedImageMasteryAuthoredSignature(original) === getSavedImageMasteryAuthoredSignature(updated)
+            ? normalizeSavedImageMasteredAngles(updated.masteredAnglesById ?? original.masteredAnglesById ?? {})
+            : {};
+    }
+
+    function getSavedImageUniqueMasteryForReplacement(original, updated) {
+        return original && getSavedImageMasteryAuthoredSignature(original) === getSavedImageMasteryAuthoredSignature(updated)
+            ? normalizeSavedImageMasteredUniqueLabels(updated.masteredUniqueLabels ?? original.masteredUniqueLabels ?? {})
+            : { signature: '', keys: [] };
+    }
+
     function normalizeStudioSavedImageEntry(entry = {}) {
         const rawAngles = Array.isArray(entry?.angles) ? entry.angles : [];
         const firstRawAngle = rawAngles[0] && typeof rawAngles[0] === 'object' ? rawAngles[0] : {};
@@ -5718,7 +7299,7 @@ MODIFICATION RULES FOR THIS APP
         const imageOnlyMediaValue = normalizeSheetText(entry.imageOnlyMediaValue || entry.sourceMediaValue || firstRawAngle.sourceMediaValue || firstRawAngle.imageOnlyMediaValue || (isSupabaseMediaReference(imageOnlyValue) ? imageOnlyValue : mediaValue));
         const thumbnailValue = normalizeSheetText(entry.thumbnailValue || entry.thumbnailMediaValue || firstRawAngle.thumbnailValue || firstRawAngle.thumbnailMediaValue || '');
         const thumbnailMediaValue = normalizeSheetText(entry.thumbnailMediaValue || firstRawAngle.thumbnailMediaValue || (isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : ''));
-        const fallback = { imageValue, imageOnlyValue, mediaValue, imageOnlyMediaValue, fileName };
+        const fallback = { imageValue, imageOnlyValue, mediaValue, imageOnlyMediaValue, fileName, labelSize: entry.labelSize };
         const normalizedAngles = rawAngles.map((angle, index) => normalizeStudioSavedImageAngle(angle, index, fallback)).filter(Boolean);
         const firstAngle = normalizedAngles[0] || normalizeStudioSavedImageAngle({
             id: 'angle_1',
@@ -5735,6 +7316,7 @@ MODIFICATION RULES FOR THIS APP
             thumbnailBytes: entry.thumbnailBytes || 0,
             thumbnailVersion: entry.thumbnailVersion || 0,
             labels: entry.labels || [],
+            labelSize: entry.labelSize,
             visualAids: entry.visualAids || entry.visual_aids || [],
             drawStrokes: entry.drawStrokes || entry.strokes || []
         }, 0, fallback);
@@ -5755,9 +7337,16 @@ MODIFICATION RULES FOR THIS APP
             imageLabel: normalizeSheetText(entry.imageLabel || entry.label || `Saved: ${fileName}`) || `Saved: ${fileName}`,
             imageOnlyLabel: normalizeSheetText(entry.imageOnlyLabel || entry.sourceLabel || `Selected: ${fileName}`) || `Selected: ${fileName}`,
             labels: normalizeDiagramLabels(firstAngle?.labels || entry.labels || []),
+            labelSize: normalizeDiagramLabelSize(firstAngle?.labelSize ?? entry.labelSize),
+            pinnedLabelsByAngle: normalizeSavedImagePinnedLabels(entry.pinnedLabelsByAngle || {}),
+            masteredAnglesById: normalizeSavedImageMasteredAngles(entry.masteredAnglesById || {}),
+            masteredUniqueLabels: normalizeSavedImageMasteredUniqueLabels(entry.masteredUniqueLabels || {}),
+            spacedReview: normalizeSavedImageSpacedReview(entry.spacedReview || {}),
             visualAids: normalizeDiagramVisualAids(firstAngle?.visualAids || entry.visualAids || entry.visual_aids || []),
             drawStrokes: cloneImageEditorDrawStrokes(firstAngle?.drawStrokes || entry.drawStrokes || entry.strokes || []),
             metadata: normalizeDiagramMetadata(entry.metadata || entry.diagramMetadata || {}),
+            classId: normalizeSheetText(entry.classId || entry.class_id || entry.organization?.classId || ''),
+            folderId: normalizeSheetText(entry.folderId || entry.folder_id || entry.organization?.folderId || ''),
             createdAt: normalizeSheetText(entry.createdAt) || new Date().toISOString(),
             updatedAt: normalizeSheetText(entry.updatedAt) || new Date().toISOString(),
             lastOpenedAt: normalizeSheetText(entry.lastOpenedAt || entry.last_opened_at || '')
@@ -5769,6 +7358,65 @@ MODIFICATION RULES FOR THIS APP
             result.angles = (normalizedAngles.length ? normalizedAngles : [firstAngle]).filter(Boolean);
         }
         return result;
+    }
+
+
+    function getStudioSavedImageOrganization(entry = {}) {
+        const normalized = normalizeStudioSavedImageEntry(entry);
+        if (!normalized) return { classId: '', folderId: '', className: '', folderName: '' };
+        const folderId = normalizeSheetText(normalized.folderId || '');
+        const folderRow = folderId ? getFolderById(folderId) : null;
+        const classId = normalizeSheetText(normalized.classId || folderRow?.classId || '');
+        return {
+            classId,
+            folderId,
+            className: classId ? normalizeSheetText(getSupabaseClassById(classId)?.name || '') : '',
+            folderName: folderId ? normalizeSheetText(folderRow?.name || '') : ''
+        };
+    }
+
+    function getSavedImageOrganizationClassOptions(selectedValue = '', { includeAll = true } = {}) {
+        const selected = normalizeSheetText(selectedValue);
+        const rows = [];
+        if (includeAll) rows.push(`<option value="" ${!selected ? 'selected' : ''}>All classes</option>`);
+        rows.push(`<option value="__none__" ${selected === '__none__' ? 'selected' : ''}>No class / General</option>`);
+        [...(state.auth.supabaseClasses || [])]
+            .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+            .forEach(item => rows.push(`<option value="${escapeHtml(item.id)}" ${selected === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`));
+        return rows.join('');
+    }
+
+    function getSavedImageOrganizationFolderOptions(selectedClassId = '', selectedFolderId = '', { includeAll = true } = {}) {
+        const classId = normalizeSheetText(selectedClassId);
+        const selected = normalizeSheetText(selectedFolderId);
+        let folders = [...(state.auth.supabaseFolders || [])];
+        if (classId === '__none__') folders = folders.filter(folder => !normalizeSheetText(folder.classId));
+        else if (classId) folders = folders.filter(folder => normalizeSheetText(folder.classId) === classId);
+        folders.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        const rows = [];
+        if (includeAll) rows.push(`<option value="" ${!selected ? 'selected' : ''}>All folders</option>`);
+        else rows.push(`<option value="" ${!selected ? 'selected' : ''}>No folder</option>`);
+        folders.forEach(folder => {
+            const className = normalizeSheetText(getFolderClassName(folder.id));
+            const display = !classId && className ? `${className} / ${folder.name}` : folder.name;
+            rows.push(`<option value="${escapeHtml(folder.id)}" ${selected === folder.id ? 'selected' : ''}>${escapeHtml(display)}</option>`);
+        });
+        return rows.join('');
+    }
+
+    function refreshSavedImageOrganizationFilterSelects() {
+        const pairs = [
+            [elements.diagramCreatorClassFilter, elements.diagramCreatorFolderFilter],
+            [elements.reviewModeClassFilter, elements.reviewModeFolderFilter]
+        ];
+        pairs.forEach(([classSelect, folderSelect]) => {
+            if (!classSelect || !folderSelect) return;
+            const classValue = normalizeSheetText(classSelect.value);
+            const folderValue = normalizeSheetText(folderSelect.value);
+            classSelect.innerHTML = getSavedImageOrganizationClassOptions(classValue, { includeAll: true });
+            folderSelect.innerHTML = getSavedImageOrganizationFolderOptions(classValue, folderValue, { includeAll: true });
+            if (folderValue && Array.from(folderSelect.options).some(option => option.value === folderValue)) folderSelect.value = folderValue;
+        });
     }
 
     function getStudioSavedImageThumbnailValue(entry = {}) {
@@ -5791,6 +7439,25 @@ MODIFICATION RULES FOR THIS APP
             bytes: Math.max(0, Math.round(Number(source?.thumbnailBytes) || 0)),
             version: Math.max(0, Math.round(Number(source?.thumbnailVersion) || 0))
         };
+    }
+
+    function getStudioSavedImageThumbnailRepairReason(entry = {}) {
+        const entryId = normalizeSheetText(entry?.id || '');
+        const thumbnailValue = getStudioSavedImageThumbnailValue(entry);
+        if (!thumbnailValue) return 'missing';
+        const failed = studioSavedImageThumbnailRepairNeeded.get(entryId);
+        return failed?.thumbnailValue === thumbnailValue ? failed.reason : '';
+    }
+
+    function markStudioSavedImageThumbnailLoadFailure(entry = {}) {
+        const entryId = normalizeSheetText(entry?.id || '');
+        const thumbnailValue = getStudioSavedImageThumbnailValue(entry);
+        if (!entryId || !thumbnailValue) return;
+        const previous = studioSavedImageThumbnailRepairNeeded.get(entryId);
+        if (previous?.thumbnailValue === thumbnailValue) return;
+        studioSavedImageThumbnailRepairNeeded.set(entryId, { thumbnailValue, reason: 'load-error' });
+        // Log the category only; never log private media URLs or signed tokens.
+        console.warn('Saved Image thumbnail failed to load. Opening that diagram will retry its preview.', { entryId });
     }
 
     function studioSavedImageCanvasToBlob(canvas, type = 'image/webp', quality = 0.82) {
@@ -5819,12 +7486,115 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    function getCanonicalImagePreferredMime(sourceValue = '', fileName = '') {
+        const dataMatch = normalizeSheetText(sourceValue).match(/^data:([^;,]+)/i);
+        const dataMime = normalizeSheetText(dataMatch?.[1] || '').toLowerCase();
+        if (['image/jpeg', 'image/webp', 'image/png'].includes(dataMime)) return dataMime;
+        const lowerName = normalizeSheetText(fileName).toLowerCase();
+        if (/\.(jpe?g)$/.test(lowerName)) return 'image/jpeg';
+        if (/\.webp$/.test(lowerName)) return 'image/webp';
+        if (/\.png$/.test(lowerName)) return 'image/png';
+        return 'image/webp';
+    }
+
+    // Prefer the real opened image MIME over its display filename. Canvas Setup
+    // can convert a *.png import to WebP, while old metadata may keep the name.
+    // Local blob: URLs are already fetched; examining them adds no cloud egress.
+    async function getOpenedCanonicalImageMime(sourceValue = '', objectUrl = '') {
+        const value = normalizeSheetText(sourceValue);
+        const dataMime = normalizeSheetText(value.match(/^data:([^;,]+)/i)?.[1] || '').toLowerCase();
+        if (['image/webp', 'image/png', 'image/jpeg'].includes(dataMime)) return dataMime;
+        if (/^blob:/i.test(objectUrl)) {
+            try {
+                const response = await fetch(objectUrl);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const blobMime = normalizeSheetText(blob.type).toLowerCase();
+                    if (['image/webp', 'image/png', 'image/jpeg'].includes(blobMime)) return blobMime;
+                    // Some older media records have generic octet-stream MIME;
+                    // recognize the actual file header instead of trusting a stale name.
+                    const header = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+                    if (header.length >= 12 && String.fromCharCode(...header.slice(0, 4)) === 'RIFF'
+                        && String.fromCharCode(...header.slice(8, 12)) === 'WEBP') return 'image/webp';
+                    if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return 'image/jpeg';
+                    if (header.length >= 8 && header.slice(0, 8).every((v, i) => v === [137, 80, 78, 71, 13, 10, 26, 10][i])) return 'image/png';
+                }
+            } catch (_) { /* Preserve the existing filename-based fallback. */ }
+        }
+        return '';
+    }
+
+    async function encodeCanvasAsCanonicalImage(canvas, preferredMime = 'image/webp', maxBytes = STUDY_BUNNY_IMAGE_MAX_BYTES) {
+        if (!canvas?.width || !canvas?.height) throw new Error('Could not prepare that image.');
+        const safePreferred = ['image/jpeg', 'image/webp', 'image/png'].includes(preferredMime) ? preferredMime : 'image/webp';
+        let bestBlob = null;
+        const remember = blob => {
+            if (blob && (!bestBlob || blob.size < bestBlob.size)) bestBlob = blob;
+            return blob;
+        };
+        if (safePreferred === 'image/png') {
+            const pngBlob = remember(await studioSavedImageCanvasToBlob(canvas, 'image/png'));
+            if (pngBlob.size <= maxBytes) return studioSavedImageBlobToDataUrl(pngBlob);
+        }
+        const formats = safePreferred === 'image/webp'
+            ? ['image/webp'] // Never silently turn an edited WebP into JPEG.
+            : safePreferred === 'image/jpeg'
+                ? ['image/jpeg', 'image/webp']
+                : ['image/webp', 'image/jpeg'];
+        const qualities = [0.94, 0.9, 0.86, 0.82, 0.78, 0.72, 0.66, 0.6];
+        let webpSupported = false;
+        for (const mime of formats) {
+            for (const quality of qualities) {
+                try {
+                    const blob = await studioSavedImageCanvasToBlob(canvas, mime, quality);
+                    // Browsers can return PNG when an encoder does not support WebP.
+                    // A requested WebP must really be WebP before we can save it.
+                    if (mime === 'image/webp' && normalizeSheetText(blob?.type).toLowerCase() !== 'image/webp') continue;
+                    if (mime === 'image/webp') webpSupported = true;
+                    remember(blob);
+                    if (blob.size <= maxBytes) return studioSavedImageBlobToDataUrl(blob);
+                } catch (_) {}
+            }
+        }
+        if (safePreferred === 'image/webp') {
+            if (!webpSupported) throw new Error('This browser could not encode WebP. The edited image was not saved; its format was not changed.');
+            throw new Error('Edited WebP is larger than 3 MB even at reduced quality. Crop or reduce the image dimensions before saving; it will not be converted to JPEG.');
+        }
+        if (bestBlob?.size <= maxBytes) return studioSavedImageBlobToDataUrl(bestBlob);
+        throw new Error('The flattened image is larger than 3 MB. Crop it or use a smaller source image before saving.');
+    }
+
+    function isMultiAngleFramingNeutral(angle = {}) {
+        const framing = normalizeMultiAngleFraming(angle.framing || {});
+        return Math.abs(framing.scale - 1) < 0.0001
+            && Math.abs(framing.offsetX) < 0.0001
+            && Math.abs(framing.offsetY) < 0.0001
+            && framing.useAnchor !== true;
+    }
+
+    async function createCanonicalMultiAngleImageValue(angle) {
+        if (!angle) return '';
+        const sourceValue = normalizeSheetText(angle.sourceValue || '');
+        const editedValue = normalizeSheetText(angle.editedValue || '');
+        // If framing is neutral, preserve the exact current canonical bytes. This
+        // avoids a second encode after a destructive editor save and preserves an
+        // untouched upload byte-for-byte.
+        if (angle.setupLocked === true || (isMultiAngleFramingNeutral(angle) && !getMultiAngleCreatorState().backgroundDirty && !angle.canvasDirty)) return editedValue || sourceValue;
+        const canvas = document.createElement('canvas');
+        paintMultiAngleAngleToCanvas(angle, canvas, { guides: false });
+        return encodeCanvasAsCanonicalImage(
+            canvas,
+            angle.runtimeMime || getCanonicalImagePreferredMime(sourceValue, angle.fileName),
+            STUDY_BUNNY_IMAGE_MAX_BYTES
+        );
+    }
+
     async function createStudioSavedImageThumbnailFromDrawable(drawable, naturalWidth = 0, naturalHeight = 0) {
         const sourceWidth = Math.max(1, Math.round(Number(naturalWidth) || drawable?.naturalWidth || drawable?.videoWidth || drawable?.width || 1));
         const sourceHeight = Math.max(1, Math.round(Number(naturalHeight) || drawable?.naturalHeight || drawable?.videoHeight || drawable?.height || 1));
         const initialScale = Math.min(1, STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_SIDE / Math.max(sourceWidth, sourceHeight));
-        const scaleSteps = [1, 0.86, 0.72, 0.6, 0.5];
-        const qualities = [0.92, 0.86, 0.8, 0.72, 0.64, 0.56, 0.48];
+        const scaleSteps = [1, 0.86, 0.72, 0.6, 0.5, 0.4, 0.3, 0.24];
+        const qualities = [0.92, 0.86, 0.8, 0.72, 0.64, 0.56, 0.48, 0.4, 0.32];
         let best = null;
 
         for (const scaleStep of scaleSteps) {
@@ -5853,14 +7623,17 @@ MODIFICATION RULES FOR THIS APP
                 const candidate = { blob, width, height, quality };
                 if (!best || blob.size < best.blob.size) best = candidate;
                 if (blob.size <= STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_BYTES) {
-                    // Prefer the highest-quality candidate that satisfies the 250 KB ceiling.
+                    // Prefer the highest-quality candidate that satisfies the 100 KB ceiling.
                     const dataUrl = await studioSavedImageBlobToDataUrl(blob);
                     return { dataUrl, width, height, bytes: blob.size, quality };
                 }
             }
         }
 
-        if (!best?.blob) return null;
+        // F31 browsing thumbnails are a strict <=100 KB transport optimization.
+        // If an encoder cannot satisfy the ceiling, do not upload an oversized
+        // preview; the UI can fall back to the canonical image until retry.
+        if (!best?.blob || best.blob.size > STUDIO_SAVED_IMAGE_THUMBNAIL_MAX_BYTES) return null;
         const dataUrl = await studioSavedImageBlobToDataUrl(best.blob);
         return { dataUrl, width: best.width, height: best.height, bytes: best.blob.size, quality: best.quality };
     }
@@ -5880,7 +7653,7 @@ MODIFICATION RULES FOR THIS APP
         }
     }
 
-    async function uploadStudioSavedImageThumbnail(thumbnail = null, entry = {}, suffix = 'primary') {
+    async function uploadStudioSavedImageThumbnail(thumbnail = null, entry = {}, suffix = 'primary', options = {}) {
         if (!thumbnail?.dataUrl || !state.auth.client || !state.auth.user?.id) return '';
         try {
             return normalizeSheetText(await savePrivateMediaValueWithDedupCache(thumbnail.dataUrl, {
@@ -5888,9 +7661,11 @@ MODIFICATION RULES FOR THIS APP
                 questionId: null,
                 usageContext: `saved_image_thumbnail_v${STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION}_${suffix}`,
                 label: `Thumbnail ${normalizeSheetText(entry?.fileName || 'saved-image')}`,
-                mediaSaveCache: state.auth.studioSavedImageMediaSaveCache instanceof Map
+                // A prior upload cache may point at the exact broken asset.
+                // Bypass it ONLY for a confirmed failed-preview repair.
+                mediaSaveCache: options.force === true ? null : (state.auth.studioSavedImageMediaSaveCache instanceof Map
                     ? state.auth.studioSavedImageMediaSaveCache
-                    : (state.auth.studioSavedImageMediaSaveCache = new Map())
+                    : (state.auth.studioSavedImageMediaSaveCache = new Map()))
             }) || '');
         } catch (error) {
             console.warn('Could not upload Saved Image thumbnail; it will retry after a later full-image load.', error);
@@ -5914,11 +7689,18 @@ MODIFICATION RULES FOR THIS APP
             const existingThumbnail = angleId
                 ? normalizeSheetText(targetAngle?.thumbnailValue || targetAngle?.thumbnailMediaValue || '')
                 : getStudioSavedImageThumbnailValue(currentEntry);
-            if (existingThumbnail) return existingThumbnail;
+            const existingThumbnailVersion = Math.max(0, Math.round(Number(angleId ? targetAngle?.thumbnailVersion : currentEntry.thumbnailVersion) || 0));
+            if (existingThumbnail && existingThumbnailVersion >= STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION && options.force !== true) return existingThumbnail;
 
             let thumbnail = options.thumbnail || null;
             if (!thumbnail && options.canvas) {
-                thumbnail = await createStudioSavedImageThumbnailFromDrawable(options.canvas, options.canvas.width, options.canvas.height);
+                try {
+                    thumbnail = await createStudioSavedImageThumbnailFromDrawable(options.canvas, options.canvas.width, options.canvas.height);
+                } catch (error) {
+                    // If a canvas is temporarily unreadable, the canonical image
+                    // may still be loadable. Never modify the original raster.
+                    console.warn('Saved Image preview canvas failed; trying the original image.', error);
+                }
             }
             if (!thumbnail && options.image) {
                 try {
@@ -5934,7 +7716,7 @@ MODIFICATION RULES FOR THIS APP
             }
             if (!thumbnail?.dataUrl) return null;
 
-            const thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, currentEntry, angleId || 'primary');
+            const thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, currentEntry, angleId || 'primary', { force: options.force === true });
             if (!thumbnailValue) return null;
 
             const latestEntry = getStudioSavedImageLibraryForPicker().find(item => normalizeSheetText(item.id) === safeEntryId) || currentEntry;
@@ -5969,11 +7751,12 @@ MODIFICATION RULES FOR THIS APP
             };
             const saved = replaceStudioSavedImageLibraryEntry(latestEntry, replacement);
             if (saved) {
+                studioSavedImageThumbnailRepairNeeded.delete(safeEntryId);
                 if (state.auth.studioSavedImagePicker?.open) renderStudioSavedImagePicker();
                 if (state.auth.currentStudioSection === 'review-mode' && !getReviewModeState()?.overlayOpen) renderReviewModeLibrary();
                 if (state.auth.currentStudioSection === 'diagram-creator' && getDiagramCreatorLibraryState()?.view === 'saved') renderDiagramCreatorSavedImages();
             }
-            return thumbnailValue;
+            return saved ? thumbnailValue : null;
         })().catch(error => {
             console.warn('Could not create Saved Image thumbnail; the original image remains unchanged.', error);
             return null;
@@ -5989,11 +7772,35 @@ MODIFICATION RULES FOR THIS APP
         if (!imageEl) return;
         const thumbnailValue = getStudioSavedImageThumbnailValue(entry);
         if (thumbnailValue) {
+            const setPlaceholderAfterFailure = () => {
+                if (imageEl.dataset.mediaPreviewSource !== thumbnailValue) return;
+                markStudioSavedImageThumbnailLoadFailure(entry);
+                imageEl.dataset.mediaPreviewSource = '';
+                imageEl.dataset.resolvedMediaUrl = '';
+                imageEl.onload = null;
+                imageEl.onerror = null;
+                imageEl.src = STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER;
+            };
+            const clearFailedMarker = () => {
+                const previous = studioSavedImageThumbnailRepairNeeded.get(normalizeSheetText(entry.id || ''));
+                if (previous?.thumbnailValue === thumbnailValue) studioSavedImageThumbnailRepairNeeded.delete(normalizeSheetText(entry.id || ''));
+            };
             setImageElementSourceWithMediaResolution(imageEl, thumbnailValue, {
+                onLoad: clearFailedMarker,
                 onError: () => {
-                    imageEl.dataset.mediaPreviewSource = '';
-                    imageEl.dataset.resolvedMediaUrl = '';
-                    imageEl.src = STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER;
+                    // A stored signed URL can be stale even if its nominal expiry
+                    // has not passed. Retry its signing ONCE for this thumbnail
+                    // before assuming the image file itself is missing.
+                    if (!isSupabaseMediaReference(thumbnailValue)) {
+                        setPlaceholderAfterFailure();
+                        return;
+                    }
+                    state.auth.mediaDisplaySourceCache?.delete?.(thumbnailValue);
+                    deleteCachedMediaSignedUrl(getSupabaseMediaAssetId(thumbnailValue));
+                    setImageElementSourceWithMediaResolution(imageEl, thumbnailValue, {
+                        onLoad: clearFailedMarker,
+                        onError: setPlaceholderAfterFailure
+                    });
                 }
             });
             return;
@@ -6003,6 +7810,17 @@ MODIFICATION RULES FOR THIS APP
         imageEl.onload = null;
         imageEl.onerror = null;
         imageEl.src = STUDIO_SAVED_IMAGE_THUMBNAIL_PLACEHOLDER;
+    }
+
+    function repairStudioSavedImageThumbnailAfterOpen(entry = {}, options = {}) {
+        const reason = getStudioSavedImageThumbnailRepairReason(entry);
+        if (!reason || !entry?.id) return null;
+        // Only an already-opened full image can trigger this repair. No eager
+        // library-wide image reads, thumbnail uploads or cloud scans.
+        return ensureStudioSavedImageThumbnail(entry.id, {
+            ...options,
+            force: reason === 'load-error'
+        });
     }
 
     function getStudioSavedImageSyncUserId() {
@@ -6118,6 +7936,9 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function saveStudioSavedImageLibrary(entries = []) {
+        invalidateReviewModeNormalRevealSnapshot();
+        invalidateReviewModeNormalDataCaches();
+        invalidateReviewModeMiniQuizEntrySnapshot();
         const normalized = (Array.isArray(entries) ? entries : [])
             .map(normalizeStudioSavedImageEntry)
             .filter(Boolean)
@@ -6192,6 +8013,12 @@ MODIFICATION RULES FOR THIS APP
         const stableId = getStudioSavedImageSyncKey(original) || normalizeSheetText(original.id) || createSavedImageId();
         const replacement = normalizeStudioSavedImageEntry({
             ...replacementEntry,
+            pinnedLabelsByAngle: replacementEntry.pinnedLabelsByAngle ?? original.pinnedLabelsByAngle,
+            masteredAnglesById: getSavedImageMasteryForReplacement(original, replacementEntry),
+            masteredUniqueLabels: getSavedImageUniqueMasteryForReplacement(original, replacementEntry),
+            spacedReview: getSavedImageMasteryAuthoredSignature(original) === getSavedImageMasteryAuthoredSignature(replacementEntry)
+                ? (replacementEntry.spacedReview ?? original.spacedReview)
+                : { reminderEnabled: normalizeSavedImageSpacedReview(original.spacedReview).reminderEnabled },
             id: stableId,
             createdAt: original.createdAt,
             updatedAt: new Date().toISOString()
@@ -6228,6 +8055,7 @@ MODIFICATION RULES FOR THIS APP
                 media: normalizeSheetText(angle.mediaValue || angle.imageValue),
                 source: normalizeSheetText(angle.sourceMediaValue || angle.sourceValue),
                 labels: normalizeDiagramLabels(angle.labels || []),
+                labelSize: normalizeDiagramLabelSize(angle.labelSize),
                 visualAids: normalizeDiagramVisualAids(angle.visualAids || []),
                 drawStrokes: cloneImageEditorDrawStrokes(angle.drawStrokes || []),
                 framing: normalizeMultiAngleFraming(angle.framing || {})
@@ -6235,7 +8063,7 @@ MODIFICATION RULES FOR THIS APP
             return `multi-angle::${JSON.stringify(normalizeMultiAngleCanvasConfig(normalized.canvas || {}))}::${JSON.stringify(angleSignature)}::${JSON.stringify(normalizeDiagramMetadata(normalized.metadata || {}))}`;
         }
         const mediaKey = normalizeSheetText(normalized.mediaValue || normalized.imageValue);
-        return `${mediaKey}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}::${JSON.stringify(normalizeDiagramVisualAids(normalized.visualAids || []))}::${JSON.stringify(cloneImageEditorDrawStrokes(normalized.drawStrokes || []))}::${JSON.stringify(normalizeDiagramMetadata(normalized.metadata || {}))}`;
+        return `${mediaKey}::${normalizeDiagramLabelSize(normalized.labelSize)}::${JSON.stringify(normalizeDiagramLabels(normalized.labels || []))}::${JSON.stringify(normalizeDiagramVisualAids(normalized.visualAids || []))}::${JSON.stringify(cloneImageEditorDrawStrokes(normalized.drawStrokes || []))}::${JSON.stringify(normalizeDiagramMetadata(normalized.metadata || {}))}`;
     }
 
     function getStudioSavedImagePreMetadataSignature(entry = {}) {
@@ -6369,21 +8197,17 @@ MODIFICATION RULES FOR THIS APP
         if (isMultiAngleSavedImageEntry(normalized)) {
             const preparedAngles = [];
             for (const [index, angle] of getStudioSavedImageAngles(normalized).entries()) {
-                const imageValue = await saveValue(angle.imageValue || angle.mediaValue, `angle_${index + 1}_normalized`);
-                const sourceInput = normalizeSheetText(angle.sourceValue || angle.imageOnlyValue || angle.sourceMediaValue || angle.imageValue);
-                const sourceValue = sourceInput === normalizeSheetText(angle.imageValue)
-                    ? imageValue
-                    : await saveValue(sourceInput, `angle_${index + 1}_source`);
+                const imageValue = await saveValue(angle.imageValue || angle.mediaValue, `angle_${index + 1}_canonical`);
                 const thumbnailInput = normalizeSheetText(angle.thumbnailValue || angle.thumbnailMediaValue || '');
                 const thumbnailValue = thumbnailInput ? await saveValue(thumbnailInput, `angle_${index + 1}_thumbnail`) : '';
                 preparedAngles.push(normalizeStudioSavedImageAngle({
                     ...angle,
                     imageValue,
-                    imageOnlyValue: sourceValue || imageValue,
-                    sourceValue: sourceValue || imageValue,
+                    imageOnlyValue: imageValue,
+                    sourceValue: imageValue,
                     mediaValue: isSupabaseMediaReference(imageValue) ? imageValue : angle.mediaValue,
-                    imageOnlyMediaValue: isSupabaseMediaReference(sourceValue || imageValue) ? (sourceValue || imageValue) : angle.imageOnlyMediaValue,
-                    sourceMediaValue: isSupabaseMediaReference(sourceValue || imageValue) ? (sourceValue || imageValue) : angle.sourceMediaValue,
+                    imageOnlyMediaValue: isSupabaseMediaReference(imageValue) ? imageValue : angle.mediaValue,
+                    sourceMediaValue: isSupabaseMediaReference(imageValue) ? imageValue : angle.mediaValue,
                     thumbnailValue,
                     thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
                     thumbnailWidth: angle.thumbnailWidth || 0,
@@ -6397,9 +8221,9 @@ MODIFICATION RULES FOR THIS APP
                 ...normalized,
                 id: syncKey,
                 imageValue: first.imageValue,
-                imageOnlyValue: first.sourceValue,
+                imageOnlyValue: first.imageValue,
                 mediaValue: first.mediaValue,
-                imageOnlyMediaValue: first.sourceMediaValue,
+                imageOnlyMediaValue: first.mediaValue,
                 thumbnailValue: first.thumbnailValue || '',
                 thumbnailMediaValue: first.thumbnailMediaValue || '',
                 thumbnailWidth: first.thumbnailWidth || 0,
@@ -6407,6 +8231,11 @@ MODIFICATION RULES FOR THIS APP
                 thumbnailBytes: first.thumbnailBytes || 0,
                 thumbnailVersion: first.thumbnailVersion || 0,
                 labels: first.labels,
+                labelSize: normalizeDiagramLabelSize(first.labelSize),
+                pinnedLabelsByAngle: normalized.pinnedLabelsByAngle || {},
+                masteredAnglesById: normalized.masteredAnglesById || {},
+                masteredUniqueLabels: normalized.masteredUniqueLabels || {},
+                visualAids: normalizeDiagramVisualAids(first.visualAids || []),
                 drawStrokes: first.drawStrokes,
                 angles: preparedAngles,
                 isMultiAngle: true,
@@ -6414,11 +8243,8 @@ MODIFICATION RULES FOR THIS APP
                 updatedAt: new Date().toISOString()
             });
         }
-        const imageValue = await saveValue(normalized.imageValue || normalized.mediaValue, 'edited');
-        const originalSource = normalizeSheetText(normalized.imageOnlyValue || normalized.imageOnlyMediaValue || normalized.imageValue);
-        const imageOnlyValue = originalSource === normalizeSheetText(normalized.imageValue)
-            ? imageValue
-            : await saveValue(originalSource, 'original');
+        const imageValue = await saveValue(normalized.imageValue || normalized.mediaValue, 'canonical');
+        const imageOnlyValue = imageValue;
         const thumbnailInput = normalizeSheetText(normalized.thumbnailValue || normalized.thumbnailMediaValue || '');
         const thumbnailValue = thumbnailInput ? await saveValue(thumbnailInput, 'thumbnail') : '';
         return normalizeStudioSavedImageEntry({
@@ -6427,7 +8253,7 @@ MODIFICATION RULES FOR THIS APP
             imageValue,
             imageOnlyValue: imageOnlyValue || imageValue,
             mediaValue: isSupabaseMediaReference(imageValue) ? imageValue : normalized.mediaValue,
-            imageOnlyMediaValue: isSupabaseMediaReference(imageOnlyValue || imageValue) ? (imageOnlyValue || imageValue) : normalized.imageOnlyMediaValue,
+            imageOnlyMediaValue: isSupabaseMediaReference(imageValue) ? imageValue : normalized.mediaValue,
             thumbnailValue,
             thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
             thumbnailWidth: normalized.thumbnailWidth || 0,
@@ -6690,6 +8516,13 @@ MODIFICATION RULES FOR THIS APP
             }
             sync.loadedUserId = userId;
             sync.lastLoadedAt = Date.now();
+            if (remoteIndexRows.filter(row => !row?.deleted_at).length <= STUDIO_SAVED_IMAGE_LIBRARY_LIMIT
+                && !getStudioSavedImagePendingDeletes(userId).length && !getStudioSavedImagePendingUpsertKeys(userId).size) {
+                await loadStudioLabelLibraryForUser();
+                if (state.auth.labelLibrarySync.infoReconcile) await state.auth.labelLibrarySync.infoReconcile;
+                // Cleanup is metadata-only; a temporary network issue cannot roll back a saved diagram.
+                await pruneStudioOrphanedSharedLabelInformation(remoteIndexRows);
+            }
             if (state.auth.studioSavedImagePicker?.open) renderStudioSavedImagePicker();
             if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
             if (state.auth.currentStudioSection === 'diagram-creator' && getDiagramCreatorLibraryState().view === 'saved') renderDiagramCreatorSavedImages();
@@ -6711,16 +8544,12 @@ MODIFICATION RULES FOR THIS APP
         }, options.immediate ? 0 : 250);
     }
 
-    function getStudioSavedImageApplyValue(entry = {}, includeEdits = true) {
+    function getStudioSavedImageApplyValue(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
         if (!normalized) return '';
-        // The entry's primary imageValue is the safest source because it reflects the exact
-        // saved item the user selected. If it is already sb-media, the cards share one file;
-        // if it is still an unsaved data URL, save-time media dedupe uploads it once.
-        if (includeEdits) {
-            return normalizeSheetText(normalized.imageValue || normalized.mediaValue);
-        }
-        return normalizeSheetText(normalized.imageOnlyValue || normalized.imageOnlyMediaValue || normalized.imageValue || normalized.mediaValue);
+        // Phase 23F.31: Saved Images expose one canonical raster asset. Legacy
+        // imageOnly/source fields remain compatibility aliases to that same asset.
+        return normalizeSheetText(normalized.imageValue || normalized.mediaValue || normalized.imageOnlyValue || normalized.imageOnlyMediaValue);
     }
 
     async function buildStudioSharedSavedImageEntryFromFlashcardSlot(questionId = '', side = 'term') {
@@ -6925,6 +8754,7 @@ MODIFICATION RULES FOR THIS APP
         const entry = normalizeStudioSavedImageEntry(snapshot);
         const signature = getStudioSavedImageSignature(entry);
         if (!entry || !signature) return;
+        preserveStudioSavedImageGlobalLabelInformationBeforeDelete(entry);
         markStudioSavedImagePendingDelete(entry);
         const withoutSignature = list => (Array.isArray(list) ? list : [])
             .map(normalizeStudioSavedImageEntry)
@@ -6944,6 +8774,19 @@ MODIFICATION RULES FOR THIS APP
         const signature = getStudioSavedImageSignature(match);
         if (signature) clearStudioFlashcardReusableImageKeysForSignature(signature);
         return true;
+    }
+
+    // Phase 23F.41.38: all Saved Images delete entry points share the same
+    // explicit confirmation. Cancellation must not touch local/remote records.
+    function confirmAndRemoveStudioSavedImageEntryById(entryId = '') {
+        const safeId = normalizeSheetText(entryId);
+        const entry = safeId ? getStudioSavedImageLibraryForPicker().find(item => item.id === safeId) : null;
+        if (!entry) return 'missing';
+        const metadata = normalizeDiagramMetadata(entry.metadata || {});
+        const name = normalizeSheetText(metadata.diagramName || metadata.subjectName || entry.fileName) || 'this diagram';
+        const approved = window.confirm(`Delete saved image “${name}”?\n\nThis removes its saved angles, labels, and drawings from Saved Images. Existing flashcards will not be changed.\n\nThis cannot be undone.`);
+        if (!approved) return 'cancelled';
+        return removeStudioSavedImageEntryById(safeId) ? 'deleted' : 'missing';
     }
 
     function getStudioFlashcardReusableImageSet() {
@@ -7218,7 +9061,7 @@ MODIFICATION RULES FOR THIS APP
         const overlay = document.getElementById('studioSavedImagePickerOverlay');
         if (overlay && overlay.dataset.bound !== 'true') {
             overlay.dataset.bound = 'true';
-            overlay.addEventListener('click', event => {
+            overlay.addEventListener('click', async event => {
                 if (event.target === overlay || event.target.closest('#studioSavedImagePickerCloseBtn') || event.target.closest('[data-saved-image-picker-cancel]')) {
                     closeStudioSavedImagePicker();
                     return;
@@ -7228,13 +9071,17 @@ MODIFICATION RULES FOR THIS APP
                     closeStudioSavedImagePicker();
                     if (fileInput) {
                         fileInput.value = '';
+                        fileInput.dataset.savedImagePickerUploadBypass = 'true';
                         fileInput.click();
+                        window.setTimeout(() => { delete fileInput.dataset.savedImagePickerUploadBypass; }, 0);
                     }
                     return;
                 }
                 if (event.target.closest('[data-saved-image-picker-browse]')) {
                     state.auth.studioSavedImagePicker.view = 'saved';
                     state.auth.studioSavedImagePicker.searchQuery = '';
+                    state.auth.studioSavedImagePicker.page = 0;
+                    state.auth.studioSavedImagePicker.showAll = false;
                     renderStudioSavedImagePicker();
                     syncStudioSavedImagesFromSupabase({ force: true, reason: 'open-saved-image-picker' })
                         .then(renderStudioSavedImagePicker)
@@ -7244,6 +9091,8 @@ MODIFICATION RULES FOR THIS APP
                 if (event.target.closest('[data-saved-image-picker-back]')) {
                     state.auth.studioSavedImagePicker.view = 'choice';
                     state.auth.studioSavedImagePicker.searchQuery = '';
+                    state.auth.studioSavedImagePicker.page = 0;
+                    state.auth.studioSavedImagePicker.showAll = false;
                     renderStudioSavedImagePicker();
                     return;
                 }
@@ -7253,10 +9102,40 @@ MODIFICATION RULES FOR THIS APP
                     renderStudioSavedImagePicker();
                     return;
                 }
+                const prevButton = event.target.closest('[data-saved-image-picker-prev]');
+                if (prevButton) {
+                    state.auth.studioSavedImagePicker.showAll = false;
+                    state.auth.studioSavedImagePicker.page = Math.max(0, (state.auth.studioSavedImagePicker.page || 0) - 1);
+                    renderStudioSavedImagePicker();
+                    return;
+                }
+                const nextButton = event.target.closest('[data-saved-image-picker-next]');
+                if (nextButton) {
+                    state.auth.studioSavedImagePicker.showAll = false;
+                    state.auth.studioSavedImagePicker.page = Math.max(0, (state.auth.studioSavedImagePicker.page || 0) + 1);
+                    renderStudioSavedImagePicker();
+                    return;
+                }
+                const showAllButton = event.target.closest('[data-saved-image-picker-show-all]');
+                if (showAllButton) {
+                    state.auth.studioSavedImagePicker.showAll = !state.auth.studioSavedImagePicker.showAll;
+                    state.auth.studioSavedImagePicker.page = 0;
+                    renderStudioSavedImagePicker();
+                    return;
+                }
+                const resetPinnedButton = event.target.closest('[data-saved-image-reset-pinned]');
+                if (resetPinnedButton) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    resetSavedImagePinsById(resetPinnedButton.dataset.savedImageResetPinned);
+                    return;
+                }
                 const deleteButton = event.target.closest('[data-saved-image-delete]');
                 if (deleteButton) {
                     const entryId = normalizeSheetText(deleteButton.dataset.savedImageDelete);
-                    if (removeStudioSavedImageEntryById(entryId)) {
+                    const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
+                    if (result === 'cancelled') return;
+                    if (result === 'deleted') {
                         setCreatorStatus('Saved image removed from Saved Images. Existing flashcards were not changed.', 'success');
                     } else {
                         setCreatorStatus('That saved image could not be found.', 'error');
@@ -7267,16 +9146,15 @@ MODIFICATION RULES FOR THIS APP
                 const useButton = event.target.closest('[data-saved-image-use]');
                 if (useButton) {
                     const entryId = normalizeSheetText(useButton.dataset.savedImageUse);
-                    const mode = useButton.dataset.savedImageMode === 'image-only' ? 'image-only' : 'edits';
                     const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === entryId);
                     if (!entry) {
                         setCreatorStatus('That saved image could not be found.', 'error');
                         renderStudioSavedImagePicker();
                         return;
                     }
-                    applyStudioSavedImageToFlashcardTarget(entry, mode === 'edits');
+                    await applyStudioSavedImageToFlashcardTarget(entry);
                     if (!getStudioSavedImageThumbnailValue(entry)) {
-                        ensureStudioSavedImageThumbnail(entry.id, { sourceValue: getStudioSavedImageApplyValue(entry, mode === 'edits') }).catch(() => {});
+                        ensureStudioSavedImageThumbnail(entry.id, { sourceValue: getStudioSavedImageApplyValue(entry) }).catch(() => {});
                     }
                     closeStudioSavedImagePicker();
                 }
@@ -7289,6 +9167,9 @@ MODIFICATION RULES FOR THIS APP
                         ...(state.auth.studioSavedImagePicker.filters || {}),
                         [key]: filterInput.value || ''
                     };
+                    if (key === 'classId') state.auth.studioSavedImagePicker.filters.folderId = '';
+                    state.auth.studioSavedImagePicker.page = 0;
+                    state.auth.studioSavedImagePicker.showAll = false;
                     const filterKey = key;
                     const cursor = typeof filterInput.selectionStart === 'number' ? filterInput.selectionStart : null;
                     renderStudioSavedImagePicker();
@@ -7302,6 +9183,8 @@ MODIFICATION RULES FOR THIS APP
                 const searchInput = event.target.closest('[data-saved-image-picker-search]');
                 if (!searchInput) return;
                 state.auth.studioSavedImagePicker.searchQuery = searchInput.value || '';
+                state.auth.studioSavedImagePicker.page = 0;
+                state.auth.studioSavedImagePicker.showAll = false;
                 renderStudioSavedImagePicker();
                 const nextInput = document.querySelector('[data-saved-image-picker-search]');
                 if (nextInput) {
@@ -7332,6 +9215,8 @@ MODIFICATION RULES FOR THIS APP
             normalized.metadata?.organ,
             normalized.metadata?.muscle,
             normalized.metadata?.tags,
+            getStudioSavedImageOrganization(normalized).className,
+            getStudioSavedImageOrganization(normalized).folderName,
             angleNames,
             labelText
         ].map(value => normalizeSheetText(value).toLowerCase()).filter(Boolean).join(' ');
@@ -7343,6 +9228,8 @@ MODIFICATION RULES FOR THIS APP
         const anatomyType = normalizeSheetText(filters.anatomyType || '').toLowerCase();
         const organSystem = normalizeSheetText(filters.organSystem || '').toLowerCase();
         const location = normalizeSheetText(filters.location || '').toLowerCase();
+        const classId = normalizeSheetText(filters.classId || '');
+        const folderId = normalizeSheetText(filters.folderId || '');
         return entries.filter(entry => {
             const normalized = normalizeStudioSavedImageEntry(entry);
             if (!normalized) return false;
@@ -7352,6 +9239,10 @@ MODIFICATION RULES FOR THIS APP
             if (anatomyType && metadata.anatomyType !== anatomyType) return false;
             if (organSystem && metadata.organSystem !== organSystem) return false;
             if (location && !metadata.location.toLowerCase().includes(location)) return false;
+            const organization = getStudioSavedImageOrganization(normalized);
+            if (classId === '__none__' && organization.classId) return false;
+            if (classId && classId !== '__none__' && organization.classId !== classId) return false;
+            if (folderId && organization.folderId !== folderId) return false;
             return true;
         });
     }
@@ -7364,8 +9255,12 @@ MODIFICATION RULES FOR THIS APP
         const library = state.auth.diagramCreatorLibrary;
         library.view = library.view === 'saved' ? 'saved' : 'new';
         library.searchQuery = normalizeSheetText(library.searchQuery || '');
+        library.page = Math.max(0, Math.floor(Number(library.page) || 0));
+        library.showAll = library.showAll === true;
         library.filters = {
             diagramName: normalizeSheetText(library.filters?.diagramName || ''),
+            classId: normalizeSheetText(library.filters?.classId || ''),
+            folderId: normalizeSheetText(library.filters?.folderId || ''),
             subjectName: normalizeSheetText(library.filters?.subjectName || ''),
             anatomyType: normalizeSheetText(library.filters?.anatomyType || ''),
             organSystem: normalizeSheetText(library.filters?.organSystem || ''),
@@ -7399,6 +9294,8 @@ MODIFICATION RULES FOR THIS APP
         return {
             searchQuery: normalizeSheetText(elements.diagramCreatorSearchInput?.value || '').toLowerCase(),
             diagramName: normalizeSheetText(elements.diagramCreatorDiagramNameFilter?.value || '').toLowerCase(),
+            classId: normalizeSheetText(elements.diagramCreatorClassFilter?.value || ''),
+            folderId: normalizeSheetText(elements.diagramCreatorFolderFilter?.value || ''),
             subjectName: normalizeSheetText(elements.diagramCreatorSubjectFilter?.value || '').toLowerCase(),
             anatomyType: normalizeSheetText(elements.diagramCreatorAnatomyTypeFilter?.value || '').toLowerCase(),
             organSystem: normalizeSheetText(elements.diagramCreatorOrganSystemFilter?.value || '').toLowerCase(),
@@ -7424,6 +9321,10 @@ MODIFICATION RULES FOR THIS APP
                 const metadata = normalizeDiagramMetadata(entry.metadata || {});
                 if (filters.searchQuery && !includesDiagramCreatorFilter(getStudioSavedImageSearchText(entry), filters.searchQuery)) return false;
                 if (!includesDiagramCreatorFilter(metadata.diagramName, filters.diagramName)) return false;
+                const organization = getStudioSavedImageOrganization(entry);
+                if (filters.classId === '__none__' && organization.classId) return false;
+                if (filters.classId && filters.classId !== '__none__' && organization.classId !== filters.classId) return false;
+                if (filters.folderId && organization.folderId !== filters.folderId) return false;
                 if (!includesDiagramCreatorFilter(metadata.subjectName, filters.subjectName)) return false;
                 if (filters.anatomyType && metadata.anatomyType !== filters.anatomyType) return false;
                 if (filters.organSystem && metadata.organSystem !== filters.organSystem) return false;
@@ -7435,13 +9336,56 @@ MODIFICATION RULES FOR THIS APP
             });
     }
 
-    function renderDiagramCreatorSavedImages() {
-        if (!elements.diagramCreatorImageGrid) return;
-        const allEntries = getStudioSavedImageLibraryForPicker();
-        const entries = filterDiagramCreatorSavedImages(allEntries);
-        if (elements.diagramCreatorSearchCount) {
-            elements.diagramCreatorSearchCount.textContent = `${entries.length} of ${allEntries.length} saved image${allEntries.length === 1 ? '' : 's'}`;
+    function renderSavedImagePagination({ total = 0, page = 0, showAll = false, container = null, prevButton = null, nextButton = null, status = null, showAllButton = null } = {}) {
+        const safeTotal = Math.max(0, Number(total) || 0);
+        const totalPages = Math.max(1, Math.ceil(safeTotal / STUDIO_SAVED_IMAGE_PAGE_SIZE));
+        const safePage = Math.min(totalPages - 1, Math.max(0, Math.floor(Number(page) || 0)));
+        const visible = safeTotal > STUDIO_SAVED_IMAGE_PAGE_SIZE;
+        container?.classList.toggle('hidden', !visible);
+        container?.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        if (prevButton) prevButton.disabled = showAll || safePage <= 0;
+        if (nextButton) nextButton.disabled = showAll || safePage >= totalPages - 1;
+        if (status) status.textContent = showAll ? `All ${safeTotal}` : `Page ${safePage + 1} of ${totalPages}`;
+        if (showAllButton) {
+            showAllButton.textContent = showAll ? 'Show 10 at a time' : 'Show All';
+            showAllButton.setAttribute('aria-pressed', showAll ? 'true' : 'false');
         }
+        return { page: safePage, totalPages };
+    }
+
+    function renderDiagramCreatorSavedImages() {
+        closeSavedImageStudyProgressPopup();
+        if (!elements.diagramCreatorImageGrid) return;
+        refreshSavedImageOrganizationFilterSelects();
+        const library = getDiagramCreatorLibraryState();
+        const allEntries = getStudioSavedImageLibraryForPicker();
+        const entries = filterDiagramCreatorSavedImages(allEntries)
+            .filter(entry => matchesSavedImageQuickFilters(entry, 'diagram'))
+            .slice()
+            .sort((a, b) => isSavedImagePendingQuickFilterOn('diagram')
+                ? getSavedImageStudyFilterRank(a) - getSavedImageStudyFilterRank(b) || getReviewModeEntryRecentTimestamp(b) - getReviewModeEntryRecentTimestamp(a)
+                : getReviewModeEntryRecentTimestamp(b) - getReviewModeEntryRecentTimestamp(a));
+        const totalPages = Math.max(1, Math.ceil(entries.length / STUDIO_SAVED_IMAGE_PAGE_SIZE));
+        library.page = Math.min(Math.max(0, library.page), totalPages - 1);
+        const visibleEntries = library.showAll
+            ? entries
+            : entries.slice(library.page * STUDIO_SAVED_IMAGE_PAGE_SIZE, (library.page + 1) * STUDIO_SAVED_IMAGE_PAGE_SIZE);
+        if (elements.diagramCreatorSearchCount) {
+            const visibleText = entries.length > STUDIO_SAVED_IMAGE_PAGE_SIZE && !library.showAll
+                ? ` · showing ${visibleEntries.length}`
+                : '';
+            elements.diagramCreatorSearchCount.textContent = `${entries.length} of ${allEntries.length} saved image${allEntries.length === 1 ? '' : 's'}${visibleText}`;
+        }
+        renderSavedImagePagination({
+            total: entries.length,
+            page: library.page,
+            showAll: library.showAll,
+            container: elements.diagramCreatorPagination,
+            prevButton: elements.diagramCreatorPagePrevBtn,
+            nextButton: elements.diagramCreatorPageNextBtn,
+            status: elements.diagramCreatorPageStatus,
+            showAllButton: elements.diagramCreatorShowAllBtn
+        });
         if (!allEntries.length) {
             elements.diagramCreatorImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images are available yet. Choose New Image to create the first diagram.</div>';
             return;
@@ -7450,37 +9394,52 @@ MODIFICATION RULES FOR THIS APP
             elements.diagramCreatorImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images match those search filters.</div>';
             return;
         }
-        elements.diagramCreatorImageGrid.innerHTML = entries.map(entry => {
+        elements.diagramCreatorImageGrid.innerHTML = visibleEntries.map(entry => {
             const metadata = normalizeDiagramMetadata(entry.metadata || {});
             const title = metadata.diagramName || metadata.subjectName || entry.fileName;
             const summary = [metadata.subjectName, metadata.anatomyType, metadata.organSystem, metadata.location].filter(Boolean).join(' · ');
             const angles = getStudioSavedImageAngles(entry);
             const labelCount = getStudioSavedImageTotalLabelCount(entry);
             const countText = `${angles.length > 1 ? `${angles.length} angles · ` : ''}${labelCount} label${labelCount === 1 ? '' : 's'}`;
+            const pinnedCount = getSavedImagePinnedCount(entry);
+            const mastered = getSavedImageMasteryStatus(entry);
             return `
                 <article class="studio-diagram-library-card">
                   <button type="button" class="studio-diagram-library-preview" data-diagram-creator-edit="${escapeHtml(entry.id)}" aria-label="Edit ${escapeHtml(title)}">
-                    <img class="studio-diagram-library-thumb" data-diagram-creator-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(title)}">
+                    <span class="studio-mastered-thumb-wrap">
+                      <img class="studio-diagram-library-thumb" data-diagram-creator-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(title)}">
+                      ${renderSavedImageStudyRibbon(entry)}
+                    </span>
                     <span class="studio-diagram-library-card-body">
                       <span class="studio-diagram-library-name">${escapeHtml(title)}</span>
                       ${summary ? `<span class="studio-diagram-library-meta">${escapeHtml(summary)}</span>` : ''}
                       <span class="studio-diagram-library-label-count">${escapeHtml(countText)}</span>
+                      <span class="studio-saved-image-pinned-count"><svg class="studio-saved-image-pin-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg> ${pinnedCount} pinned label${pinnedCount === 1 ? '' : 's'}</span>
                     </span>
                   </button>
+                  <div class="studio-saved-image-card-controls">
+                  <button type="button" class="studio-saved-image-reset-pinned studio-diagram-reset-pinned" data-diagram-creator-reset-pinned="${escapeHtml(entry.id)}" ${pinnedCount ? '' : 'disabled title="No pinned labels to reset"'}>Reset pinned</button>
+                  <button type="button" class="studio-study-progress-button" data-study-progress="${escapeHtml(entry.id)}" aria-expanded="false">Progress</button>
+                                    </div>
+                  ${renderSavedImageStudyProgress(entry)}
                   <div class="studio-diagram-library-card-actions">
-                    <button type="button" class="auth-action-btn auth-primary-btn studio-diagram-library-edit" data-diagram-creator-edit="${escapeHtml(entry.id)}">Edit</button>
-                    <button type="button" class="studio-diagram-library-delete" data-diagram-creator-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>
+                    <div class="studio-diagram-library-main-actions">
+                      <button type="button" class="auth-action-btn auth-primary-btn studio-diagram-library-edit" data-diagram-creator-edit="${escapeHtml(entry.id)}">Edit</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn studio-diagram-library-review" data-diagram-creator-review="${escapeHtml(entry.id)}" aria-label="Review ${escapeHtml(title)}">Review</button>
+                    </div>
+                    <span class="studio-study-icon-column"><button type="button" class="studio-diagram-library-delete" data-diagram-creator-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>${renderSavedImageReminderToggle(entry,'diagram-creator')}</span>
                   </div>
                 </article>
             `;
         }).join('');
-        const entryById = new Map(entries.map(entry => [normalizeSheetText(entry.id), entry]));
+        const entryById = new Map(visibleEntries.map(entry => [normalizeSheetText(entry.id), entry]));
         elements.diagramCreatorImageGrid.querySelectorAll('[data-diagram-creator-thumb-id]').forEach(img => {
             applyStudioSavedImageThumbnailToElement(img, entryById.get(normalizeSheetText(img.dataset.diagramCreatorThumbId)) || {});
         });
     }
 
     function clearDiagramCreatorSavedImageFilters() {
+        document.querySelectorAll('[data-study-quick-filters="diagram"] [data-study-quick-filter]').forEach(button => button.setAttribute('aria-pressed', 'false'));
         [
             elements.diagramCreatorSearchInput,
             elements.diagramCreatorDiagramNameFilter,
@@ -7494,8 +9453,13 @@ MODIFICATION RULES FOR THIS APP
         });
         if (elements.diagramCreatorAnatomyTypeFilter) elements.diagramCreatorAnatomyTypeFilter.value = '';
         if (elements.diagramCreatorOrganSystemFilter) elements.diagramCreatorOrganSystemFilter.value = '';
+        if (elements.diagramCreatorClassFilter) elements.diagramCreatorClassFilter.value = '';
+        if (elements.diagramCreatorFolderFilter) elements.diagramCreatorFolderFilter.value = '';
+        refreshSavedImageOrganizationFilterSelects();
         const library = getDiagramCreatorLibraryState();
         library.searchQuery = '';
+        library.page = 0;
+        library.showAll = false;
         library.filters = { diagramName: '', subjectName: '', anatomyType: '', organSystem: '', location: '', organ: '', muscle: '', tags: '' };
         renderDiagramCreatorSavedImages();
     }
@@ -7508,14 +9472,20 @@ MODIFICATION RULES FOR THIS APP
         draft.angles = Array.isArray(draft.angles) ? draft.angles : [];
         draft.activeIndex = Math.max(0, Math.min(draft.angles.length - 1, Math.floor(Number(draft.activeIndex) || 0)));
         draft.canvas = normalizeMultiAngleCanvasConfig(draft.canvas || {});
+        draft.backgroundDirty = draft.backgroundDirty === true;
+        draft.savedChangeSignature = normalizeSheetText(draft.savedChangeSignature || '');
+        if (!(draft.legacySourceRefs instanceof Set)) draft.legacySourceRefs = new Set();
         draft.metadata = normalizeDiagramMetadata(draft.metadata || {});
         draft.open = draft.open === true;
         draft.setupVisible = draft.setupVisible === true;
         draft.listOpen = draft.listOpen === true;
         draft.guidesVisible = draft.guidesVisible !== false;
+        draft.matchCanvasDimensions = draft.matchCanvasDimensions === true;
         draft.settingAnchor = draft.settingAnchor === true;
         draft.saving = draft.saving === true;
         draft.editorSwitching = draft.editorSwitching === true;
+        draft.flattenWorkflowPending = draft.flattenWorkflowPending === true;
+        draft.singleImageWorkflow = draft.singleImageWorkflow === true;
         return draft;
     }
 
@@ -7529,25 +9499,183 @@ MODIFICATION RULES FOR THIS APP
 
     function resetMultiAngleCreatorState(options = {}) {
         cleanupMultiAngleCreatorRuntime();
+        clearTimeout(multiAngleEstimateTimer);
+        clearMultiAngleConvertedPreview();
         state.auth.multiAngleCreator = {
             open: false,
             setupVisible: false,
             angles: [],
             activeIndex: 0,
             canvas: { ...MULTI_ANGLE_DEFAULT_CANVAS },
+            backgroundDirty: false,
             metadata: {},
+            classId: '',
+            folderId: '',
+            savedChangeSignature: '',
             editingEntryId: '',
             originalEntry: null,
+            legacySourceRefs: new Set(),
             listOpen: false,
             guidesVisible: true,
+            matchCanvasDimensions: false,
             settingAnchor: false,
             pointerDrag: null,
             saving: false,
-            editorSwitching: false
+            editorSwitching: false,
+            flattenWorkflowPending: false,
+            singleImageWorkflow: false
         };
         elements.multiAngleCreatorPanel?.classList.add('hidden');
         elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'true');
         if (!options.keepFileInput && elements.diagramCreatorFileInput) elements.diagramCreatorFileInput.value = '';
+    }
+
+
+    function hashMultiAngleChangeText(value = '') {
+        const text = String(value || '');
+        let hash = 2166136261;
+        for (let index = 0; index < text.length; index += 1) {
+            hash ^= text.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0).toString(36);
+    }
+
+    function getMultiAngleSourceFingerprint(value = '') {
+        const text = normalizeSheetText(value || '');
+        if (!text) return '';
+        if (text.length <= 4096) return `${text.length}:${hashMultiAngleChangeText(text)}`;
+        const middle = Math.max(0, Math.floor(text.length / 2) - 512);
+        const sample = `${text.slice(0, 1024)}|${text.slice(middle, middle + 1024)}|${text.slice(-1024)}`;
+        return `${text.length}:${hashMultiAngleChangeText(sample)}`;
+    }
+
+    function getMultiAngleDraftChangeSignature(draftValue = null, options = {}) {
+        const draft = draftValue || getMultiAngleCreatorState();
+        const editor = state.auth.imageEditor;
+        const includeActiveEditor = options.includeActiveEditor !== false
+            && editor?.open
+            && editor?.target?.multiAngleDraft === true;
+        const activeAngleId = includeActiveEditor ? normalizeSheetText(editor.target.multiAngleAngleId || '') : '';
+        let metadata = normalizeDiagramMetadata(draft.metadata || {});
+        let classId = normalizeSheetText(draft.classId || '');
+        let folderId = normalizeSheetText(draft.folderId || '');
+        if (includeActiveEditor) {
+            metadata = captureImageEditorMetadata();
+            const organization = captureImageEditorOrganization();
+            classId = organization.classId;
+            folderId = organization.folderId;
+        }
+        const payload = {
+            canvas: normalizeMultiAngleCanvasConfig(draft.canvas || {}),
+            metadata,
+            classId,
+            folderId,
+            angles: draft.angles.map((angle, index) => {
+                const isActive = includeActiveEditor && normalizeSheetText(angle.id || '') === activeAngleId;
+                return {
+                    id: normalizeSheetText(angle.id || ''),
+                    name: normalizeSheetText(angle.name || `Angle ${index + 1}`),
+                    fileName: normalizeSheetText(angle.fileName || ''),
+                    source: getMultiAngleSourceFingerprint(angle.sourceValue || angle.editedValue || ''),
+                    framing: normalizeMultiAngleFraming(angle.framing || {}),
+                    canvasWidth: angle.canvasWidth,
+                    canvasHeight: angle.canvasHeight,
+                    exportFormat: angle.exportFormat,
+                    setupLocked: angle.setupLocked === true,
+                    labels: normalizeDiagramLabels(isActive ? editor.labels : angle.labels || []),
+                    labelSize: normalizeDiagramLabelSize(isActive ? editor.labelSize : angle.labelSize),
+                    visualAids: normalizeDiagramVisualAids(isActive ? editor.visualAids : angle.visualAids || []),
+                    drawStrokes: cloneImageEditorDrawStrokes(isActive ? editor.drawStrokes : angle.drawStrokes || [])
+                };
+            })
+        };
+        return hashMultiAngleChangeText(JSON.stringify(payload));
+    }
+
+    function markMultiAngleDraftSavedBaseline(draftValue = null) {
+        const draft = draftValue || getMultiAngleCreatorState();
+        draft.savedChangeSignature = getMultiAngleDraftChangeSignature(draft, { includeActiveEditor: false });
+        return draft.savedChangeSignature;
+    }
+
+    function hasMultiAngleEditorUnsavedChanges() {
+        const editor = state.auth.imageEditor;
+        const draft = getMultiAngleCreatorState();
+        if (!editor?.open || editor?.target?.multiAngleDraft !== true) return false;
+        if (!draft.savedChangeSignature) return true;
+        if (editor.imageDirty === true || editor.drawSaveDirty === true || editor.isDrawing === true) return true;
+        return getMultiAngleDraftChangeSignature(draft) !== draft.savedChangeSignature;
+    }
+
+    function showDiagramCreatorSavedImagesAfterExit(entryId = '', message = '') {
+        const safeEntryId = normalizeSheetText(entryId || '');
+        if (safeEntryId) markStudioSavedImageOpened(safeEntryId);
+        const library = getDiagramCreatorLibraryState();
+        library.page = 0;
+        library.showAll = false;
+        if (safeEntryId) {
+            const targetVisible = filterDiagramCreatorSavedImages(getStudioSavedImageLibraryForPicker())
+                .some(entry => normalizeSheetText(entry?.id || '') === safeEntryId);
+            if (!targetVisible) clearDiagramCreatorSavedImageFilters();
+        }
+        setDiagramCreatorLibraryView('saved');
+        renderDiagramCreatorSavedImages();
+        if (message) setCreatorStatus(message, 'success');
+    }
+
+    function exitMultiAngleEditorToSavedImages(message = '', options = {}) {
+        const draft = getMultiAngleCreatorState();
+        const entryId = normalizeSheetText(options.entryId || draft.editingEntryId || draft.originalEntry?.id || '');
+        closeStudioImageEditor();
+        resetMultiAngleCreatorState();
+        showDiagramCreatorSavedImagesAfterExit(entryId, message);
+    }
+
+    let multiAngleExitPromptPromise = null;
+    let multiAngleProgrammaticExitInProgress = false;
+    let multiAngleCloseRequestInProgress = false;
+    function promptMultiAngleDiagramExit() {
+        if (multiAngleExitPromptPromise) return multiAngleExitPromptPromise;
+        multiAngleExitPromptPromise = new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.className = 'studio-diagram-exit-prompt-overlay';
+            overlay.setAttribute('role', 'presentation');
+            overlay.innerHTML = `
+              <div class="studio-diagram-exit-prompt" role="dialog" aria-modal="true" aria-labelledby="studioDiagramExitPromptTitle">
+                <div id="studioDiagramExitPromptTitle" class="studio-diagram-exit-prompt-title">Would you like to save your diagram?</div>
+                <div class="studio-diagram-exit-prompt-copy">You have changes that have not been saved yet.</div>
+                <div class="studio-diagram-exit-prompt-actions">
+                  <button type="button" class="auth-action-btn auth-primary-btn" data-diagram-exit-choice="save">Save &amp; Exit</button>
+                  <button type="button" class="auth-action-btn auth-secondary-btn" data-diagram-exit-choice="discard">Exit Without Saving</button>
+                  <button type="button" class="auth-action-btn auth-secondary-btn" data-diagram-exit-choice="cancel">Cancel</button>
+                </div>
+              </div>`;
+            const finish = choice => {
+                document.removeEventListener('keydown', onKeyDown, true);
+                overlay.remove();
+                multiAngleExitPromptPromise = null;
+                resolve(choice);
+            };
+            const onKeyDown = event => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                finish('cancel');
+            };
+            overlay.addEventListener('click', event => {
+                const choiceButton = event.target.closest?.('[data-diagram-exit-choice]');
+                if (choiceButton) {
+                    finish(normalizeSheetText(choiceButton.dataset.diagramExitChoice || 'cancel'));
+                    return;
+                }
+                if (event.target === overlay) finish('cancel');
+            });
+            document.addEventListener('keydown', onKeyDown, true);
+            document.body.appendChild(overlay);
+            requestAnimationFrame(() => overlay.querySelector('[data-diagram-exit-choice="save"]')?.focus());
+        });
+        return multiAngleExitPromptPromise;
     }
 
     async function loadMultiAngleRuntimeImage(angle, useEdited = false) {
@@ -7560,6 +9688,7 @@ MODIFICATION RULES FOR THIS APP
         const objectKey = useEdited ? 'runtimeEditedObjectUrl' : 'runtimeObjectUrl';
         angle[objectKey] = objectUrl;
         angle[imageKey] = await loadImageElement(objectUrl);
+        angle[useEdited ? 'runtimeEditedMime' : 'runtimeMime'] = await getOpenedCanonicalImageMime(source, objectUrl);
         return angle[imageKey];
     }
 
@@ -7610,8 +9739,9 @@ MODIFICATION RULES FOR THIS APP
             name: normalizeSheetText(existing.name || `Angle ${index + 1}`) || `Angle ${index + 1}`,
             fileName: normalizeSheetText(fileName || existing.fileName || `angle-${index + 1}.png`) || `angle-${index + 1}.png`,
             sourceValue: normalizeSheetText(sourceValue || existing.sourceValue || existing.imageOnlyValue || existing.imageValue),
-            editedValue: normalizeSheetText(existing.editedValue || existing.imageValue || ''),
+            editedValue: normalizeSheetText(Object.prototype.hasOwnProperty.call(existing, 'editedValue') ? existing.editedValue : (existing.imageValue || '')),
             labels: normalizeDiagramLabels(existing.labels || []),
+            labelSize: normalizeDiagramLabelSize(existing.labelSize),
             visualAids: normalizeDiagramVisualAids(existing.visualAids || []),
             drawStrokes: cloneImageEditorDrawStrokes(existing.drawStrokes || []),
             framing: normalizeMultiAngleFraming(existing.framing || {}),
@@ -7620,11 +9750,25 @@ MODIFICATION RULES FOR THIS APP
             thumbnailWidth: Math.max(0, Math.round(Number(existing.thumbnailWidth) || 0)),
             thumbnailHeight: Math.max(0, Math.round(Number(existing.thumbnailHeight) || 0)),
             thumbnailBytes: Math.max(0, Math.round(Number(existing.thumbnailBytes) || 0)),
-            thumbnailVersion: Math.max(0, Math.round(Number(existing.thumbnailVersion) || 0))
+            thumbnailVersion: Math.max(0, Math.round(Number(existing.thumbnailVersion) || 0)),
+            canvasWidth: 0,
+            canvasHeight: 0,
+            canvasDirty: false,
+            setupLocked: existing.setupLocked === true,
+            exportFormat: ['webp', 'jpeg', 'png'].includes(existing.exportFormat) ? existing.exportFormat : 'webp',
+            exportQuality: Math.max(0.6, Math.min(1, Number(existing.exportQuality) || 0.88)),
+            background: normalizeMultiAngleBackgroundColor(existing.background || getMultiAngleCreatorState().canvas.background),
+            transparentBackground: existing.transparentBackground === true,
+            currentBytes: 0,
+            estimateKey: '',
+            estimatedBytes: 0
         };
         angle.runtimeImage = await loadMultiAngleRuntimeImage(angle, false);
         angle.naturalWidth = Math.max(1, angle.runtimeImage?.naturalWidth || Number(existing.naturalWidth) || 1);
         angle.naturalHeight = Math.max(1, angle.runtimeImage?.naturalHeight || Number(existing.naturalHeight) || 1);
+        angle.canvasWidth = angle.naturalWidth;
+        angle.canvasHeight = angle.naturalHeight;
+        angle.currentBytes = getMultiAngleDataUrlBytes(angle.sourceValue);
         angle.bounds = existing.bounds
             ? normalizeMultiAngleBounds(existing.bounds, angle.naturalWidth, angle.naturalHeight)
             : detectMultiAngleVisibleBounds(angle.runtimeImage);
@@ -7732,29 +9876,156 @@ The deletion becomes permanent when you save the diagram.`);
         ctx.restore();
     }
 
+    // Phase 23F.37: Local, non-uploading Canvas Setup export and byte accounting.
+    let multiAngleEstimateTimer = null;
+    function formatMultiAngleBytes(bytes) {
+        const value = Math.max(0, Number(bytes) || 0);
+        return value > 0 && value < 1024 ? '<1 KB' : value >= 1048576 ? `${(value / 1048576).toFixed(2)} MB` : `${Math.round(value / 1024)} KB`;
+    }
+
+    function getMultiAngleDataUrlBytes(value = '') {
+        const match = normalizeSheetText(value).match(/^data:[^,]*;base64,([\s\S]+)$/i);
+        if (!match) return 0;
+        const payload = match[1].replace(/\s+/g, '');
+        return Math.max(0, Math.floor(payload.length * 3 / 4) - ((payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0)));
+    }
+
+    function getMultiAngleEstimateKey(angle) {
+        return JSON.stringify([angle.id, angle.sourceValue?.length, angle.editedValue?.length, angle.canvasWidth, angle.canvasHeight, angle.background, angle.transparentBackground,
+            angle.exportFormat, angle.exportQuality, normalizeMultiAngleFraming(angle.framing || {})]);
+    }
+
+    function getMultiAngleExportSettings(angle) {
+        const format = ['png', 'jpeg', 'webp'].includes(angle?.exportFormat) ? angle.exportFormat : 'webp';
+        return {
+            format,
+            mime: format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp',
+            quality: Math.max(0.6, Math.min(1, Number(angle?.exportQuality) || 0.88))
+        };
+    }
+
+    async function encodeMultiAngleSelectedFormat(canvas, angle) {
+        const settings = getMultiAngleExportSettings(angle);
+        const blob = await studioSavedImageCanvasToBlob(canvas, settings.mime, settings.quality);
+        if (normalizeSheetText(blob?.type).toLowerCase() !== settings.mime) {
+            throw new Error(`This browser could not create ${settings.format.toUpperCase()} files. Select another format.`);
+        }
+        return blob;
+    }
+
+    // The output preview is transient: never persist a second full-size image.
+    let multiAngleConvertedPreviewUrl = '';
+    function clearMultiAngleConvertedPreview() {
+        if (multiAngleConvertedPreviewUrl) URL.revokeObjectURL(multiAngleConvertedPreviewUrl);
+        multiAngleConvertedPreviewUrl = '';
+        if (elements.multiAngleConvertedPreview) {
+            elements.multiAngleConvertedPreview.removeAttribute('src');
+            elements.multiAngleConvertedPreview.classList.add('hidden');
+        }
+    }
+
+    function scheduleMultiAngleExportEstimate(angle) {
+        if (!angle || angle.setupLocked) return;
+        clearTimeout(multiAngleEstimateTimer);
+        const requestedKey = getMultiAngleEstimateKey(angle);
+        // Keep the already encoded preview until a setting changes.
+        if (requestedKey === angle.estimateKey && angle.estimatedBytes > 0) return;
+        clearMultiAngleConvertedPreview();
+        multiAngleEstimateTimer = setTimeout(async () => {
+            if (!getMultiAngleCreatorState().open || angle.setupLocked || requestedKey !== getMultiAngleEstimateKey(angle)) return;
+            try {
+                const canvas = document.createElement('canvas');
+                paintMultiAngleAngleToCanvas(angle, canvas, { guides: false });
+                const blob = await encodeMultiAngleSelectedFormat(canvas, angle);
+                if (requestedKey !== getMultiAngleEstimateKey(angle) || getActiveMultiAngleDraftAngle() !== angle) return;
+                if (elements.multiAngleConvertedPreview) {
+                    multiAngleConvertedPreviewUrl = URL.createObjectURL(blob);
+                    elements.multiAngleConvertedPreview.src = multiAngleConvertedPreviewUrl;
+                    elements.multiAngleConvertedPreview.classList.remove('hidden');
+                }
+                angle.estimateKey = requestedKey;
+                angle.estimatedBytes = blob.size;
+                if (getActiveMultiAngleDraftAngle() === angle && elements.multiAngleEstimateBytes) {
+                    elements.multiAngleEstimateBytes.textContent = formatMultiAngleBytes(blob.size) + (blob.size > STUDY_BUNNY_IMAGE_MAX_BYTES ? ' — exceeds 3 MB' : '');
+                }
+            } catch (error) {
+                if (getActiveMultiAngleDraftAngle() === angle && elements.multiAngleEstimateBytes) elements.multiAngleEstimateBytes.textContent = error?.message || 'Unavailable';
+            }
+        }, 350);
+    }
+
+    async function finalizeMultiAngleCanvasSetup() {
+        const draft = getMultiAngleCreatorState();
+        const pending = draft.angles.filter(angle => !angle.setupLocked);
+        if (!pending.length) return true;
+        if (draft.matchCanvasDimensions && draft.angles.some(angle => angle.canvasWidth !== draft.angles[0].canvasWidth || angle.canvasHeight !== draft.angles[0].canvasHeight)) {
+            throw new Error('Shared canvas dimensions differ between angles. Turn off matching or re-upload any locked angle before flattening.');
+        }
+        const summary = pending.map(angle => `${angle.name}: ${angle.canvasWidth} × ${angle.canvasHeight} px, ${(angle.exportFormat || 'png').toUpperCase()}, ${angle.background}`).join('\n');
+        const approved = window.confirm(`Flatten ${pending.length} angle${pending.length === 1 ? '' : 's'}?\n\n${summary}\n\nThis permanently applies the background, aspect ratio, subject size and position. You cannot reframe the saved image without re-uploading the original. Only one canonical full-size image per angle is retained.`);
+        if (!approved) return false;
+        const prepared = [];
+        for (const angle of pending) {
+            const canvas = document.createElement('canvas');
+            if (!paintMultiAngleAngleToCanvas(angle, canvas, { guides: false })) throw new Error(`Could not prepare ${angle.name}.`);
+            const blob = await encodeMultiAngleSelectedFormat(canvas, angle);
+            if (blob.size > STUDY_BUNNY_IMAGE_MAX_BYTES) throw new Error(`${angle.name}: ${formatMultiAngleBytes(blob.size)} exceeds the 3 MB limit. Lower the quality (WebP/JPEG), choose another format, or reduce canvas dimensions.`);
+            prepared.push({ angle, value: await studioSavedImageBlobToDataUrl(blob), mime: blob.type });
+        }
+        // Commit only after every angle is successfully encoded and verified.
+        for (const item of prepared) {
+            await commitMultiAngleDraftCanonicalImage(item.angle, item.value);
+            item.angle.exportFormat = item.mime === 'image/jpeg' ? 'jpeg' : item.mime === 'image/webp' ? 'webp' : 'png';
+        }
+        draft.backgroundDirty = false;
+        syncMultiAngleCreatorControls();
+        return true;
+    }
+
+    async function refreshMultiAngleCurrentByteSize(angle) {
+        if (!angle || angle.currentBytes > 0) return;
+        const ref = normalizeSheetText(angle.sourceValue);
+        if (!isSupabaseMediaReference(ref) || !state.auth.client || !state.auth.user?.id) return;
+        const id = getSupabaseMediaAssetId(ref);
+        if (!id) return;
+        try {
+            const { data, error } = await state.auth.client.from('media_assets').select('size_bytes').eq('id', id).eq('user_id', state.auth.user.id).maybeSingle();
+            if (!error && data?.size_bytes) {
+                angle.currentBytes = Number(data.size_bytes);
+                if (getActiveMultiAngleDraftAngle() === angle && elements.multiAngleCurrentBytes) elements.multiAngleCurrentBytes.textContent = formatMultiAngleBytes(angle.currentBytes);
+            }
+        } catch (_) { /* Only a readout: never block image editing or upload. */ }
+    }
+
     function paintMultiAngleAngleToCanvas(angle, canvas, options = {}) {
         if (!angle || !canvas) return false;
         const draft = getMultiAngleCreatorState();
-        const config = normalizeMultiAngleCanvasConfig(options.canvas || draft.canvas || {});
+        const legacyConfig = normalizeMultiAngleCanvasConfig(options.canvas || draft.canvas || {});
+        const config = {
+            width: Math.max(1, Math.min(angle.setupLocked ? 16384 : 3000, Math.round(Number(angle.canvasWidth) || angle.naturalWidth || angle.runtimeImage?.naturalWidth || legacyConfig.width))),
+            height: Math.max(1, Math.min(angle.setupLocked ? 16384 : 3000, Math.round(Number(angle.canvasHeight) || angle.naturalHeight || angle.runtimeImage?.naturalHeight || legacyConfig.height))),
+            background: normalizeMultiAngleBackgroundColor(angle.background || legacyConfig.background)
+        };
         if (canvas.width !== config.width) canvas.width = config.width;
         if (canvas.height !== config.height) canvas.height = config.height;
         const ctx = canvas.getContext('2d');
         ctx.save();
-        ctx.fillStyle = config.background;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        const editedImage = angle.editedValue ? angle.runtimeEditedImage : null;
-        if (editedImage) {
-            ctx.drawImage(editedImage, 0, 0, canvas.width, canvas.height);
-        } else if (angle.runtimeImage) {
-            const bounds = normalizeMultiAngleBounds(angle.bounds || {}, angle.naturalWidth, angle.naturalHeight);
+        // JPEG has no transparency; always composite it on the chosen canvas fill.
+        if (!(angle.transparentBackground && angle.exportFormat !== 'jpeg')) {
+            ctx.fillStyle = config.background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        const sourceImage = (angle.editedValue && angle.runtimeEditedImage) ? angle.runtimeEditedImage : angle.runtimeImage;
+        if (sourceImage) {
+            const sourceWidth = Math.max(1, sourceImage.naturalWidth || sourceImage.width || canvas.width);
+            const sourceHeight = Math.max(1, sourceImage.naturalHeight || sourceImage.height || canvas.height);
             const framing = normalizeMultiAngleFraming(angle.framing || {});
-            const baseScale = Math.min((canvas.width * 0.85) / bounds.width, (canvas.height * 0.85) / bounds.height);
-            const scale = baseScale * framing.scale;
-            const pivotX = framing.useAnchor ? framing.anchorX * angle.naturalWidth : bounds.x + (bounds.width / 2);
-            const pivotY = framing.useAnchor ? framing.anchorY * angle.naturalHeight : bounds.y + (bounds.height / 2);
+            const scale = framing.scale;
+            const pivotX = framing.useAnchor ? framing.anchorX * sourceWidth : sourceWidth / 2;
+            const pivotY = framing.useAnchor ? framing.anchorY * sourceHeight : sourceHeight / 2;
             const destinationX = (canvas.width / 2) + (framing.offsetX * canvas.width);
             const destinationY = (canvas.height / 2) + (framing.offsetY * canvas.height);
-            ctx.drawImage(angle.runtimeImage, destinationX - (pivotX * scale), destinationY - (pivotY * scale), angle.naturalWidth * scale, angle.naturalHeight * scale);
+            ctx.drawImage(sourceImage, destinationX - (pivotX * scale), destinationY - (pivotY * scale), sourceWidth * scale, sourceHeight * scale);
         }
         ctx.restore();
         if (options.guides !== false) drawMultiAngleGuides(ctx, canvas, angle);
@@ -7762,6 +10033,9 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function getMultiAngleRenderedDataUrl(angle) {
+        // Phase 23F.37.1: flattened angles already hold the canonical image.
+        // Avoid re-encoding a second full-resolution PNG on every editor/angle switch.
+        if (angle?.setupLocked === true && !angle.editedValue && angle.sourceValue) return angle.sourceValue;
         const draft = getMultiAngleCreatorState();
         const canvas = document.createElement('canvas');
         paintMultiAngleAngleToCanvas(angle, canvas, { canvas: draft.canvas, guides: false });
@@ -7775,12 +10049,43 @@ The deletion becomes permanent when you save the diagram.`);
         elements.multiAngleCreatorPanel?.classList.toggle('hidden', !setupVisible);
         elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', setupVisible ? 'false' : 'true');
         if (!draft.open || !angle) return;
+        if (elements.multiAnglePositionActiveName) elements.multiAnglePositionActiveName.textContent = draft.singleImageWorkflow ? 'Single Image' : `Angle ${draft.activeIndex + 1} of ${draft.angles.length}`;
+        if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.textContent = draft.singleImageWorkflow ? 'Flatten & Edit Labels + Drawings' : 'Flatten, Save & Edit Labels + Drawings';
         const framing = normalizeMultiAngleFraming(angle.framing || {});
+        const locked = angle.setupLocked === true;
+        if (locked || !setupVisible) clearMultiAngleConvertedPreview();
+        if (elements.multiAngleSameDimensionsToggle) {
+            elements.multiAngleSameDimensionsToggle.checked = draft.matchCanvasDimensions;
+            elements.multiAngleSameDimensionsToggle.disabled = draft.saving || draft.editorSwitching || draft.flattenWorkflowPending;
+        }
+        if (elements.multiAngleWidthInput) { elements.multiAngleWidthInput.value = String(angle.canvasWidth || angle.naturalWidth); elements.multiAngleWidthInput.disabled = locked || draft.saving; }
+        if (elements.multiAngleHeightInput) { elements.multiAngleHeightInput.value = String(angle.canvasHeight || angle.naturalHeight); elements.multiAngleHeightInput.disabled = locked || draft.saving; }
+        if (elements.multiAngleFormatSelect) { elements.multiAngleFormatSelect.value = getMultiAngleExportSettings(angle).format; elements.multiAngleFormatSelect.disabled = locked || draft.saving; }
+        if (elements.multiAngleQualityInput) {
+            elements.multiAngleQualityInput.value = String(Math.round(getMultiAngleExportSettings(angle).quality * 100));
+            elements.multiAngleQualityInput.disabled = locked || draft.saving || angle.exportFormat === 'png';
+        }
+        if (elements.multiAngleQualityValue) elements.multiAngleQualityValue.textContent = angle.exportFormat === 'png' ? 'Lossless' : `${Math.round(getMultiAngleExportSettings(angle).quality * 100)}%`;
+        if (elements.multiAngleAutoExpandBtn) elements.multiAngleAutoExpandBtn.disabled = locked || draft.saving;
+        if (elements.multiAngleResetCanvasBtn) elements.multiAngleResetCanvasBtn.disabled = locked || draft.saving;
+        [elements.multiAngleScaleInput, elements.multiAngleXInput, elements.multiAngleYInput, elements.multiAngleFitBtn, elements.multiAngleCenterBtn, elements.multiAngleMatchSizeBtn, elements.multiAngleAnchorToggle, elements.multiAngleSetAnchorBtn].forEach(input => { if (input) input.disabled = locked || draft.saving; });
+        if (elements.multiAngleBackgroundInput) elements.multiAngleBackgroundInput.disabled = locked || draft.saving;
+        if (elements.multiAngleTransparentToggle) {
+            elements.multiAngleTransparentToggle.checked = angle.transparentBackground === true && angle.exportFormat !== 'jpeg';
+            elements.multiAngleTransparentToggle.disabled = locked || draft.saving || angle.exportFormat === 'jpeg';
+        }
+        if (elements.multiAngleFlattenNotice) elements.multiAngleFlattenNotice.classList.toggle('hidden', !locked);
+        if (elements.multiAngleReplaceBtn) elements.multiAngleReplaceBtn.classList.toggle('hidden', !locked);
+        if (elements.multiAngleFinalBoundaryText) elements.multiAngleFinalBoundaryText.textContent = `Final canvas boundary: ${angle.canvasWidth} × ${angle.canvasHeight} px`;
+        if (elements.multiAngleCurrentBytes) elements.multiAngleCurrentBytes.textContent = angle.currentBytes > 0 ? formatMultiAngleBytes(angle.currentBytes) : 'Checking…';
+        if (elements.multiAngleEstimateBytes) elements.multiAngleEstimateBytes.textContent = locked ? formatMultiAngleBytes(angle.currentBytes) : (angle.estimateKey === getMultiAngleEstimateKey(angle) && angle.estimatedBytes > 0 ? formatMultiAngleBytes(angle.estimatedBytes) : 'Calculating…');
+        if (!locked) scheduleMultiAngleExportEstimate(angle);
         if (elements.multiAngleIndicator) elements.multiAngleIndicator.textContent = `${angle.name || `Angle ${draft.activeIndex + 1}`} · ${draft.activeIndex + 1} of ${draft.angles.length}`;
-        if (elements.multiAngleCanvasWidth) elements.multiAngleCanvasWidth.value = String(draft.canvas.width);
-        if (elements.multiAngleCanvasHeight) elements.multiAngleCanvasHeight.value = String(draft.canvas.height);
-        if (elements.multiAngleBackgroundInput) elements.multiAngleBackgroundInput.value = draft.canvas.background;
-        if (elements.multiAngleBackgroundValue) elements.multiAngleBackgroundValue.textContent = draft.canvas.background.toUpperCase();
+        if (elements.multiAnglePositionActiveName) elements.multiAnglePositionActiveName.textContent = draft.singleImageWorkflow
+            ? `${angle.name || 'Single Image'} (Single Image)`
+            : `${angle.name || `Angle ${draft.activeIndex + 1}`} (${draft.activeIndex + 1} of ${draft.angles.length})`;
+        if (elements.multiAngleBackgroundInput) elements.multiAngleBackgroundInput.value = normalizeMultiAngleBackgroundColor(angle.background);
+        if (elements.multiAngleBackgroundValue) elements.multiAngleBackgroundValue.textContent = angle.background.toUpperCase();
         if (elements.multiAngleNameInput) elements.multiAngleNameInput.value = angle.name || `Angle ${draft.activeIndex + 1}`;
         if (elements.multiAngleScaleInput) elements.multiAngleScaleInput.value = String(Math.round(framing.scale * 100));
         if (elements.multiAngleScaleValue) elements.multiAngleScaleValue.textContent = `${Math.round(framing.scale * 100)}%`;
@@ -7791,7 +10096,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.multiAngleGuidesToggle) elements.multiAngleGuidesToggle.checked = draft.guidesVisible;
         if (elements.multiAngleAnchorToggle) elements.multiAngleAnchorToggle.checked = framing.useAnchor;
         if (elements.multiAngleSetAnchorBtn) {
-            elements.multiAngleSetAnchorBtn.disabled = !framing.useAnchor;
+            elements.multiAngleSetAnchorBtn.disabled = locked || draft.saving || !framing.useAnchor;
             elements.multiAngleSetAnchorBtn.textContent = draft.settingAnchor ? 'Click Image to Place Anchor' : 'Set Anchor on Image';
         }
         if (elements.multiAngleCanvas) {
@@ -7806,7 +10111,8 @@ The deletion becomes permanent when you save the diagram.`);
                 ? 'A multi-angle diagram must contain at least one image.'
                 : `Delete ${angle.name || `Angle ${draft.activeIndex + 1}`}`;
         }
-        if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.disabled = draft.saving || !draft.angles.length;
+        if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.disabled = draft.saving || draft.flattenWorkflowPending || !draft.angles.length;
+        if (elements.multiAngleEditAngleBtn) elements.multiAngleEditAngleBtn.disabled = draft.saving || draft.flattenWorkflowPending;
         if (elements.multiAngleToggleListBtn) {
             elements.multiAngleToggleListBtn.textContent = draft.listOpen ? 'Hide Angles' : 'Show Angles';
             elements.multiAngleToggleListBtn.setAttribute('aria-expanded', draft.listOpen ? 'true' : 'false');
@@ -7821,7 +10127,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!elements.multiAngleList) return;
         elements.multiAngleList.innerHTML = draft.angles.map((angle, index) => `
             <div class="multi-angle-list-row${index === draft.activeIndex ? ' is-active' : ''}" data-multi-angle-row="${escapeHtml(angle.id)}">
-              <img class="multi-angle-list-thumb" data-multi-angle-thumb="${escapeHtml(angle.sourceValue)}" alt="${escapeHtml(angle.name || `Angle ${index + 1}`)}">
+              <img class="multi-angle-list-thumb" data-multi-angle-thumb="${escapeHtml(angle.thumbnailValue || angle.thumbnailMediaValue || angle.sourceValue)}" alt="${escapeHtml(angle.name || `Angle ${index + 1}`)}">
               <div class="multi-angle-list-name">${escapeHtml(angle.name || `Angle ${index + 1}`)}</div>
               <div class="multi-angle-list-actions">
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="open" data-angle-index="${index}">Open</button>
@@ -7834,29 +10140,91 @@ The deletion becomes permanent when you save the diagram.`);
         elements.multiAngleList.querySelectorAll('[data-multi-angle-thumb]').forEach(img => setImageElementSourceWithMediaResolution(img, img.dataset.multiAngleThumb || ''));
     }
 
+    function setMultiAngleDraftCanvasDimensions(width, height) {
+        const draft = getMultiAngleCreatorState();
+        const active = getActiveMultiAngleDraftAngle();
+        if (!active || active.setupLocked || draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) return false;
+        const nextWidth = Math.round(Number(width));
+        const nextHeight = Math.round(Number(height));
+        if (![nextWidth, nextHeight].every(value => Number.isFinite(value) && value >= 1 && value <= 3000)) return false;
+        if (draft.matchCanvasDimensions && draft.angles.some(angle => angle.setupLocked && (angle.canvasWidth !== nextWidth || angle.canvasHeight !== nextHeight))) {
+            setCreatorStatus('An already-flattened angle has different canvas dimensions. Re-upload that original or turn off shared dimensions before resizing.', 'error');
+            syncMultiAngleCreatorControls();
+            return false;
+        }
+        const targets = draft.matchCanvasDimensions ? draft.angles.filter(angle => !angle.setupLocked) : [active];
+        for (const angle of targets) {
+            if (angle.canvasWidth === nextWidth && angle.canvasHeight === nextHeight) continue;
+            angle.canvasWidth = nextWidth;
+            angle.canvasHeight = nextHeight;
+            angle.canvasDirty = true;
+            angle.estimateKey = '';
+            angle.estimatedBytes = 0;
+        }
+        syncMultiAngleCreatorControls();
+        return true;
+    }
+
     function setActiveMultiAngleIndex(nextIndex) {
         const draft = getMultiAngleCreatorState();
         if (!draft.angles.length) return;
         draft.activeIndex = (Math.floor(Number(nextIndex) || 0) + draft.angles.length) % draft.angles.length;
+        draft.canvas.background = draft.angles[draft.activeIndex].background || draft.canvas.background;
         draft.settingAnchor = false;
         syncMultiAngleCreatorControls();
+        refreshMultiAngleCurrentByteSize(draft.angles[draft.activeIndex]);
     }
 
     async function openMultiAngleCreatorFromFiles(files = [], options = {}) {
         const list = Array.from(files || []).filter(file => file && /^image\//i.test(file.type || 'image/'));
         if (!list.length) return;
+        if (list.some(file => file.size > STUDY_BUNNY_CANVAS_SOURCE_MAX_BYTES)) {
+            setCreatorStatus('Each local Canvas Setup source must be 20 MB or smaller. The final flattened image must be 3 MB or smaller.', 'error');
+            return;
+        }
         const append = options.append === true && getMultiAngleCreatorState().open;
+        const existingBytes = append ? getMultiAngleCreatorState().angles.reduce((sum, angle) => sum + (Number(angle.currentBytes) || 0), 0) : 0;
+        const batchBytes = list.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+        if (existingBytes + batchBytes > STUDY_BUNNY_CANVAS_BATCH_MAX_BYTES) {
+            setCreatorStatus('Canvas Setup source files exceed the 60 MB total safety budget. Add fewer angles at a time.', 'error');
+            return;
+        }
         if (!append) resetMultiAngleCreatorState({ keepFileInput: true });
         const draft = getMultiAngleCreatorState();
         draft.open = true;
         draft.setupVisible = true;
+        draft.singleImageWorkflow = options.singleImage === true && !append && list.length === 1;
         elements.multiAngleCreatorPanel?.classList.remove('hidden');
         elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'false');
         setCreatorStatus(`Preparing ${list.length} angle image${list.length === 1 ? '' : 's'}...`, 'success');
         for (const file of list) {
-            const dataUrl = await readFileAsDataUrl(file);
+            const dataUrl = await readFileAsDataUrl(file, { canvasSetupImport: true });
             const angle = await createMultiAngleDraftAngle(dataUrl, file.name || `angle-${draft.angles.length + 1}.png`, draft.angles.length);
+            if (angle.naturalWidth * angle.naturalHeight > STUDY_BUNNY_CANVAS_SOURCE_MAX_PIXELS) {
+                releaseMultiAngleDraftAngleRuntime(angle);
+                throw new Error(`${file.name}: decoded image exceeds the 36-megapixel Canvas Setup safety limit.`);
+            }
+            angle.exportFormat = 'webp';
+            angle.exportQuality = 0.88;
+            angle.canvasWidth = Math.max(1, Math.min(3000, angle.naturalWidth));
+            angle.canvasHeight = Math.max(1, Math.min(3000, angle.naturalHeight));
+            // Keep a large source fully visible on its bounded final canvas.
+            // Users can still enlarge and crop intentionally with the framing slider.
+            const fitScale = Math.min(1, angle.canvasWidth / angle.naturalWidth, angle.canvasHeight / angle.naturalHeight);
+            if (fitScale < 1) angle.framing = normalizeMultiAngleFraming({ ...angle.framing, scale: fitScale });
+            angle.currentBytes = file.size;
             draft.angles.push(angle);
+        }
+        if (append && draft.matchCanvasDimensions && draft.angles.length > list.length) {
+            const reference = draft.angles[0];
+            // Newly added angles inherit the same canvas without altering any
+            // already-flattened canonical raster or its independent framing.
+            draft.angles.slice(-list.length).forEach(angle => {
+                angle.canvasWidth = reference.canvasWidth;
+                angle.canvasHeight = reference.canvasHeight;
+                angle.canvasDirty = true;
+                angle.estimateKey = '';
+            });
         }
         if (!append) draft.activeIndex = 0;
         if (!draft.metadata.diagramName && draft.angles[0]) {
@@ -7864,7 +10232,7 @@ The deletion becomes permanent when you save the diagram.`);
         }
         syncMultiAngleCreatorControls();
         elements.multiAngleCreatorPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setCreatorStatus(`${draft.angles.length} angles prepared on a ${draft.canvas.width} × ${draft.canvas.height} shared canvas.`, 'success');
+        setCreatorStatus(`${draft.angles.length} angle${draft.angles.length === 1 ? '' : 's'} prepared at their native image dimensions.`, 'success');
     }
 
     async function loadMultiAngleSavedDiagramDraft(entry = {}) {
@@ -7875,21 +10243,37 @@ The deletion becomes permanent when you save the diagram.`);
         draft.open = true;
         draft.setupVisible = false;
         draft.canvas = normalizeMultiAngleCanvasConfig(normalized.canvas || {});
+        draft.backgroundDirty = false;
         draft.metadata = normalizeDiagramMetadata(normalized.metadata || {});
+        draft.classId = normalizeSheetText(normalized.classId || '');
+        draft.folderId = normalizeSheetText(normalized.folderId || '');
         draft.editingEntryId = normalized.id;
         draft.originalEntry = normalized;
         setDiagramCreatorLibraryView('new');
         setCreatorStatus('Loading multi-angle diagram...', 'success');
         for (const [index, savedAngle] of getStudioSavedImageAngles(normalized).entries()) {
-            const sourceValue = normalizeSheetText(savedAngle.sourceValue || savedAngle.imageOnlyValue || savedAngle.imageValue);
-            const angle = await createMultiAngleDraftAngle(sourceValue, savedAngle.fileName, index, {
+            const canonicalValue = normalizeSheetText(savedAngle.imageValue || savedAngle.mediaValue || savedAngle.sourceValue || savedAngle.imageOnlyValue);
+            const legacySourceValue = normalizeSheetText(savedAngle.sourceValue || savedAngle.imageOnlyValue || savedAngle.sourceMediaValue || savedAngle.imageOnlyMediaValue || '');
+            if (legacySourceValue && legacySourceValue !== canonicalValue) {
+                collectSupabaseMediaReferences(legacySourceValue, draft.legacySourceRefs);
+            }
+            const angle = await createMultiAngleDraftAngle(canonicalValue, savedAngle.fileName, index, {
                 ...savedAngle,
-                editedValue: savedAngle.imageValue
+                setupLocked: true,
+                exportFormat: /\.webp$/i.test(savedAngle.fileName || '') ? 'webp' : /\.jpe?g$/i.test(savedAngle.fileName || '') ? 'jpeg' : 'png',
+                sourceValue: canonicalValue,
+                imageOnlyValue: canonicalValue,
+                sourceMediaValue: isSupabaseMediaReference(canonicalValue) ? canonicalValue : '',
+                imageOnlyMediaValue: isSupabaseMediaReference(canonicalValue) ? canonicalValue : '',
+                editedValue: '',
+                framing: {}
             });
             draft.angles.push(angle);
         }
         draft.activeIndex = 0;
+        markMultiAngleDraftSavedBaseline(draft);
         syncMultiAngleCreatorControls();
+        refreshMultiAngleCurrentByteSize(draft.angles[0]);
         return draft;
     }
 
@@ -7934,11 +10318,32 @@ The deletion becomes permanent when you save the diagram.`);
             multiAngleAngleId: angle.id,
             sourceValue: getMultiAngleRenderedDataUrl(angle),
             sourceLabel: `Angle ${index + 1}: ${angle.name || angle.fileName}`,
+            canonicalSourceValue: angle.sourceValue,
+            canonicalFileName: angle.fileName,
             labels: angle.labels,
+            labelSize: angle.labelSize,
             visualAids: angle.visualAids,
             drawStrokes: angle.drawStrokes,
-            metadata: draft.metadata
+            metadata: draft.metadata,
+            classId: normalizeSheetText(draft.classId || ''),
+            folderId: normalizeSheetText(draft.folderId || '')
         };
+    }
+
+    async function getMultiAngleEditorTargetForOpen(angle, index, draft = getMultiAngleCreatorState()) {
+        const target = getMultiAngleEditorTarget(angle, index, draft);
+        // Prefer a local clone of the already-loaded image blob, not another
+        // Supabase/R2 fetch and not a freshly encoded full-resolution PNG.
+        // The image editor owns/revokes this new URL independently of Canvas Setup.
+        if (angle?.setupLocked && /^blob:/i.test(angle.runtimeObjectUrl || '')) {
+            try {
+                const response = await fetch(angle.runtimeObjectUrl);
+                if (response.ok) target.sourceValue = URL.createObjectURL(await response.blob());
+            } catch (error) {
+                console.warn('Could not reuse the loaded angle blob; falling back to canonical image:', error);
+            }
+        }
+        return target;
     }
 
     async function persistCurrentMultiAngleEditorState(options = {}) {
@@ -7951,23 +10356,33 @@ The deletion becomes permanent when you save the diagram.`);
         const angle = draft.angles.find(item => item.id === angleId);
         if (!angle) return false;
         angle.labels = normalizeDiagramLabels(editor.labels || []);
+        angle.labelSize = normalizeDiagramLabelSize(editor.labelSize);
         angle.visualAids = normalizeDiagramVisualAids(editor.visualAids || []);
         angle.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []);
         draft.metadata = captureImageEditorMetadata();
-        if (options.includeImage !== false && editor.baseCanvas) {
-            const imageValue = editor.baseCanvas.toDataURL('image/png');
-            angle.editedValue = normalizeSheetText(imageValue);
-            angle.runtimeEditedImage = null;
-            if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
-            angle.runtimeEditedObjectUrl = '';
-            await loadMultiAngleRuntimeImage(angle, true);
+        const organization = captureImageEditorOrganization();
+        draft.classId = organization.classId;
+        draft.folderId = organization.folderId;
+        if (options.includeImage !== false && editor.baseCanvas && editor.imageDirty) {
+            const imageValue = await encodeCanvasAsCanonicalImage(
+                editor.baseCanvas,
+                angle.runtimeMime || getCanonicalImagePreferredMime(angle.sourceValue, angle.fileName),
+                STUDY_BUNNY_IMAGE_MAX_BYTES
+            );
+            if (!(await commitMultiAngleDraftCanonicalImage(angle, imageValue))) return false;
         }
+        // The live angle draft is now newer than any previously written drawing
+        // recovery backup. Do not let that backup overwrite this checkpoint when
+        // switching back to the angle in the current editor session.
+        angle.editorDraftCheckpointed = true;
         return true;
     }
 
     async function openMultiAngleAngleInImageEditor(index, options = {}) {
         const draft = getMultiAngleCreatorState();
-        if (!draft.angles.length || draft.editorSwitching) return false;
+        if (!draft.angles.length || draft.editorSwitching || draft.saving) return false;
+        const previousIndex = draft.activeIndex;
+        const previousAngle = draft.angles[previousIndex];
         const nextIndex = (Math.floor(Number(index) || 0) + draft.angles.length) % draft.angles.length;
         const currentEditor = state.auth.imageEditor;
         const editorPreferences = currentEditor?.open && currentEditor?.target?.multiAngleDraft === true
@@ -7975,6 +10390,10 @@ The deletion becomes permanent when you save the diagram.`);
                 mode: currentEditor.mode,
                 showLabelPanel: currentEditor.showLabelPanel === true,
                 labelsLayerVisible: currentEditor.labelsLayerVisible !== false,
+                ghostLabelsEnabled: currentEditor.ghostLabelsEnabled === true,
+                ghostLabelOpacity: currentEditor.ghostLabelOpacity,
+                singleLabelViewEnabled: currentEditor.singleLabelViewEnabled === true,
+                ghostActiveLabelIndex: currentEditor.ghostActiveLabelIndex,
                 visualAidsLayerVisible: currentEditor.visualAidsLayerVisible !== false,
                 metadataPanelOpen: currentEditor.metadataPanelOpen === true,
                 labelInfoPanelOpen: currentEditor.labelInfoPanelOpen === true,
@@ -7987,15 +10406,28 @@ The deletion becomes permanent when you save the diagram.`);
         draft.editorSwitching = true;
         refreshImageEditorMultiAngleUi();
         try {
-            if (options.saveCurrent === true) await persistCurrentMultiAngleEditorState({ includeImage: true });
+            if (options.saveCurrent === true) {
+                const savedToDraft = await persistCurrentMultiAngleEditorState({ includeImage: true });
+                if (!savedToDraft) throw new Error('Could not preserve the current angle before switching.');
+            }
             draft.activeIndex = nextIndex;
             draft.settingAnchor = false;
             const angle = draft.angles[nextIndex];
-            await openStudioImageEditor(getMultiAngleEditorTarget(angle, nextIndex, draft));
+            draft.canvas.background = angle.background || draft.canvas.background;
+            await openStudioImageEditor(await getMultiAngleEditorTargetForOpen(angle, nextIndex, draft));
             const nextEditor = state.auth.imageEditor;
+            // The common editor catches image-loading failures internally. Never
+            // report a successful angle switch after it has closed its overlay.
+            if (!nextEditor?.open || nextEditor?.target?.multiAngleAngleId !== angle.id || !nextEditor.baseCanvas) {
+                throw new Error(`Could not load ${angle.name || `Angle ${nextIndex + 1}`}.`);
+            }
             if (editorPreferences && nextEditor?.open) {
                 nextEditor.showLabelPanel = editorPreferences.showLabelPanel;
                 nextEditor.labelsLayerVisible = editorPreferences.labelsLayerVisible !== false;
+                nextEditor.ghostLabelsEnabled = editorPreferences.ghostLabelsEnabled === true;
+                nextEditor.ghostLabelOpacity = Math.min(1, Math.max(0, Number(editorPreferences.ghostLabelOpacity ?? 0.35)));
+                nextEditor.singleLabelViewEnabled = editorPreferences.singleLabelViewEnabled === true;
+                nextEditor.ghostActiveLabelIndex = Math.max(0, Math.min((nextEditor.labels || []).length - 1, Number(editorPreferences.ghostActiveLabelIndex) || 0));
                 nextEditor.visualAidsLayerVisible = editorPreferences.visualAidsLayerVisible !== false;
                 nextEditor.metadataPanelOpen = editorPreferences.metadataPanelOpen;
                 nextEditor.labelInfoPanelOpen = editorPreferences.labelInfoPanelOpen;
@@ -8012,6 +10444,23 @@ The deletion becomes permanent when you save the diagram.`);
             }
             setImageEditorStatus(options.saveCurrent === true ? `Saved the previous angle and opened ${angle.name || `Angle ${nextIndex + 1}`}.` : '');
             return true;
+        } catch (error) {
+            // Keep the multi-angle workflow recoverable if one asset fails to
+            // decode/download. Previously the generic editor silently closed,
+            // making both Save & Exit and the angle navigator disappear.
+            draft.activeIndex = previousIndex;
+            if (currentEditor?.open && previousAngle && !state.auth.imageEditor?.open) {
+                try {
+                    await openStudioImageEditor(await getMultiAngleEditorTargetForOpen(previousAngle, previousIndex, draft));
+                } catch (restoreError) { console.warn('Could not reopen previous angle:', restoreError); }
+            }
+            if (!state.auth.imageEditor?.open && draft.open) {
+                showMultiAngleCanvasSetup({ scroll: false, message: false });
+                setCreatorStatus('The selected angle could not load. Canvas Setup remains available; no saved image was changed.', 'error');
+            } else {
+                setImageEditorStatus('Could not load that angle. Previous angle restored; your draft is preserved.');
+            }
+            throw error;
         } finally {
             draft.editorSwitching = false;
             refreshImageEditorLabelUi();
@@ -8021,7 +10470,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     async function switchMultiAngleImageEditorAngle(directionOrIndex, options = {}) {
         const draft = getMultiAngleCreatorState();
-        if (!draft.angles.length) return false;
+        if (!draft.angles.length || draft.editorSwitching || draft.saving) return false;
         const explicitIndex = options.explicitIndex === true;
         const nextIndex = explicitIndex
             ? Math.max(0, Math.min(draft.angles.length - 1, Math.floor(Number(directionOrIndex) || 0)))
@@ -8030,9 +10479,64 @@ The deletion becomes permanent when you save the diagram.`);
         return openMultiAngleAngleInImageEditor(nextIndex, { saveCurrent: true });
     }
 
+    async function flattenSaveAndOpenMultiAngleEditor() {
+        const draft = getMultiAngleCreatorState();
+        if (!draft.open || !draft.angles.length || draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) return false;
+        draft.flattenWorkflowPending = true;
+        const activeAngleId = draft.angles[draft.activeIndex]?.id;
+        syncMultiAngleCreatorControls();
+        try {
+            if (draft.singleImageWorkflow) {
+                // No remote upload here: finalize locally, then hand the single canonical
+                // flattened raster to the existing standalone Save & Exit path.
+                if (!(await finalizeMultiAngleCanvasSetup())) return false;
+                const angle = draft.angles[0];
+                const sourceValue = angle.sourceValue;
+                const sourceLabel = `Selected: ${angle.fileName}`;
+                const settings = getMultiAngleExportSettings(angle);
+                hideMultiAngleCanvasSetup();
+                await openStudioImageEditor({
+                    kind: 'standalone-diagram', sourceValue, sourceLabel,
+                    canvasSetupExportFormat: settings.format, canvasSetupExportQuality: settings.quality
+                });
+                if (!state.auth.imageEditor?.open) {
+                    showMultiAngleCanvasSetup({ scroll: false, message: false });
+                    throw new Error('Could not open the single diagram editor. Canvas Setup was restored.');
+                }
+                resetMultiAngleCreatorState({ keepFileInput: true });
+                setImageEditorStatus('Image flattened locally. Add labels or drawings, then Save & Exit to upload the single canonical image.');
+                return true;
+            }
+            const savedEntry = await saveMultiAngleDraftToSavedImages({ keepDraftOpen: true });
+            if (!savedEntry) return false; // Failed saves leave Canvas Setup available.
+            const selectedIndex = draft.angles.findIndex(angle => angle.id === activeAngleId);
+            if (selectedIndex >= 0) draft.activeIndex = selectedIndex;
+            hideMultiAngleCanvasSetup();
+            try {
+                const opened = await openMultiAngleAngleInImageEditor(draft.activeIndex, { saveCurrent: false });
+                if (opened && state.auth.imageEditor?.open) {
+                    setImageEditorStatus('Flattened diagram saved. Add labels and drawings, then use Save & Exit.');
+                    return true;
+                }
+            } catch (error) {
+                console.error('Saved the diagram, but could not open Edit Labels + Drawings:', error);
+            }
+            if (!state.auth.imageEditor?.open) {
+                showMultiAngleCanvasSetup({ scroll: false, message: false });
+                setCreatorStatus('The flattened images were saved, but the editor could not open. Your saved diagram is preserved; try Edit Labels + Drawings.', 'error');
+            }
+            return false;
+        } finally {
+            draft.flattenWorkflowPending = false;
+            syncMultiAngleCreatorControls();
+        }
+    }
+
     async function editActiveMultiAngleAngle() {
         const draft = getMultiAngleCreatorState();
-        if (!draft.angles.length) return;
+        if (!draft.angles.length || draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) return;
+        try { if (!(await finalizeMultiAngleCanvasSetup())) return; }
+        catch (error) { setCreatorStatus(error.message || 'Could not flatten image.', 'error'); return; }
         hideMultiAngleCanvasSetup();
         await openMultiAngleAngleInImageEditor(draft.activeIndex, { saveCurrent: false });
     }
@@ -8058,65 +10562,144 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
-    async function saveMultiAngleDiagramFromEditor() {
+    async function saveMultiAngleDiagramFromEditor(options = {}) {
         const editor = state.auth.imageEditor;
         const draft = getMultiAngleCreatorState();
+        const exitAfterSave = options.exitAfterSave !== false;
         if (!editor?.open || editor?.target?.multiAngleDraft !== true || draft.saving) return false;
-        await persistCurrentMultiAngleEditorState({ includeImage: true });
-        const savedEntry = await saveMultiAngleDraftToSavedImages();
-        if (!savedEntry) {
-            setImageEditorStatus('Could not save the diagram. The editor remains open.');
-            return false;
+        if (exitAfterSave) multiAngleProgrammaticExitInProgress = true;
+        try {
+            await persistCurrentMultiAngleEditorState({ includeImage: true });
+            const savedEntry = await saveMultiAngleDraftToSavedImages({ keepDraftOpen: !exitAfterSave });
+            if (!savedEntry) {
+                setImageEditorStatus('Could not save the diagram. The editor remains open.');
+                return false;
+            }
+            if (!exitAfterSave) {
+                editor.imageDirty = false;
+                editor.drawSaveDirty = false;
+                markMultiAngleDraftSavedBaseline(draft);
+                refreshImageEditorLabelUi();
+                setImageEditorStatus('Diagram saved. You can keep working.');
+                return true;
+            }
+            exitMultiAngleEditorToSavedImages('', { entryId: savedEntry.id });
+            return true;
+        } finally {
+            if (exitAfterSave) multiAngleProgrammaticExitInProgress = false;
         }
-        closeStudioImageEditor();
-        setDiagramCreatorLibraryView('saved');
-        renderDiagramCreatorSavedImages();
-        return true;
     }
 
-    function handleStudioImageEditorCloseRequest() {
+    async function handleStudioImageEditorSendSavedRequest() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open) return;
+        if (editor.target?.multiAngleDraft === true) {
+            try { await saveMultiAngleDiagramFromEditor({ exitAfterSave: false }); }
+            catch (error) { console.error(error); setImageEditorStatus('Could not save the diagram.'); }
+            return;
+        }
+        if (editor.savingSingleDiagram) return;
+        const isSingleDiagram = isImageEditorStandaloneDiagramTarget(editor);
+        if (isSingleDiagram) {
+            editor.savingSingleDiagram = true;
+            const button = elements.studioImageEditorSendSavedBtn;
+            if (button) { button.disabled = true; button.textContent = 'Saving…'; }
+            setImageEditorStatus('Saving diagram…');
+        }
+        try {
+            await saveStudioImageEditorImage({ sendToSavedImages: true });
+        } finally {
+            if (isSingleDiagram && state.auth.imageEditor === editor && editor.open) {
+                editor.savingSingleDiagram = false;
+                refreshImageEditorLabelUi();
+            }
+        }
+    }
+
+    async function handleStudioImageEditorCloseRequest() {
+        if (multiAngleProgrammaticExitInProgress) return;
         const editor = state.auth.imageEditor;
         if (editor?.open && editor?.target?.multiAngleDraft === true) {
-            openMultiAngleCanvasSetupFromEditor().catch(error => {
+            const draft = getMultiAngleCreatorState();
+            if (draft.saving || draft.editorSwitching || multiAngleCloseRequestInProgress) return;
+            multiAngleCloseRequestInProgress = true;
+            try {
+                finishImageEditorActiveStroke(null, { schedule: false, silent: true });
+                if (!hasMultiAngleEditorUnsavedChanges()) {
+                    exitMultiAngleEditorToSavedImages();
+                    return;
+                }
+                const choice = await promptMultiAngleDiagramExit();
+                if (choice === 'save') {
+                    await saveMultiAngleDiagramFromEditor({ exitAfterSave: true });
+                } else if (choice === 'discard') {
+                    exitMultiAngleEditorToSavedImages('Unsaved diagram changes discarded.');
+                }
+            } catch (error) {
                 console.error(error);
-                setImageEditorStatus('Could not open Canvas Setup.');
-            });
+                setImageEditorStatus('Could not close the diagram safely.');
+            } finally {
+                multiAngleCloseRequestInProgress = false;
+            }
             return;
         }
         closeStudioImageEditor();
     }
 
+    function bindImageEditorExitEvents() {
+        const overlay = elements.studioImageEditorOverlay;
+        if (!overlay || overlay.dataset.imageEditorExitEventsBound === 'true') return;
+        overlay.dataset.imageEditorExitEventsBound = 'true';
+        elements.studioImageEditorCloseBtn?.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            handleStudioImageEditorCloseRequest();
+        });
+        elements.studioImageEditorCancelBtn?.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            handleStudioImageEditorCloseRequest();
+        });
+        overlay.addEventListener('click', event => {
+            if (event.target !== overlay) return;
+            event.preventDefault();
+            handleStudioImageEditorCloseRequest();
+        });
+    }
+
     async function changeMultiAngleSharedBackground(nextValue, options = {}) {
         const draft = getMultiAngleCreatorState();
-        const nextColor = normalizeMultiAngleBackgroundColor(nextValue);
-        const previousColor = draft.canvas.background;
-        if (nextColor === previousColor) {
-            syncMultiAngleCreatorControls();
-            refreshImageEditorMultiAngleUi();
-            return true;
-        }
-        const activeEditor = state.auth.imageEditor;
-        const currentEditorHasImageEdits = !!(activeEditor?.open && activeEditor?.target?.multiAngleDraft === true && (activeEditor.history?.length || activeEditor.draftShape));
-        const hasFlattenedEdits = currentEditorHasImageEdits || draft.angles.some(angle => !!normalizeSheetText(angle.editedValue));
-        if (hasFlattenedEdits && options.skipConfirm !== true) {
-            const approved = window.confirm('Changing the shared background regenerates every angle from its original source image. Image-level crop, blur, arrow, and line edits may reset. Labels, descriptions, connectors, and drawings will remain. Continue?');
-            if (!approved) {
-                syncMultiAngleCreatorControls();
-                refreshImageEditorMultiAngleUi();
-                return false;
-            }
-        }
-        if (state.auth.imageEditor?.open && state.auth.imageEditor?.target?.multiAngleDraft === true) {
-            await persistCurrentMultiAngleEditorState({ includeImage: false });
-        }
-        draft.canvas = normalizeMultiAngleCanvasConfig({ ...draft.canvas, background: nextColor });
-        draft.angles.forEach(angle => clearMultiAngleFlattenedEdit(angle));
+        const angle = getActiveMultiAngleDraftAngle();
+        if (!angle || angle.setupLocked) return false;
+        angle.background = normalizeMultiAngleBackgroundColor(nextValue);
+        draft.canvas.background = angle.background; // Preview/editor compatibility only.
+        angle.canvasDirty = true;
+        angle.estimateKey = '';
         syncMultiAngleCreatorControls();
-        if (state.auth.imageEditor?.open && state.auth.imageEditor?.target?.multiAngleDraft === true) {
-            await openMultiAngleAngleInImageEditor(draft.activeIndex, { saveCurrent: false });
-            setImageEditorStatus(`Shared background changed to ${nextColor.toUpperCase()}.`);
-        }
-        setCreatorStatus(`Shared multi-angle background changed to ${nextColor.toUpperCase()}.`, 'success');
+        return true;
+    }
+
+    async function commitMultiAngleDraftCanonicalImage(angle, imageValue = '') {
+        const value = normalizeSheetText(imageValue);
+        if (!angle || !value) return false;
+        releaseMultiAngleDraftAngleRuntime(angle);
+        angle.sourceValue = value;
+        angle.editedValue = '';
+        angle.fileName = getCanonicalImageFileNameForValue(angle.fileName, value);
+        angle.framing = normalizeMultiAngleFraming({});
+        angle.runtimeImage = null;
+        angle.runtimeEditedImage = null;
+        await loadMultiAngleRuntimeImage(angle, false);
+        angle.naturalWidth = Math.max(1, angle.runtimeImage?.naturalWidth || 1);
+        angle.naturalHeight = Math.max(1, angle.runtimeImage?.naturalHeight || 1);
+        angle.canvasWidth = angle.naturalWidth;
+        angle.canvasHeight = angle.naturalHeight;
+        angle.canvasDirty = false;
+        angle.currentBytes = getMultiAngleDataUrlBytes(value);
+        angle.estimateKey = '';
+        angle.estimatedBytes = 0;
+        angle.setupLocked = true;
+        angle.bounds = detectMultiAngleVisibleBounds(angle.runtimeImage);
         return true;
     }
 
@@ -8126,27 +10709,32 @@ The deletion becomes permanent when you save the diagram.`);
         const angleId = normalizeSheetText(editor?.target?.multiAngleAngleId || '');
         const angle = draft.angles.find(item => item.id === angleId);
         if (!angle) return false;
-        angle.editedValue = normalizeSheetText(imageValue);
+        if (normalizeSheetText(imageValue)) await commitMultiAngleDraftCanonicalImage(angle, imageValue);
         angle.labels = normalizeDiagramLabels(labels || []);
+        angle.labelSize = normalizeDiagramLabelSize(editor?.labelSize);
+        angle.visualAids = normalizeDiagramVisualAids(editor?.visualAids || angle.visualAids || []);
         angle.drawStrokes = cloneImageEditorDrawStrokes(drawStrokes || []);
         draft.metadata = normalizeDiagramMetadata(metadata || {});
-        angle.runtimeEditedImage = null;
-        if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
-        angle.runtimeEditedObjectUrl = '';
-        await loadMultiAngleRuntimeImage(angle, true);
+        angle.editorDraftCheckpointed = true;
         return true;
     }
 
     function getMultiAngleSaveFileName(draft = getMultiAngleCreatorState()) {
         const name = normalizeSheetText(draft.metadata?.diagramName || draft.angles[0]?.fileName || 'multi-angle-diagram');
         const safe = name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 90) || 'multi-angle-diagram';
-        return `${safe}.png`;
+        return safe;
     }
 
     async function saveMultiAngleDraftToSavedImages(options = {}) {
         const draft = getMultiAngleCreatorState();
         if (draft.saving || !draft.angles.length) return;
+        try { if (!(await finalizeMultiAngleCanvasSetup())) return null; }
+        catch (error) { setCreatorStatus(error.message || 'Could not flatten canvas.', 'error'); return null; }
         draft.saving = true;
+        // Track only brand-new uploads, never a pre-existing canonical reference.
+        // On an interrupted save, remove staged objects without touching the live image.
+        const stagedNewRefs = new Set();
+        let savedEntryCommitted = false;
         syncMultiAngleCreatorControls();
         setCreatorStatus(`Saving ${draft.angles.length} angles...`, 'success');
         try {
@@ -8156,50 +10744,50 @@ The deletion becomes permanent when you save the diagram.`);
             const savedAngles = [];
             for (const [index, angle] of draft.angles.entries()) {
                 setCreatorStatus(`Saving angle ${index + 1} of ${draft.angles.length}...`, 'success');
-                const normalizedDataUrl = getMultiAngleRenderedDataUrl(angle);
-                let savedImage = normalizedDataUrl;
-                let savedSource = angle.sourceValue;
+                const canonicalInput = await createCanonicalMultiAngleImageValue(angle);
+                let savedImage = canonicalInput;
                 let thumbnail = null;
-                let thumbnailValue = '';
+                let thumbnailValue = normalizeSheetText(angle.thumbnailValue || angle.thumbnailMediaValue || '');
+                const canonicalChanged = canonicalInput !== normalizeSheetText(angle.sourceValue || '');
                 try {
-                    savedImage = await savePrivateMediaValueWithDedupCache(normalizedDataUrl, {
+                    savedImage = await savePrivateMediaValueWithDedupCache(canonicalInput, {
                         quizId: null,
                         questionId: null,
-                        usageContext: `saved_image_multi_angle_${index + 1}_normalized`,
+                        usageContext: `saved_image_multi_angle_${index + 1}_canonical`,
                         label: `Saved ${angle.name || `Angle ${index + 1}`}`,
+                        originalName: getCanonicalImageFileNameForValue(angle.fileName, canonicalInput),
                         mediaSaveCache: cache
-                    }) || normalizedDataUrl;
-                    savedSource = await savePrivateMediaValueWithDedupCache(angle.sourceValue, {
-                        quizId: null,
-                        questionId: null,
-                        usageContext: `saved_image_multi_angle_${index + 1}_source`,
-                        label: `Source ${angle.name || `Angle ${index + 1}`}`,
-                        mediaSaveCache: cache
-                    }) || angle.sourceValue;
-                    thumbnail = await createStudioSavedImageThumbnailFromSource(normalizedDataUrl);
-                    thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, { fileName: angle.fileName }, `multi_angle_${index + 1}`);
+                    }) || canonicalInput;
+                    if (isSupabaseMediaReference(savedImage) && savedImage !== normalizeSheetText(angle.sourceValue)) stagedNewRefs.add(savedImage);
+                    if (!thumbnailValue || canonicalChanged) {
+                        thumbnail = await createStudioSavedImageThumbnailFromSource(canonicalInput);
+                        thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, { fileName: angle.fileName }, `multi_angle_${index + 1}`);
+                        if (isSupabaseMediaReference(thumbnailValue)) stagedNewRefs.add(thumbnailValue);
+                    }
                 } catch (error) {
-                    console.warn('Could not upload one multi-angle image; retaining local image data:', error);
+                    throw new Error(`Could not upload angle ${index + 1}; the previous saved version has been preserved. ${error?.message || ''}`);
                 }
                 savedAngles.push(normalizeStudioSavedImageAngle({
                     id: angle.id,
                     name: angle.name,
-                    fileName: angle.fileName,
+                    fileName: getCanonicalImageFileNameForValue(angle.fileName, canonicalInput),
                     imageValue: savedImage,
-                    sourceValue: savedSource,
-                    imageOnlyValue: savedSource,
+                    sourceValue: savedImage,
+                    imageOnlyValue: savedImage,
                     mediaValue: isSupabaseMediaReference(savedImage) ? savedImage : '',
-                    sourceMediaValue: isSupabaseMediaReference(savedSource) ? savedSource : '',
-                    imageOnlyMediaValue: isSupabaseMediaReference(savedSource) ? savedSource : '',
+                    sourceMediaValue: isSupabaseMediaReference(savedImage) ? savedImage : '',
+                    imageOnlyMediaValue: isSupabaseMediaReference(savedImage) ? savedImage : '',
                     thumbnailValue,
                     thumbnailMediaValue: isSupabaseMediaReference(thumbnailValue) ? thumbnailValue : '',
-                    thumbnailWidth: thumbnail?.width || 0,
-                    thumbnailHeight: thumbnail?.height || 0,
-                    thumbnailBytes: thumbnail?.bytes || 0,
+                    thumbnailWidth: thumbnail?.width || angle.thumbnailWidth || 0,
+                    thumbnailHeight: thumbnail?.height || angle.thumbnailHeight || 0,
+                    thumbnailBytes: thumbnail?.bytes || angle.thumbnailBytes || 0,
                     thumbnailVersion: thumbnailValue ? STUDIO_SAVED_IMAGE_THUMBNAIL_VERSION : 0,
                     labels: angle.labels,
+                    labelSize: normalizeDiagramLabelSize(angle.labelSize),
+                    visualAids: normalizeDiagramVisualAids(angle.visualAids || []),
                     drawStrokes: angle.drawStrokes,
-                    framing: angle.framing,
+                    framing: {},
                     naturalWidth: angle.naturalWidth,
                     naturalHeight: angle.naturalHeight,
                     bounds: angle.bounds
@@ -8212,9 +10800,9 @@ The deletion becomes permanent when you save the diagram.`);
                 id: originalEntry ? getStudioSavedImageSyncKey(originalEntry) : createStableSavedImageId(`multi-angle::${Date.now()}::${first.imageValue}::${savedAngles.length}`),
                 fileName,
                 imageValue: first.imageValue,
-                imageOnlyValue: first.sourceValue,
+                imageOnlyValue: first.imageValue,
                 mediaValue: first.mediaValue,
-                imageOnlyMediaValue: first.sourceMediaValue,
+                imageOnlyMediaValue: first.mediaValue,
                 thumbnailValue: first.thumbnailValue || '',
                 thumbnailMediaValue: first.thumbnailMediaValue || '',
                 thumbnailWidth: first.thumbnailWidth || 0,
@@ -8222,25 +10810,51 @@ The deletion becomes permanent when you save the diagram.`);
                 thumbnailBytes: first.thumbnailBytes || 0,
                 thumbnailVersion: first.thumbnailVersion || 0,
                 imageLabel: `Saved: ${fileName}`,
-                imageOnlyLabel: `Saved source: ${fileName}`,
+                imageOnlyLabel: `Saved: ${fileName}`,
                 labels: first.labels,
+                labelSize: normalizeDiagramLabelSize(first.labelSize),
+                pinnedLabelsByAngle: originalEntry?.pinnedLabelsByAngle || {},
+                masteredAnglesById: getSavedImageMasteryForReplacement(originalEntry, { angles: savedAngles, imageValue: first.imageValue, isMultiAngle: true }),
+                masteredUniqueLabels: getSavedImageUniqueMasteryForReplacement(originalEntry, { angles: savedAngles, imageValue: first.imageValue, isMultiAngle: true }),
+                spacedReview: originalEntry?.spacedReview || {},
+                visualAids: normalizeDiagramVisualAids(first.visualAids || []),
                 drawStrokes: first.drawStrokes,
                 metadata: normalizeDiagramMetadata(draft.metadata || {}),
+                classId: normalizeSheetText(draft.classId || ''),
+                folderId: normalizeSheetText(draft.folderId || ''),
                 isMultiAngle: true,
                 canvas: normalizeMultiAngleCanvasConfig(draft.canvas || {}),
                 angles: savedAngles,
                 createdAt: originalEntry?.createdAt
             };
-            const savedEntry = originalEntry
+            // F.37 confirmed replacement: update the remote Saved Image record
+            // before replacing the local index or deleting any prior canonical asset.
+            // A remote write failure leaves the prior image live and staged uploads
+            // are removed in the catch path (no permanent source + flattened pair).
+            const remoteEnabled = !!(state.auth.client && state.auth.user?.id);
+            const remoteSyncKey = normalizeSheetText(nextEntry.id);
+            let remoteResult = null;
+            if (remoteEnabled) {
+                remoteResult = await upsertStudioSavedImageRemoteEntry(nextEntry, { syncKey: remoteSyncKey });
+                if (!remoteResult.ok) throw new Error('Could not confirm the new Saved Image on the server. The previous saved image is unchanged. Try again.');
+            }
+            let savedEntry = originalEntry
                 ? replaceStudioSavedImageLibraryEntry(originalEntry, nextEntry)
                 : upsertStudioSavedImageLibraryEntry(nextEntry);
-            if (savedEntry && state.auth.client && state.auth.user?.id) {
-                const syncKey = getStudioSavedImageSyncKey(savedEntry);
-                const remoteResult = await upsertStudioSavedImageRemoteEntry(savedEntry, { syncKey });
-                if (remoteResult.ok) {
-                    const pendingKeys = getStudioSavedImagePendingUpsertKeys();
-                    pendingKeys.delete(syncKey);
-                    saveStudioSavedImagePendingUpsertKeys(pendingKeys);
+            if (!savedEntry) throw new Error('Could not finalize the Saved Image record.');
+            savedEntryCommitted = true;
+            savedEntry = synchronizeStudioSavedImageGlobalLabelInformationFromEntry(savedEntry) || savedEntry;
+            if (remoteResult?.ok) {
+                const pendingKeys = getStudioSavedImagePendingUpsertKeys();
+                pendingKeys.delete(remoteSyncKey);
+                saveStudioSavedImagePendingUpsertKeys(pendingKeys);
+                if (originalEntry) {
+                    // Legacy cleanup protects any references still needed by other
+                    // saved images or flashcards, and never deletes a live raster.
+                    await cleanupReplacedStudioSavedImageMedia(originalEntry, remoteResult.entry || savedEntry, {
+                        additionalPreviousRefs: draft.legacySourceRefs || []
+                    });
+                    draft.legacySourceRefs?.clear?.();
                 }
             }
             renderDiagramCreatorSavedImages();
@@ -8249,6 +10863,7 @@ The deletion becomes permanent when you save the diagram.`);
             if (options.keepDraftOpen === true) {
                 draft.originalEntry = normalizeStudioSavedImageEntry(savedEntry || nextEntry);
                 draft.editingEntryId = normalizeSheetText(savedEntry?.id || nextEntry.id);
+                markMultiAngleDraftSavedBaseline(draft);
                 draft.saving = false;
                 syncMultiAngleCreatorControls();
                 refreshImageEditorLabelUi();
@@ -8261,9 +10876,15 @@ The deletion becomes permanent when you save the diagram.`);
             return savedEntry;
         } catch (error) {
             console.error(error);
+            if (!savedEntryCommitted && stagedNewRefs.size) {
+                try { await deleteSupabaseMediaReferences(stagedNewRefs); }
+                catch (cleanupError) { console.warn('Could not clean up staged Canvas Setup uploads:', cleanupError); }
+                // Never return a cached sb-media reference to an object we just deleted.
+                state.auth.studioSavedImageMediaSaveCache?.clear?.();
+            }
             draft.saving = false;
             syncMultiAngleCreatorControls();
-            setCreatorStatus('Could not save the multi-angle diagram. Review the images and try again.', 'error');
+            setCreatorStatus(error?.message || 'Could not save the multi-angle diagram. Review the images and try again.', 'error');
             return null;
         }
     }
@@ -8277,27 +10898,32 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         if (isMultiAngleSavedImageEntry(entry)) {
-            await openMultiAngleSavedDiagram(entry);
-            if (!getStudioSavedImageThumbnailValue(entry) && state.auth.imageEditor?.baseCanvas) {
-                ensureStudioSavedImageThumbnail(entry.id, { canvas: state.auth.imageEditor.baseCanvas }).catch(() => {});
-            }
+            const opened = await openMultiAngleSavedDiagram(entry);
+            if (opened) repairStudioSavedImageThumbnailAfterOpen(entry, {
+                canvas: state.auth.imageEditor?.baseCanvas,
+                sourceValue: getStudioSavedImageApplyValue(entry)
+            })?.catch(() => {});
             return;
         }
         setDiagramCreatorLibraryView('saved');
         await openStudioImageEditor({
             kind: 'standalone-diagram',
-            sourceValue: getStudioSavedImageApplyValue(entry, true),
+            sourceValue: getStudioSavedImageApplyValue(entry),
             sourceLabel: entry.imageLabel || `Saved: ${entry.fileName}`,
             labels: normalizeDiagramLabels(entry.labels || []),
             visualAids: normalizeDiagramVisualAids(entry.visualAids || []),
             drawStrokes: cloneImageEditorDrawStrokes(entry.drawStrokes || []),
+            labelSize: normalizeDiagramLabelSize(entry.labelSize),
             metadata: normalizeDiagramMetadata(entry.metadata || {}),
+            classId: normalizeSheetText(entry.classId || ''),
+            folderId: normalizeSheetText(entry.folderId || ''),
             savedImageEntryId: entry.id,
             savedImageOriginalEntry: entry
         });
-        if (!getStudioSavedImageThumbnailValue(entry) && state.auth.imageEditor?.baseCanvas) {
-            ensureStudioSavedImageThumbnail(entry.id, { canvas: state.auth.imageEditor.baseCanvas }).catch(() => {});
-        }
+        repairStudioSavedImageThumbnailAfterOpen(entry, {
+            canvas: state.auth.imageEditor?.baseCanvas,
+            sourceValue: getStudioSavedImageApplyValue(entry)
+        })?.catch(() => {});
     }
 
     // ================= PHASE 22MC: REVIEW MODE =================
@@ -8307,13 +10933,17 @@ The deletion becomes permanent when you save the diagram.`);
     let reviewModeMiniQuizRapidTimerId = null;
     const REVIEW_MODE_MINI_QUIZ_RAPID_DELAY_MS = 850;
 
-    function normalizeReviewModeMiniQuizMode(value = 'normal') {
+    function normalizeReviewModeMiniQuizMode(value = 'progress') {
         const mode = normalizeSheetText(value).toLowerCase();
         return ['progress', 'retention', 'mastery', 'mastery-check'].includes(mode) ? mode : 'normal';
     }
 
-    function normalizeReviewModeMiniQuizState(value = null, fallbackMode = 'normal') {
+    function normalizeReviewModeMiniQuizState(value = null, fallbackMode = 'progress') {
         const mini = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        // Phase 23F.41.28: The active question queue is normalized when the
+        // quiz begins. Re-mapping every question on EVERY getReviewModeState()
+        // call (including geometry and connector lookups) scales badly.
+        if (mini.active === true && mini.__studyBunnyNormalizedMiniQuiz === true) return mini;
         const normalizeIndexArray = input => Array.from(new Set((Array.isArray(input) ? input : [])
             .map(item => Number(item))
             .filter(item => Number.isInteger(item) && item >= 0)));
@@ -8323,20 +10953,28 @@ The deletion becomes permanent when you save the diagram.`);
         mini.scope = mini.scope === 'all' ? 'all' : 'current';
         mini.targets = (Array.isArray(mini.targets) ? mini.targets : []).map((target, targetIndex) => {
             const source = target && typeof target === 'object' && !Array.isArray(target) ? target : {};
-            const kind = ['label', 'visual-path', 'visual-point', 'visual-division'].includes(source.kind) ? source.kind : 'label';
+            const kind = ['label', 'label-info', 'visual-path', 'visual-point', 'visual-division', 'visual-flow-region', 'visual-flow-path', 'visual-flow-fill'].includes(source.kind) ? source.kind : 'label';
+            const labelTarget = kind === 'label' || kind === 'label-info';
             return {
                 id: normalizeSheetText(source.id) || `target_${targetIndex}`,
                 kind,
                 angleId: normalizeSheetText(source.angleId),
                 angleIndex: Math.max(0, Math.floor(Number(source.angleIndex) || 0)),
-                labelIndex: kind === 'label' ? Math.max(0, Math.floor(Number(source.labelIndex) || 0)) : -1,
+                labelIndex: labelTarget ? Math.max(0, Math.floor(Number(source.labelIndex) || 0)) : -1,
+                categoryIndex: kind === 'label-info' ? Math.max(0, Math.floor(Number(source.categoryIndex) || 0)) : -1,
+                categoryName: kind === 'label-info' ? normalizeSheetText(source.categoryName || 'Information') : '',
+                categoryBody: kind === 'label-info' ? normalizeDiagramLabelInfoBody(source.categoryBody || '') : '',
+                identifyStructureForCategory: kind === 'label-info' && source.identifyStructureForCategory === true,
                 visualAidId: normalizeSheetText(source.visualAidId || ''),
-                visualItemId: normalizeSheetText(source.visualItemId || '')
+                visualItemId: normalizeSheetText(source.visualItemId || ''),
+                flowQuestionVariant: ['custom', 'contents'].includes(source.flowQuestionVariant) ? source.flowQuestionVariant : 'name'
             };
         });
         mini.queue = normalizeIndexArray(mini.queue).filter(index => index < mini.targets.length);
         mini.position = Math.max(0, Math.floor(Number(mini.position) || 0));
-        mini.roundMissed = normalizeIndexArray(mini.roundMissed);
+        mini.roundMissed = normalizeIndexArray(mini.roundMissed).filter(index => index < mini.targets.length);
+        mini.roundCheckpoint = mini.active && !mini.complete && mini.mode === 'progress' && mini.roundCheckpoint === true;
+        mini.progressRound = Math.max(1, Math.floor(Number(mini.progressRound) || 1));
         mini.knownLabels = normalizeIndexArray(mini.knownLabels);
         mini.reviewLabels = normalizeIndexArray(mini.reviewLabels);
         mini.retentionKnown = normalizeIndexArray(mini.retentionKnown);
@@ -8351,6 +10989,13 @@ The deletion becomes permanent when you save the diagram.`);
         mini.typedResult = ['correct', 'incorrect', 'retry', 'empty'].includes(mini.typedResult) ? mini.typedResult : '';
         mini.typedAnswerKnown = mini.typedAnswerKnown === true ? true : (mini.typedAnswerKnown === false ? false : null);
         mini.rapidPending = mini.rapidPending === true;
+        mini.masteryCorrectRegularTargets = normalizeIndexArray(mini.masteryCorrectRegularTargets);
+        mini.masteryWrongAngleIds = Array.isArray(mini.masteryWrongAngleIds) ? [...new Set(mini.masteryWrongAngleIds.map(normalizeSheetText).filter(Boolean))] : [];
+        if (mini.active === true) {
+            Object.defineProperty(mini, '__studyBunnyNormalizedMiniQuiz', {
+                value: true, configurable: true, enumerable: false
+            });
+        }
         return mini;
     }
 
@@ -8367,29 +11012,45 @@ The deletion becomes permanent when you save the diagram.`);
         review.optionsOpen = review.optionsOpen === true;
         review.showAngleControls = review.showAngleControls === true;
         review.showAllNames = review.showAllNames === true;
+        review.soloLabels = review.soloLabels !== false;
+        review.pinnedLabelsOnly = review.pinnedLabelsOnly === true;
+        review.pinAllSharedLabels = review.pinAllSharedLabels === true;
+        review.pinSelectedLabelIndex = Number.isInteger(review.pinSelectedLabelIndex) ? review.pinSelectedLabelIndex : -1;
+        review.allowLabelMovement = review.allowLabelMovement === true;
         review.showLabelNumbers = review.showLabelNumbers === true;
         review.showDrawData = review.showDrawData === true;
         review.showConnectors = review.showConnectors !== false;
         review.showConnectorContrast = review.showConnectorContrast !== false;
         review.focusMode = review.focusMode === true;
+        review.twoLevelFocus = review.twoLevelFocus === true;
+        review.normalFocusZoom = Math.min(700, Math.max(100, Math.round((Number(review.normalFocusZoom) || 200) / 25) * 25));
+        review.detailFocusZoom = Math.min(700, Math.max(review.normalFocusZoom, Math.round((Number(review.detailFocusZoom) || 700) / 25) * 25));
+        review.focusTier = review.focusTier === 'detail' ? 'detail' : 'normal';
+        review.focusTargetKey = String(review.focusTargetKey || '');
         review.focusLabelIndex = Number.isInteger(Number(review.focusLabelIndex)) ? Math.floor(Number(review.focusLabelIndex)) : -1;
         if (!review.focusRestoreZoom || typeof review.focusRestoreZoom !== 'object') review.focusRestoreZoom = null;
+        review.miniQuizFocusRestore = typeof review.miniQuizFocusRestore === 'boolean' ? review.miniQuizFocusRestore : null;
+        review.libraryPage = Math.max(0, Math.floor(Number(review.libraryPage) || 0));
+        review.libraryShowAll = review.libraryShowAll === true;
         review.disableLabelNamesOnClick = review.disableLabelNamesOnClick === true;
         review.includeLabelDescriptions = review.includeLabelDescriptions !== false;
         review.randomizeMiniQuiz = review.randomizeMiniQuiz !== false;
         review.allowDuplicateMiniQuiz = review.allowDuplicateMiniQuiz === true;
-        review.typedMiniQuiz = review.typedMiniQuiz === true;
+        review.quizLabelInformation = review.quizLabelInformation === true;
+        review.identifyStructureForCategory = review.quizLabelInformation && review.identifyStructureForCategory === true;
+        review.typedMiniQuiz = !review.quizLabelInformation && review.typedMiniQuiz === true;
         review.rapidMiniQuiz = review.typedMiniQuiz && review.rapidMiniQuiz === true;
         review.spellUntilCorrectMiniQuiz = review.typedMiniQuiz && review.spellUntilCorrectMiniQuiz === true;
-        review.miniQuizScope = review.miniQuizScope === 'all' ? 'all' : 'current';
+        review.miniQuizScope = review.miniQuizScope === 'current' ? 'current' : 'all';
         review.miniQuizVisualAidPolicy = ['include', 'exclude', 'only'].includes(review.miniQuizVisualAidPolicy) ? review.miniQuizVisualAidPolicy : 'exclude';
         review.miniQuizCurrentVisualAidOnly = review.miniQuizCurrentVisualAidOnly === true;
         review.miniQuizMode = normalizeReviewModeMiniQuizMode(review.miniQuizMode);
         review.miniQuiz = normalizeReviewModeMiniQuizState(review.miniQuiz, review.miniQuizMode);
         if (!review.temporaryLabelPositions || typeof review.temporaryLabelPositions !== 'object' || Array.isArray(review.temporaryLabelPositions)) review.temporaryLabelPositions = {};
         if (!review.temporaryLabelPositionsByAngle || typeof review.temporaryLabelPositionsByAngle !== 'object' || Array.isArray(review.temporaryLabelPositionsByAngle)) review.temporaryLabelPositionsByAngle = {};
+        if (!review.autoLabelPositions || typeof review.autoLabelPositions !== 'object' || Array.isArray(review.autoLabelPositions)) review.autoLabelPositions = {};
         review.suppressLabelClickUntil = Math.max(0, Number(review.suppressLabelClickUntil) || 0);
-        review.labelScale = Math.min(1.8, Math.max(0.65, Number(review.labelScale) || 1.5));
+        review.labelSize = normalizeDiagramLabelSize(review.labelSize);
         review.shortcutDockVisible = review.shortcutDockVisible !== false;
         review.shortcutDockEdge = ['left', 'right', 'top', 'bottom'].includes(review.shortcutDockEdge) ? review.shortcutDockEdge : 'right';
         const shortcutDockOffset = Number(review.shortcutDockOffset);
@@ -8402,7 +11063,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.visualAidDockEdge = ['left', 'right', 'top', 'bottom'].includes(review.visualAidDockEdge) ? review.visualAidDockEdge : 'bottom';
         const visualAidDockOffset = Number(review.visualAidDockOffset);
         review.visualAidDockOffset = Math.min(1, Math.max(0, Number.isFinite(visualAidDockOffset) ? visualAidDockOffset : 0.5));
-        review.visualAidSelectedKind = ['path', 'point', 'division'].includes(review.visualAidSelectedKind) ? review.visualAidSelectedKind : '';
+        review.visualAidSelectedKind = ['path', 'point', 'division', 'flow-region', 'flow-path', 'flow-fill'].includes(review.visualAidSelectedKind) ? review.visualAidSelectedKind : '';
         review.visualAidSelectedId = normalizeSheetText(review.visualAidSelectedId || '');
         if (!review.visualAidIdByAngle || typeof review.visualAidIdByAngle !== 'object' || Array.isArray(review.visualAidIdByAngle)) review.visualAidIdByAngle = {};
         if (!review.miniVisualPromptPosition || typeof review.miniVisualPromptPosition !== 'object' || Array.isArray(review.miniVisualPromptPosition)) review.miniVisualPromptPosition = null;
@@ -8414,6 +11075,8 @@ The deletion becomes permanent when you save the diagram.`);
         return {
             search: normalizeSheetText(elements.reviewModeSearchInput?.value || '').toLowerCase(),
             diagramName: normalizeSheetText(elements.reviewModeDiagramNameFilter?.value || '').toLowerCase(),
+            classId: normalizeSheetText(elements.reviewModeClassFilter?.value || ''),
+            folderId: normalizeSheetText(elements.reviewModeFolderFilter?.value || ''),
             subjectName: normalizeSheetText(elements.reviewModeSubjectFilter?.value || '').toLowerCase(),
             anatomyType: normalizeSheetText(elements.reviewModeAnatomyTypeFilter?.value || '').toLowerCase(),
             organSystem: normalizeSheetText(elements.reviewModeOrganSystemFilter?.value || '').toLowerCase(),
@@ -8436,6 +11099,10 @@ The deletion becomes permanent when you save the diagram.`);
             const metadata = normalizeDiagramMetadata(entry.metadata || {});
             if (filters.search && !includesReviewFilter(getStudioSavedImageSearchText(entry), filters.search)) return false;
             if (!includesReviewFilter(metadata.diagramName, filters.diagramName)) return false;
+            const organization = getStudioSavedImageOrganization(entry);
+            if (filters.classId === '__none__' && organization.classId) return false;
+            if (filters.classId && filters.classId !== '__none__' && organization.classId !== filters.classId) return false;
+            if (filters.folderId && organization.folderId !== filters.folderId) return false;
             if (!includesReviewFilter(metadata.subjectName, filters.subjectName)) return false;
             if (filters.anatomyType && metadata.anatomyType !== filters.anatomyType) return false;
             if (filters.organSystem && metadata.organSystem !== filters.organSystem) return false;
@@ -8469,14 +11136,39 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function renderReviewModeLibrary() {
+        closeSavedImageStudyProgressPopup();
         if (!elements.reviewModeImageGrid) return;
+        refreshSavedImageOrganizationFilterSelects();
+        const review = getReviewModeState();
         const allEntries = getStudioSavedImageLibraryForPicker();
         const entries = filterReviewModeEntries(allEntries)
+            .filter(entry => matchesSavedImageQuickFilters(entry, 'review'))
             .slice()
-            .sort((a, b) => getReviewModeEntryRecentTimestamp(b) - getReviewModeEntryRecentTimestamp(a));
+            .sort((a, b) => isSavedImagePendingQuickFilterOn('review')
+                ? getSavedImageStudyFilterRank(a) - getSavedImageStudyFilterRank(b) || getReviewModeEntryRecentTimestamp(b) - getReviewModeEntryRecentTimestamp(a)
+                : getReviewModeEntryRecentTimestamp(b) - getReviewModeEntryRecentTimestamp(a));
+        const totalPages = Math.max(1, Math.ceil(entries.length / STUDIO_SAVED_IMAGE_PAGE_SIZE));
+        review.libraryPage = Math.min(Math.max(0, Math.floor(Number(review.libraryPage) || 0)), totalPages - 1);
+        review.libraryShowAll = review.libraryShowAll === true;
+        const visibleEntries = review.libraryShowAll
+            ? entries
+            : entries.slice(review.libraryPage * STUDIO_SAVED_IMAGE_PAGE_SIZE, (review.libraryPage + 1) * STUDIO_SAVED_IMAGE_PAGE_SIZE);
         if (elements.reviewModeSearchCount) {
-            elements.reviewModeSearchCount.textContent = `${entries.length} of ${allEntries.length} saved image${allEntries.length === 1 ? '' : 's'}`;
+            const visibleText = entries.length > STUDIO_SAVED_IMAGE_PAGE_SIZE && !review.libraryShowAll
+                ? ` · showing ${visibleEntries.length}`
+                : '';
+            elements.reviewModeSearchCount.textContent = `${entries.length} of ${allEntries.length} saved image${allEntries.length === 1 ? '' : 's'}${visibleText}`;
         }
+        renderSavedImagePagination({
+            total: entries.length,
+            page: review.libraryPage,
+            showAll: review.libraryShowAll,
+            container: elements.reviewModePagination,
+            prevButton: elements.reviewModePagePrevBtn,
+            nextButton: elements.reviewModePageNextBtn,
+            status: elements.reviewModePageStatus,
+            showAllButton: elements.reviewModeShowAllBtn
+        });
         if (!allEntries.length) {
             elements.reviewModeImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images are available yet. Create one in Diagram Creator or send an edited flashcard image to Saved Images.</div>';
             return;
@@ -8485,42 +11177,130 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeImageGrid.innerHTML = '<div class="studio-review-empty">No Saved Images match those search filters.</div>';
             return;
         }
-        elements.reviewModeImageGrid.innerHTML = entries.map(entry => {
+        elements.reviewModeImageGrid.innerHTML = visibleEntries.map(entry => {
             const metadata = normalizeDiagramMetadata(entry.metadata || {});
             const title = metadata.diagramName || metadata.subjectName || entry.fileName;
             const summary = [metadata.subjectName, metadata.anatomyType, metadata.organSystem, metadata.location].filter(Boolean).join(' · ');
             const angles = getStudioSavedImageAngles(entry);
             const labelCount = getStudioSavedImageTotalLabelCount(entry);
             const countText = `${angles.length > 1 ? `${angles.length} angles · ` : ''}${labelCount} label${labelCount === 1 ? '' : 's'}`;
+            const pinnedCount = getSavedImagePinnedCount(entry);
+            const mastered = getSavedImageMasteryStatus(entry);
             return `
                 <article class="studio-review-image-card">
                   <button type="button" class="studio-review-image-open" data-review-image-id="${escapeHtml(entry.id)}" aria-label="Review ${escapeHtml(title)}">
-                    <img class="studio-review-image-thumb" data-review-image-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(title)}">
+                    <span class="studio-mastered-thumb-wrap">
+                      <img class="studio-review-image-thumb" data-review-image-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(title)}">
+                      ${renderSavedImageStudyRibbon(entry)}
+                    </span>
                     <span class="studio-review-image-card-body">
                       <span class="studio-review-image-name">${escapeHtml(title)}</span>
                       ${summary ? `<span class="studio-review-image-meta">${escapeHtml(summary)}</span>` : ''}
                       <span class="studio-review-image-label-count">${escapeHtml(countText)}</span>
+                      <span class="studio-saved-image-pinned-count"><svg class="studio-saved-image-pin-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg> ${pinnedCount} pinned label${pinnedCount === 1 ? '' : 's'}</span>
                     </span>
                   </button>
-                  <button type="button" class="studio-review-image-delete" data-review-image-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>
+                  <div class="studio-saved-image-card-controls">
+                  <button type="button" class="studio-saved-image-reset-pinned studio-review-reset-pinned" data-review-image-reset-pinned="${escapeHtml(entry.id)}" ${pinnedCount ? '' : 'disabled title="No pinned labels to reset"'}>Reset pinned</button>
+                  <button type="button" class="studio-study-progress-button" data-study-progress="${escapeHtml(entry.id)}" aria-expanded="false">Progress</button>
+                                    </div>
+                  ${renderSavedImageStudyProgress(entry)}
+                  <span class="studio-study-review-icon-column"><button type="button" class="studio-review-image-delete" data-review-image-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>${renderSavedImageReminderToggle(entry,'review-image')}</span>
                 </article>
             `;
         }).join('');
-        const entryById = new Map(entries.map(entry => [normalizeSheetText(entry.id), entry]));
+        const entryById = new Map(visibleEntries.map(entry => [normalizeSheetText(entry.id), entry]));
         elements.reviewModeImageGrid.querySelectorAll('[data-review-image-thumb-id]').forEach(img => {
             applyStudioSavedImageThumbnailToElement(img, entryById.get(normalizeSheetText(img.dataset.reviewImageThumbId)) || {});
         });
     }
 
-    function getActiveReviewModeEntry() {
-        const review = getReviewModeState();
-        return getStudioSavedImageLibraryForPicker().find(entry => entry.id === review.activeEntryId) || null;
+    document.addEventListener('click', event => {
+        const control = event.target.closest?.('[data-study-quick-filter]');
+        if (!control) return;
+        const group = control.closest('[data-study-quick-filters]');
+        if (!group) return;
+        event.preventDefault();
+        const on = control.getAttribute('aria-pressed') === 'true';
+        control.setAttribute('aria-pressed', String(!on));
+        if (group.dataset.studyQuickFilters === 'diagram') {
+            getDiagramCreatorLibraryState().page = 0;
+            renderDiagramCreatorSavedImages();
+        } else {
+            getReviewModeState().libraryPage = 0;
+            renderReviewModeLibrary();
+        }
+    });
+
+    // Phase 23F.41.28: Keep the active Mini Quiz's normalized diagram snapshot.
+    // Phase 23F.41.29: Normal Review needs the same protection while its overlay
+    // is open; angle navigation must not re-merge every Saved Image repeatedly.
+    // Saved-image / shared-label writes invalidate these short-lived snapshots.
+    let reviewModeMiniQuizEntrySnapshot = null;
+    const reviewModeMiniQuizAngleSnapshots = new WeakMap();
+    let reviewModeNormalEntrySnapshot = null;
+    let reviewModeNormalSharedRecords = null;
+    let reviewModeNormalEnrichedLabels = new WeakMap();
+
+    function invalidateReviewModeMiniQuizEntrySnapshot() {
+        reviewModeMiniQuizEntrySnapshot = null;
     }
 
+    function invalidateReviewModeNormalDataCaches() {
+        reviewModeNormalEntrySnapshot = null;
+        reviewModeNormalSharedRecords = null;
+        reviewModeNormalEnrichedLabels = new WeakMap();
+    }
+
+    function getReviewModeNormalGlobalRecords() {
+        const review = getReviewModeState();
+        if (!review.overlayOpen || review.miniQuiz.active) return getStudioSavedImageGlobalLabelRecords();
+        const userId = normalizeSheetText(state.auth.user?.id || '');
+        if (reviewModeNormalSharedRecords?.userId === userId) return reviewModeNormalSharedRecords.records;
+        const records = getStudioSavedImageGlobalLabelRecords();
+        reviewModeNormalSharedRecords = { userId, records };
+        return records;
+    }
+
+    function getActiveReviewModeEntry() {
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        if (mini.active && reviewModeMiniQuizEntrySnapshot?.mini === mini
+            && reviewModeMiniQuizEntrySnapshot.entryId === review.activeEntryId) {
+            return reviewModeMiniQuizEntrySnapshot.entry;
+        }
+        const userId = normalizeSheetText(state.auth.user?.id || '');
+        if (!mini.active && review.overlayOpen && reviewModeNormalEntrySnapshot?.entryId === review.activeEntryId
+            && reviewModeNormalEntrySnapshot.userId === userId) {
+            return reviewModeNormalEntrySnapshot.entry;
+        }
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === review.activeEntryId) || null;
+        if (mini.active && entry) reviewModeMiniQuizEntrySnapshot = { mini, entryId: review.activeEntryId, entry };
+        else if (!mini.active && review.overlayOpen && entry) {
+            reviewModeNormalEntrySnapshot = { entryId: review.activeEntryId, userId, entry, angles: null };
+        }
+        return entry;
+    }
+
+    function getReviewModePreparedAngles(entry = null) {
+        if (!entry) return [];
+        if (!getReviewModeState().miniQuiz.active) {
+            const snapshot = reviewModeNormalEntrySnapshot;
+            if (!snapshot || snapshot.entry !== entry) return getStudioSavedImageAngles(entry);
+            if (!snapshot.angles) snapshot.angles = getStudioSavedImageAngles(entry);
+            return snapshot.angles;
+        }
+        let angles = reviewModeMiniQuizAngleSnapshots.get(entry);
+        if (!angles) {
+            angles = getStudioSavedImageAngles(entry);
+            reviewModeMiniQuizAngleSnapshots.set(entry, angles);
+        }
+        return angles;
+    }
 
     function getActiveReviewModeAngle(entry = getActiveReviewModeEntry()) {
         const review = getReviewModeState();
-        const angles = getStudioSavedImageAngles(entry || {});
+        const angles = getReviewModePreparedAngles(entry);
         if (!angles.length) return null;
         review.activeAngleIndex = Math.min(angles.length - 1, Math.max(0, review.activeAngleIndex));
         return angles[review.activeAngleIndex] || angles[0];
@@ -8539,18 +11319,34 @@ The deletion becomes permanent when you save the diagram.`);
         review.temporaryLabelPositionsByAngle[key] = { ...(review.temporaryLabelPositions || {}) };
     }
 
+    function enforceReviewModeSoloLabels(review) {
+        if (!review.soloLabels || review.revealedLabels.size <= 1) return;
+        // Preserve the most recently revealed label when turning Solo Labels on
+        // or returning to an angle last visited with Solo Labels off.
+        const lastRevealed = Array.from(review.revealedLabels).pop();
+        review.revealedLabels = new Set(lastRevealed === undefined ? [] : [lastRevealed]);
+    }
+
     function restoreReviewModeAngleUiState() {
         const review = getReviewModeState();
         const key = getReviewModeActiveAngleKey();
+        review.pinSelectedLabelIndex = -1;
         const revealed = review.revealedLabelsByAngle[key];
         review.revealedLabels = revealed instanceof Set ? new Set(revealed) : new Set(Array.isArray(revealed) ? revealed : []);
+        enforceReviewModeSoloLabels(review);
         review.temporaryLabelPositions = { ...(review.temporaryLabelPositionsByAngle[key] || {}) };
+        const entry = getActiveReviewModeEntry();
+        const overrideKey = `${review.activeEntryId}:${key}`;
+        const override = review.labelSizeOverridesByAngle?.[overrideKey];
+        review.labelSize = normalizeDiagramLabelSize(override ?? getActiveReviewModeAngle(entry)?.labelSize);
+        if (elements.reviewModeLabelSizeSlider) elements.reviewModeLabelSizeSlider.value = String(Math.round(review.labelSize * 100));
+        if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelSize * 100)}%`;
     }
 
     function syncReviewModeAngleNavigation() {
         const review = getReviewModeState();
         const entry = getActiveReviewModeEntry();
-        const angles = getStudioSavedImageAngles(entry || {});
+        const angles = getReviewModePreparedAngles(entry || {});
         const angle = getActiveReviewModeAngle(entry);
         const hasMultipleAngles = angles.length > 1;
         const show = hasMultipleAngles && review.showAngleControls;
@@ -8728,12 +11524,23 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeShortcutNextBtn.setAttribute('aria-disabled', canAdvance ? 'false' : 'true');
         }
         if (elements.reviewModeShortcutFocusBtn) {
-            elements.reviewModeShortcutFocusBtn.classList.toggle('is-active', review.focusMode);
-            elements.reviewModeShortcutFocusBtn.setAttribute('aria-pressed', review.focusMode ? 'true' : 'false');
-            elements.reviewModeShortcutFocusBtn.textContent = review.focusMode ? 'Focus On' : 'Focus';
+            syncReviewModeFocusPresentation(review);
         }
-        if (elements.reviewModeShortcutLabelDownBtn) elements.reviewModeShortcutLabelDownBtn.disabled = review.labelScale <= 0.65;
-        if (elements.reviewModeShortcutLabelUpBtn) elements.reviewModeShortcutLabelUpBtn.disabled = review.labelScale >= 1.8;
+        if (elements.reviewModeShortcutLabelDownBtn) elements.reviewModeShortcutLabelDownBtn.disabled = review.labelSize <= 0.25;
+        if (elements.reviewModeShortcutLabelUpBtn) elements.reviewModeShortcutLabelUpBtn.disabled = review.labelSize >= 2;
+        if (elements.reviewModeShortcutSmallLabelsBtn) {
+            const big = review.labelSize > 1.25;
+            elements.reviewModeShortcutSmallLabelsBtn.textContent = big ? 'Small Labels' : 'Big Labels';
+            elements.reviewModeShortcutSmallLabelsBtn.title = big
+                ? 'Set label size to 100%' : 'Set label size to 160%';
+            elements.reviewModeShortcutSmallLabelsBtn.setAttribute('aria-label', elements.reviewModeShortcutSmallLabelsBtn.title);
+            elements.reviewModeShortcutSmallLabelsBtn.setAttribute('aria-pressed', String(big));
+        }
+        if (elements.reviewModeShortcutMovementBtn) {
+            elements.reviewModeShortcutMovementBtn.classList.toggle('is-active', review.allowLabelMovement);
+            elements.reviewModeShortcutMovementBtn.setAttribute('aria-pressed', String(review.allowLabelMovement));
+            elements.reviewModeShortcutMovementBtn.title = `Allow Label Movement ${review.allowLabelMovement ? 'On' : 'Off'} (hold 250 ms to move)`;
+        }
         if (elements.reviewModeShowShortcutDockToggle) elements.reviewModeShowShortcutDockToggle.checked = review.shortcutDockVisible;
         window.requestAnimationFrame(applyReviewModeShortcutDockPosition);
     }
@@ -8840,8 +11647,10 @@ The deletion becomes permanent when you save the diagram.`);
 
     // Phase 22MX: image-specific iPad pinch zoom and pan for the complete Review Mode stage.
     const REVIEW_MODE_MIN_ZOOM = 1;
-    const REVIEW_MODE_MAX_ZOOM = 5;
-    const REVIEW_MODE_FOCUS_MAX_ZOOM = 2;
+    const REVIEW_MODE_MAX_ZOOM = 7;
+    const REVIEW_MODE_LABEL_BASE_SCALE = 1.5;
+    // Focus is selectable up to the existing 700% manual zoom limit.
+    const REVIEW_MODE_FOCUS_MAX_ZOOM = REVIEW_MODE_MAX_ZOOM;
     const REVIEW_MODE_FOCUS_PADDING_RATIO = 0.22;
     const REVIEW_MODE_FOCUS_MIN_PADDING = 36;
     let reviewModeZoomResetTimer = null;
@@ -8914,13 +11723,14 @@ The deletion becomes permanent when you save the diagram.`);
             }, 190);
         }
         syncReviewModeZoomUi();
+        applyReviewModeFocusLabelScale(review);
         scheduleReviewModeVectorConnectorRefresh();
     }
 
     function getReviewModeFocusLabelIndex(review = getReviewModeState()) {
         if (review.miniQuiz.active && !review.miniQuiz.complete) {
             const target = getReviewModeMiniQuizActiveTarget(review);
-            if (target?.kind && target.kind !== 'label') return -1;
+            if (target?.kind && !['label', 'label-info'].includes(target.kind)) return -1;
             const activeIndex = getReviewModeMiniQuizActiveLabelIndex(review);
             if (activeIndex >= 0) return activeIndex;
         }
@@ -8980,33 +11790,120 @@ The deletion becomes permanent when you save the diagram.`);
         return { minX, maxX, minY, maxY, stageWidth, stageHeight };
     }
 
+    function getReviewModeFocusTargetInfo(review = getReviewModeState()) {
+        const index = getReviewModeFocusLabelIndex(review);
+        const labels = index >= 0 ? getReviewModeDisplayLabels(getActiveReviewModeEntry()) : [];
+        const label = labels[index] || null;
+        const key = label ? `${review.activeEntryId}:${review.activeAngleIndex}:${index}` : '';
+        return { index, label, key };
+    }
+
+    function syncReviewModeFocusPresentation(review = getReviewModeState()) {
+        const button = elements.reviewModeShortcutFocusBtn;
+        const tier = review.focusTier === 'detail' ? 'detail' : 'normal';
+        if (button) {
+            button.classList.toggle('is-active', review.focusMode);
+            button.classList.toggle('is-detail', review.focusMode && tier === 'detail');
+            button.setAttribute('aria-pressed', review.focusMode ? 'true' : 'false');
+            button.textContent = review.focusMode ? `Focus ${tier === 'detail' ? review.detailFocusZoom : review.normalFocusZoom}%` : 'Focus';
+            button.title = review.twoLevelFocus ? 'Cycle Focus: Off, Normal, Detail' : 'Toggle Focus';
+        }
+        if (elements.reviewModeFocusToggle) elements.reviewModeFocusToggle.checked = review.focusMode;
+    }
+
+    function applyReviewModeFocusLabelScale(review = getReviewModeState()) {
+        const layer = elements.reviewModeLabelLayer;
+        if (!layer) return;
+        // Only automatic Focus compensates label magnification. Manual zoom is untouched.
+        const inverse = review.focusMode ? 1 / Math.max(1, Number(review.zoomScale) || 1) : 1;
+        layer.style.setProperty('--review-focus-label-inverse', String(inverse));
+        layer.classList.toggle('is-focus-zoomed', review.focusMode);
+    }
+
+    function restoreReviewModeFocusFloatingLabel(review = getReviewModeState()) {
+        const floating = review.focusFloatingLabel;
+        if (!floating) return;
+        review.focusFloatingLabel = null;
+        if (floating.entryId !== review.activeEntryId || floating.angleIndex !== review.activeAngleIndex) return;
+        if (floating.previous) review.autoLabelPositions[floating.index] = floating.previous;
+        else delete review.autoLabelPositions[floating.index];
+        if (floating.element?.isConnected) {
+            floating.element.style.left = `${floating.originalX}%`;
+            floating.element.style.top = `${floating.originalY}%`;
+        }
+        scheduleReviewModeVectorConnectorRefresh();
+    }
+
+    function keepReviewModeFocusedLabelVisible(review, target, bounds, viewport) {
+        if (!target?.label) return;
+        const layer = elements.reviewModeLabelLayer;
+        const marker = layer?.querySelector?.(`[data-review-label-index="${target.index}"]`);
+        const display = marker?.closest?.('.review-mode-mini-label-wrap') || marker;
+        if (!display) return;
+        const scale = Math.max(1, review.zoomScale);
+        const centerX = bounds.stageWidth / 2 - review.zoomX / scale;
+        const centerY = bounds.stageHeight / 2 - review.zoomY / scale;
+        // Phase .73: only expanded information cards need the full dimensions
+        // of the card and the red X / green check reserved. Keep ordinary
+        // labels on their original stable Focus positioning behavior.
+        const infoCard = marker?.classList.contains('has-description');
+        const marginX = ((infoCard ? display.offsetWidth : Math.min(220, display.offsetWidth)) / 2 + (infoCard ? 22 : 18)) / scale;
+        const marginY = ((infoCard ? display.offsetHeight : Math.min(160, display.offsetHeight)) / 2 + (infoCard ? 22 : 18)) / scale;
+        const halfWidth = viewport.clientWidth / (2 * scale);
+        const halfHeight = viewport.clientHeight / (2 * scale);
+        const minX = centerX - halfWidth + marginX;
+        const maxX = centerX + halfWidth - marginX;
+        const minY = centerY - halfHeight + marginY;
+        const maxY = centerY + halfHeight - marginY;
+        const originalX = target.label.x;
+        const originalY = target.label.y;
+        const currentX = originalX * bounds.stageWidth / 100;
+        const currentY = originalY * bounds.stageHeight / 100;
+        const visibleX = Math.max(Math.min(minX, maxX), Math.min(Math.max(minX, maxX), currentX));
+        const visibleY = Math.max(Math.min(minY, maxY), Math.min(Math.max(minY, maxY), currentY));
+        if (Math.abs(visibleX - currentX) < 1 && Math.abs(visibleY - currentY) < 1) return;
+        const previous = review.autoLabelPositions[target.index];
+        review.focusFloatingLabel = {
+            index: target.index, entryId: review.activeEntryId, angleIndex: review.activeAngleIndex,
+            previous: previous ? { ...previous } : null, originalX, originalY, element: display
+        };
+        const temporary = { x: Math.min(100, Math.max(0, visibleX / bounds.stageWidth * 100)), y: Math.min(100, Math.max(0, visibleY / bounds.stageHeight * 100)) };
+        review.autoLabelPositions[target.index] = temporary;
+        display.style.left = `${temporary.x}%`;
+        display.style.top = `${temporary.y}%`;
+        // Existing SVG rendering uses temporary in-session positions only. No saved edits.
+        scheduleReviewModeVectorConnectorRefresh();
+    }
+
     function focusReviewModeCurrentLabel({ animate = true } = {}) {
         const review = getReviewModeState();
         const viewport = elements.reviewModeImageViewport;
         if (!review.overlayOpen || !review.focusMode || !viewport || !isReviewModeActiveAngleOverlayReady()) return false;
-        const labelIndex = getReviewModeFocusLabelIndex(review);
-        if (labelIndex < 0) return false;
-        review.focusLabelIndex = labelIndex;
-        const bounds = getReviewModeFocusBounds(labelIndex);
+        const target = getReviewModeFocusTargetInfo(review);
+        if (!target.label) return false;
+        restoreReviewModeFocusFloatingLabel(review);
+        review.focusLabelIndex = target.index;
+        if (review.focusTargetKey !== target.key) {
+            // A new angle/quiz question uses its own stored preference. Never inherit
+            // a manual Detail state from an unrelated landmark.
+            review.focusTargetKey = target.key;
+            review.focusTier = target.label.detailFocus === true ? 'detail' : 'normal';
+        }
+        const bounds = getReviewModeFocusBounds(target.index);
         if (!bounds) return false;
-        const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
-        const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
-        const paddingX = Math.max(REVIEW_MODE_FOCUS_MIN_PADDING, contentWidth * REVIEW_MODE_FOCUS_PADDING_RATIO);
-        const paddingY = Math.max(REVIEW_MODE_FOCUS_MIN_PADDING, contentHeight * REVIEW_MODE_FOCUS_PADDING_RATIO);
-        const framedWidth = contentWidth + (paddingX * 2);
-        const framedHeight = contentHeight + (paddingY * 2);
-        const availableWidth = Math.max(1, viewport.clientWidth - 32);
-        const availableHeight = Math.max(1, viewport.clientHeight - 32);
-        const nextScale = Math.min(
-            REVIEW_MODE_FOCUS_MAX_ZOOM,
-            Math.max(REVIEW_MODE_MIN_ZOOM, Math.min(availableWidth / framedWidth, availableHeight / framedHeight))
-        );
-        const focusCenterX = (bounds.minX + bounds.maxX) / 2;
-        const focusCenterY = (bounds.minY + bounds.maxY) / 2;
-        review.zoomScale = nextScale;
-        review.zoomX = -(focusCenterX - (bounds.stageWidth / 2)) * nextScale;
-        review.zoomY = -(focusCenterY - (bounds.stageHeight / 2)) * nextScale;
+        const connector = normalizeDiagramConnector(target.label.connector);
+        const detail = review.focusTier === 'detail';
+        const selectedZoom = (detail ? review.detailFocusZoom : review.normalFocusZoom) / 100;
+        // Normal Focus frames the label/connector ensemble; Detail prioritizes the
+        // precise anatomical endpoint, even if the original label is far away.
+        const centerX = detail && connector ? (connector.anchorX / 100) * bounds.stageWidth : (bounds.minX + bounds.maxX) / 2;
+        const centerY = detail && connector ? (connector.anchorY / 100) * bounds.stageHeight : (bounds.minY + bounds.maxY) / 2;
+        review.zoomScale = Math.min(REVIEW_MODE_FOCUS_MAX_ZOOM, Math.max(REVIEW_MODE_MIN_ZOOM, selectedZoom));
+        review.zoomX = -(centerX - (bounds.stageWidth / 2)) * review.zoomScale;
+        review.zoomY = -(centerY - (bounds.stageHeight / 2)) * review.zoomScale;
         applyReviewModeZoomTransform({ animate });
+        keepReviewModeFocusedLabelVisible(review, target, bounds, viewport);
+        syncReviewModeFocusPresentation(review);
         return true;
     }
 
@@ -9030,10 +11927,12 @@ The deletion becomes permanent when you save the diagram.`);
         if (nextEnabled) {
             review.focusRestoreZoom = { scale: review.zoomScale, x: review.zoomX, y: review.zoomY };
             review.focusMode = true;
-            syncReviewModeZoomUi();
+            review.focusTargetKey = '';
             scheduleReviewModeFocusCurrentLabel({ animate });
         } else {
+            restoreReviewModeFocusFloatingLabel(review);
             review.focusMode = false;
+            review.focusTargetKey = '';
             const restore = review.focusRestoreZoom;
             review.focusRestoreZoom = null;
             review.zoomScale = Math.max(REVIEW_MODE_MIN_ZOOM, Number(restore?.scale) || REVIEW_MODE_MIN_ZOOM);
@@ -9041,14 +11940,30 @@ The deletion becomes permanent when you save the diagram.`);
             review.zoomY = Number(restore?.y) || 0;
             applyReviewModeZoomTransform({ animate });
         }
+        syncReviewModeFocusPresentation(review);
         syncReviewModeControls();
+    }
+
+    function cycleReviewModeFocusMode() {
+        const review = getReviewModeState();
+        if (!review.focusMode) { setReviewModeFocusMode(true); return; }
+        if (review.twoLevelFocus && review.focusTier === 'normal') {
+            review.focusTier = 'detail';
+            scheduleReviewModeFocusCurrentLabel();
+            syncReviewModeFocusPresentation(review);
+            return;
+        }
+        setReviewModeFocusMode(false);
     }
 
     function resetReviewModeZoom({ animate = false, disableFocus = false } = {}) {
         const review = getReviewModeState();
         if (disableFocus) {
+            restoreReviewModeFocusFloatingLabel(review);
             review.focusMode = false;
             review.focusRestoreZoom = null;
+            review.focusTargetKey = '';
+            syncReviewModeFocusPresentation(review);
         } else if (review.focusMode) {
             review.focusRestoreZoom = { scale: REVIEW_MODE_MIN_ZOOM, x: 0, y: 0 };
         }
@@ -9079,7 +11994,12 @@ The deletion becomes permanent when you save the diagram.`);
 
     // Phase 22MV: retain preloaded angle images and protect rapid angle changes from stale image callbacks.
     const reviewModeAnglePreloadCache = new Map();
+    // Phase 23F.41.27: keep at most three decoded angle preloads per open
+    // review image. The browser's normal HTTP cache can retain evicted bytes;
+    // this Map must not retain an unbounded collection of decoded rasters.
+    const REVIEW_MODE_ANGLE_PRELOAD_LIMIT = 3;
     let reviewModeAngleLoadToken = 0;
+    let reviewModeAngleLoadStartedAt = 0;
     let reviewModeAngleTransitionTimer = null;
     // Phase 22NF2.2: overlays may render only after the matching angle image has
     // completed loading. This prevents stale labels/connectors from crossing angles.
@@ -9101,6 +12021,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.reviewModeDrawCanvas) {
             const ctx = elements.reviewModeDrawCanvas.getContext('2d');
             ctx.clearRect(0, 0, elements.reviewModeDrawCanvas.width || 1, elements.reviewModeDrawCanvas.height || 1);
+            elements.reviewModeDrawCanvas.dataset.reviewEmptyDraw = 'true';
         }
     }
 
@@ -9148,12 +12069,29 @@ The deletion becomes permanent when you save the diagram.`);
         if (clearCache) reviewModeAnglePreloadCache.clear();
     }
 
+    function trimReviewModeAnglePreloadCache() {
+        if (reviewModeAnglePreloadCache.size <= REVIEW_MODE_ANGLE_PRELOAD_LIMIT) return;
+        const activeSource = normalizeSheetText(elements.reviewModeImage?.dataset.mediaPreviewSource || '');
+        for (const [source, record] of reviewModeAnglePreloadCache) {
+            if (reviewModeAnglePreloadCache.size <= REVIEW_MODE_ANGLE_PRELOAD_LIMIT) break;
+            if (record.status !== 'loaded' || source === activeSource) continue;
+            reviewModeAnglePreloadCache.delete(source);
+            // Removing only our Image reference does not purge Chrome's disk
+            // cache or invalidate its existing private signed URL.
+        }
+    }
+
     function preloadReviewModeAngleSource(sourceValue = '') {
         const normalizedSource = normalizeSheetText(sourceValue);
         if (!normalizedSource) return Promise.resolve(false);
         const cached = reviewModeAnglePreloadCache.get(normalizedSource);
-        if (cached?.status === 'loaded') return Promise.resolve(true);
-        if (cached?.promise) return cached.promise;
+        if (cached) {
+            // Refresh LRU order on use, and deduplicate simultaneous requests.
+            reviewModeAnglePreloadCache.delete(normalizedSource);
+            reviewModeAnglePreloadCache.set(normalizedSource, cached);
+            if (cached.status === 'loaded') return Promise.resolve(true);
+            if (cached.promise) return cached.promise;
+        }
 
         const image = new Image();
         image.decoding = 'async';
@@ -9161,29 +12099,31 @@ The deletion becomes permanent when you save the diagram.`);
         record.promise = new Promise(resolve => {
             setImageElementSourceWithMediaResolution(image, normalizedSource, {
                 onLoad: () => {
-                    record.status = 'loaded';
-                    resolve(true);
+                    // Decode ahead of the question transition where supported.
+                    // An unsupported/rejected decode never prevents display.
+                    Promise.resolve(typeof image.decode === 'function' ? image.decode().catch(() => {}) : null)
+                        .then(() => {
+                            record.status = 'loaded';
+                            trimReviewModeAnglePreloadCache();
+                            resolve(true);
+                        });
                 },
                 onError: () => {
                     record.status = 'error';
-                    reviewModeAnglePreloadCache.delete(normalizedSource);
+                    if (reviewModeAnglePreloadCache.get(normalizedSource) === record) reviewModeAnglePreloadCache.delete(normalizedSource);
                     resolve(false);
                 }
             });
         });
         reviewModeAnglePreloadCache.set(normalizedSource, record);
+        trimReviewModeAnglePreloadCache();
         return record.promise;
     }
 
     function preloadReviewModeAdjacentAngles() {
-        const entry = getActiveReviewModeEntry();
-        const angles = getStudioSavedImageAngles(entry || {});
-        if (angles.length < 2) return;
-        const review = getReviewModeState();
-        [review.activeAngleIndex + 1, review.activeAngleIndex - 1].forEach(index => {
-            const normalizedIndex = (index + angles.length) % angles.length;
-            preloadReviewModeAngleSource(angles[normalizedIndex]?.imageValue || '');
-        });
+        // Phase 23F.31 egress guard: angles load only when the user actually
+        // navigates to them. The browser/media URL caches still handle repeats.
+        return;
     }
 
     function applyReviewModeAngleImage(angle, loadToken, { animate = false } = {}) {
@@ -9197,20 +12137,33 @@ The deletion becomes permanent when you save the diagram.`);
                 if (!activeIdentity || activeIdentity !== reviewModePendingAngleIdentity) return;
                 reviewModeCommittedAngleIdentity = activeIdentity;
                 reviewModePendingAngleIdentity = '';
-                syncReviewModeImageStage();
+                recordReviewModeNormalAngleTiming('visible image ready', loadToken);
+                if (reviewModeAngleLoadStartedAt && window.__studyBunnyMiniQuizPerf === true && getReviewModeState().miniQuiz.active) {
+                    console.info('[Study Bunny Mini Quiz] angle image ready:', Math.round(performance.now() - reviewModeAngleLoadStartedAt), 'ms');
+                }
+                // The overlay was cleared for this angle. Size its stage
+                // first; renderReviewModeLabels will draw the new overlays once.
+                syncReviewModeImageStage({ refreshLayers: false });
                 renderReviewModeLabels();
+                recordReviewModeNormalAngleTiming('overlays rendered', loadToken);
+                markReviewModeMiniQuizTransitionPerf('angle overlays rendered');
+                scheduleReviewModeMiniQuizPaintPerf();
                 syncReviewModeAngleNavigation();
+                if (getReviewModeState().miniQuiz?.active) scheduleReviewModeMiniQuizNextDataPreparation();
                 if (getReviewModeMiniQuizVisualTargetDetails(getReviewModeState())) window.requestAnimationFrame(() => prepareReviewModeVisualAidQuizAnimation());
                 preloadReviewModeAdjacentAngles();
-                if (getReviewModeState().activeAngleIndex === 0 && !getStudioSavedImageThumbnailValue(activeEntry)) {
-                    ensureStudioSavedImageThumbnail(activeEntry.id, {
+                if (getReviewModeState().activeAngleIndex === 0) {
+                    repairStudioSavedImageThumbnailAfterOpen(activeEntry, {
                         image: elements.reviewModeImage,
                         sourceValue: activeAngle?.imageValue || angle.imageValue
-                    }).catch(() => {});
+                    })?.catch(() => {});
                 }
                 requestAnimationFrame(() => {
                     if (loadToken !== reviewModeAngleLoadToken || !isReviewModeActiveAngleOverlayReady()) return;
-                    syncReviewModeImageStage();
+                    // Stage size was committed before labels/connectors rendered.
+                    // A later frame only needs to adjust transform/dock/Focus;
+                    // do not paint identical draw and SVG layers a second time.
+                    syncReviewModeImageStage({ refreshLayers: false });
                     if (animate) requestAnimationFrame(() => setReviewModeAngleTransition(false));
                 });
             },
@@ -9224,6 +12177,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function loadReviewModeActiveAngle({ animate = false } = {}) {
+        invalidateReviewModeNormalRevealSnapshot();
         stopReviewModeVisualAidAnimation();
         const reviewState = getReviewModeState();
         reviewState.visualAidProgress = 0;
@@ -9233,12 +12187,13 @@ The deletion becomes permanent when you save the diagram.`);
         const angle = getActiveReviewModeAngle(entry);
         if (!entry || !angle || !elements.reviewModeImage) return;
         const loadToken = ++reviewModeAngleLoadToken;
+        reviewModeAngleLoadStartedAt = window.__studyBunnyMiniQuizPerf === true ? performance.now() : 0;
         reviewModeCommittedAngleIdentity = '';
         reviewModePendingAngleIdentity = getReviewModeAngleRenderIdentity(entry, angle, getReviewModeState().activeAngleIndex);
         clearReviewModeOverlayLayers();
         const metadata = normalizeDiagramMetadata(entry.metadata || {});
         const title = metadata.diagramName || metadata.subjectName || entry.fileName;
-        if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = getStudioSavedImageAngles(entry).length > 1 ? `${title} — ${angle.name}` : title;
+        if (elements.reviewModeActiveTitle) elements.reviewModeActiveTitle.textContent = getReviewModePreparedAngles(entry).length > 1 ? `${title} — ${angle.name}` : title;
         syncReviewModeAngleNavigation();
 
         if (!animate) {
@@ -9249,6 +12204,7 @@ The deletion becomes permanent when you save the diagram.`);
         setReviewModeAngleTransition(true);
         preloadReviewModeAngleSource(angle.imageValue).then(loaded => {
             if (loadToken !== reviewModeAngleLoadToken) return;
+            recordReviewModeNormalAngleTiming('image preloaded', loadToken);
             if (!loaded) {
                 invalidateReviewModeAngleOverlayCommit();
                 setReviewModeAngleTransition(false);
@@ -9259,15 +12215,34 @@ The deletion becomes permanent when you save the diagram.`);
         });
     }
 
+    let reviewModeNormalAngleTiming = null;
+
+    function recordReviewModeNormalAngleTiming(stage, token = reviewModeAngleLoadToken) {
+        const timing = reviewModeNormalAngleTiming;
+        if (!timing || timing.token !== token || window.__studyBunnyReviewPerf !== true) return;
+        timing.stages.push({ stage, ms: Math.round(performance.now() - timing.started) });
+        if (stage === 'overlays rendered') {
+            window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+                if (reviewModeNormalAngleTiming !== timing || token !== reviewModeAngleLoadToken) return;
+                console.info('[Study Bunny Review] angle visible:', Math.round(performance.now() - timing.started), 'ms', timing.stages);
+                reviewModeNormalAngleTiming = null;
+            }));
+        }
+    }
+
     function changeReviewModeAngle(direction = 1) {
         const review = getReviewModeState();
         if (!review.overlayOpen || review.miniQuiz.active) return;
-        const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+        const angles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {});
         if (angles.length < 2) return;
         storeReviewModeAngleUiState();
         review.activeAngleIndex = (review.activeAngleIndex + (direction < 0 ? -1 : 1) + angles.length) % angles.length;
         restoreReviewModeAngleUiState();
         resetReviewModeZoom();
+        const measure = window.__studyBunnyReviewPerf === true;
+        reviewModeNormalAngleTiming = measure
+            ? { started: performance.now(), token: reviewModeAngleLoadToken + 1, stages: [{ stage: 'angle selected', ms: 0 }] }
+            : null;
         loadReviewModeActiveAngle({ animate: true });
     }
 
@@ -9326,7 +12301,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function getReviewModeMiniQuizActiveLabelIndex(review = getReviewModeState()) {
         const target = getReviewModeMiniQuizActiveTarget(review);
-        return target && target.kind === 'label' && target.angleIndex === review.activeAngleIndex ? target.labelIndex : -1;
+        return target && ['label', 'label-info'].includes(target.kind) && target.angleIndex === review.activeAngleIndex ? target.labelIndex : -1;
     }
 
     // Phase 22NB: collapse matching label names to one randomly selected target unless duplicates are explicitly allowed.
@@ -9334,30 +12309,193 @@ The deletion becomes permanent when you save the diagram.`);
         return normalizeSheetText(labelName).replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     }
 
-    function buildReviewModeMiniQuizTargets(entry, scope = 'current', activeAngleIndex = 0, allowDuplicates = false, visualAidPolicy = 'exclude', currentVisualAidId = '') {
-        const angles = getStudioSavedImageAngles(entry || {});
+    // Reuse a single pin snapshot per render. Tap-to-reveal must not scan the
+    // Saved Images library merely to color the toolbar pin.
+    let reviewModePinUiCache = null;
+    function cacheReviewModePinsForEntry(entry) {
+        if (!entry) { reviewModePinUiCache = null; return; }
+        const angles = getReviewModePreparedAngles(entry);
+        reviewModePinUiCache = {
+            entryId: normalizeSheetText(entry.id),
+            anglePins: angles.map((_, index) => getReviewModePinnedIndexSet(entry, index)),
+            angleLengths: angles.map(angle => normalizeDiagramLabels(angle.labels || []).length)
+        };
+    }
+
+    function getReviewModePinnedIndexSet(entry, angleIndex) {
+        const angles = getReviewModePreparedAngles(entry || {});
+        const angle = angles[angleIndex];
+        if (!angle) return new Set();
+        const records = normalizeSavedImagePinnedLabels(entry?.pinnedLabelsByAngle || {})[normalizeSheetText(angle.id)] || [];
+        const labels = normalizeDiagramLabels(angle.labels || []);
+        return new Set(records.filter(record => labels[record.index]
+            && normalizeReviewModeMiniQuizLabelKey(labels[record.index].label) === record.key).map(record => record.index));
+    }
+
+    // Phase 23F.41.25: pinning is only possible while exactly one label name
+    // is actually visible. Checking the rendered layer also protects Show All,
+    // Solo Labels Off, and name-hidden/drawing-only mode without a library scan.
+    function getReviewModeRevealedPinSelection(review = getReviewModeState()) {
+        if (!review.overlayOpen) return null;
+        const visible = elements.reviewModeLabelLayer?.querySelectorAll?.('.review-mode-label-marker.is-name-visible[data-review-label-index]');
+        if (!visible || visible.length !== 1) return null;
+        const labelIndex = Number(visible[0].dataset.reviewLabelIndex);
+        if (!Number.isInteger(labelIndex) || labelIndex < 0) return null;
+        if (review.miniQuiz.active) {
+            const target = getReviewModeMiniQuizActiveTarget(review);
+            if (review.miniQuiz.complete || !review.miniQuiz.answerRevealed
+                || !target || !['label', 'label-info'].includes(target.kind)
+                || target.angleIndex !== review.activeAngleIndex || target.labelIndex !== labelIndex) return null;
+            return { angleIndex: target.angleIndex, labelIndex };
+        }
+        if (review.pinSelectedLabelIndex !== labelIndex) return null;
+        return { angleIndex: review.activeAngleIndex, labelIndex };
+    }
+
+    function getReviewModeCurrentPinTarget(review = getReviewModeState()) {
+        const selection = getReviewModeRevealedPinSelection(review);
+        if (!selection) return null; // Guard the write path even if a stale click is dispatched.
+        const entry = getActiveReviewModeEntry();
+        if (!entry) return null;
+        const { angleIndex, labelIndex } = selection;
+        const angle = getReviewModePreparedAngles(entry)[angleIndex];
+        const label = normalizeDiagramLabels(angle?.labels || [])[labelIndex];
+        return label ? { entry, angleIndex, labelIndex, label } : null;
+    }
+
+    function syncReviewModePinButton() {
+        const button = elements.reviewModePinBtn;
+        if (!button) return;
+        const review = getReviewModeState();
+        const cache = reviewModePinUiCache?.entryId === review.activeEntryId ? reviewModePinUiCache : null;
+        const selection = getReviewModeRevealedPinSelection(review);
+        const eligible = !!(cache && selection && selection.labelIndex < (cache.angleLengths[selection.angleIndex] || 0));
+        const pinned = !!(eligible && cache.anglePins[selection.angleIndex]?.has(selection.labelIndex));
+        button.disabled = !eligible;
+        button.classList.toggle('is-pinned', pinned);
+        button.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+        button.setAttribute('aria-label', !eligible ? 'Reveal exactly one label to pin' : pinned ? 'Unpin revealed label' : 'Pin revealed label');
+        button.title = !eligible ? 'Reveal exactly one label first' : pinned ? 'Unpin label' : 'Pin label';
+    }
+
+    function toggleReviewModeSelectedPin() {
+        const review = getReviewModeState();
+        const target = getReviewModeCurrentPinTarget(review);
+        if (!target) return;
+        const { entry, angleIndex, labelIndex, label } = target;
+        const angles = getReviewModePreparedAngles(entry);
+        const key = normalizeReviewModeMiniQuizLabelKey(label.label);
+        if (!key) return;
+        const pinned = getReviewModePinnedIndexSet(entry, angleIndex).has(labelIndex);
+        const nextPinned = !pinned;
+        const next = normalizeSavedImagePinnedLabels(entry.pinnedLabelsByAngle || {});
+        angles.forEach((angle, index) => {
+            if (index !== angleIndex && !review.pinAllSharedLabels) return;
+            const angleId = normalizeSheetText(angle.id);
+            const labels = normalizeDiagramLabels(angle.labels || []);
+            const targets = new Set(labels.map((item, position) =>
+                (index === angleIndex && !review.pinAllSharedLabels)
+                    ? (position === labelIndex ? position : -1)
+                    : (normalizeReviewModeMiniQuizLabelKey(item.label) === key ? position : -1)
+            ).filter(position => position >= 0));
+            const prior = (next[angleId] || []).filter(record =>
+                !targets.has(record.index) && labels[record.index]
+                && normalizeReviewModeMiniQuizLabelKey(labels[record.index].label) === record.key);
+            if (nextPinned) {
+                targets.forEach(position => prior.push({ index: position, key: normalizeReviewModeMiniQuizLabelKey(labels[position].label) }));
+            }
+            if (prior.length) next[angleId] = prior;
+            else delete next[angleId];
+        });
+        const saved = replaceStudioSavedImageLibraryEntry(entry, { ...entry, pinnedLabelsByAngle: next });
+        if (!saved) return;
+        cacheReviewModePinsForEntry(saved);
+        // Keep the current Mini Quiz queue unchanged; pin changes take effect next run.
+        if (!review.miniQuiz.active && review.pinnedLabelsOnly) {
+            const allowed = getReviewModePinnedIndexSet(saved, review.activeAngleIndex);
+            review.revealedLabels = new Set([...review.revealedLabels].filter(index => allowed.has(index)));
+            renderReviewModeLabels();
+        }
+        syncReviewModePinButton();
+        syncReviewModeMiniQuizUi();
+    }
+
+    function buildReviewModeMiniQuizTargets(entry, scope = 'current', activeAngleIndex = 0, allowDuplicates = false, visualAidPolicy = 'exclude', currentVisualAidId = '', quizLabelInformation = false, identifyStructureForCategory = false, pinnedLabelsOnly = false) {
+        const angles = getReviewModePreparedAngles(entry || {});
         const normalizedScope = scope === 'all' && angles.length > 1 ? 'all' : 'current';
-        const policy = ['include', 'exclude', 'only'].includes(visualAidPolicy) ? visualAidPolicy : 'exclude';
+        const policy = pinnedLabelsOnly ? 'exclude' : (['include', 'exclude', 'only'].includes(visualAidPolicy) ? visualAidPolicy : 'exclude');
         const onlyCurrentVisualAidId = normalizeSheetText(currentVisualAidId || '');
         const angleIndexes = normalizedScope === 'all'
             ? angles.map((_, index) => index)
             : [Math.min(Math.max(0, activeAngleIndex), Math.max(0, angles.length - 1))];
+        const globalRecords = quizLabelInformation ? getStudioSavedImageGlobalLabelRecords() : null;
         const labelTargets = policy === 'only' ? [] : angleIndexes.flatMap(angleIndex => {
             const angle = angles[angleIndex];
-            return normalizeDiagramLabels(angle?.labels || []).map((label, labelIndex) => ({
-                id: `${normalizeSheetText(angle?.id || `angle_${angleIndex}`)}::label_${labelIndex}`,
-                kind: 'label',
-                angleId: normalizeSheetText(angle?.id || `angle_${angleIndex}`),
-                angleIndex,
-                labelIndex,
-                duplicateKey: normalizeReviewModeMiniQuizLabelKey(label.label)
-            }));
+            const angleId = normalizeSheetText(angle?.id || `angle_${angleIndex}`);
+            const eligiblePins = pinnedLabelsOnly ? getReviewModePinnedIndexSet(entry, angleIndex) : null;
+            return applyStudioSavedImageGlobalLabelInformation(angle?.labels || [], globalRecords).flatMap((label, labelIndex) => {
+                if (eligiblePins && !eligiblePins.has(labelIndex)) return [];
+                const duplicateLabelKey = normalizeReviewModeMiniQuizLabelKey(label.label);
+                const populatedCategories = quizLabelInformation ? getDiagramLabelVisibleInfoCategories(label) : [];
+                // Phase 23F.41.55: every label remains eligible. Category identification
+                // already tests the structure when the Identify option is ON, so only
+                // add its standalone name question when there are no categories or
+                // when the easier, named-structure category questions are selected.
+                const needsNameQuestion = !populatedCategories.length || identifyStructureForCategory !== true;
+                const nameQuestions = needsNameQuestion ? [{
+                    id: `${angleId}::label_${labelIndex}`,
+                    kind: 'label',
+                    angleId,
+                    angleIndex,
+                    labelIndex,
+                    duplicateKey: `${duplicateLabelKey}::identity`
+                }] : [];
+                if (!quizLabelInformation) return nameQuestions;
+                const categoryQuestions = populatedCategories.map((category, categoryIndex) => {
+                    const categoryName = normalizeSheetText(category.name) || 'Information';
+                    const categoryBody = normalizeDiagramLabelInfoBody(category.body || '');
+                    const categoryKey = normalizeReviewModeMiniQuizLabelKey(categoryName) || 'information';
+                    return {
+                        id: `${angleId}::label_${labelIndex}::info_${categoryIndex}`,
+                        kind: 'label-info',
+                        angleId,
+                        angleIndex,
+                        labelIndex,
+                        categoryIndex,
+                        categoryName,
+                        categoryBody,
+                        identifyStructureForCategory: identifyStructureForCategory === true,
+                        // Retain distinct populated categories even if their titles match.
+                        duplicateKey: `${duplicateLabelKey}::category_${categoryIndex}::${categoryKey}`
+                    };
+                });
+                return [...nameQuestions, ...categoryQuestions];
+            });
         });
         const visualTargets = policy === 'exclude' ? [] : angleIndexes.flatMap(angleIndex => {
             const angle = angles[angleIndex];
             const angleId = normalizeSheetText(angle?.id || `angle_${angleIndex}`);
-            const eligibleAids = normalizeDiagramVisualAids(angle?.visualAids || []).filter(aid => aid.path.length > 1).filter(aid => !onlyCurrentVisualAidId || (angleIndex === activeAngleIndex && aid.id === onlyCurrentVisualAidId));
+            const eligibleAids = normalizeDiagramVisualAids(angle?.visualAids || []).filter(aid => aid.path.length > 1 || hasFlowFillGeometry(aid)).filter(aid => !onlyCurrentVisualAidId || (angleIndex === activeAngleIndex && aid.id === onlyCurrentVisualAidId));
             return eligibleAids.flatMap(aid => {
+                if(aid.flowFillType==='flow-fill') {
+                    const flowItems = [
+                        ...aid.flowItems.filter(item=>item.path.length>=(item.type==='region'?3:2)).map(item=>({item,kind:item.type==='region'?'visual-flow-region':'visual-flow-path',key:`${item.type}_${item.id}`})),
+                        ...aid.flowActions.map(item=>({item,kind:'visual-flow-fill',key:`fill_${item.id}`}))
+                    ];
+                    // Name identification is always a question, including items that
+                    // also have an optional custom question/answer pair.
+                    return flowItems.flatMap(({item,kind,key})=>{
+                        const base={kind,angleId,angleIndex,labelIndex:-1,visualAidId:aid.id,visualItemId:item.id};
+                        const nameTarget={...base,id:`${angleId}::flow_${aid.id}::${key}`,flowQuestionVariant:'name'};
+                        // A region is identified by name AND tested on its fluid/substance.
+                        // Both use the same geometry/connector without showing its identity.
+                        const contentsTarget=kind==='visual-flow-region'
+                            ? [{...base,id:`${angleId}::flow_${aid.id}::${key}::contents`,flowQuestionVariant:'contents'}] : [];
+                        const customTargets=normalizeSheetText(item.question||'') && normalizeSheetText(item.answer||'')
+                            ? [{...base,id:`${angleId}::flow_${aid.id}::${key}::custom`,flowQuestionVariant:'custom'}] : [];
+                        return [nameTarget,...contentsTarget,...customTargets];
+                    });
+                }
                 const targets = [{
                     id: `${angleId}::visual_${aid.id}::path`,
                     kind: 'visual-path',
@@ -9403,11 +12541,11 @@ The deletion becomes permanent when you save the diagram.`);
         return [...uniqueLabels, ...visualTargets];
     }
 
-    function findNextReviewModeMiniQuizAngleIndex(entry, currentAngleIndex = -1, allowDuplicates = false, visualAidPolicy = 'exclude') {
-        const angles = getStudioSavedImageAngles(entry || {});
+    function findNextReviewModeMiniQuizAngleIndex(entry, currentAngleIndex = -1, allowDuplicates = false, visualAidPolicy = 'exclude', quizLabelInformation = false, identifyStructureForCategory = false, pinnedLabelsOnly = false) {
+        const angles = getReviewModePreparedAngles(entry || {});
         const startIndex = Math.max(-1, Math.floor(Number(currentAngleIndex) || 0));
         for (let angleIndex = startIndex + 1; angleIndex < angles.length; angleIndex += 1) {
-            if (buildReviewModeMiniQuizTargets(entry, 'current', angleIndex, allowDuplicates, visualAidPolicy).length) return angleIndex;
+            if (buildReviewModeMiniQuizTargets(entry, 'current', angleIndex, allowDuplicates, visualAidPolicy, '', quizLabelInformation, identifyStructureForCategory, pinnedLabelsOnly).length) return angleIndex;
         }
         return -1;
     }
@@ -9438,7 +12576,7 @@ The deletion becomes permanent when you save the diagram.`);
     function getReviewModeMiniQuizActiveLabel(review = getReviewModeState()) {
         const target = getReviewModeMiniQuizActiveTarget(review);
         if (!target) return null;
-        const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+        const angles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {});
         const angle = angles[target.angleIndex];
         const label = normalizeDiagramLabels(angle?.labels || [])[target.labelIndex];
         return label ? { ...label, target } : null;
@@ -9446,11 +12584,29 @@ The deletion becomes permanent when you save the diagram.`);
 
     function getReviewModeMiniQuizVisualTargetDetails(review = getReviewModeState()) {
         const target = getReviewModeMiniQuizActiveTarget(review);
-        if (!target || target.kind === 'label') return null;
-        const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
+        if (!target || ['label', 'label-info'].includes(target.kind)) return null;
+        const angles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {});
         const angle = angles[target.angleIndex];
         const aid = normalizeDiagramVisualAids(angle?.visualAids || []).find(item => item.id === target.visualAidId);
         if (!aid) return null;
+        if (aid.flowFillType==='flow-fill') {
+            if (target.kind==='visual-flow-fill') {
+                const action=aid.flowActions.find(item=>item.id===target.visualItemId);
+                if (!action) return null;
+                const custom=target.flowQuestionVariant==='custom' && !!normalizeSheetText(action.question||'') && !!normalizeSheetText(action.answer||'');
+                return {target,aid,item:action,type:'flow-fill',name:custom?action.answer:action.name,
+                    question:custom?action.question:'Identify this transfer or fill action.',position:action.start/aid.flowDurationSec};
+            }
+            if(target.kind==='visual-flow-region' || target.kind==='visual-flow-path'){
+                const item=aid.flowItems.find(row=>row.id===target.visualItemId);
+                if (!item) return null;
+                const custom=target.flowQuestionVariant==='custom' && !!normalizeSheetText(item.question||'') && !!normalizeSheetText(item.answer||'');
+                const contents=item.type==='region' && target.flowQuestionVariant==='contents';
+                return {target,aid,item,type:item.type==='region'?'flow-region':'flow-path',
+                    name:contents?(item.fillContents || 'Fluid'):(custom?item.answer:item.name),
+                    question:contents?'What is this region filled with?':(custom?item.question:`Identify this ${item.type==='region'?'region':'flow path'}.`),position:0.5};
+            }
+        }
         if (target.kind === 'visual-path') {
             return { target, aid, item: aid, type: 'path', name: aid.name, position: 0.5 };
         }
@@ -9470,12 +12626,32 @@ The deletion becomes permanent when you save the diagram.`);
         return null;
     }
 
+    function getReviewModeMiniQuizLabelInfoDetails(review = getReviewModeState()) {
+        const target = getReviewModeMiniQuizActiveTarget(review);
+        if (!target || target.kind !== 'label-info') return null;
+        const label = getReviewModeMiniQuizActiveLabel(review);
+        if (!label) return null;
+        const categoryName = normalizeSheetText(target.categoryName || 'Information') || 'Information';
+        const categoryBody = normalizeDiagramLabelInfoBody(target.categoryBody || '');
+        if (!normalizeSheetText(categoryBody)) return null;
+        const structureName = displayMathChemTextForEditor(label.label).trim();
+        const namedStructure = /^the\s+/i.test(structureName) ? structureName : `the ${structureName}`;
+        const question = target.identifyStructureForCategory
+            ? `Identify the structure and its ${categoryName}.`
+            : `What is ${namedStructure}'s ${categoryName}?`;
+        return { target, label, categoryName, categoryBody, question };
+    }
+
     function getReviewModeMiniQuizActiveAnswer(review = getReviewModeState()) {
         const target = getReviewModeMiniQuizActiveTarget(review);
         if (!target) return null;
         if (target.kind === 'label') {
             const label = getReviewModeMiniQuizActiveLabel(review);
             return label ? { target, type: 'label', name: label.label, label } : null;
+        }
+        if (target.kind === 'label-info') {
+            const details = getReviewModeMiniQuizLabelInfoDetails(review);
+            return details ? { target, type: 'label-info', name: details.categoryBody, label: details.label, details } : null;
         }
         return getReviewModeMiniQuizVisualTargetDetails(review);
     }
@@ -9549,9 +12725,12 @@ The deletion becomes permanent when you save the diagram.`);
         advanceReviewModeMiniQuiz(answerKnown);
     }
 
-    function syncReviewModeMiniQuizTarget({ animate = true } = {}) {
+    function syncReviewModeMiniQuizTarget({ animate = true, advancing = false } = {}) {
         stopReviewModeVisualAidAnimation();
         const review = getReviewModeState();
+        // Round checkpoint intentionally has no active queue item. An asynchronous
+        // angle/UI refresh must not interpret that pause as quiz completion.
+        if (review.miniQuiz.roundCheckpoint) { syncReviewModeMiniQuizUi(); return; }
         const target = getReviewModeMiniQuizActiveTarget(review);
         if (!review.miniQuiz.active || review.miniQuiz.complete) {
             renderReviewModeLabels();
@@ -9562,8 +12741,8 @@ The deletion becomes permanent when you save the diagram.`);
             finishReviewModeMiniQuiz();
             return;
         }
-        const angles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {});
-        review.focusLabelIndex = target.kind === 'label' ? Math.max(0, Number(target.labelIndex) || 0) : -1;
+        const angles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {});
+        review.focusLabelIndex = ['label', 'label-info'].includes(target.kind) ? Math.max(0, Number(target.labelIndex) || 0) : -1;
         const targetAngleIndex = Math.min(Math.max(0, target.angleIndex), Math.max(0, angles.length - 1));
         if (targetAngleIndex !== review.activeAngleIndex) {
             storeReviewModeAngleUiState();
@@ -9576,9 +12755,17 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         renderReviewModeLabels();
-        syncReviewModeControls();
+        if (advancing) {
+            // The options have not changed; avoid re-normalizing every settings
+            // toggle on every same-angle answer. Keep active quiz/dock UI live.
+            syncReviewModeMiniQuizUi();
+            syncReviewModeShortcutDock();
+            syncReviewModeVisualAidNavigation();
+        } else {
+            syncReviewModeControls();
+        }
         syncReviewModeAngleNavigation();
-        if (target.kind !== 'label') prepareReviewModeVisualAidQuizAnimation();
+        if (!['label', 'label-info'].includes(target.kind)) prepareReviewModeVisualAidQuizAnimation();
         else if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
     }
 
@@ -9586,15 +12773,41 @@ The deletion becomes permanent when you save the diagram.`);
         const review = getReviewModeState();
         const mini = review.miniQuiz;
         const showControls = mini.active;
+        elements.reviewModeOverlay?.classList.toggle('review-mode-mini-quiz-chrome-dimmed', showControls);
+        const awaitingRetry = mini.active && mini.mode === 'progress' && mini.roundCheckpoint && !mini.complete;
+        const checkpoint = elements.reviewModeMiniQuizRoundCheckpoint;
+        checkpoint?.classList.toggle('hidden', !awaitingRetry);
+        checkpoint?.setAttribute('aria-hidden', awaitingRetry ? 'false' : 'true');
+        if (awaitingRetry) {
+            const missedCount = mini.roundMissed.length;
+            if (elements.reviewModeMiniQuizCheckpointSummary) {
+                elements.reviewModeMiniQuizCheckpointSummary.textContent = `Round ${mini.progressRound}: ${missedCount} incorrect ${missedCount === 1 ? 'answer' : 'answers'}. Pin them for later practice, or try them again now.`;
+            }
+            if (elements.reviewModeMiniQuizPinMissedBtn) elements.reviewModeMiniQuizPinMissedBtn.disabled = getReviewModeMiniQuizMissedLabelTargets(review).length === 0;
+            if (elements.reviewModeMiniQuizResetPinsBtn) {
+                const entry = getActiveReviewModeEntry();
+                elements.reviewModeMiniQuizResetPinsBtn.disabled = !getReviewModePreparedAngles(entry || {}).some((_, i) => getReviewModePinnedIndexSet(entry, i).size);
+            }
+        }
         elements.reviewModeMiniQuizControls?.classList.toggle('hidden', !showControls);
         elements.reviewModeMiniQuizControls?.setAttribute('aria-hidden', showControls ? 'false' : 'true');
         elements.reviewModeMiniQuizComplete?.classList.toggle('hidden', !(mini.active && mini.complete));
         elements.reviewModeMiniQuizComplete?.setAttribute('aria-hidden', mini.active && mini.complete ? 'false' : 'true');
+        // Phase 23F.41.59: show a gold completion cue only if all angles have actually earned the saved-image ribbon.
+        const completedImage = mini.active && mini.complete
+            ? getStudioSavedImageLibraryForPicker().find(item => item.id === review.activeEntryId) : null;
+        const fullyMastered = !!(completedImage && getSavedImageRibbonKind(completedImage) === 'mastered');
+        const learning = !!(completedImage && getSavedImageRibbonKind(completedImage) === 'learning');
+        elements.reviewModeMiniQuizMasteredNotice?.classList.toggle('hidden', !(fullyMastered || learning));
+        if (elements.reviewModeMiniQuizMasteredNotice) {
+            elements.reviewModeMiniQuizMasteredNotice.textContent = fullyMastered ? 'MASTERED' : 'LEARNING';
+            elements.reviewModeMiniQuizMasteredNotice.classList.toggle('is-learning', learning);
+        }
         if (elements.reviewModeMiniQuizNextAngleBtn) {
             const entry = getActiveReviewModeEntry();
-            const angles = getStudioSavedImageAngles(entry || {});
+            const angles = getReviewModePreparedAngles(entry || {});
             const nextAngleIndex = mini.active && mini.complete && mini.scope === 'current'
-                ? findNextReviewModeMiniQuizAngleIndex(entry, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy)
+                ? findNextReviewModeMiniQuizAngleIndex(entry, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy, review.quizLabelInformation, review.identifyStructureForCategory, review.pinnedLabelsOnly)
                 : -1;
             const canQuizNextAngle = nextAngleIndex >= 0;
             const nextAngle = canQuizNextAngle ? angles[nextAngleIndex] : null;
@@ -9603,12 +12816,105 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeMiniQuizNextAngleBtn.textContent = nextAngle ? `Quiz Next Angle: ${nextAngle.name || `Angle ${nextAngleIndex + 1}`}` : 'Quiz Next Angle';
         }
         if (elements.reviewModeTakeMiniQuizBtn) {
-            elements.reviewModeTakeMiniQuizBtn.disabled = mini.active;
+            const entry = getActiveReviewModeEntry();
+            const angles = getReviewModePreparedAngles(entry || {});
+            const eligibleAngles = review.miniQuizScope === 'all' ? angles.map((_, i) => i) : [review.activeAngleIndex];
+            const noPins = review.pinnedLabelsOnly && !eligibleAngles.some(index => getReviewModePinnedIndexSet(entry, index).size);
+            elements.reviewModeTakeMiniQuizBtn.disabled = mini.active || noPins;
             elements.reviewModeTakeMiniQuizBtn.textContent = mini.active ? 'Mini Quiz Active' : 'Take Mini Quiz';
+            // Phase 23F.41.70: single-click launch from the top-right toolbar.
+            // Use exactly the same eligible-angle/pinned-label rules as the existing action.
+            if (elements.reviewModeStartQuizBtn) {
+                elements.reviewModeStartQuizBtn.classList.toggle('hidden', mini.active);
+                elements.reviewModeStartQuizBtn.disabled = mini.active || noPins;
+                elements.reviewModeStartQuizBtn.setAttribute('aria-hidden', mini.active ? 'true' : 'false');
+            }
         }
+        syncReviewModePinButton();
+    }
+
+    function commitSavedImageMiniQuizMastery(review = getReviewModeState()) {
+        const mini = review.miniQuiz;
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === review.activeEntryId);
+        if (!entry) return;
+        const angles = getStudioSavedImageAngles(entry);
+        const mastered = normalizeSavedImageMasteredAngles(entry.masteredAnglesById || {});
+        const correct = new Set(mini.masteryCorrectRegularTargets || []);
+        // Only completed Mini Quizzes whose regular label questions were ALL
+        // correctly answered can add unique-name credit. Progress Try Again
+        // satisfies this once every missed regular label is corrected.
+        const regularTargets = mini.targets.map((target, index) => ({ target, index }))
+            .filter(({ target }) => target.kind === 'label');
+        const allRegularCorrect = !review.pinnedLabelsOnly && regularTargets.length > 0
+            && regularTargets.every(({ index }) => correct.has(index));
+        const credited = getSavedImageCreditedUniqueLabelKeys(entry);
+        if (allRegularCorrect) {
+            regularTargets.forEach(({ target }) => {
+                const label = normalizeDiagramLabels(angles[target.angleIndex]?.labels || [])[target.labelIndex];
+                const key = normalizeReviewModeMiniQuizLabelKey(label?.label || '');
+                if (key) credited.add(key);
+            });
+        }
+        // A full successful question set must cover EVERY regular label instance
+        // in an angle. Category-only prompts, visual aids, duplicate filtering,
+        // and pinned-only quizzes cannot accidentally certify missing labels.
+        angles.forEach((angle, angleIndex) => {
+            const labels = normalizeDiagramLabels(angle.labels || []);
+            if (!labels.length) return;
+            const covered = new Set(mini.targets.flatMap((target, index) =>
+                target.kind === 'label' && target.angleIndex === angleIndex && correct.has(index)
+                    ? [target.labelIndex] : []));
+            if (!review.pinnedLabelsOnly && covered.size === labels.length && labels.every((_, index) => covered.has(index))) {
+                mastered[normalizeSheetText(angle.id)] = getSavedImageAngleMasterySignature(angle);
+            }
+        });
+        const passKeys = new Set();
+        if (allRegularCorrect) regularTargets.forEach(({ target }) => {
+            const label = normalizeDiagramLabels(angles[target.angleIndex]?.labels || [])[target.labelIndex];
+            const key = normalizeReviewModeMiniQuizLabelKey(label?.label || '');
+            if (key) passKeys.add(key);
+        });
+        replaceStudioSavedImageLibraryEntry(entry, {
+            ...entry, masteredAnglesById: mastered,
+            masteredUniqueLabels: { signature: getSavedImageUniqueMasterySignature(entry), keys: [...credited] },
+            spacedReview: allRegularCorrect ? recordSavedImageSpacedReviewPass(entry, passKeys) : entry.spacedReview
+        });
+    }
+
+    function revokeSavedImageMiniQuizMasteryForAngle(angleId, labelKey = '') {
+        const review = getReviewModeState();
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === review.activeEntryId);
+        if (!entry) return;
+        const id = normalizeSheetText(angleId);
+        const mastered = normalizeSavedImageMasteredAngles(entry.masteredAnglesById || {});
+        const credited = getSavedImageCreditedUniqueLabelKeys(entry);
+        const key = normalizeReviewModeMiniQuizLabelKey(labelKey);
+        const keysToRevoke = new Set(key ? [key] : getStudioSavedImageAngles(entry)
+            .filter(angle => normalizeSheetText(angle.id) === id)
+            .flatMap(angle => normalizeDiagramLabels(angle.labels || [])
+                .map(label => normalizeReviewModeMiniQuizLabelKey(label.label)).filter(Boolean)));
+        const beforeCertificates = JSON.stringify(mastered);
+        const beforeKeys = JSON.stringify([...credited].sort());
+        keysToRevoke.forEach(name => credited.delete(name));
+        // A wrong structure name revokes every occurrence of that name in all
+        // angles. Legacy callers passing only an angle revoke that whole angle.
+        getStudioSavedImageAngles(entry).forEach(angle => {
+            if (normalizeDiagramLabels(angle.labels || []).some(label =>
+                keysToRevoke.has(normalizeReviewModeMiniQuizLabelKey(label.label)))) {
+                delete mastered[normalizeSheetText(angle.id)];
+            }
+        });
+        if (!key) delete mastered[id];
+        if (beforeCertificates === JSON.stringify(mastered) && beforeKeys === JSON.stringify([...credited].sort())) return;
+        replaceStudioSavedImageLibraryEntry(entry, {
+            ...entry, masteredAnglesById: mastered,
+            masteredUniqueLabels: { signature: getSavedImageUniqueMasterySignature(entry), keys: [...credited] }
+        });
     }
 
     function finishReviewModeMiniQuiz() {
+        commitSavedImageMiniQuizMastery();
+        cancelReviewModeMiniQuizImageWarmup();
         clearReviewModeMiniQuizRapidTimer();
         stopReviewModeVisualAidAnimation();
         const review = getReviewModeState();
@@ -9620,19 +12926,26 @@ The deletion becomes permanent when you save the diagram.`);
 
     function startReviewModeMiniQuiz({ scope = '' } = {}) {
         clearReviewModeMiniQuizRapidTimer();
+        invalidateReviewModeMiniQuizEntrySnapshot();
         const review = getReviewModeState();
         const entry = getActiveReviewModeEntry();
-        const angles = getStudioSavedImageAngles(entry || {});
+        const angles = getReviewModePreparedAngles(entry || {});
         const requestedScope = scope === 'all' || scope === 'current' ? scope : review.miniQuizScope;
         const quizScope = requestedScope === 'all' && angles.length > 1 ? 'all' : 'current';
         const currentVisualAidId = review.miniQuizCurrentVisualAidOnly && review.miniQuizVisualAidPolicy !== 'exclude' ? (getReviewModeActiveVisualAid()?.id || '') : '';
-        const targets = buildReviewModeMiniQuizTargets(entry, quizScope, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy, currentVisualAidId);
+        const targets = buildReviewModeMiniQuizTargets(entry, quizScope, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy, currentVisualAidId, review.quizLabelInformation, review.identifyStructureForCategory, review.pinnedLabelsOnly);
         if (!targets.length) {
-            setCreatorStatus(quizScope === 'all' ? 'This diagram does not have any quiz items for the selected label / Interactive Visual Aid options.' : 'This angle does not have any quiz items for the selected label / Interactive Visual Aid options.', 'error');
+            if (review.pinnedLabelsOnly) return;
+            const emptyMessage = quizScope === 'all'
+                ? 'This diagram does not have any quiz items for the selected label / Interactive Visual Aid options.'
+                : 'This angle does not have any quiz items for the selected label / Interactive Visual Aid options.';
+            setCreatorStatus(emptyMessage, 'error');
             return;
         }
         const indexes = targets.map((_, index) => index);
         const quizQueue = review.randomizeMiniQuiz ? shuffleReviewModeMiniQuizIndexes(indexes) : indexes;
+        const enteringMiniQuiz = !review.miniQuiz?.active;
+        if (enteringMiniQuiz) review.miniQuizFocusRestore = review.focusMode === true;
         review.miniQuizScope = quizScope;
         review.miniQuiz = normalizeReviewModeMiniQuizState({
             active: true,
@@ -9643,6 +12956,8 @@ The deletion becomes permanent when you save the diagram.`);
             queue: quizQueue,
             position: 0,
             roundMissed: [],
+            roundCheckpoint: false,
+            progressRound: 1,
             knownLabels: [],
             reviewLabels: [],
             retentionKnown: [],
@@ -9656,18 +12971,120 @@ The deletion becomes permanent when you save the diagram.`);
             typedSubmittedAnswer: '',
             typedResult: '',
             typedAnswerKnown: null,
-            rapidPending: false
+            rapidPending: false,
+            masteryCorrectRegularTargets: [],
+            masteryWrongAngleIds: []
         }, review.miniQuizMode);
         review.revealedLabels = new Set();
         setReviewModeOptionsOpen(false);
+        if (!review.focusMode) setReviewModeFocusMode(true, { animate: false });
         syncReviewModeMiniQuizTarget({ animate: quizScope === 'all' });
+        scheduleReviewModeMiniQuizNextDataPreparation();
+    }
+
+    // Phase 23F.41.26: Progress round checkpoint and one-write pin batching.
+    // Pin targets are angle-local unless the existing "Pin all shared labels" option is on.
+    function getReviewModeMiniQuizMissedLabelTargets(review = getReviewModeState()) {
+        const mini = review.miniQuiz;
+        if (!mini.active || mini.mode !== 'progress' || !mini.roundCheckpoint) return [];
+        const entry = getActiveReviewModeEntry();
+        const angles = getReviewModePreparedAngles(entry || {});
+        const found = new Map();
+        mini.roundMissed.forEach(targetIndex => {
+            const target = mini.targets[targetIndex];
+            if (!target || !['label', 'label-info'].includes(target.kind)) return;
+            const angle = angles[target.angleIndex];
+            const label = normalizeDiagramLabels(angle?.labels || [])[target.labelIndex];
+            const key = normalizeReviewModeMiniQuizLabelKey(label?.label || '');
+            if (!key || !angle) return;
+            found.set(`${target.angleIndex}:${target.labelIndex}`, { angleIndex: target.angleIndex, labelIndex: target.labelIndex, key });
+        });
+        return [...found.values()];
+    }
+
+    function pinReviewModeMiniQuizMissedLabels() {
+        const review = getReviewModeState();
+        if (!review.miniQuiz.roundCheckpoint) return;
+        const targets = getReviewModeMiniQuizMissedLabelTargets(review);
+        const entry = getActiveReviewModeEntry();
+        if (!entry || !targets.length) return;
+        const angles = getReviewModePreparedAngles(entry);
+        const pins = normalizeSavedImagePinnedLabels(entry.pinnedLabelsByAngle || {});
+        const selected = new Map();
+        targets.forEach(target => {
+            angles.forEach((angle, angleIndex) => {
+                if (angleIndex !== target.angleIndex && !review.pinAllSharedLabels) return;
+                normalizeDiagramLabels(angle.labels || []).forEach((label, labelIndex) => {
+                    if ((angleIndex === target.angleIndex && labelIndex === target.labelIndex)
+                        || (review.pinAllSharedLabels && normalizeReviewModeMiniQuizLabelKey(label.label) === target.key)) {
+                        selected.set(`${angleIndex}:${labelIndex}`, { angleIndex, labelIndex, key: normalizeReviewModeMiniQuizLabelKey(label.label) });
+                    }
+                });
+            });
+        });
+        let added = 0;
+        selected.forEach(({ angleIndex, labelIndex, key }) => {
+            const angleId = normalizeSheetText(angles[angleIndex]?.id);
+            if (!angleId || !key) return;
+            const records = pins[angleId] || (pins[angleId] = []);
+            if (!records.some(record => record.index === labelIndex && record.key === key)) {
+                records.push({ index: labelIndex, key });
+                added += 1;
+            }
+        });
+        if (added) {
+            const saved = replaceStudioSavedImageLibraryEntry(entry, { ...entry, pinnedLabelsByAngle: pins });
+            if (!saved) {
+                if (elements.reviewModeMiniQuizCheckpointStatus) elements.reviewModeMiniQuizCheckpointStatus.textContent = 'Could not save pins. Try again.';
+                return;
+            }
+            cacheReviewModePinsForEntry(saved);
+        }
+        if (elements.reviewModeMiniQuizCheckpointStatus) elements.reviewModeMiniQuizCheckpointStatus.textContent = added ? `${added} label ${added === 1 ? 'pin' : 'pins'} saved. Choose Try Again to practice the missed questions.` : 'Those labels are already pinned. Choose Try Again to continue.';
+        syncReviewModeMiniQuizUi();
+    }
+
+    function resetReviewModeMiniQuizCheckpointPins() {
+        const review = getReviewModeState();
+        if (!review.miniQuiz.active || !review.miniQuiz.roundCheckpoint) return;
+        const entry = getActiveReviewModeEntry();
+        if (!entry) return;
+        const hasPins = getReviewModePreparedAngles(entry).some((_, index) => getReviewModePinnedIndexSet(entry, index).size);
+        if (!hasPins) return;
+        if (!window.confirm('Remove ALL pinned labels from this saved image, across every angle? The current retry round will be preserved.')) return;
+        const saved = replaceStudioSavedImageLibraryEntry(entry, { ...entry, pinnedLabelsByAngle: {} });
+        if (!saved) {
+            if (elements.reviewModeMiniQuizCheckpointStatus) elements.reviewModeMiniQuizCheckpointStatus.textContent = 'Could not reset pins. Try again.';
+            return;
+        }
+        cacheReviewModePinsForEntry(saved);
+        if (elements.reviewModeMiniQuizCheckpointStatus) elements.reviewModeMiniQuizCheckpointStatus.textContent = 'Pinned labels reset for this saved image. Your incorrect-answer retry list is unchanged.';
+        syncReviewModeMiniQuizUi();
+    }
+
+    function retryReviewModeMiniQuizMissedRound() {
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        if (!mini.active || mini.complete || mini.mode !== 'progress' || !mini.roundCheckpoint || !mini.roundMissed.length) return;
+        mini.queue = review.randomizeMiniQuiz
+            ? shuffleReviewModeMiniQuizIndexes(mini.roundMissed)
+            : mini.roundMissed.slice();
+        mini.roundMissed = [];
+        mini.position = 0;
+        mini.progressRound += 1;
+        mini.roundCheckpoint = false;
+        mini.answerRevealed = false;
+        resetReviewModeMiniQuizTypedAttempt(mini);
+        syncReviewModeMiniQuizTarget({ animate: mini.scope === 'all', advancing: true });
+        scheduleReviewModeMiniQuizNextDataPreparation();
+        if (review.typedMiniQuiz) focusReviewModeTypedAnswerInput();
     }
 
     function startReviewModeMiniQuizNextAngle() {
         const review = getReviewModeState();
         const entry = getActiveReviewModeEntry();
         if (!review.miniQuiz.active || !review.miniQuiz.complete || review.miniQuiz.scope !== 'current') return;
-        const nextAngleIndex = findNextReviewModeMiniQuizAngleIndex(entry, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy);
+        const nextAngleIndex = findNextReviewModeMiniQuizAngleIndex(entry, review.activeAngleIndex, review.allowDuplicateMiniQuiz, review.miniQuizVisualAidPolicy, review.quizLabelInformation, review.identifyStructureForCategory, review.pinnedLabelsOnly);
         if (nextAngleIndex < 0) {
             setCreatorStatus('There are no later angles with quiz items for the selected options.', 'error');
             syncReviewModeMiniQuizUi();
@@ -9684,10 +13101,16 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function endReviewModeMiniQuiz({ render = true } = {}) {
+        cancelReviewModeMiniQuizImageWarmup();
         clearReviewModeMiniQuizRapidTimer();
         const review = getReviewModeState();
-        review.miniQuizScope = 'current';
-        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
+        const restoreFocus = review.miniQuizFocusRestore;
+        review.miniQuizFocusRestore = null;
+        // Keep the student's chosen scope when ending a quiz; new review sessions default to all angles.
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: review.miniQuizScope, targets: [] }, review.miniQuizMode);
+        if (typeof restoreFocus === 'boolean' && restoreFocus !== review.focusMode) {
+            setReviewModeFocusMode(restoreFocus, { animate: false });
+        }
         if (render) {
             renderReviewModeLabels();
             syncReviewModeControls();
@@ -9700,19 +13123,161 @@ The deletion becomes permanent when you save the diagram.`);
         startReviewModeMiniQuiz({ scope: review.miniQuiz.scope });
     }
 
+    let reviewModeMiniQuizRevealFrameId = 0;
+
+    function scheduleReviewModeMiniQuizPostRevealUi() {
+        if (reviewModeMiniQuizRevealFrameId) window.cancelAnimationFrame(reviewModeMiniQuizRevealFrameId);
+        // Two frames are intentional: the first gives the synchronous answer DOM
+        // mutation a paint opportunity before layout-heavy clamp/connector/control
+        // work runs on the following frame.
+        reviewModeMiniQuizRevealFrameId = window.requestAnimationFrame(() => {
+            reviewModeMiniQuizRevealFrameId = window.requestAnimationFrame(() => {
+                reviewModeMiniQuizRevealFrameId = 0;
+                const review = getReviewModeState();
+                if (!review.miniQuiz.active || review.miniQuiz.complete || !review.miniQuiz.answerRevealed) return;
+                renderReviewModeConnectors();
+                syncReviewModeControls();
+                if (review.focusMode) scheduleReviewModeFocusCurrentLabel({ animate: false });
+            });
+        });
+    }
+
+    function updateReviewModeMiniQuizLabelRevealInPlace() {
+        const review = getReviewModeState();
+        if (!review.miniQuiz.active || review.miniQuiz.complete || review.typedMiniQuiz) return false;
+        const target = getReviewModeMiniQuizActiveTarget(review);
+        if (target?.kind && target.kind !== 'label') return false;
+        const index = getReviewModeMiniQuizActiveLabelIndex(review);
+        const labels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
+        const item = labels[index];
+        const marker = elements.reviewModeLabelLayer?.querySelector?.(`[data-review-label-index="${index}"]`);
+        const wrap = marker?.closest?.('.review-mode-mini-label-wrap');
+        if (!item || !marker || !wrap) return false;
+        review.autoLabelPositions = {};
+        wrap.classList.add('is-revealed');
+        marker.classList.remove('is-mini-glowing', 'has-question-prompt');
+        marker.classList.add('is-name-visible');
+        marker.setAttribute('aria-pressed', 'true');
+        marker.setAttribute('aria-label', `Choose whether you know label ${index + 1}`);
+        const name = marker.querySelector('.review-mode-label-name');
+        if (name) name.innerHTML = renderMathChemTextToHtml(item.label);
+        marker.querySelector('.review-mode-label-description')?.remove();
+        const infoCategories = getDiagramLabelVisibleInfoCategories(item);
+        const showDescription = !!(review.includeLabelDescriptions && infoCategories.length);
+        const descriptionHtml = renderReviewModeLabelInformation(item, showDescription);
+        // Phase .75: the first-reveal fast path must apply the same information
+        // layout state as renderReviewModeLabels(). Without this, Include Label
+        // Information (on by default) inserts rows into the ordinary oval card;
+        // flipping the option off/on happens to repair it via a full render.
+        marker.classList.toggle('has-description', showDescription);
+        if (descriptionHtml) marker.insertAdjacentHTML('beforeend', descriptionHtml);
+        if (!wrap.querySelector('[data-review-mini-answer="dont-know"]')) {
+            marker.insertAdjacentHTML('beforebegin', '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this label">✕</button>');
+        }
+        if (!wrap.querySelector('[data-review-mini-answer="know"]')) {
+            marker.insertAdjacentHTML('afterend', '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this label">✓</button>');
+        }
+        // Keep edge protection immediate so the expanded answer never paints clipped.
+        clampReviewModeRenderedLabels();
+        scheduleReviewModeMiniQuizPostRevealUi();
+        return true;
+    }
+
+    // Phase 23F.41.10: use the same reveal / don't-know / know interaction
+    // as regular diagram labels, without replacing the tapped visual question
+    // card during the pointer click. Works for regular and Flow Fill targets.
+    function updateReviewModeMiniQuizVisualRevealInPlace() {
+        const review = getReviewModeState();
+        if (!review.miniQuiz.active || review.miniQuiz.complete || review.typedMiniQuiz) return false;
+        const target = getReviewModeMiniQuizActiveTarget(review);
+        if (!target || ['label', 'label-info'].includes(target.kind)) return false;
+        const details = getReviewModeMiniQuizVisualTargetDetails(review);
+        const marker = elements.reviewModeLabelLayer?.querySelector('[data-review-mini-visual-reveal]');
+        const wrap = marker?.closest('.review-mode-mini-visual-prompt-wrap');
+        if (!details || !marker || !wrap) return false;
+        wrap.classList.add('is-revealed');
+        marker.classList.remove('is-mini-glowing');
+        marker.classList.add('is-name-visible');
+        marker.setAttribute('aria-pressed', 'true');
+        marker.setAttribute('aria-label', 'Choose whether you know this item');
+        if (!marker.querySelector('.review-mode-label-name')) {
+            marker.insertAdjacentHTML('beforeend', `<span class="review-mode-label-name">${renderMathChemTextToHtml(details.name)}</span>`);
+        }
+        if (!wrap.querySelector('[data-review-mini-answer="dont-know"]')) {
+            marker.insertAdjacentHTML('beforebegin', '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this item">✕</button>');
+        }
+        if (!wrap.querySelector('[data-review-mini-answer="know"]')) {
+            marker.insertAdjacentHTML('afterend', '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this item">✓</button>');
+        }
+        applyReviewModeMiniVisualPromptPosition(details);
+        syncReviewModeMiniVisualPromptConnector(details);
+        scheduleReviewModeMiniQuizPostRevealUi();
+        return true;
+    }
+
     function revealReviewModeMiniQuizAnswer() {
         const review = getReviewModeState();
-        if (!review.miniQuiz.active || review.miniQuiz.complete) return;
+        if (!review.miniQuiz.active || review.miniQuiz.complete || review.miniQuiz.roundCheckpoint) return;
         review.miniQuiz.answerRevealed = true;
-        renderReviewModeLabels();
-        syncReviewModeControls();
+        if (!updateReviewModeMiniQuizVisualRevealInPlace() && !updateReviewModeMiniQuizLabelRevealInPlace()) {
+            renderReviewModeLabels();
+            syncReviewModeControls();
+        }
+        syncReviewModePinButton();
+    }
+
+    // Opt-in Chrome diagnostics: enable `window.__studyBunnyMiniQuizPerf = true`
+    // in DevTools. Measure actual next-question paint, not just synchronous JS.
+    let reviewModeMiniQuizPerfSequence = 0;
+    let reviewModeMiniQuizPerfTransition = null;
+
+    function beginReviewModeMiniQuizTransitionPerf() {
+        if (window.__studyBunnyMiniQuizPerf !== true) return;
+        reviewModeMiniQuizPerfTransition = {
+            id: ++reviewModeMiniQuizPerfSequence,
+            start: performance.now(),
+            fromAngle: getReviewModeState().activeAngleIndex,
+            marks: []
+        };
+    }
+
+    function markReviewModeMiniQuizTransitionPerf(stage) {
+        const trace = reviewModeMiniQuizPerfTransition;
+        if (!trace || window.__studyBunnyMiniQuizPerf !== true) return;
+        trace.marks.push([stage, Math.round(performance.now() - trace.start)]);
+    }
+
+    function scheduleReviewModeMiniQuizPaintPerf() {
+        const trace = reviewModeMiniQuizPerfTransition;
+        if (!trace || window.__studyBunnyMiniQuizPerf !== true) return;
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+            if (trace !== reviewModeMiniQuizPerfTransition) return;
+            const elapsed = Math.round(performance.now() - trace.start);
+            const mode = trace.fromAngle === getReviewModeState().activeAngleIndex ? 'same angle' : 'angle switch';
+            console.info('[Study Bunny Mini Quiz] next question visible', mode,
+                `${elapsed} ms`, trace.marks);
+            reviewModeMiniQuizPerfTransition = null;
+        }));
     }
 
     function advanceReviewModeMiniQuiz(answerKnown) {
         const review = getReviewModeState();
         const mini = review.miniQuiz;
         const activeIndex = getReviewModeMiniQuizActiveIndex(review);
-        if (!mini.active || mini.complete || !mini.answerRevealed || activeIndex < 0) return;
+        if (!mini.active || mini.complete || mini.roundCheckpoint || !mini.answerRevealed || activeIndex < 0) return;
+
+        const answeredTarget = mini.targets[activeIndex];
+        if (answeredTarget?.kind === 'label') {
+            if (answerKnown) addReviewModeMiniQuizIndex(mini.masteryCorrectRegularTargets, activeIndex);
+            else {
+                removeReviewModeMiniQuizIndex(mini.masteryCorrectRegularTargets, activeIndex);
+                const angleId = normalizeSheetText(answeredTarget.angleId);
+                if (!mini.masteryWrongAngleIds.includes(angleId)) mini.masteryWrongAngleIds.push(angleId);
+                const angles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {});
+                const label = normalizeDiagramLabels(angles[answeredTarget.angleIndex]?.labels || [])[answeredTarget.labelIndex];
+                revokeSavedImageMiniQuizMasteryForAngle(angleId, label?.label || '');
+            }
+        }
 
         if (answerKnown) {
             addReviewModeMiniQuizIndex(mini.knownLabels, activeIndex);
@@ -9727,11 +13292,16 @@ The deletion becomes permanent when you save the diagram.`);
             mini.position += 1;
             if (mini.position >= mini.queue.length) {
                 if (mini.roundMissed.length) {
-                    mini.queue = review.randomizeMiniQuiz
-                        ? shuffleReviewModeMiniQuizIndexes(mini.roundMissed)
-                        : mini.roundMissed.slice();
-                    mini.roundMissed = [];
-                    mini.position = 0;
+                    // Every unfinished Progress round pauses BEFORE recycling missed items.
+                    // The retry queue and all existing pins remain untouched until Try Again.
+                    mini.roundCheckpoint = true;
+                    mini.answerRevealed = false;
+                    cancelReviewModeMiniQuizImageWarmup();
+                    clearReviewModeMiniQuizRapidTimer();
+                    if (elements.reviewModeMiniQuizCheckpointStatus) elements.reviewModeMiniQuizCheckpointStatus.textContent = '';
+                    syncReviewModeMiniQuizUi();
+                    elements.reviewModeMiniQuizTryAgainBtn?.focus();
+                    return;
                 } else {
                     finishReviewModeMiniQuiz();
                     return;
@@ -9817,14 +13387,20 @@ The deletion becomes permanent when you save the diagram.`);
 
         mini.answerRevealed = false;
         resetReviewModeMiniQuizTypedAttempt(mini);
-        syncReviewModeMiniQuizTarget({ animate: mini.scope === 'all' });
+        beginReviewModeMiniQuizTransitionPerf();
+        const miniTransitionStartedAt = window.__studyBunnyMiniQuizPerf === true ? performance.now() : 0;
+        syncReviewModeMiniQuizTarget({ animate: mini.scope === 'all', advancing: true });
+        markReviewModeMiniQuizTransitionPerf('quiz target committed');
+        if (getReviewModeState().activeAngleIndex === reviewModeMiniQuizPerfTransition?.fromAngle) scheduleReviewModeMiniQuizPaintPerf();
+        if (miniTransitionStartedAt) console.info('[Study Bunny Mini Quiz] advance/render JS:', Math.round((performance.now() - miniTransitionStartedAt) * 10) / 10, 'ms (excludes browser paint and image fetch)');
+        scheduleReviewModeMiniQuizNextDataPreparation();
         if (review.typedMiniQuiz) focusReviewModeTypedAnswerInput();
     }
 
     function answerReviewModeMiniQuizCorrectFromShortcut() {
         const review = getReviewModeState();
         const mini = review.miniQuiz;
-        if (!mini.active || mini.complete) return false;
+        if (!mini.active || mini.complete || mini.roundCheckpoint) return false;
         clearReviewModeMiniQuizRapidTimer();
         mini.answerRevealed = true;
         if (review.typedMiniQuiz) {
@@ -9846,25 +13422,115 @@ The deletion becomes permanent when you save the diagram.`);
     function getReviewModeVisibleLabelIndexes(entry = null) {
         const review = getReviewModeState();
         const labels = normalizeDiagramLabels(getActiveReviewModeAngle(entry || getActiveReviewModeEntry())?.labels || []);
-        if (review.showAllNames) return new Set(labels.map((_, index) => index));
-        return new Set(Array.from(review.revealedLabels).filter(index => Number.isInteger(index) && index >= 0 && index < labels.length));
+        const eligible = review.pinnedLabelsOnly ? getReviewModePinnedIndexSet(entry || getActiveReviewModeEntry(), review.activeAngleIndex) : null;
+        if (review.showAllNames) return new Set(labels.map((_, index) => index).filter(index => !eligible || eligible.has(index)));
+        return new Set(Array.from(review.revealedLabels).filter(index => Number.isInteger(index) && index >= 0 && index < labels.length && (!eligible || eligible.has(index))));
     }
 
     function getReviewModeVisibleNameIndexes(entry = null) {
         const review = getReviewModeState();
         const labels = normalizeDiagramLabels(getActiveReviewModeAngle(entry || getActiveReviewModeEntry())?.labels || []);
-        if (review.showAllNames) return new Set(labels.map((_, index) => index));
+        if (review.showAllNames) return getReviewModeVisibleLabelIndexes(entry);
         if (review.disableLabelNamesOnClick) return new Set();
         return getReviewModeVisibleLabelIndexes(entry);
+    }
+
+    // Phase 23F.38: reuse static label information within the current Mini Quiz.
+    // Positions stay live (including drag/clamp corrections); no media is loaded.
+    const reviewModeMiniQuizStaticLabels = new WeakMap();
+    let reviewModeMiniQuizWarmFrameId = 0;
+    let reviewModeMiniQuizWarmGeneration = 0;
+    let reviewModeMiniQuizWarmTimeoutId = 0;
+
+    function cancelReviewModeMiniQuizImageWarmup() {
+        reviewModeMiniQuizWarmGeneration += 1;
+        if (reviewModeMiniQuizWarmFrameId) window.cancelAnimationFrame(reviewModeMiniQuizWarmFrameId);
+        reviewModeMiniQuizWarmFrameId = 0;
+        if (reviewModeMiniQuizWarmTimeoutId) window.clearTimeout(reviewModeMiniQuizWarmTimeoutId);
+        reviewModeMiniQuizWarmTimeoutId = 0;
+    }
+
+    function getReviewModeMiniQuizBaseLabels(review, angleIndex, angle) {
+        let byAngle = reviewModeMiniQuizStaticLabels.get(review.miniQuiz);
+        if (!byAngle) {
+            byAngle = new Map();
+            reviewModeMiniQuizStaticLabels.set(review.miniQuiz, byAngle);
+        }
+        const key = `${review.activeEntryId}:${angleIndex}:${normalizeSheetText(angle?.id || '')}`;
+        if (!byAngle.has(key)) byAngle.set(key, applyStudioSavedImageGlobalLabelInformation(angle?.labels || []));
+        return byAngle.get(key);
+    }
+
+    // Phase 23F.41.27: prepare the next quiz ANGLE, not arbitrary neighboring
+    // angles. This runs only for All Angles Mini Quiz, after the current prompt
+    // paints. Two unique upcoming sources at most, one at a time; no new image
+    // copies, library-wide downloads, media uploads or question-order changes.
+    function scheduleReviewModeMiniQuizNextDataPreparation() {
+        cancelReviewModeMiniQuizImageWarmup();
+        const review = getReviewModeState();
+        const mini = review.miniQuiz;
+        if (!mini.active || mini.complete || mini.roundCheckpoint) return;
+        const generation = reviewModeMiniQuizWarmGeneration;
+        reviewModeMiniQuizWarmFrameId = window.requestAnimationFrame(() => {
+            reviewModeMiniQuizWarmFrameId = 0;
+            if (generation !== reviewModeMiniQuizWarmGeneration || getReviewModeState().miniQuiz !== mini || !mini.active || mini.complete || mini.roundCheckpoint) return;
+            const positions = mini.phase === 'checkpoint' ? mini.checkpointQueue : mini.queue;
+            const position = mini.phase === 'checkpoint' ? mini.checkpointPosition : mini.position;
+            const entry = getActiveReviewModeEntry();
+            const angles = getReviewModePreparedAngles(entry || {});
+            const upcoming = [];
+            const usedSources = new Set();
+            const activeSource = normalizeSheetText(angles[review.activeAngleIndex]?.imageValue || '');
+            for (let i = position + 1; i < Math.min(positions.length, position + 13) && upcoming.length < 2; i += 1) {
+                const targetIndex = positions[i];
+                const target = Number.isInteger(targetIndex) ? mini.targets[targetIndex] : null;
+                const angle = target ? angles[target.angleIndex] : null;
+                if (!angle) continue;
+                // Warm enriched label data, including existing connector fields,
+                // before cross-angle rendering or Focus Mode measurement.
+                if (['label', 'label-info'].includes(target.kind)) getReviewModeMiniQuizBaseLabels(review, target.angleIndex, angle);
+                const source = normalizeSheetText(angle.imageValue || '');
+                if (mini.scope !== 'all' || !source || source === activeSource || usedSources.has(source)) continue;
+                usedSources.add(source);
+                upcoming.push(source);
+            }
+            if (!upcoming.length || !isReviewModeActiveAngleOverlayReady()) return;
+            // Yield again so preloading never competes with initial label paint.
+            reviewModeMiniQuizWarmTimeoutId = window.setTimeout(async () => {
+                reviewModeMiniQuizWarmTimeoutId = 0;
+                for (const source of upcoming) {
+                    if (generation !== reviewModeMiniQuizWarmGeneration || getReviewModeState().miniQuiz !== mini || !mini.active || mini.complete || mini.roundCheckpoint || !getReviewModeState().overlayOpen) break;
+                    const started = window.__studyBunnyMiniQuizPerf === true ? performance.now() : 0;
+                    const loaded = await preloadReviewModeAngleSource(source);
+                    if (started) console.info('[Study Bunny Mini Quiz] next-angle prepared:', !!loaded, Math.round(performance.now() - started), 'ms');
+                }
+            }, 0);
+        });
     }
 
     function getReviewModeDisplayLabels(entry = null) {
         const review = getReviewModeState();
         const angle = getActiveReviewModeAngle(entry || getActiveReviewModeEntry());
-        return normalizeDiagramLabels(angle?.labels || []).map((label, index) => {
-            const override = review.temporaryLabelPositions?.[index];
-            if (!override || !Number.isFinite(Number(override.x)) || !Number.isFinite(Number(override.y))) return label;
-            return { ...label, x: Math.min(100, Math.max(0, Number(override.x))), y: Math.min(100, Math.max(0, Number(override.y))) };
+        let baseLabels = null;
+        if (review.miniQuiz.active) {
+            baseLabels = getReviewModeMiniQuizBaseLabels(review, review.activeAngleIndex, angle);
+        } else if (!angle?.labels?.length) {
+            baseLabels = [];
+        } else {
+            baseLabels = reviewModeNormalEnrichedLabels.get(angle);
+            if (!baseLabels) {
+                baseLabels = applyStudioSavedImageGlobalLabelInformation(angle.labels, getReviewModeNormalGlobalRecords());
+                if (review.overlayOpen) reviewModeNormalEnrichedLabels.set(angle, baseLabels);
+            }
+        }
+        return baseLabels.map((label, index) => {
+            const manual = review.temporaryLabelPositions?.[index];
+            const base = manual && Number.isFinite(Number(manual.x)) && Number.isFinite(Number(manual.y))
+                ? { ...label, x: Math.min(100, Math.max(0, Number(manual.x))), y: Math.min(100, Math.max(0, Number(manual.y))) }
+                : label;
+            const automatic = review.autoLabelPositions?.[index];
+            if (!automatic || !Number.isFinite(Number(automatic.x)) || !Number.isFinite(Number(automatic.y))) return base;
+            return { ...base, x: Math.min(100, Math.max(0, Number(automatic.x))), y: Math.min(100, Math.max(0, Number(automatic.y))) };
         });
     }
 
@@ -9879,6 +13545,10 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         let labels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
+        if (!review.miniQuiz.active && review.pinnedLabelsOnly) {
+            const eligible = getReviewModePinnedIndexSet(getActiveReviewModeEntry(), review.activeAngleIndex);
+            labels = labels.map((label, index) => eligible.has(index) ? label : ({ ...label, connector: null }));
+        }
         if (review.miniQuiz.active) {
             const activeIndex = getReviewModeMiniQuizActiveLabelIndex(review);
             labels = review.miniQuiz.complete
@@ -9909,34 +13579,145 @@ The deletion becomes permanent when you save the diagram.`);
         };
     }
 
-    function beginReviewModeLabelDrag(event, marker) {
+    function clampReviewModeRenderedLabels() {
         const review = getReviewModeState();
-        if (!marker || (event.button !== undefined && event.button !== 0) || (review.miniQuiz.active && review.miniQuiz.complete)) return;
-        const index = Number(marker.dataset.reviewLabelIndex);
+        review.autoLabelPositions = {};
+        const stage = elements.reviewModeImageStage;
+        const layer = elements.reviewModeLabelLayer;
+        const stageRect = stage?.getBoundingClientRect?.();
+        const stageCssWidth = Math.max(1, Number(stage?.clientWidth || stage?.offsetWidth || 0));
+        if (!stageRect?.width || !stageRect?.height || !stageCssWidth || !layer) return;
+        const baseLabels = getReviewModeDisplayLabels(getActiveReviewModeEntry());
+        layer.querySelectorAll('[data-review-label-index]').forEach(marker => {
+            const index = Number(marker.dataset.reviewLabelIndex);
+            if (!Number.isInteger(index) || index < 0 || !baseLabels[index]) return;
+            const moveTarget = marker.closest('.review-mode-mini-label-wrap') || marker;
+            const miniButtons = moveTarget === marker ? [] : Array.from(moveTarget.querySelectorAll('.review-mode-mini-answer'));
+            const reservedWidth = miniButtons.reduce((sum, button) => sum + Math.max(0, button.offsetWidth || 0), 0)
+                + (miniButtons.length ? (miniButtons.length * 8) + 16 : 12);
+            // Phase .74: the Mini Quiz information card must have a definite,
+            // viewport-aware width BEFORE the two-column category grid lays out.
+            // max-width alone left a shrink-to-fit flex card as narrow as its
+            // image stage; at 160% the body column could collapse to 1-2 letters.
+            // This is intentionally scoped to revealed Mini Quiz information:
+            // regular labels and unrevealed quiz prompts are untouched.
+            const hasInformation = review.miniQuiz.active && marker.classList.contains('has-description');
+            const viewportWidth = Math.max(1, elements.reviewModeImageViewport?.clientWidth || window.innerWidth);
+            // Compact view puts the X/check in a row BELOW the information card,
+            // leaving room for both the card and the right-side shortcut dock.
+            const compactInformationLayout = hasInformation && viewportWidth <= 800;
+            const usableWidth = hasInformation
+                ? Math.max(108, Math.min(520, viewportWidth - (compactInformationLayout ? 112 : reservedWidth + 32)))
+                : Math.max(72, stageCssWidth - reservedWidth);
+            marker.style.maxWidth = `${usableWidth}px`;
+            if (hasInformation) {
+                marker.style.width = `${usableWidth}px`;
+                marker.style.minWidth = '0px';
+                // Defensive: don't inherit the plain-label oval if another
+                // stylesheet/cached style has overridden the information class.
+                marker.style.borderRadius = 'calc(14px * var(--review-label-scale))';
+                // On narrow screens / very large fonts, category/body must
+                // stack rather than leave an unusably narrow right-hand column.
+                const body = marker.querySelector('.review-mode-label-info-body');
+                const needsStacking = usableWidth < 370 || (body && body.offsetWidth < 150);
+                marker.classList.toggle('is-stacked-information', !!needsStacking);
+                moveTarget.classList.toggle('is-compact-information-layout', compactInformationLayout);
+            } else {
+                marker.style.width = '';
+                marker.style.minWidth = '';
+                marker.style.borderRadius = '';
+                marker.classList.remove('is-stacked-information');
+                moveTarget.classList.remove('is-compact-information-layout');
+            }
+            const bounds = getReviewModeLabelDragBounds(stageRect, moveTarget);
+            const base = baseLabels[index];
+            const x = Math.min(bounds.maxX, Math.max(bounds.minX, Number(base.x) || 0));
+            const y = Math.min(bounds.maxY, Math.max(bounds.minY, Number(base.y) || 0));
+            if (Math.abs(x - Number(base.x)) > 0.01 || Math.abs(y - Number(base.y)) > 0.01) {
+                review.autoLabelPositions[index] = { x, y };
+            }
+            moveTarget.style.left = `${x}%`;
+            moveTarget.style.top = `${y}%`;
+        });
+    }
+
+    const REVIEW_MODE_LABEL_HOLD_TO_MOVE_MS = 250;
+    let reviewModeLabelHold = null;
+
+    function startReviewModeLabelDrag(marker, pointerId, clientX, clientY, miniQuiz = false) {
+        const index = Number(marker?.dataset?.reviewLabelIndex);
         const rect = elements.reviewModeImageStage?.getBoundingClientRect?.();
         const label = getReviewModeDisplayLabels(getActiveReviewModeEntry())[index];
-        const moveTarget = review.miniQuiz.active ? marker.closest('.review-mode-mini-label-wrap') : marker;
+        const moveTarget = miniQuiz ? marker?.closest('.review-mode-mini-label-wrap') : marker;
         if (!Number.isInteger(index) || index < 0 || !label || !moveTarget || !rect?.width || !rect?.height) return;
+        delete getReviewModeState().autoLabelPositions[index];
         reviewModeLabelDrag = {
             index,
-            pointerId: event.pointerId,
+            pointerId,
             marker,
             moveTarget,
             rect,
             bounds: getReviewModeLabelDragBounds(rect, moveTarget),
-            startClientX: event.clientX,
-            startClientY: event.clientY,
+            startClientX: clientX,
+            startClientY: clientY,
             startX: label.x,
             startY: label.y,
             moved: false,
-            miniQuiz: review.miniQuiz.active
+            miniQuiz
         };
         marker.classList.add('is-dragging');
         moveTarget.classList.add('is-dragging');
+        try { marker.setPointerCapture(pointerId); } catch (_) {}
+    }
+
+    function cancelReviewModeLabelHold(pointerId = null) {
+        const pending = reviewModeLabelHold;
+        if (!pending || (pointerId !== null && pending.pointerId !== pointerId)) return;
+        if (pending.timerId) window.clearTimeout(pending.timerId);
+        try { pending.marker?.releasePointerCapture?.(pending.pointerId); } catch (_) {}
+        reviewModeLabelHold = null;
+    }
+
+    function beginReviewModeLabelDrag(event, marker) {
+        const review = getReviewModeState();
+        if (!review.allowLabelMovement || !marker || (event.button !== undefined && event.button !== 0) || (review.miniQuiz.active && review.miniQuiz.complete)) return;
+        // Phase 23F.41.21: both Review and Mini Quiz use the same optional
+        // hold-to-move threshold. A short tap remains a normal reveal.
+        cancelReviewModeLabelHold();
+        const pending = {
+            pointerId: event.pointerId,
+            marker,
+            miniQuiz: review.miniQuiz.active,
+            entryId: review.activeEntryId,
+            angleIndex: review.activeAngleIndex,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            latestClientX: event.clientX,
+            latestClientY: event.clientY,
+            timerId: 0
+        };
         try { marker.setPointerCapture(event.pointerId); } catch (_) {}
+        pending.timerId = window.setTimeout(() => {
+            if (reviewModeLabelHold !== pending) return;
+            reviewModeLabelHold = null;
+            const current = getReviewModeState();
+            if (current.allowLabelMovement && current.overlayOpen && !current.miniQuiz.complete
+                && current.miniQuiz.active === pending.miniQuiz && current.activeEntryId === pending.entryId
+                && current.activeAngleIndex === pending.angleIndex && pending.marker?.isConnected) {
+                startReviewModeLabelDrag(pending.marker, pending.pointerId, pending.startClientX, pending.startClientY, pending.miniQuiz);
+            } else {
+                try { pending.marker?.releasePointerCapture?.(pending.pointerId); } catch (_) {}
+            }
+        }, REVIEW_MODE_LABEL_HOLD_TO_MOVE_MS);
+        reviewModeLabelHold = pending;
     }
 
     function moveReviewModeLabelDrag(event) {
+        if (reviewModeLabelHold && event.pointerId === reviewModeLabelHold.pointerId) {
+            reviewModeLabelHold.latestClientX = event.clientX;
+            reviewModeLabelHold.latestClientY = event.clientY;
+            return;
+        }
         const drag = reviewModeLabelDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
         const dx = event.clientX - drag.startClientX;
@@ -9956,6 +13737,10 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function endReviewModeLabelDrag(event) {
+        if (reviewModeLabelHold && event.pointerId === reviewModeLabelHold.pointerId) {
+            cancelReviewModeLabelHold(event.pointerId);
+            return;
+        }
         const drag = reviewModeLabelDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
         drag.marker.classList.remove('is-dragging');
@@ -9997,26 +13782,32 @@ The deletion becomes permanent when you save the diagram.`);
             { x: left, y: top }, { x: right, y: top },
             { x: left, y: bottom }, { x: right, y: bottom }
         ];
-        const path = metrics?.path || [];
-        if (!path.length) return candidates[0];
-        const score = candidate => {
-            let minimum = Infinity;
-            const step = Math.max(1, Math.floor(path.length / 180));
-            for (let index = 0; index < path.length; index += step) {
-                const point = path[index];
-                const dx = Math.max(0, Math.abs(point.x - candidate.x) - halfWidth);
-                const dy = Math.max(0, Math.abs(point.y - candidate.y) - halfHeight);
-                minimum = Math.min(minimum, Math.hypot(dx, dy));
-            }
-            return minimum;
-        };
-        let best = candidates[0];
-        let bestScore = score(best);
-        candidates.slice(1).forEach(candidate => {
-            const candidateScore = score(candidate);
-            if (candidateScore > bestScore) { best = candidate; bestScore = candidateScore; }
+        const anchor = getReviewModeVisualAidConnectorAnchor(details.aid, { ...details.item, type: details.type });
+        const offsetX = halfWidth + Math.max(4, 2400 / Math.max(1,stageRect?.width || 600));
+        const offsetY = halfHeight + Math.max(4, 2400 / Math.max(1,stageRect?.height || 500));
+        const clamp = candidate => ({
+            x: Math.max(halfWidth + padX, Math.min(100 - halfWidth - padX, candidate.x)),
+            y: Math.max(halfHeight + padY, Math.min(100 - halfHeight - padY, candidate.y))
         });
-        return best;
+        const nearby = [
+            {x:anchor.x+offsetX,y:anchor.y}, {x:anchor.x-offsetX,y:anchor.y},
+            {x:anchor.x,y:anchor.y-offsetY}, {x:anchor.x,y:anchor.y+offsetY},
+            {x:anchor.x+offsetX*.85,y:anchor.y-offsetY*.85},
+            {x:anchor.x-offsetX*.85,y:anchor.y-offsetY*.85},
+            {x:anchor.x+offsetX*.85,y:anchor.y+offsetY*.85},
+            {x:anchor.x-offsetX*.85,y:anchor.y+offsetY*.85}
+        ].map(clamp);
+        const geometry=getReviewModeVisualAidConnectorGeometry(details.aid);
+        const score = candidate => {
+            let interference = 0;
+            for (const point of geometry) {
+                if (Math.abs(point.x - candidate.x) < halfWidth+1.5 && Math.abs(point.y - candidate.y) < halfHeight+1.5) interference += 25;
+            }
+            const distance=Math.hypot((candidate.x-anchor.x)*(stageRect?.width||600)/100,
+                (candidate.y-anchor.y)*(stageRect?.height||500)/100);
+            return -Math.min(interference,750)-distance*.14;
+        };
+        return nearby.sort((a,b)=>score(b)-score(a))[0] || candidates[0];
     }
 
     function applyReviewModeMiniVisualPromptPosition(details = null) {
@@ -10060,8 +13851,9 @@ The deletion becomes permanent when you save the diagram.`);
             key: position.key,
             moved: false
         };
-        wrap.classList.add('is-dragging');
-        try { wrap.setPointerCapture(event.pointerId); } catch (_) {}
+        // Do not capture a simple tap: capturing on the wrapper retargets the
+        // subsequent click away from the nested reveal button (notably on iPad).
+        // Pointer capture begins only after real dragging starts.
     }
 
     function moveReviewModeMiniVisualPromptDrag(event) {
@@ -10071,6 +13863,8 @@ The deletion becomes permanent when you save the diagram.`);
         const dy = event.clientY - drag.startClientY;
         if (!drag.moved && Math.hypot(dx, dy) < 4) return;
         drag.moved = true;
+        drag.wrap.classList.add('is-dragging');
+        try { drag.wrap.setPointerCapture(event.pointerId); } catch (_) {}
         event.preventDefault();
         const rawX = drag.startX + (dx / drag.rect.width) * 100;
         const rawY = drag.startY + (dy / drag.rect.height) * 100;
@@ -10080,6 +13874,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.miniVisualPromptPosition = { key: drag.key, x, y, userMoved: true };
         drag.wrap.style.left = `${x}%`;
         drag.wrap.style.top = `${y}%`;
+        syncReviewModeMiniVisualPromptConnector(getReviewModeMiniQuizVisualTargetDetails(review));
     }
 
     function endReviewModeMiniVisualPromptDrag(event) {
@@ -10115,7 +13910,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function getReviewModeAvailableVisualAids() {
-        return getReviewModeVisualAids().filter(aid => aid.path.length > 1);
+        return getReviewModeVisualAids().filter(aid => aid.path.length > 1 || hasFlowFillGeometry(aid));
     }
 
     function getReviewModeActiveVisualAid() {
@@ -10205,7 +14000,11 @@ The deletion becomes permanent when you save the diagram.`);
         const itemPosition = item.type === 'point'
             ? normalizeDiagramVisualAidPosition(item.position)
             : normalizeDiagramVisualAidPosition((Number(item.start || 0) + Number(item.end || item.position || 0)) / 2);
-        const anchor = getDiagramVisualAidPointAtPosition(aid, itemPosition);
+        const flowGeometry=aid.flowFillType==='flow-fill' ? (aid.flowItems||[]).find(flow=>flow.id===item.id) : null;
+        const action=aid.flowFillType==='flow-fill' && item.type==='flow-fill' ? (aid.flowActions||[]).find(act=>act.id===item.id) : null;
+        const actionGeometry=action ? (aid.flowItems||[]).find(flow=>flow.id===(action.toId||action.regionId)) : null;
+        const geometry=flowGeometry||actionGeometry;
+        const anchor=geometry?.path?.length ? {x:geometry.path.reduce((sum,p)=>sum+p.x,0)/geometry.path.length,y:geometry.path.reduce((sum,p)=>sum+p.y,0)/geometry.path.length} : getDiagramVisualAidPointAtPosition(aid,itemPosition);
         const gapX = halfWidth + 2.5;
         const gapY = halfHeight + 2.5;
         const candidates = [
@@ -10244,19 +14043,192 @@ The deletion becomes permanent when you save the diagram.`);
         return best.candidate;
     }
 
+    function getReviewModeFlowFillLabelAnchor(aid, item) {
+        const flowItems = aid?.flowItems || [];
+        let geometry = flowItems.find(row => row.id === item.id);
+        if (item.type === 'flow-fill') {
+            const action = (aid.flowActions || []).find(row => row.id === item.id);
+            geometry = flowItems.find(row => row.id === action?.pathId)
+                || flowItems.find(row => row.id === (action?.toId || action?.regionId)) || null;
+        }
+        const points = geometry?.path || [];
+        if (!points.length) return { x: 50, y: 50 };
+        if (geometry.type === 'region') {
+            const center = { x: points.reduce((sum,pt)=>sum+pt.x,0)/points.length,
+                y: points.reduce((sum,pt)=>sum+pt.y,0)/points.length };
+            return { x: center.x, y: center.y };
+        }
+        let total = 0;
+        for(let i=1;i<points.length;i++) total+=Math.hypot(points[i].x-points[i-1].x,points[i].y-points[i-1].y);
+        let traveled=0;
+        for(let i=1;i<points.length;i++) {
+            const length=Math.hypot(points[i].x-points[i-1].x,points[i].y-points[i-1].y);
+            if(traveled+length>=total/2 || i===points.length-1) {
+                const ratio=length>0?Math.max(0,Math.min(1,(total/2-traveled)/length)):0;
+                return {x:points[i-1].x+(points[i].x-points[i-1].x)*ratio,
+                    y:points[i-1].y+(points[i].y-points[i-1].y)*ratio};
+            }
+            traveled+=length;
+        }
+        return points[0];
+    }
+
+    // Phase 23F.41.8: display-only automatic connector labels. These use the
+    // same 2 px black connector + optional 2 px white contrast outline as
+    // Diagram Creator; no connector data is persisted or uploaded.
+    function getReviewModeVisualAidConnectorAnchor(aid, item) {
+        if (!aid || !item) return { x: 50, y: 50 };
+        if (aid.flowFillType === 'flow-fill') return getReviewModeFlowFillLabelAnchor(aid, item);
+        const position = item.type === 'point' ? item.position
+            : item.type === 'division' ? (Number.isFinite(Number(item.position)) ? item.position : ((Number(item.start) || 0) + (Number(item.end) || 1)) / 2)
+            : 0.5;
+        return getDiagramVisualAidPointAtPosition(aid, normalizeDiagramVisualAidPosition(position));
+    }
+
+    function getReviewModeVisualAidConnectorGeometry(aid) {
+        if (aid?.flowFillType === 'flow-fill') return (aid.flowItems || []).flatMap(item => {
+            const points = item.path || [];
+            const step = Math.max(1, Math.ceil(points.length / 90));
+            return points.filter((_, i) => i % step === 0);
+        });
+        const points = getDiagramVisualAidPathMetrics(aid || {}).path || [];
+        const step = Math.max(1, Math.ceil(points.length / 180));
+        return points.filter((_, i) => i % step === 0);
+    }
+
+    function positionReviewModeConnectorLabel(marker, anchor, geometry = [], occupied = []) {
+        const stage = elements.reviewModeImageStage;
+        const stageRect = stage?.getBoundingClientRect?.();
+        const rect = marker?.getBoundingClientRect?.();
+        if (!marker || !stageRect?.width || !stageRect?.height || !rect?.width || !rect?.height) return;
+        const halfX = Math.min(48, rect.width * 50 / stageRect.width);
+        const halfY = Math.min(48, rect.height * 50 / stageRect.height);
+        const gapX = 100 * 24 / stageRect.width;
+        const gapY = 100 * 24 / stageRect.height;
+        const clampX = x => Math.max(halfX + 1, Math.min(99 - halfX, x));
+        const clampY = y => Math.max(halfY + 1, Math.min(99 - halfY, y));
+        const directions = [[0,-1],[1,0],[0,1],[-1,0],[.75,-.75],[-.75,-.75],[.75,.75],[-.75,.75]];
+        let best = null;
+        for (const distance of [1, 1.65, 2.35]) {
+            for (const [dx,dy] of directions) {
+                const x = clampX(anchor.x + dx * (halfX + gapX) * distance);
+                const y = clampY(anchor.y + dy * (halfY + gapY) * distance);
+                let score = -Math.hypot((x-anchor.x)*stageRect.width/100,(y-anchor.y)*stageRect.height/100) * .17;
+                for (const placed of occupied) {
+                    const overlapX = Math.max(0, (halfX + placed.halfX + 1.5) - Math.abs(x-placed.x));
+                    const overlapY = Math.max(0, (halfY + placed.halfY + 1.5) - Math.abs(y-placed.y));
+                    if (overlapX && overlapY) score -= 2000 + overlapX * overlapY * 14;
+                }
+                let touching = 0;
+                for (const point of geometry) {
+                    if (Math.abs(point.x-x) < halfX+1.5 && Math.abs(point.y-y) < halfY+1.5) touching++;
+                }
+                score -= Math.min(1000, touching * 18);
+                // Do not crowd the stage edge when alternatives have space.
+                if (x-halfX<2 || x+halfX>98 || y-halfY<2 || y+halfY>98) score -= 35;
+                if (!best || score>best.score) best = {x,y,score};
+            }
+        }
+        if (!best) return;
+        marker.style.left = `${best.x}%`;
+        marker.style.top = `${best.y}%`;
+        occupied.push({x:best.x,y:best.y,halfX,halfY});
+    }
+
+    function renderReviewModeAutomaticConnectorLines(container, records = []) {
+        if (!container) return;
+        container.querySelector('.review-mode-auto-connector-svg')?.remove();
+        const stage = elements.reviewModeImageStage;
+        const stageRect = stage?.getBoundingClientRect?.();
+        if (!stageRect?.width || !stageRect?.height || !records.length) return;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+        svg.setAttribute('class','review-mode-auto-connector-svg');
+        svg.setAttribute('viewBox',`0 0 ${stageRect.width} ${stageRect.height}`);
+        svg.setAttribute('preserveAspectRatio','none');
+        svg.setAttribute('aria-hidden','true');
+        const useContrast = getReviewModeState().showConnectorContrast !== false;
+        const addLine = (x1,y1,x2,y2,color,width) => {
+            const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+            for (const [key,value] of Object.entries({x1,y1,x2,y2})) line.setAttribute(key,String(value));
+            line.setAttribute('stroke',color); line.setAttribute('stroke-width',String(width));
+            line.setAttribute('stroke-linecap','round'); line.setAttribute('vector-effect','non-scaling-stroke');
+            svg.appendChild(line);
+        };
+        for (const { marker, anchor } of records) {
+            if (!marker?.isConnected || !anchor) continue;
+            const rect = marker.getBoundingClientRect();
+            if (!rect.width || !rect.height) continue;
+            const cx=(rect.left+rect.right)/2-stageRect.left;
+            const cy=(rect.top+rect.bottom)/2-stageRect.top;
+            const targetX=Math.max(0,Math.min(stageRect.width,anchor.x*stageRect.width/100));
+            const targetY=Math.max(0,Math.min(stageRect.height,anchor.y*stageRect.height/100));
+            const dx=targetX-cx, dy=targetY-cy;
+            const ratio=Math.min(dx ? (rect.width/2+1)/Math.abs(dx) : Infinity,
+                dy ? (rect.height/2+1)/Math.abs(dy) : Infinity,1);
+            const x1=cx+dx*ratio, y1=cy+dy*ratio;
+            if(Math.hypot(targetX-x1,targetY-y1)<3) continue;
+            const automaticThickness = 2;
+            if(useContrast) addLine(x1,y1,targetX,targetY,'#ffffff',automaticThickness + getDiagramConnectorContrastExtraWidth(automaticThickness));
+            addLine(x1,y1,targetX,targetY,'#000000',automaticThickness);
+        }
+        // Insert behind labels, without intercepting their click/drag handlers.
+        container.insertBefore(svg,container.firstChild);
+    }
+
+    function syncReviewModeMiniVisualPromptConnector(details) {
+        const layer=elements.reviewModeLabelLayer;
+        const marker=layer?.querySelector('.review-mode-mini-visual-prompt-wrap');
+        if (!layer || !marker || !details) return;
+        renderReviewModeAutomaticConnectorLines(layer,[{
+            marker,
+            anchor:getReviewModeVisualAidConnectorAnchor(details.aid,{...details.item,type:details.type})
+        }]);
+    }
+
     function syncReviewModeVisualAidAutoLabel(aid = null, item = null) {
         const review = getReviewModeState();
         const layer = elements.reviewModeVisualAidLabelLayer;
-        const validItem = item && (item.type === 'point' || item.type === 'division') ? item : null;
+        if (aid?.flowFillType === 'flow-fill' && layer) {
+            const quiz = review.miniQuiz.active && !review.miniQuiz.complete
+                ? getReviewModeMiniQuizVisualTargetDetails(review) : null;
+            // The Mini Quiz question card is now the only question label. The
+            // old question-mark bubble on top of the target is redundant.
+            if (review.miniQuiz.active) { clearReviewModeVisualAidAutoLabel(); return; }
+            const show = review.overlayOpen && review.showVisualAid && review.visualAidLabels;
+            if (!show) { clearReviewModeVisualAidAutoLabel(); return; }
+            const visibleItems = getDiagramVisualAidSelectableItems(aid).filter(row => row.type.startsWith('flow-'));
+            const labelKey = `${aid.id}:review:${review.visualAidSelectedKind}:${review.visualAidSelectedId}:${visibleItems.map(row => `${row.id}:${row.name}`).join('|')}`;
+            if (layer.dataset.visualAidLabelKey !== labelKey) {
+                layer.innerHTML = visibleItems.map(row => {
+                    const typeLabel = row.type === 'flow-region' ? 'Region' : row.type === 'flow-path' ? 'Flow Path' : 'Transfer / Fill';
+                    return `<button type="button" class="review-mode-visual-aid-auto-label review-mode-flow-item-label${review.visualAidSelectedId===row.id?' is-selected':''}" data-review-flow-label-kind="${row.type}" data-review-flow-label-id="${escapeHtml(row.id)}" aria-label="Select ${typeLabel}: ${escapeHtml(row.name)}">${renderMathChemTextToHtml(row.name)}</button>`;
+                }).join('');
+                layer.dataset.visualAidLabelKey = labelKey;
+            }
+            layer.setAttribute('aria-hidden',visibleItems.length?'false':'true');
+            const geometry=getReviewModeVisualAidConnectorGeometry(aid);
+            const occupied=[];
+            const connectors=[];
+            visibleItems.forEach((row,index) => {
+                const marker=layer.querySelectorAll('.review-mode-flow-item-label')[index];
+                if(!marker) return;
+                const anchor=getReviewModeVisualAidConnectorAnchor(aid,row);
+                positionReviewModeConnectorLabel(marker,anchor,geometry,occupied);
+                connectors.push({marker,anchor});
+            });
+            renderReviewModeAutomaticConnectorLines(layer,connectors);
+            return;
+        }
+        const validItem = item && (item.type === 'point' || item.type === 'division' || item.type.startsWith('flow-')) ? item : null;
         const show = !!(layer && review.overlayOpen && review.showVisualAid && review.visualAidLabels && !review.miniQuiz.active && aid && validItem);
         if (!show) { clearReviewModeVisualAidAutoLabel(); return; }
         const key = `${aid.id}:${validItem.type}:${validItem.id}:${normalizeSheetText(validItem.name || '')}`;
-        if (layer.dataset.visualAidLabelKey !== key || !layer.firstElementChild) {
+        if (layer.dataset.visualAidLabelKey !== key || !layer.querySelector('.review-mode-visual-aid-auto-label')) {
             layer.innerHTML = `<div class="review-mode-visual-aid-auto-label">${renderMathChemTextToHtml(validItem.name || '')}</div>`;
             layer.dataset.visualAidLabelKey = key;
         }
         layer.setAttribute('aria-hidden','false');
-        const marker = layer.firstElementChild;
+        const marker = layer.querySelector('.review-mode-visual-aid-auto-label');
         if (!marker) return;
         marker.style.left = '50%';
         marker.style.top = '50%';
@@ -10265,6 +14237,7 @@ The deletion becomes permanent when you save the diagram.`);
         marker.style.left = `${position.x}%`;
         marker.style.top = `${position.y}%`;
         marker.style.visibility = '';
+        renderReviewModeAutomaticConnectorLines(layer,[{marker,anchor:getReviewModeVisualAidConnectorAnchor(aid,validItem)}]);
     }
 
     function updateReviewModeVisualAidPlaybackFrame(review = getReviewModeState()) {
@@ -10272,6 +14245,7 @@ The deletion becomes permanent when you save the diagram.`);
         const sequence = elements.reviewModeVisualAidSequence;
         if (!layer || !diagramVisualAidPlaybackSurfaceCache.has(layer)) return false;
         updateDiagramVisualAidPlaybackSurface(layer, review.visualAidProgress);
+        updateDiagramVisualAidBehaviorBalls(layer, review.visualAidProgress);
         if (!sequence) return true;
         const progress = normalizeDiagramVisualAidPosition(review.visualAidProgress);
         const scrubber = sequence.querySelector('[data-review-visual-aid-scrubber]');
@@ -10308,7 +14282,9 @@ The deletion becomes permanent when you save the diagram.`);
         if (!availableAids.length && !visualQuiz) review.showVisualAid = false;
         const activeAid = visualQuiz?.aid || getReviewModeActiveVisualAid() || null;
         const showAid = !!activeAid && (review.showVisualAid || !!visualQuiz);
-        const aids = showAid ? [{ ...activeAid, visible: true }] : [];
+        const groupedAids = activeAid ? getDiagramVisualAidGroup(availableAids, activeAid).filter(item => item.path.length > 1 || hasFlowFillGeometry(item)) : [];
+        const activeGroup = activeAid ? [activeAid, ...groupedAids.filter(item => item.id !== activeAid.id)] : [];
+        const aids = showAid ? activeGroup.map(item => ({ ...item, visible: true })) : [];
         const width = Math.max(1, img.naturalWidth || 1);
         const height = Math.max(1, img.naturalHeight || 1);
         const quizTarget = visualQuiz ? { kind: visualQuiz.target.kind, aidId: visualQuiz.aid.id, itemId: visualQuiz.target.visualItemId } : null;
@@ -10317,7 +14293,7 @@ The deletion becomes permanent when you save the diagram.`);
             : null;
         renderDiagramVisualAidPlaybackSurface(layer, aids, width, height, {
             progress: review.visualAidProgress,
-            activeOnlyId: activeAid?.id || '',
+            activeOnlyId: activeGroup.length > 1 ? '' : (activeAid?.id || ''),
             displayFullPathBall: !!(review.visualAidDisplayFullPath && !visualQuiz),
             pointPulseOnProgress: !visualQuiz,
             // Review interaction geometry is mounted only while playback is stopped.
@@ -10338,11 +14314,24 @@ The deletion becomes permanent when you save the diagram.`);
             const progress = normalizeDiagramVisualAidPosition(review.visualAidProgress);
             const quizMasked = review.miniQuiz.active;
             const activeItem = getReviewModeVisualAidActiveItem(activeAid, progress, visualQuiz);
-            const legendItems = quizMasked ? items : items.filter(item => item.type === 'point' || item.type === 'division');
-            const sequenceKey = activeAid ? `${quizMasked ? 'quiz' : 'review'}::${legendItems.map(item => `${item.type}:${item.id}:${item.name}:${Number(item.position).toFixed(4)}`).join('|')}` : '';
+            const legendItems = quizMasked ? items : items.filter(item => item.type === 'point' || item.type === 'division' || item.type.startsWith('flow-'));
+            const sequenceKey = activeAid ? `${quizMasked ? 'quiz' : 'review'}::${legendItems.map(item => `${item.type}:${item.id}:${quizMasked ? item.type : item.name}:${Number(item.position).toFixed(4)}`).join('|')}` : '';
             const existingScrubber = sequence.querySelector('[data-review-visual-aid-scrubber]');
             if (activeAid && (!existingScrubber || sequence.dataset.visualAidSequenceKey !== sequenceKey)) {
-                sequence.innerHTML = `<div class="visual-aid-sequence-selections">${legendItems.map(item => { const label = quizMasked ? (item.type === 'point' ? 'Point' : item.type === 'division' ? 'Division' : 'Path') : item.name; return `<button type="button" data-review-visual-aid-position="${Number(item.position).toFixed(6)}" data-review-visual-aid-select-kind="${item.type}" data-review-visual-aid-select-id="${escapeHtml(item.id)}" class="visual-aid-sequence-selection${activeItem && item.type === activeItem.type && item.id === activeItem.id ? ' is-active' : ''}" ${quizMasked ? 'aria-label="Interactive Visual Aid quiz item"' : `title="${escapeHtml(item.name)}"`}>${escapeHtml(label)}</button>`; }).join('')}</div><input class="visual-aid-sequence-scrubber" data-review-visual-aid-scrubber type="range" min="0" max="1000" step="1" value="${Math.round(progress * 1000)}" style="--visual-aid-progress:${(progress * 100).toFixed(2)}%" aria-label="Visual Aid animation position">`;
+                // Keep quiz sequence navigation useful without revealing saved item names.
+                // Match the generic Point/Division labels used by traditional Visual Aids.
+                sequence.innerHTML = `<div class="visual-aid-sequence-selections">${legendItems.map(item => {
+                    let label = item.name;
+                    if (quizMasked) {
+                        if (item.type === 'flow-region') label = 'Region';
+                        else if (item.type === 'flow-path') label = 'Flow Path';
+                        else if (item.type === 'flow-fill') {
+                            const actionType = activeAid?.flowActions?.find(action => action.id === item.id)?.type;
+                            label = ['transfer', 'fill', 'empty', 'hold'].includes(actionType) ? actionType[0].toUpperCase() + actionType.slice(1) : 'Transfer';
+                        } else label = item.type === 'point' ? 'Point' : item.type === 'division' ? 'Division' : 'Path';
+                    }
+                    return `<button type="button" data-review-visual-aid-position="${Number(item.position).toFixed(6)}" data-review-visual-aid-select-kind="${item.type}" data-review-visual-aid-select-id="${escapeHtml(item.id)}" class="visual-aid-sequence-selection${activeItem && item.type === activeItem.type && item.id === activeItem.id ? ' is-active' : ''}" ${quizMasked ? `aria-label="${escapeHtml(label)} quiz item"` : `title="${escapeHtml(item.name)}"`}>${escapeHtml(label)}</button>`;
+                }).join('')}</div><input class="visual-aid-sequence-scrubber" data-review-visual-aid-scrubber type="range" min="0" max="1000" step="1" value="${Math.round(progress * 1000)}" style="--visual-aid-progress:${(progress * 100).toFixed(2)}%" aria-label="Visual Aid animation position">`;
                 sequence.dataset.visualAidSequenceKey = sequenceKey;
             } else if (!activeAid) {
                 sequence.innerHTML = '';
@@ -10396,7 +14385,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!review.miniQuiz.active) { review.visualAidSelectedKind = ''; review.visualAidSelectedId = ''; }
         review.visualAidPlaying = true;
         const activeAid = getReviewModeMiniQuizVisualTargetDetails(review)?.aid || getReviewModeActiveVisualAid();
-        const duration = getDiagramVisualAidDurationMs(review.visualAidSpeed ?? activeAid?.speed ?? 1);
+        const duration = getDiagramVisualAidPlaybackDurationMs({ ...activeAid, speed: review.visualAidSpeed ?? activeAid?.speed ?? 1 });
         review.visualAidStartedAt = performance.now() - (review.visualAidProgress * duration);
         // Re-mount once with non-interactive playback geometry, then only update progress.
         renderReviewModeVisualAids();
@@ -10429,19 +14418,40 @@ The deletion becomes permanent when you save the diagram.`);
         window.requestAnimationFrame(() => playReviewModeVisualAidAnimation());
     }
 
-    function renderReviewModeDrawData() {
+    // Phase 23F.41.67: draw strokes are authored in Diagram Creator's capped
+    // IMAGE_EDITOR_MAX_DIMENSION image space, not the uncapped image's native
+    // pixels. Saved Images can intentionally preserve a larger original image
+    // when only labels/drawings change (no new media upload). Use the editor's
+    // exact raster dimensions for all read-only stroke overlays: CSS already
+    // fits those canvases to the same stage/image rectangle. Keeping the
+    // original stored points avoids rewriting saved diagrams or fetching media.
+    function getImageEditorStrokeOverlayDimensions(naturalWidth, naturalHeight) {
+        const sourceWidth = Math.max(1, Number(naturalWidth) || 1);
+        const sourceHeight = Math.max(1, Number(naturalHeight) || 1);
+        const ratio = Math.min(1, IMAGE_EDITOR_MAX_DIMENSION / Math.max(sourceWidth, sourceHeight));
+        return {
+            width: Math.max(1, Math.round(sourceWidth * ratio)),
+            height: Math.max(1, Math.round(sourceHeight * ratio))
+        };
+    }
+
+    function renderReviewModeDrawData({ skipVisualAidRefresh = false } = {}) {
         const entry = getActiveReviewModeEntry();
         const angle = getActiveReviewModeAngle(entry);
         const canvas = elements.reviewModeDrawCanvas;
         const img = elements.reviewModeImage;
         if (!canvas || !img) return;
-        const ctx = canvas.getContext('2d');
-        const width = Math.max(1, img.naturalWidth || 1);
-        const height = Math.max(1, img.naturalHeight || 1);
+        const { width, height } = getImageEditorStrokeOverlayDimensions(img.naturalWidth, img.naturalHeight);
+        const resized = canvas.width !== width || canvas.height !== height;
         if (canvas.width !== width) canvas.width = width;
         if (canvas.height !== height) canvas.height = height;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
         const review = getReviewModeState();
+        // Canvas changes are expensive at full image resolution. When no label
+        // drawings are requested, an already-clear canvas needs no repaint.
+        if (!review.showDrawData && canvas.dataset.reviewEmptyDraw === 'true' && !resized) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.dataset.reviewEmptyDraw = review.showDrawData ? 'false' : 'true';
         if (review.visualAidOnly && review.showVisualAid && !review.miniQuiz.active) return;
         if (!isReviewModeActiveAngleOverlayReady() || !angle || !review.showDrawData) return;
         const labels = normalizeDiagramLabels(angle.labels || []);
@@ -10454,13 +14464,16 @@ The deletion becomes permanent when you save the diagram.`);
         } else {
             // In normal Review Mode, Show label drawings is the master switch:
             // every label drawing stays visible regardless of label click state.
-            visibleIndexes = new Set(labels.map((_, index) => index));
+            visibleIndexes = review.pinnedLabelsOnly
+                ? getReviewModePinnedIndexSet(entry, review.activeAngleIndex)
+                : new Set(labels.map((_, index) => index));
         }
         if (!visibleIndexes.size) return;
         cloneImageEditorDrawStrokes(angle.drawStrokes || [])
             .filter(stroke => visibleIndexes.has(Math.max(0, Number(stroke.labelIndex) || 0)))
             .forEach(stroke => renderImageEditorStroke(ctx, { ...stroke, visible: true }));
-        renderReviewModeVisualAids();
+        // renderReviewModeLabels has already refreshed this SVG once.
+        if (!skipVisualAidRefresh) renderReviewModeVisualAids();
     }
 
     function renderReviewModeLabelInformation(item = {}, visible = false) {
@@ -10474,37 +14487,113 @@ The deletion becomes permanent when you save the diagram.`);
         }).join('')}</span>`;
     }
 
+    // Phase 23F.41.20: the regular Review click path should not read/merge the
+    // entire Saved Images library before a question mark can become a name.
+    // Full renders prepare a per-angle snapshot; cloud/local data writes clear it.
+    let reviewModeNormalRevealSnapshot = null;
+    let reviewModeNormalRevealFrameId = 0;
+
+    function invalidateReviewModeNormalRevealSnapshot() {
+        reviewModeNormalRevealSnapshot = null;
+        if (reviewModeNormalRevealFrameId) window.cancelAnimationFrame(reviewModeNormalRevealFrameId);
+        reviewModeNormalRevealFrameId = 0;
+    }
+
+    function getReviewModeNormalRevealLabels(review) {
+        const snapshot = reviewModeNormalRevealSnapshot;
+        if (snapshot && snapshot.entryId === review.activeEntryId && snapshot.angleIndex === review.activeAngleIndex) return snapshot.labels;
+        const entry = getActiveReviewModeEntry();
+        const labels = getReviewModeDisplayLabels(entry);
+        reviewModeNormalRevealSnapshot = { entryId: review.activeEntryId, angleIndex: review.activeAngleIndex, labels };
+        return labels;
+    }
+
+    function scheduleReviewModeNormalPostRevealUi() {
+        if (reviewModeNormalRevealFrameId) window.cancelAnimationFrame(reviewModeNormalRevealFrameId);
+        // Two RAFs, as used by Mini Quiz: let the text mutation paint before
+        // the heavier stage clamp, SVG connector rebuild and options refresh.
+        reviewModeNormalRevealFrameId = window.requestAnimationFrame(() => {
+            reviewModeNormalRevealFrameId = window.requestAnimationFrame(() => {
+                reviewModeNormalRevealFrameId = 0;
+                const review = getReviewModeState();
+                if (!review.overlayOpen || review.miniQuiz.active || !isReviewModeActiveAngleOverlayReady()) return;
+                clampReviewModeRenderedLabels();
+                renderReviewModeConnectors();
+                syncReviewModeControls();
+                if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
+            });
+        });
+    }
+
+    function updateReviewModeLabelToggleInPlace(index) {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || (review.visualAidOnly && review.showVisualAid)) return false;
+        const item = getReviewModeNormalRevealLabels(review)[index];
+        const marker = elements.reviewModeLabelLayer?.querySelector?.(`[data-review-label-index="${index}"]`);
+        if (!item || !marker) return false;
+        const isSelected = review.showAllNames || review.revealedLabels.has(index);
+        const isNameVisible = review.showAllNames || (!review.disableLabelNamesOnClick && isSelected);
+        const infoCategories = getDiagramLabelVisibleInfoCategories(item);
+        const isDescriptionVisible = !!(review.includeLabelDescriptions && infoCategories.length && isSelected && isNameVisible);
+        const actionText = isSelected ? 'Hide' : 'Show';
+        const targetText = review.disableLabelNamesOnClick && !review.showAllNames ? 'drawing for' : 'label';
+        marker.classList.toggle('is-selected', isSelected);
+        marker.classList.toggle('is-name-visible', isNameVisible);
+        marker.classList.toggle('has-description', isDescriptionVisible);
+        marker.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+        marker.setAttribute('aria-label', `${actionText} ${targetText} ${index + 1}`);
+        const name = marker.querySelector('.review-mode-label-name');
+        if (name) name.innerHTML = isNameVisible ? renderMathChemTextToHtml(item.label) : (review.showLabelNumbers ? String(index + 1) : '?');
+        marker.querySelector('.review-mode-label-description')?.remove();
+        const descriptionHtml = renderReviewModeLabelInformation(item, isDescriptionVisible);
+        if (descriptionHtml) marker.insertAdjacentHTML('beforeend', descriptionHtml);
+        scheduleReviewModeNormalPostRevealUi();
+        return true;
+    }
+
     function renderReviewModeLabels() {
+        if (reviewModeNormalRevealFrameId) {
+            window.cancelAnimationFrame(reviewModeNormalRevealFrameId);
+            reviewModeNormalRevealFrameId = 0;
+        }
         const entry = getActiveReviewModeEntry();
         const layer = elements.reviewModeLabelLayer;
         if (!layer) return;
+        cacheReviewModePinsForEntry(entry);
         const review = getReviewModeState();
+        review.autoLabelPositions = {};
         renderReviewModeVisualAids();
-        layer.style.setProperty('--review-label-scale', String(review.labelScale));
+        layer.style.setProperty('--review-label-scale', String(REVIEW_MODE_LABEL_BASE_SCALE * review.labelSize));
+        layer.style.setProperty('--review-label-text-scale', String(review.labelSize));
+        layer.classList.toggle('allow-label-movement', review.allowLabelMovement);
         if (!isReviewModeActiveAngleOverlayReady()) {
+            reviewModeNormalRevealSnapshot = null;
             layer.innerHTML = '';
-            renderReviewModeDrawData();
+            renderReviewModeDrawData({ skipVisualAidRefresh: true });
             renderReviewModeConnectors();
             syncReviewModeMiniQuizUi();
             return;
         }
         const labels = getReviewModeDisplayLabels(entry);
+        if (!review.miniQuiz.active) {
+            reviewModeNormalRevealSnapshot = { entryId: review.activeEntryId, angleIndex: review.activeAngleIndex, labels };
+        }
 
         if (review.miniQuiz.active) {
             if (review.miniQuiz.complete) {
                 layer.innerHTML = '';
-                renderReviewModeDrawData();
+                renderReviewModeDrawData({ skipVisualAidRefresh: true });
                 renderReviewModeConnectors();
                 syncReviewModeMiniQuizUi();
                 return;
             }
             const activeTarget = getReviewModeMiniQuizActiveTarget(review);
-            if (activeTarget && activeTarget.kind !== 'label') {
+            if (activeTarget && !['label', 'label-info'].includes(activeTarget.kind)) {
                 const details = getReviewModeMiniQuizVisualTargetDetails(review);
                 if (!details) { finishReviewModeMiniQuiz(); return; }
                 const isRevealed = review.miniQuiz.answerRevealed;
-                const typeLabel = details.type === 'point' ? 'point' : (details.type === 'division' ? 'division' : 'path');
-                const prompt = `What is the name of this ${typeLabel}?`;
+                const typeLabel = details.type === 'point' ? 'point' : details.type === 'division' ? 'division' : details.type === 'flow-region' ? 'region' : details.type === 'flow-fill' ? 'transfer or fill action' : details.type === 'flow-path' ? 'flow path' : 'path';
+                const prompt = details.question || `What is the name of this ${typeLabel}?`;
                 if (review.typedMiniQuiz) {
                     const typedResult = review.miniQuiz.typedResult;
                     const inputValue = escapeHtml(review.miniQuiz.typedValue || '');
@@ -10522,13 +14611,48 @@ The deletion becomes permanent when you save the diagram.`);
                     }
                     layer.innerHTML = `<div class="review-mode-mini-visual-prompt-wrap review-mode-mini-typed-wrap${isRevealed ? ' is-revealed' : ''}"><div class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-typed-card review-mode-mini-visual-prompt${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}" aria-live="polite">${typedBody}</div></div>`;
                 } else {
-                    const answerHtml = isRevealed ? renderMathChemTextToHtml(details.name) : '?';
-                    layer.innerHTML = `<div class="review-mode-mini-visual-prompt-wrap${isRevealed ? ' is-revealed' : ''}">${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this item">✕</button>' : ''}<button type="button" class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-visual-prompt${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}" data-review-mini-visual-reveal aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know this item' : escapeHtml(prompt)}"><span class="review-mode-mini-visual-question">${escapeHtml(prompt)}</span><span class="review-mode-label-name">${answerHtml}</span></button>${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this item">✓</button>' : ''}</div>`;
+                    // The question card itself is the tappable reveal control. Showing
+                    // "Tap to reveal" adds visual clutter and duplicates the prompt.
+                    const answerHtml = isRevealed ? `<span class="review-mode-label-name">${renderMathChemTextToHtml(details.name)}</span>` : '';
+                    layer.innerHTML = `<div class="review-mode-mini-visual-prompt-wrap${isRevealed ? ' is-revealed' : ''}">${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this item">✕</button>' : ''}<button type="button" class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-visual-prompt${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}" data-review-mini-visual-reveal aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know this item' : escapeHtml(prompt)}"><span class="review-mode-mini-visual-question">${escapeHtml(prompt)}</span>${answerHtml}</button>${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this item">✓</button>' : ''}</div>`;
                 }
                 applyReviewModeMiniVisualPromptPosition(details);
-                renderReviewModeDrawData();
+                syncReviewModeMiniVisualPromptConnector(details);
+                renderReviewModeDrawData({ skipVisualAidRefresh: true });
                 renderReviewModeConnectors();
                 syncReviewModeMiniQuizUi();
+                return;
+            }
+            if (activeTarget?.kind === 'label-info') {
+                const details = getReviewModeMiniQuizLabelInfoDetails(review);
+                const index = getReviewModeMiniQuizActiveLabelIndex(review);
+                review.focusLabelIndex = index;
+                const item = labels[index];
+                if (!details || !item) {
+                    finishReviewModeMiniQuiz();
+                    return;
+                }
+                const isRevealed = review.miniQuiz.answerRevealed;
+                const questionHtml = renderMathChemTextToHtml(details.question);
+                const labelHtml = renderMathChemTextToHtml(item.label);
+                const categoryHtml = renderMathChemTextToHtml(details.categoryName);
+                const bodyHtml = String(details.categoryBody || '').split('\n').map(line => renderMathChemTextToHtml(line)).join('<br>');
+                const answerHtml = isRevealed
+                    ? `<span class="review-mode-label-name">${labelHtml}</span><span class="review-mode-label-description review-mode-label-info-rows"><span class="review-mode-label-info-row"><strong class="review-mode-label-info-category">${categoryHtml}:</strong><span class="review-mode-label-info-body">${bodyHtml}</span></span></span>`
+                    : '';
+                layer.innerHTML = `
+                  <div class="review-mode-mini-label-wrap${isRevealed ? ' is-revealed' : ''}" style="left:${item.x}%; top:${item.y}%;">
+                    ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this label information">✕</button>' : ''}
+                    <button type="button" class="review-mode-label-marker review-mode-mini-label-marker${isRevealed ? ' is-name-visible has-description' : ' is-mini-glowing'}" data-review-label-index="${index}" aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know this label information' : escapeHtml(details.question)}">
+                      <span class="review-mode-mini-visual-question">${questionHtml}</span>${answerHtml}
+                    </button>
+                    ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this label information">✓</button>' : ''}
+                  </div>`;
+                clampReviewModeRenderedLabels();
+                renderReviewModeDrawData({ skipVisualAidRefresh: true });
+                renderReviewModeConnectors();
+                syncReviewModeMiniQuizUi();
+                if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
                 return;
             }
             const index = getReviewModeMiniQuizActiveLabelIndex(review);
@@ -10551,6 +14675,7 @@ The deletion becomes permanent when you save the diagram.`);
                         ? '<span class="review-mode-mini-typed-feedback is-incorrect">Incorrect — try again.</span>'
                         : (typedResult === 'empty' ? '<span class="review-mode-mini-typed-feedback is-incorrect">Enter an answer first.</span>' : '');
                     typedBody = `
+                      ${normalizeDiagramLabelQuestionPrompt(item.questionPrompt).trim() ? `<span class="review-mode-mini-visual-question">${renderMathChemTextToHtml(normalizeDiagramLabelQuestionPrompt(item.questionPrompt).trim())}</span>` : ''}
                       <div class="review-mode-mini-typed-entry">
                         <input class="review-mode-mini-typed-input" data-review-mini-typed-input type="text" value="${inputValue}" placeholder="Type answer…" autocomplete="off" autocapitalize="none" enterkeyhint="done" spellcheck="false" aria-label="Type the label name">
                         <button type="button" class="review-mode-mini-typed-check" data-review-mini-typed-check>Check</button>
@@ -10571,27 +14696,33 @@ The deletion becomes permanent when you save the diagram.`);
                     <div class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-typed-card${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-live="polite">${typedBody}</div>
                   </div>`;
             } else {
-                const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : (review.showLabelNumbers ? String(index + 1) : '?');
+                const prompt = normalizeDiagramLabelQuestionPrompt(item.questionPrompt).trim();
+                const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : (prompt ? renderMathChemTextToHtml(prompt) : (review.showLabelNumbers ? String(index + 1) : '?'));
                 const descriptionHtml = renderReviewModeLabelInformation(item, showDescription);
                 layer.innerHTML = `
                     <div class="review-mode-mini-label-wrap${isRevealed ? ' is-revealed' : ''}" style="left:${item.x}%; top:${item.y}%;">
                       ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-dont-know" data-review-mini-answer="dont-know" aria-label="Do not know this label">✕</button>' : ''}
-                      <button type="button" class="review-mode-label-marker review-mode-mini-label-marker${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know label ' : 'Reveal label '}${index + 1}">
+                      <button type="button" class="review-mode-label-marker review-mode-mini-label-marker${!isRevealed && prompt ? ' has-question-prompt' : ''}${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-pressed="${isRevealed ? 'true' : 'false'}" aria-label="${isRevealed ? 'Choose whether you know label ' + (index + 1) : (prompt ? escapeHtml(prompt) : 'Reveal label ' + (index + 1))}">
                         <span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}
                       </button>
                       ${isRevealed ? '<button type="button" class="review-mode-mini-answer review-mode-mini-know" data-review-mini-answer="know" aria-label="Know this label">✓</button>' : ''}
                     </div>`;
             }
-            renderReviewModeDrawData();
+            clampReviewModeRenderedLabels();
+            markReviewModeMiniQuizTransitionPerf('label layout clamped');
+            renderReviewModeDrawData({ skipVisualAidRefresh: true });
+            markReviewModeMiniQuizTransitionPerf('draw layer updated');
             renderReviewModeConnectors();
+            markReviewModeMiniQuizTransitionPerf('connectors rendered');
             syncReviewModeMiniQuizUi();
+            markReviewModeMiniQuizTransitionPerf('quiz controls synced');
             if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
             return;
         }
 
         if (review.visualAidOnly && review.showVisualAid) {
             layer.innerHTML = '';
-            renderReviewModeDrawData();
+            renderReviewModeDrawData({ skipVisualAidRefresh: true });
             renderReviewModeConnectors();
             syncReviewModeMiniQuizUi();
             return;
@@ -10599,7 +14730,9 @@ The deletion becomes permanent when you save the diagram.`);
 
         const selectedLabels = getReviewModeVisibleLabelIndexes(entry);
         const visibleNames = getReviewModeVisibleNameIndexes(entry);
+        const eligiblePinned = review.pinnedLabelsOnly ? getReviewModePinnedIndexSet(entry, review.activeAngleIndex) : null;
         layer.innerHTML = labels.map((item, index) => {
+            if (eligiblePinned && !eligiblePinned.has(index)) return '';
             const isSelected = selectedLabels.has(index);
             const isNameVisible = visibleNames.has(index);
             const infoCategories = getDiagramLabelVisibleInfoCategories(item);
@@ -10610,13 +14743,14 @@ The deletion becomes permanent when you save the diagram.`);
             const descriptionHtml = renderReviewModeLabelInformation(item, isDescriptionVisible);
             return `<button type="button" class="review-mode-label-marker${isSelected ? ' is-selected' : ''}${isNameVisible ? ' is-name-visible' : ''}${isDescriptionVisible ? ' has-description' : ''}" data-review-label-index="${index}" style="left:${item.x}%; top:${item.y}%;" aria-pressed="${isSelected ? 'true' : 'false'}" aria-label="${actionText} ${targetText} ${index + 1}"><span class="review-mode-label-name">${nameHtml}</span>${descriptionHtml}</button>`;
         }).join('');
-        renderReviewModeDrawData();
+        clampReviewModeRenderedLabels();
+        renderReviewModeDrawData({ skipVisualAidRefresh: true });
         renderReviewModeConnectors();
         syncReviewModeMiniQuizUi();
         if (review.focusMode) scheduleReviewModeFocusCurrentLabel();
     }
 
-    function syncReviewModeImageStage() {
+    function syncReviewModeImageStage({ refreshLayers = true } = {}) {
         const viewport = elements.reviewModeImageViewport;
         const stage = elements.reviewModeImageStage;
         const img = elements.reviewModeImage;
@@ -10627,17 +14761,20 @@ The deletion becomes permanent when you save the diagram.`);
         stage.style.width = `${Math.max(1, img.naturalWidth * scale)}px`;
         stage.style.height = `${Math.max(1, img.naturalHeight * scale)}px`;
         applyReviewModeZoomTransform();
-        renderReviewModeDrawData();
-        renderReviewModeConnectors();
+        if (refreshLayers) {
+            clampReviewModeRenderedLabels();
+            renderReviewModeDrawData();
+            renderReviewModeConnectors();
+        }
         applyReviewModeShortcutDockPosition();
         const activeMiniTarget = getReviewModeMiniQuizActiveTarget(getReviewModeState());
-        if (getReviewModeState().focusMode && (!activeMiniTarget || activeMiniTarget.kind === 'label')) scheduleReviewModeFocusCurrentLabel({ animate: false });
+        if (getReviewModeState().focusMode && (!activeMiniTarget || ['label', 'label-info'].includes(activeMiniTarget.kind))) scheduleReviewModeFocusCurrentLabel({ animate: false });
     }
 
     function syncReviewModeControls() {
         const review = getReviewModeState();
         const miniActive = review.miniQuiz.active;
-        const hasMultipleAngles = getStudioSavedImageAngles(getActiveReviewModeEntry() || {}).length > 1;
+        const hasMultipleAngles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {}).length > 1;
         if (elements.reviewModeMiniQuizScope) {
             elements.reviewModeMiniQuizScope.classList.toggle('hidden', !hasMultipleAngles);
             elements.reviewModeMiniQuizScope.setAttribute('aria-hidden', hasMultipleAngles ? 'false' : 'true');
@@ -10692,19 +14829,41 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.reviewModeDisplayFullPathRow || elements.reviewModeDisplayFullPathToggle) {
             const activeVisualAid = getReviewModeActiveVisualAid();
             const hasDisplayFullPathTarget = !!activeVisualAid;
-            const canDisplayFullPath = !!(review.showVisualAid && activeVisualAid && !miniActive);
+            const savedDisplayFullPath = activeVisualAid?.completePath === true;
+            const canDisplayFullPath = !!(review.showVisualAid && activeVisualAid && !miniActive && !savedDisplayFullPath);
             elements.reviewModeDisplayFullPathRow?.classList.toggle('hidden', !hasDisplayFullPathTarget);
+            elements.reviewModeDisplayFullPathRow?.classList.toggle('is-saved-setting', savedDisplayFullPath);
             elements.reviewModeDisplayFullPathRow?.setAttribute('aria-hidden', hasDisplayFullPathTarget ? 'false' : 'true');
             if (elements.reviewModeDisplayFullPathToggle) {
-                elements.reviewModeDisplayFullPathToggle.checked = review.visualAidDisplayFullPath;
+                elements.reviewModeDisplayFullPathToggle.checked = savedDisplayFullPath || review.visualAidDisplayFullPath;
                 elements.reviewModeDisplayFullPathToggle.disabled = !canDisplayFullPath;
+                elements.reviewModeDisplayFullPathToggle.title = savedDisplayFullPath ? 'This Visual Aid permanently displays the full path.' : 'Temporarily display the full path in Review Mode.';
             }
         }
         if (elements.reviewModeShowAllNamesToggle) {
             elements.reviewModeShowAllNamesToggle.checked = review.showAllNames;
             elements.reviewModeShowAllNamesToggle.disabled = miniActive;
         }
-        if (elements.reviewModeLabelNumberToggle) elements.reviewModeLabelNumberToggle.checked = review.showLabelNumbers;
+        if (elements.reviewModeSoloLabelsToggle) {
+            elements.reviewModeSoloLabelsToggle.checked = review.soloLabels;
+            elements.reviewModeSoloLabelsToggle.disabled = miniActive;
+        }
+        if (elements.reviewModePinnedLabelsOnlyToggle) {
+            elements.reviewModePinnedLabelsOnlyToggle.checked = review.pinnedLabelsOnly;
+            elements.reviewModePinnedLabelsOnlyToggle.disabled = miniActive;
+        }
+        if (elements.reviewModeMiniPinnedLabelsOnlyToggle) {
+            elements.reviewModeMiniPinnedLabelsOnlyToggle.checked = review.pinnedLabelsOnly;
+            elements.reviewModeMiniPinnedLabelsOnlyToggle.disabled = miniActive;
+        }
+        if (elements.reviewModePinAllSharedLabelsToggle) {
+            elements.reviewModePinAllSharedLabelsToggle.checked = review.pinAllSharedLabels;
+        }
+        if (elements.reviewModeAllowLabelMovementToggle) elements.reviewModeAllowLabelMovementToggle.checked = review.allowLabelMovement;
+        if (elements.reviewModeLabelNumberToggle) {
+            elements.reviewModeLabelNumberToggle.checked = review.showLabelNumbers;
+            elements.reviewModeLabelNumberToggle.disabled = false;
+        }
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
         if (elements.reviewModeDisableNamesOnClickToggle) {
             elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
@@ -10717,6 +14876,18 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeShowConnectorContrastToggle.disabled = !review.showConnectors;
         }
         if (elements.reviewModeFocusToggle) elements.reviewModeFocusToggle.checked = review.focusMode;
+        if (elements.reviewModeTwoLevelFocusToggle) elements.reviewModeTwoLevelFocusToggle.checked = review.twoLevelFocus;
+        if (elements.reviewModeNormalFocusZoom) {
+            elements.reviewModeNormalFocusZoom.value = String(review.normalFocusZoom);
+            elements.reviewModeNormalFocusZoom.max = '700';
+        }
+        if (elements.reviewModeNormalFocusZoomValue) elements.reviewModeNormalFocusZoomValue.textContent = `${review.normalFocusZoom}%`;
+        if (elements.reviewModeDetailFocusZoom) {
+            elements.reviewModeDetailFocusZoom.value = String(review.detailFocusZoom);
+            elements.reviewModeDetailFocusZoom.min = String(review.normalFocusZoom);
+        }
+        if (elements.reviewModeDetailFocusZoomValue) elements.reviewModeDetailFocusZoomValue.textContent = `${review.detailFocusZoom}%`;
+        elements.reviewModeDetailFocusZoomRow?.classList.toggle('hidden', !review.twoLevelFocus);
         if (elements.reviewModeMiniRandomizeToggle) {
             elements.reviewModeMiniRandomizeToggle.checked = review.randomizeMiniQuiz;
             elements.reviewModeMiniRandomizeToggle.disabled = miniActive;
@@ -10725,9 +14896,17 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeMiniAllowDuplicatesToggle.checked = review.allowDuplicateMiniQuiz;
             elements.reviewModeMiniAllowDuplicatesToggle.disabled = miniActive;
         }
+        if (elements.reviewModeMiniQuizLabelInformationToggle) {
+            elements.reviewModeMiniQuizLabelInformationToggle.checked = review.quizLabelInformation;
+            elements.reviewModeMiniQuizLabelInformationToggle.disabled = miniActive;
+        }
+        if (elements.reviewModeMiniIdentifyStructureForCategoryToggle) {
+            elements.reviewModeMiniIdentifyStructureForCategoryToggle.checked = review.identifyStructureForCategory;
+            elements.reviewModeMiniIdentifyStructureForCategoryToggle.disabled = miniActive || !review.quizLabelInformation;
+        }
         if (elements.reviewModeMiniTypedToggle) {
             elements.reviewModeMiniTypedToggle.checked = review.typedMiniQuiz;
-            elements.reviewModeMiniTypedToggle.disabled = miniActive;
+            elements.reviewModeMiniTypedToggle.disabled = miniActive || review.quizLabelInformation;
         }
         [elements.reviewModeMiniRapidRow, elements.reviewModeMiniSpellUntilCorrectRow].forEach(row => {
             row?.classList.toggle('hidden', !review.typedMiniQuiz);
@@ -10757,9 +14936,8 @@ The deletion becomes permanent when you save the diagram.`);
             elements.reviewModeMiniMasteryToggle.checked = review.miniQuizMode === 'mastery';
             elements.reviewModeMiniMasteryToggle.disabled = miniActive || review.spellUntilCorrectMiniQuiz;
         }
-        if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelScale * 100)}%`;
-        if (elements.reviewModeLabelSizeDownBtn) elements.reviewModeLabelSizeDownBtn.disabled = review.labelScale <= 0.65;
-        if (elements.reviewModeLabelSizeUpBtn) elements.reviewModeLabelSizeUpBtn.disabled = review.labelScale >= 1.8;
+        if (elements.reviewModeLabelSizeSlider) elements.reviewModeLabelSizeSlider.value = String(Math.round(review.labelSize * 100));
+        if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelSize * 100)}%`;
         syncReviewModeShortcutDock();
         setReviewModeShortcutInfoOpen(review.shortcutInfoOpen);
         setReviewModeOptionsOpen(review.optionsOpen);
@@ -10769,6 +14947,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function openReviewModeImage(entryId = '') {
+        invalidateReviewModeNormalDataCaches();
         const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === normalizeSheetText(entryId));
         if (!entry || !elements.reviewModeOverlay || !elements.reviewModeImage) return;
         markStudioSavedImageOpened(entry.id);
@@ -10779,26 +14958,45 @@ The deletion becomes permanent when you save the diagram.`);
         review.optionsOpen = false;
         review.showAngleControls = true;
         review.showAllNames = false;
+        review.soloLabels = true;
+        review.pinnedLabelsOnly = false;
+        review.pinAllSharedLabels = false;
+        review.pinSelectedLabelIndex = -1;
+        review.allowLabelMovement = false;
+        review.autoLabelPositions = {};
+        cancelReviewModeLabelHold();
+        reviewModeLabelDrag = null;
         review.showLabelNumbers = false;
         review.showDrawData = false;
         review.showConnectors = true;
         review.showConnectorContrast = true;
         review.focusMode = false;
+        review.twoLevelFocus = false;
+        review.normalFocusZoom = 200;
+        review.detailFocusZoom = 700;
+        review.focusTier = 'normal';
+        review.focusTargetKey = '';
+        review.focusFloatingLabel = null;
         review.focusLabelIndex = -1;
         review.focusRestoreZoom = null;
         review.disableLabelNamesOnClick = false;
         review.includeLabelDescriptions = true;
         review.randomizeMiniQuiz = true;
         review.allowDuplicateMiniQuiz = false;
+        review.quizLabelInformation = false;
+        review.identifyStructureForCategory = false;
         review.typedMiniQuiz = false;
         review.rapidMiniQuiz = false;
         review.spellUntilCorrectMiniQuiz = false;
-        review.miniQuizScope = 'current';
+        review.miniQuizScope = 'all';
         review.miniQuizVisualAidPolicy = 'exclude';
         review.miniQuizCurrentVisualAidOnly = false;
-        review.miniQuizMode = 'normal';
-        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'normal', scope: 'current', targets: [] }, 'normal');
-        review.labelScale = 1.5;
+        review.miniQuizMode = 'progress';
+        review.miniQuizFocusRestore = null;
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'progress', scope: 'all', targets: [] }, 'progress');
+        // Start from the author-saved size of angle one, not the previous study session.
+        review.labelSizeOverridesByAngle = {};
+        review.labelSize = normalizeDiagramLabelSize(getStudioSavedImageAngles(entry)[0]?.labelSize);
         review.shortcutDockVisible = true;
         review.shortcutDockEdge = 'right';
         review.shortcutDockOffset = 0.5;
@@ -10814,7 +15012,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.zoomY = 0;
         review.visualAidProgress = 0;
         review.visualAidPlaying = false;
-        review.visualAidLoop = false;
+        review.visualAidLoop = true;
         review.visualAidSpeed = null;
         review.visualAidStartedAt = 0;
         review.visualAidSelectedKind = '';
@@ -10827,6 +15025,7 @@ The deletion becomes permanent when you save the diagram.`);
         review.temporaryLabelPositions = {};
         review.temporaryLabelPositionsByAngle = {};
         review.suppressLabelClickUntil = 0;
+        invalidateReviewModeNormalRevealSnapshot();
         resetReviewModeAngleLoading({ clearCache: true });
         elements.reviewModeOverlay.classList.remove('hidden');
         elements.reviewModeOverlay.setAttribute('aria-hidden', 'false');
@@ -10836,17 +15035,28 @@ The deletion becomes permanent when you save the diagram.`);
         syncReviewModeAngleNavigation();
         resetReviewModeZoom();
         loadReviewModeActiveAngle();
+        // Refresh lightweight label metadata for cross-device updates before review.
+        loadStudioLabelLibraryForUser().then(() => {
+            const active = getReviewModeState();
+            if (active.overlayOpen && active.activeEntryId === entry.id && !active.miniQuiz?.active) renderReviewModeLabels();
+        }).catch(error => console.warn('Could not refresh Review Mode label information:', error));
         syncBodyScrollLock();
     }
 
     function closeReviewModeImage() {
+        invalidateReviewModeNormalDataCaches();
+        invalidateReviewModeMiniQuizEntrySnapshot();
+        cancelReviewModeMiniQuizImageWarmup();
         clearReviewModeMiniQuizRapidTimer();
         stopReviewModeVisualAidAnimation();
         const review = getReviewModeState();
+        review.focusFloatingLabel = null;
+        review.focusTargetKey = '';
         review.activeEntryId = '';
         review.activeAngleIndex = 0;
         review.overlayOpen = false;
         review.optionsOpen = false;
+        review.pinSelectedLabelIndex = -1;
         review.revealedLabels = new Set();
         review.revealedLabelsByAngle = {};
         review.temporaryLabelPositions = {};
@@ -10863,10 +15073,14 @@ The deletion becomes permanent when you save the diagram.`);
         review.visualAidIdByAngle = {};
         review.miniVisualPromptPosition = null;
         review.suppressMiniVisualPromptClickUntil = 0;
-        review.miniQuizScope = 'current';
-        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'current', targets: [] }, review.miniQuizMode);
+        review.miniQuizScope = 'all';
+        review.miniQuizFocusRestore = null;
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: 'all', targets: [] }, review.miniQuizMode);
+        review.autoLabelPositions = {};
+        cancelReviewModeLabelHold();
         reviewModeLabelDrag = null;
         reviewModeMiniVisualPromptDrag = null;
+        invalidateReviewModeNormalRevealSnapshot();
         resetReviewModeAngleLoading({ clearCache: true });
         resetReviewModeZoom();
         clearReviewModeOverlayLayers();
@@ -10891,19 +15105,67 @@ The deletion becomes permanent when you save the diagram.`);
         if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
     }
 
-    function setReviewModeLabelScale(nextScale) {
+    // Phase 23F.41.44: both Review Options and the floating shortcut share
+    // the same movement state. Avoid a full label/quiz rebuild on a toggle.
+    function setReviewModeAllowLabelMovement(enabled) {
         const review = getReviewModeState();
-        review.labelScale = Math.min(1.8, Math.max(0.65, Number(nextScale) || 1.5));
-        syncReviewModeControls();
-        renderReviewModeLabels();
+        review.allowLabelMovement = !!enabled;
+        if (!review.allowLabelMovement) cancelReviewModeLabelDragForGesture();
+        elements.reviewModeLabelLayer?.classList.toggle('allow-label-movement', review.allowLabelMovement);
+        if (elements.reviewModeAllowLabelMovementToggle) {
+            elements.reviewModeAllowLabelMovementToggle.checked = review.allowLabelMovement;
+        }
+        syncReviewModeShortcutDock();
+    }
+
+    let reviewModeLabelSizeLayoutFrameId = 0;
+
+    function setReviewModeLabelSize(size) {
+        const review = getReviewModeState();
+        review.labelSize = normalizeDiagramLabelSize(size);
+        const key = `${review.activeEntryId}:${getReviewModeActiveAngleKey()}`;
+        if (!review.labelSizeOverridesByAngle || typeof review.labelSizeOverridesByAngle !== 'object') review.labelSizeOverridesByAngle = {};
+        review.labelSizeOverridesByAngle[key] = review.labelSize;
+        // Move existing HTML labels without rebuilding Mini Quiz or fetching any media.
+        const labelLayer = elements.reviewModeLabelLayer;
+        labelLayer?.style.setProperty('--review-label-scale', String(REVIEW_MODE_LABEL_BASE_SCALE * review.labelSize));
+        labelLayer?.style.setProperty('--review-label-text-scale', String(review.labelSize));
+        if (elements.reviewModeLabelSizeSlider) elements.reviewModeLabelSizeSlider.value = String(Math.round(review.labelSize * 100));
+        if (elements.reviewModeLabelSizeValue) elements.reviewModeLabelSizeValue.textContent = `${Math.round(review.labelSize * 100)}%`;
+        syncReviewModeShortcutDock();
+        // A font change changes the marker's measured bounds. Re-clamp at most
+        // once per animation frame and then align connectors, without rerendering
+        // the labels, rebuilding the Mini Quiz, or fetching any media.
+        if (!reviewModeLabelSizeLayoutFrameId) {
+            reviewModeLabelSizeLayoutFrameId = window.requestAnimationFrame(() => {
+                reviewModeLabelSizeLayoutFrameId = 0;
+                if (!getReviewModeState().overlayOpen) return;
+                clampReviewModeRenderedLabels();
+                renderReviewModeConnectors();
+                if (getReviewModeState().focusMode) scheduleReviewModeFocusCurrentLabel();
+            });
+        }
+    }
+
+    function nudgeReviewModeLabelSize(direction) {
+        const current = getReviewModeState().labelSize;
+        const next = normalizeDiagramLabelSize(current + direction * 0.05);
+        if (next !== current) setReviewModeLabelSize(next);
     }
 
     function clearReviewModeFilters() {
+        document.querySelectorAll('[data-study-quick-filters="review"] [data-study-quick-filter]').forEach(button => button.setAttribute('aria-pressed', 'false'));
+        const review = getReviewModeState();
+        review.libraryPage = 0;
+        review.libraryShowAll = false;
         [elements.reviewModeSearchInput, elements.reviewModeDiagramNameFilter, elements.reviewModeSubjectFilter, elements.reviewModeLocationFilter, elements.reviewModeOrganFilter, elements.reviewModeMuscleFilter, elements.reviewModeTagsFilter].forEach(input => {
             if (input) input.value = '';
         });
         if (elements.reviewModeAnatomyTypeFilter) elements.reviewModeAnatomyTypeFilter.value = '';
         if (elements.reviewModeOrganSystemFilter) elements.reviewModeOrganSystemFilter.value = '';
+        if (elements.reviewModeClassFilter) elements.reviewModeClassFilter.value = '';
+        if (elements.reviewModeFolderFilter) elements.reviewModeFolderFilter.value = '';
+        refreshSavedImageOrganizationFilterSelects();
         renderReviewModeLibrary();
     }
 
@@ -10911,6 +15173,8 @@ The deletion becomes permanent when you save the diagram.`);
         const body = document.getElementById('studioSavedImagePickerBody');
         if (!body) return;
         const picker = state.auth.studioSavedImagePicker || {};
+        picker.page = Math.max(0, Math.floor(Number(picker.page) || 0));
+        picker.showAll = picker.showAll === true;
         if (picker.view !== 'saved') {
             body.innerHTML = `
                 <div class="studio-saved-image-picker-choice">
@@ -10921,25 +15185,26 @@ The deletion becomes permanent when you save the diagram.`);
             `;
             return;
         }
-        const entries = getStudioSavedImageLibraryForPicker();
-        if (!entries.length) {
-            body.innerHTML = `
-                <div class="studio-saved-image-picker-empty">No saved images yet.</div>
-                <div class="studio-saved-image-picker-footer">
-                  <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-picker-back>Back</button>
-                  <button type="button" class="auth-action-btn auth-primary-btn" data-saved-image-picker-upload>Upload image</button>
-                  <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-picker-cancel>Cancel</button>
-                </div>
-            `;
-            return;
-        }
+        const entries = getStudioSavedImageLibraryForPicker()
+            .slice()
+            .sort((a, b) => getReviewModeEntryRecentTimestamp(b) - getReviewModeEntryRecentTimestamp(a));
         const searchQuery = normalizeSheetText(picker.searchQuery || '');
-        const filters = picker.filters || { anatomyType: '', organSystem: '', location: '' };
+        const filters = picker.filters || { anatomyType: '', organSystem: '', location: '', classId: '', folderId: '' };
         const filteredEntries = filterStudioSavedImageEntries(entries, searchQuery, filters);
+        const totalPages = Math.max(1, Math.ceil(filteredEntries.length / STUDIO_SAVED_IMAGE_PAGE_SIZE));
+        picker.page = Math.min(picker.page, totalPages - 1);
+        const visibleEntries = picker.showAll
+            ? filteredEntries
+            : filteredEntries.slice(picker.page * STUDIO_SAVED_IMAGE_PAGE_SIZE, (picker.page + 1) * STUDIO_SAVED_IMAGE_PAGE_SIZE);
+        const visibleSuffix = filteredEntries.length > STUDIO_SAVED_IMAGE_PAGE_SIZE && !picker.showAll
+            ? ` · showing ${visibleEntries.length}`
+            : '';
         body.innerHTML = `
             <div class="studio-saved-image-search-wrap">
-              <input class="studio-saved-image-search-input" type="search" placeholder="Search name, subject, tags, labels..." value="${escapeHtml(searchQuery)}" data-saved-image-picker-search aria-label="Search saved images">
+              <input class="studio-saved-image-search-input" type="search" placeholder="Search name, class, folder, subject, tags, labels..." value="${escapeHtml(searchQuery)}" data-saved-image-picker-search aria-label="Search saved images">
               <div class="studio-saved-image-filter-row">
+                <select data-saved-image-picker-filter="classId" aria-label="Filter by class">${getSavedImageOrganizationClassOptions(filters.classId || '', { includeAll: true })}</select>
+                <select data-saved-image-picker-filter="folderId" aria-label="Filter by folder">${getSavedImageOrganizationFolderOptions(filters.classId || '', filters.folderId || '', { includeAll: true })}</select>
                 <select data-saved-image-picker-filter="anatomyType" aria-label="Filter by anatomy type">
                   <option value="">All types</option>${['bone','muscle','tissue','cartilage','organ','joint','ligament','cell','body region','organ system','other'].map(value => `<option value="${value}" ${filters.anatomyType === value ? 'selected' : ''}>${value.replace(/\b\w/g, char => char.toUpperCase())}</option>`).join('')}
                 </select>
@@ -10948,33 +15213,53 @@ The deletion becomes permanent when you save the diagram.`);
                 </select>
                 <input type="search" value="${escapeHtml(filters.location || '')}" placeholder="Location" data-saved-image-picker-filter="location" aria-label="Filter by location">
               </div>
-              <div class="studio-saved-image-search-count">${filteredEntries.length} of ${entries.length} image${entries.length === 1 ? '' : 's'}</div>
+              <div class="studio-saved-image-search-count">${filteredEntries.length} of ${entries.length} image${entries.length === 1 ? '' : 's'}${visibleSuffix}</div>
             </div>
-            ${filteredEntries.length ? `
+            ${visibleEntries.length ? `
               <div class="studio-saved-image-grid">
-                ${filteredEntries.map(entry => `
+                ${visibleEntries.map(entry => {
+                    const organization = getStudioSavedImageOrganization(entry);
+                    const angles = getStudioSavedImageAngles(entry);
+                    const labelCount = getStudioSavedImageTotalLabelCount(entry);
+                    const pinnedCount = getSavedImagePinnedCount(entry);
+                    const mastered = getSavedImageMasteryStatus(entry);
+                    const orgText = [organization.className, organization.folderName].filter(Boolean).map(escapeHtml).join(' / ');
+                    return `
                   <div class="studio-saved-image-card">
-                    <img class="studio-saved-image-thumb" data-studio-saved-image-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(entry.fileName)}">
+                    <div class="studio-mastered-thumb-wrap">
+                      <img class="studio-saved-image-thumb" data-studio-saved-image-thumb-id="${escapeHtml(entry.id)}" alt="${escapeHtml(entry.fileName)}">
+                      ${renderSavedImageStudyRibbon(entry)}
+                    </div>
                     <div class="studio-saved-image-name" title="${escapeHtml(entry.metadata?.diagramName || entry.fileName)}">${escapeHtml(entry.metadata?.diagramName || entry.fileName)}</div>
+                    ${orgText ? `<div class="studio-saved-image-meta">${orgText}</div>` : ''}
                     ${(entry.metadata?.subjectName || entry.metadata?.anatomyType || entry.metadata?.organSystem) ? `<div class="studio-saved-image-meta">${[entry.metadata?.subjectName, entry.metadata?.anatomyType, entry.metadata?.organSystem].filter(Boolean).map(value => escapeHtml(value)).join(' · ')}</div>` : ''}
+                    <div class="studio-saved-image-label-total">${angles.length} angle${angles.length === 1 ? '' : 's'} · ${labelCount} label${labelCount === 1 ? '' : 's'}</div>
+                    <div class="studio-saved-image-pinned-row"><span class="studio-saved-image-pinned-count"><svg class="studio-saved-image-pin-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg> ${pinnedCount} pinned label${pinnedCount === 1 ? '' : 's'}</span><button type="button" class="studio-saved-image-reset-pinned" data-saved-image-reset-pinned="${escapeHtml(entry.id)}" ${pinnedCount ? '' : 'disabled title="No pinned labels to reset"'}>Reset pinned</button></div>
                     <div class="studio-saved-image-actions">
-                      <button type="button" class="auth-action-btn auth-primary-btn" data-saved-image-use="${escapeHtml(entry.id)}" data-saved-image-mode="edits">Use edits</button>
-                      <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-use="${escapeHtml(entry.id)}" data-saved-image-mode="image-only">Use image only</button>
+                      <button type="button" class="auth-action-btn auth-primary-btn" data-saved-image-use="${escapeHtml(entry.id)}">Use image</button>
                       <button type="button" class="auth-action-btn auth-secondary-btn studio-saved-image-delete-btn" data-saved-image-delete="${escapeHtml(entry.id)}">Delete</button>
                     </div>
-                  </div>
-                `).join('')}
+                  </div>`;
+                }).join('')}
               </div>
             ` : `
-              <div class="studio-saved-image-picker-empty">No saved images match that search.</div>
+              <div class="studio-saved-image-picker-empty">${entries.length ? 'No saved images match those filters.' : 'No saved images yet.'}</div>
             `}
+            ${filteredEntries.length > STUDIO_SAVED_IMAGE_PAGE_SIZE ? `
+              <div class="studio-saved-image-pagination studio-saved-image-picker-pagination" aria-label="Saved Image pages">
+                <button type="button" class="studio-saved-image-page-arrow" data-saved-image-picker-prev aria-label="Show previous 10 Saved Images" ${picker.showAll || picker.page <= 0 ? 'disabled' : ''}>‹</button>
+                <span class="studio-saved-image-page-status">${picker.showAll ? `Showing all ${filteredEntries.length}` : `Page ${picker.page + 1} of ${totalPages}`}</span>
+                <button type="button" class="studio-saved-image-page-arrow" data-saved-image-picker-next aria-label="Show next 10 Saved Images" ${picker.showAll || picker.page >= totalPages - 1 ? 'disabled' : ''}>›</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-saved-image-show-all" data-saved-image-picker-show-all aria-pressed="${picker.showAll ? 'true' : 'false'}">${picker.showAll ? 'Show 10 at a time' : 'Show All'}</button>
+              </div>
+            ` : ''}
             <div class="studio-saved-image-picker-footer">
               <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-picker-back>Back</button>
               <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-picker-clear>Empty saved images</button>
               <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-image-picker-cancel>Cancel</button>
             </div>
         `;
-        const entryById = new Map(filteredEntries.map(entry => [normalizeSheetText(entry.id), entry]));
+        const entryById = new Map(visibleEntries.map(entry => [normalizeSheetText(entry.id), entry]));
         body.querySelectorAll('[data-studio-saved-image-thumb-id]').forEach(imageEl => {
             applyStudioSavedImageThumbnailToElement(imageEl, entryById.get(normalizeSheetText(imageEl.dataset.studioSavedImageThumbId)) || {});
         });
@@ -10994,7 +15279,9 @@ The deletion becomes permanent when you save the diagram.`);
             fileInput,
             view: 'choice',
             searchQuery: '',
-            filters: { anatomyType: '', organSystem: '', location: '' }
+            filters: { anatomyType: '', organSystem: '', location: '', classId: '', folderId: '' },
+            page: 0,
+            showAll: false
         };
         const overlay = document.getElementById('studioSavedImagePickerOverlay');
         if (overlay) {
@@ -11016,33 +15303,128 @@ The deletion becomes permanent when you save the diagram.`);
             fileInput: null,
             view: 'choice',
             searchQuery: '',
-            filters: { anatomyType: '', organSystem: '', location: '' }
+            filters: { anatomyType: '', organSystem: '', location: '', classId: '', folderId: '' },
+            page: 0,
+            showAll: false
         };
     }
 
-    function applyStudioSavedImageToFlashcardTarget(entry = {}, includeEdits = true) {
+    async function applyStudioSavedImageToFlashcardTarget(entry = {}) {
         const target = state.auth.studioSavedImagePicker?.target || {};
         const normalizedEntry = normalizeStudioSavedImageEntry(entry);
         if (!normalizedEntry) return;
-        const fileName = normalizedEntry.fileName || 'saved-image.png';
-        const value = getStudioSavedImageApplyValue(normalizedEntry, includeEdits);
-        const label = includeEdits ? `Saved: ${fileName}` : `Selected: ${fileName}`;
-        const labels = includeEdits ? normalizeDiagramLabels(normalizedEntry.labels || []) : [];
-        const drawStrokes = includeEdits ? cloneImageEditorDrawStrokes(normalizedEntry.drawStrokes || []) : [];
-        const metadata = includeEdits ? normalizeDiagramMetadata(normalizedEntry.metadata || {}) : {};
+        const fileName = normalizedEntry.fileName || 'saved-image';
+        const value = getStudioSavedImageApplyValue(normalizedEntry);
+        const label = `Saved: ${fileName}`;
+        const labels = normalizeDiagramLabels(normalizedEntry.labels || []);
+        const drawStrokes = cloneImageEditorDrawStrokes(normalizedEntry.drawStrokes || []);
+        const metadata = normalizeDiagramMetadata(normalizedEntry.metadata || {});
+        const savedSignature = getStudioSavedImageSignature(normalizedEntry);
+        let statusMessage = 'Saved image added.';
         if (target.kind === 'flashcard-list') {
             const questionId = normalizeSheetText(target.questionId);
             const side = target.side === 'definition' ? 'definition' : 'term';
-            const savedSignature = getStudioSavedImageSignature(normalizedEntry);
             applyStudioFlashcardListImageChange(questionId, side, value, label, labels, { savedImageSignature: savedSignature, fromSavedImage: true, drawStrokes, metadata });
             state.auth.expandedFlashcardImageRows.add(getStudioFlashcardImageKey(questionId, side));
-        } else if (target.kind === 'flashcard-definition') {
-            setStudioFlashcardDefinitionImageState(value, label, labels, drawStrokes, metadata);
-        } else {
-            setStudioFlashcardTermImageState(value, label, labels, drawStrokes, metadata);
+        } else if (target.kind === 'flashcard-definition' || target.kind === 'flashcard-term') {
+            const side = target.kind === 'flashcard-definition' ? 'definition' : 'term';
+            if (state.auth.handwrittenFlashcardEnabled) {
+                const row = getCurrentHandwrittenFlashcardRow();
+                const rowId = normalizeSheetText(row?.id || STUDIO_PENDING_NEW_FLASHCARD_ID) || STUDIO_PENDING_NEW_FLASHCARD_ID;
+                applyStudioFlashcardListImageChange(rowId, side, value, label, labels, {
+                    savedImageSignature: savedSignature,
+                    fromSavedImage: true,
+                    drawStrokes,
+                    metadata,
+                    suppressSync: true,
+                    suppressRender: true
+                });
+                const requestedLayout = state.auth.handwrittenPendingImageLayout?.side === side
+                    ? state.auth.handwrittenPendingImageLayout.layout
+                    : getHandwrittenSideImageLayoutFromEditorState(side);
+                setHandwrittenSideState(side, { imageLayout: requestedLayout === 'full' ? 'full' : 'half' });
+                state.auth.handwrittenPendingImageLayout = null;
+                renderHandwrittenFlashcardWorkspace();
+                renderStudioQuestionList();
+            } else if (side === 'definition') {
+                setStudioFlashcardDefinitionImageState(value, label, labels, drawStrokes, metadata);
+            } else {
+                setStudioFlashcardTermImageState(value, label, labels, drawStrokes, metadata);
+            }
+        } else if (target.kind === 'question') {
+            setStudioQuestionImagePanelOpen(true);
+            setStudioQuestionImageState(value, label);
+            if (isStudioDiagramsMode()) renderStudioDiagramLabels(labels);
+        } else if (target.kind === 'learning') {
+            setStudioLearningResourcesImageState(value, label);
+        } else if (target.kind === 'option') {
+            setStudioOptionImageState(target.row, value, label);
+        } else if (target.kind === 'classify-category' || target.kind === 'classify-item') {
+            const kind = target.kind === 'classify-category' ? 'category' : 'item';
+            setStudioClassifyRowImageState(target.wrapper, kind, value, label);
+            if (kind === 'category') refreshStudioClassifyItemCategoryOptions();
+        } else if (target.kind === 'standalone-diagram') {
+            await openStudioImageEditor({
+                kind: 'standalone-diagram',
+                sourceValue: value,
+                sourceLabel: label,
+                labels,
+                visualAids: normalizeDiagramVisualAids(normalizedEntry.visualAids || []),
+                drawStrokes,
+                metadata,
+                classId: normalizedEntry.classId || '',
+                folderId: normalizedEntry.folderId || ''
+            });
+        } else if (target.kind === 'multi-angle-add') {
+            const draft = getMultiAngleCreatorState();
+            const sourceAngles = getStudioSavedImageAngles(normalizedEntry);
+            if (!draft.open) {
+                resetMultiAngleCreatorState({ keepFileInput: true });
+                draft.open = true;
+                draft.setupVisible = true;
+                draft.metadata = normalizeDiagramMetadata(normalizedEntry.metadata || {});
+                draft.classId = normalizeSheetText(normalizedEntry.classId || '');
+                draft.folderId = normalizeSheetText(normalizedEntry.folderId || '');
+            }
+            const angles = sourceAngles.length ? sourceAngles : [normalizeStudioSavedImageAngle(normalizedEntry, 0, normalizedEntry)].filter(Boolean);
+            const appendedAngles = [];
+            const sharedCanvasReference = draft.matchCanvasDimensions && draft.angles.length
+                ? {
+                    canvasWidth: Math.max(1, Math.round(Number(draft.angles[0]?.canvasWidth) || 0)),
+                    canvasHeight: Math.max(1, Math.round(Number(draft.angles[0]?.canvasHeight) || 0))
+                }
+                : null;
+            for (const sourceAngle of angles) {
+                const canonicalValue = normalizeSheetText(sourceAngle.imageValue || sourceAngle.mediaValue || '');
+                if (!canonicalValue) continue;
+                const angle = await createMultiAngleDraftAngle(canonicalValue, sourceAngle.fileName || normalizedEntry.fileName, draft.angles.length, {
+                    ...sourceAngle,
+                    sourceValue: canonicalValue,
+                    imageOnlyValue: canonicalValue,
+                    sourceMediaValue: isSupabaseMediaReference(canonicalValue) ? canonicalValue : '',
+                    imageOnlyMediaValue: isSupabaseMediaReference(canonicalValue) ? canonicalValue : '',
+                    editedValue: '',
+                    framing: normalizeMultiAngleFraming(sourceAngle.framing || {})
+                });
+                if (sharedCanvasReference && !angle.setupLocked) {
+                    angle.canvasWidth = sharedCanvasReference.canvasWidth;
+                    angle.canvasHeight = sharedCanvasReference.canvasHeight;
+                    angle.canvasDirty = true;
+                    angle.estimateKey = '';
+                }
+                draft.angles.push(angle);
+                appendedAngles.push(angle);
+            }
+            draft.activeIndex = Math.max(0, draft.angles.length - 1);
+            const reusedCount = appendedAngles.filter(angle => normalizeSheetText(angle.sourceValue || '') && !isDataUrl(normalizeSheetText(angle.sourceValue || ''))).length;
+            const message = reusedCount
+                ? `Added ${appendedAngles.length} Saved Image angle${appendedAngles.length === 1 ? '' : 's'}${reusedCount === appendedAngles.length ? ' using the existing saved-image file' : ` (${reusedCount} reusing existing saved-image files)`}.`
+                : `Added ${angles.length} Saved Image angle${angles.length === 1 ? '' : 's'}.`;
+            statusMessage = message;
+            showMultiAngleCanvasSetup({ message: false });
         }
         setStudioDirtyState(true);
-        setCreatorStatus(includeEdits ? 'Saved image with edits copied into this flashcard.' : 'Saved image copied without edits.', 'success');
+        setCreatorStatus(statusMessage, 'success');
     }
 
 
@@ -11267,6 +15649,151 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    function normalizeVisualAidPreset(preset = {}, index = 0) {
+        const source = preset && typeof preset === 'object' ? preset : {};
+        const id = normalizeSheetText(source.id || source.presetKey || source.preset_key) || createDiagramVisualAidId('preset');
+        const name = normalizeSheetText(source.name || `Visual Aid Preset ${index + 1}`).slice(0, 100) || `Visual Aid Preset ${index + 1}`;
+        const paths = (Array.isArray(source.paths) ? source.paths : Array.isArray(source.visualAids) ? source.visualAids : []).slice(0, DIAGRAM_VISUAL_AID_MAX_ITEMS).map((path, pathIndex) => {
+            const normalized = normalizeDiagramVisualAid({ ...path, presetInstanceId: '', presetName: name, visible: true, pathOrder: pathIndex }, pathIndex);
+            return { ...normalized, id: normalizeSheetText(path?.id) || `preset_path_${pathIndex + 1}`, presetInstanceId: '', presetName: name, pathOrder: pathIndex };
+        });
+        return { id, name, updatedAt: Math.max(0, Number(source.updatedAt || source.updated_at) || 0), paths };
+    }
+
+    function normalizeVisualAidPresetList(value = []) {
+        const result = [];
+        (Array.isArray(value) ? value : []).forEach((preset, index) => {
+            const normalized = normalizeVisualAidPreset(preset, index);
+            const duplicateIndex = result.findIndex(item => item.id === normalized.id);
+            if (duplicateIndex >= 0) result[duplicateIndex] = normalized;
+            else result.push(normalized);
+        });
+        return result.sort((a, b) => b.updatedAt - a.updatedAt || a.name.localeCompare(b.name)).slice(0, VISUAL_AID_PRESET_MAX);
+    }
+
+    function getVisualAidPresetStorageKey(userId = state.auth.user?.id) {
+        return `${CONFIG.visualAidPresetsStorageKey}:${normalizeSheetText(userId) || 'anonymous'}`;
+    }
+
+    function readLocalVisualAidPresets(userId = state.auth.user?.id) {
+        try {
+            const raw = window.localStorage?.getItem(getVisualAidPresetStorageKey(userId));
+            return normalizeVisualAidPresetList(raw ? JSON.parse(raw) : []);
+        } catch (error) {
+            console.warn('Could not read Visual Aid presets:', error);
+            return [];
+        }
+    }
+
+    function writeLocalVisualAidPresets(presets = state.auth.visualAidPresets, userId = state.auth.user?.id) {
+        const normalized = normalizeVisualAidPresetList(presets);
+        try { window.localStorage?.setItem(getVisualAidPresetStorageKey(userId), JSON.stringify(normalized)); }
+        catch (error) { console.warn('Could not save Visual Aid presets locally:', error); }
+        state.auth.visualAidPresets = normalized;
+        return normalized;
+    }
+
+    function isVisualAidPresetTableMissing(error = null) {
+        const code = normalizeSheetText(error?.code || '');
+        const message = normalizeSheetText(error?.message || '').toLowerCase();
+        return code === '42P01' || code === 'PGRST205' || message.includes('user_visual_aid_presets') && (message.includes('not found') || message.includes('does not exist'));
+    }
+
+    async function loadVisualAidPresetsForUser() {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        if (!userId) { state.auth.visualAidPresets = readLocalVisualAidPresets('anonymous'); return state.auth.visualAidPresets; }
+        if (state.auth.visualAidPresetSync.loadedUserId && state.auth.visualAidPresetSync.loadedUserId !== userId) {
+            state.auth.visualAidPresetSync.tableUnavailable = false;
+            state.auth.visualAidPresetSync.inFlight = null;
+        }
+        const local = readLocalVisualAidPresets(userId);
+        state.auth.visualAidPresets = local;
+        if (!state.auth.client || state.auth.visualAidPresetSync.tableUnavailable) return local;
+        if (state.auth.visualAidPresetSync.inFlight) return state.auth.visualAidPresetSync.inFlight;
+        const promise = state.auth.client.from(VISUAL_AID_PRESET_TABLE).select('preset_key,name,payload,updated_at').eq('user_id', userId).then(({ data, error }) => {
+            if (error) {
+                if (isVisualAidPresetTableMissing(error)) state.auth.visualAidPresetSync.tableUnavailable = true;
+                else console.warn('Could not load Visual Aid presets:', error);
+                return local;
+            }
+            const remote = normalizeVisualAidPresetList((Array.isArray(data) ? data : []).map(row => ({ id: row.preset_key, name: row.name, updatedAt: Date.parse(row.updated_at || '') || 0, ...(row.payload || {}) })));
+            const merged = new Map(local.map(item => [item.id, item]));
+            remote.forEach(item => { const existing = merged.get(item.id); if (!existing || item.updatedAt >= existing.updatedAt) merged.set(item.id, item); });
+            const result = writeLocalVisualAidPresets(Array.from(merged.values()), userId);
+            if (state.auth.imageEditor?.open) renderImageEditorVisualAidPanel();
+            return result;
+        }).catch(error => { console.warn('Could not load Visual Aid presets:', error); return local; }).finally(() => {
+            if (state.auth.visualAidPresetSync.inFlight === promise) state.auth.visualAidPresetSync.inFlight = null;
+            state.auth.visualAidPresetSync.loadedUserId = userId;
+        });
+        state.auth.visualAidPresetSync.inFlight = promise;
+        return promise;
+    }
+
+    async function persistVisualAidPreset(preset = {}) {
+        const normalized = normalizeVisualAidPreset({ ...preset, updatedAt: Date.now() });
+        const current = normalizeVisualAidPresetList(state.auth.visualAidPresets);
+        const next = [...current.filter(item => item.id !== normalized.id), normalized];
+        writeLocalVisualAidPresets(next);
+        if (!state.auth.client || !state.auth.user?.id || state.auth.visualAidPresetSync.tableUnavailable) return normalized;
+        const payload = { paths: normalized.paths };
+        const { error } = await state.auth.client.from(VISUAL_AID_PRESET_TABLE).upsert({ user_id: state.auth.user.id, preset_key: normalized.id, name: normalized.name, payload, updated_at: new Date(normalized.updatedAt).toISOString() }, { onConflict: 'user_id,preset_key' });
+        if (error) {
+            if (isVisualAidPresetTableMissing(error)) state.auth.visualAidPresetSync.tableUnavailable = true;
+            else console.warn('Could not sync Visual Aid preset:', error);
+        }
+        return normalized;
+    }
+
+    async function deleteVisualAidPreset(presetId = '') {
+        const id = normalizeSheetText(presetId);
+        if (!id) return false;
+        const next = normalizeVisualAidPresetList(state.auth.visualAidPresets).filter(item => item.id !== id);
+        writeLocalVisualAidPresets(next);
+        if (state.auth.client && state.auth.user?.id && !state.auth.visualAidPresetSync.tableUnavailable) {
+            const { error } = await state.auth.client.from(VISUAL_AID_PRESET_TABLE).delete().eq('user_id', state.auth.user.id).eq('preset_key', id);
+            if (error && isVisualAidPresetTableMissing(error)) state.auth.visualAidPresetSync.tableUnavailable = true;
+            else if (error) console.warn('Could not delete Visual Aid preset:', error);
+        }
+        return true;
+    }
+
+    function cloneVisualAidPresetPathsForDiagram(preset = {}) {
+        const normalized = normalizeVisualAidPreset(preset);
+        const instanceId = createDiagramVisualAidId('preset-instance');
+        return normalized.paths.map((path, index) => normalizeDiagramVisualAid({
+            ...path,
+            id: createDiagramVisualAidId('visual'),
+            name: normalizeSheetText(path.name || `Path ${index + 1}`) || `Path ${index + 1}`,
+            divisions: path.divisions.map(item => ({ ...item, id: createDiagramVisualAidId('division') })),
+            points: path.points.map(item => ({ ...item, id: createDiagramVisualAidId('point') })),
+            balls: path.balls.map(item => ({ ...item, id: createDiagramVisualAidId('ball') })),
+            presetInstanceId: instanceId,
+            presetName: normalized.name,
+            pathOrder: index,
+            visible: true
+        }, index));
+    }
+
+    function getActiveImageEditorVisualAidGroup(editor = state.auth.imageEditor) {
+        const aids = normalizeDiagramVisualAids(editor?.visualAids || []);
+        return getDiagramVisualAidGroup(aids, editor?.activeVisualAidId || '');
+    }
+
+    function applyVisualAidGroupBehaviorPatch(aids = [], activeAid = null, patch = {}) {
+        const normalized = normalizeDiagramVisualAids(aids);
+        const target = activeAid ? normalized.find(item => item.id === activeAid.id) || normalizeDiagramVisualAid(activeAid) : null;
+        if (!target) return normalized;
+        let group = getDiagramVisualAidGroup(normalized, target);
+        let instanceId = target.presetInstanceId;
+        if ((patch.multiplePaths === true || target.multiplePaths) && !instanceId) instanceId = createDiagramVisualAidId('preset-instance');
+        const groupIds = new Set(group.map(item => item.id));
+        return normalized.map(item => {
+            if (!groupIds.has(item.id)) return item;
+            return normalizeDiagramVisualAid({ ...item, ...patch, presetInstanceId: instanceId || item.presetInstanceId, presetName: normalizeSheetText(patch.presetName ?? item.presetName) }, item.pathOrder);
+        });
+    }
+
     function refreshStudioImageEditorElements() {
         elements.studioImageEditorOverlay = document.getElementById('studioImageEditorOverlay');
         elements.studioImageEditorCanvasWrap = document.getElementById('studioImageEditorCanvasWrap');
@@ -11317,7 +15844,6 @@ The deletion becomes permanent when you save the diagram.`);
         elements.studioImageEditorDrawSizeValue = document.getElementById('studioImageEditorDrawSizeValue');
         elements.studioImageEditorDrawSizeToggle = document.getElementById('studioImageEditorDrawSizeToggle');
         elements.studioImageEditorDrawSizePopover = document.getElementById('studioImageEditorDrawSizePopover');
-        elements.studioImageEditorDrawActiveLabelValue = document.getElementById('studioImageEditorDrawActiveLabelValue');
         elements.studioImageEditorPaintTransparencyInput = document.getElementById('studioImageEditorPaintTransparencyInput');
         elements.studioImageEditorPaintTransparencyValue = document.getElementById('studioImageEditorPaintTransparencyValue');
         elements.studioImageEditorPaintTransparencyToggle = document.getElementById('studioImageEditorPaintTransparencyToggle');
@@ -11331,12 +15857,22 @@ The deletion becomes permanent when you save the diagram.`);
         elements.studioImageEditorVisualAidPanel = document.getElementById('studioImageEditorVisualAidPanel');
         elements.studioImageEditorVisualAidList = document.getElementById('studioImageEditorVisualAidList');
         elements.studioImageEditorAddVisualAidBtn = document.getElementById('studioImageEditorAddVisualAidBtn');
+        elements.studioImageEditorAddFlowFillBtn = document.getElementById('studioImageEditorAddFlowFillBtn');
+        elements.studioImageEditorVisualAidClosePathBtn = document.getElementById('studioImageEditorVisualAidClosePathBtn');
         elements.studioImageEditorMetadataPanel = document.getElementById('studioImageEditorMetadataPanel');
         elements.studioImageEditorMetadataToggleBtn = document.getElementById('studioImageEditorMetadataToggleBtn');
         elements.studioImageEditorLabelInfoPanel = document.getElementById('studioImageEditorLabelInfoPanel');
         elements.studioImageEditorLabelInfoList = document.getElementById('studioImageEditorLabelInfoList');
         elements.studioImageEditorLabelInfoToggleBtn = document.getElementById('studioImageEditorLabelInfoToggleBtn');
         elements.studioImageEditorDiagramName = document.getElementById('studioImageEditorDiagramName');
+        elements.studioImageEditorClassField = document.getElementById('studioImageEditorClassField');
+        elements.studioImageEditorClassSelect = document.getElementById('studioImageEditorClassSelect');
+        elements.studioImageEditorClassNewInput = document.getElementById('studioImageEditorClassNewInput');
+        elements.studioImageEditorAddClassBtn = document.getElementById('studioImageEditorAddClassBtn');
+        elements.studioImageEditorFolderField = document.getElementById('studioImageEditorFolderField');
+        elements.studioImageEditorFolderSelect = document.getElementById('studioImageEditorFolderSelect');
+        elements.studioImageEditorFolderNewInput = document.getElementById('studioImageEditorFolderNewInput');
+        elements.studioImageEditorAddFolderBtn = document.getElementById('studioImageEditorAddFolderBtn');
         elements.studioImageEditorSubjectName = document.getElementById('studioImageEditorSubjectName');
         elements.studioImageEditorAnatomyType = document.getElementById('studioImageEditorAnatomyType');
         elements.studioImageEditorOrganSystem = document.getElementById('studioImageEditorOrganSystem');
@@ -11346,6 +15882,8 @@ The deletion becomes permanent when you save the diagram.`);
         elements.studioImageEditorTags = document.getElementById('studioImageEditorTags');
         elements.studioImageEditorAddLabelBtn = document.getElementById('studioImageEditorAddLabelBtn');
         elements.studioImageEditorRemoveLastLabelBtn = document.getElementById('studioImageEditorRemoveLastLabelBtn');
+        elements.studioImageEditorTransferLabelsBtn = document.getElementById('studioImageEditorTransferLabelsBtn');
+        elements.studioImageEditorTransferLabelsMenu = document.getElementById('studioImageEditorTransferLabelsMenu');
         elements.studioImageEditorToolButtons = Array.from(document.querySelectorAll('[data-image-editor-tool]'));
         if (elements.studioImageEditorWorkspace && elements.studioImageEditorLabelInfoPanel && elements.studioImageEditorLabelInfoPanel.parentElement !== elements.studioImageEditorWorkspace) {
             elements.studioImageEditorWorkspace.appendChild(elements.studioImageEditorLabelInfoPanel);
@@ -11359,6 +15897,26 @@ The deletion becomes permanent when you save the diagram.`);
             handle.title = 'Drag left or right to resize Labels';
             handle.innerHTML = '<span aria-hidden="true">↔</span>';
             elements.studioImageEditorLabelPanel.prepend(handle);
+        }
+        if (elements.studioImageEditorVisualAidPanel && !document.getElementById('studioImageEditorVisualAidPanelResizeHandle')) {
+            const handle = document.createElement('button');
+            handle.id = 'studioImageEditorVisualAidPanelResizeHandle';
+            handle.type = 'button';
+            handle.className = 'studio-image-editor-label-resize-handle studio-image-editor-visual-aid-resize-handle';
+            handle.setAttribute('aria-label', 'Resize Visual Aids panel horizontally');
+            handle.title = 'Drag left or right to resize Visual Aids';
+            handle.innerHTML = '<span aria-hidden="true">↔</span>';
+            elements.studioImageEditorVisualAidPanel.prepend(handle);
+        }
+        elements.studioImageEditorVisualAidPanelResizeHandle = document.getElementById('studioImageEditorVisualAidPanelResizeHandle');
+        if (elements.studioImageEditorVisualAidPanelResizeHandle?.dataset.resizeBound !== 'true') {
+            const handle = elements.studioImageEditorVisualAidPanelResizeHandle;
+            handle.dataset.resizeBound = 'true';
+            handle.addEventListener('pointerdown', beginImageEditorVisualAidPanelResize);
+            handle.addEventListener('pointermove', moveImageEditorVisualAidPanelResize);
+            handle.addEventListener('pointerup', endImageEditorVisualAidPanelResize);
+            handle.addEventListener('pointercancel', endImageEditorVisualAidPanelResize);
+            handle.addEventListener('lostpointercapture', endImageEditorVisualAidPanelResize);
         }
         elements.studioImageEditorLabelPanelResizeHandle = document.getElementById('studioImageEditorLabelPanelResizeHandle');
         if (elements.studioImageEditorLabelPanelResizeHandle?.dataset.resizeBound !== 'true') {
@@ -11386,12 +15944,11 @@ The deletion becomes permanent when you save the diagram.`);
                         <button type="button" class="auth-action-btn auth-secondary-btn" data-image-editor-tool="blur-rect">Blur Box</button>
                         <div id="studioImageEditorZoomControls" class="studio-image-editor-zoom-controls hidden" aria-label="Diagram zoom controls"><button id="studioImageEditorZoomOutBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-btn" aria-label="Zoom out">−</button><button id="studioImageEditorZoomResetBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-reset-btn" aria-label="Reset diagram zoom" title="Reset zoom"><span id="studioImageEditorZoomValue">100%</span></button><button id="studioImageEditorZoomInBtn" type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-zoom-btn" aria-label="Zoom in">+</button></div>
                         <div class="studio-image-editor-slider-popover studio-image-editor-color-control" data-image-editor-popover="color"><button type="button" id="studioImageEditorColorToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle studio-image-editor-color-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorColorPopover">RGB <span id="studioImageEditorCurrentColorSwatch" class="studio-image-editor-current-color-swatch" aria-hidden="true"></span></button><div id="studioImageEditorColorPopover" class="studio-image-editor-popover-panel studio-image-editor-color-popover hidden" role="dialog" aria-label="Connector and drawing colors"><label class="studio-image-editor-color-picker-row" title="Connector and drawing RGB color"><span>Color</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Connector and drawing RGB color"></label><div class="studio-image-editor-color-presets-heading">Saved colors</div><div id="studioImageEditorColorPresetList" class="studio-image-editor-color-preset-list" aria-label="Saved color presets"></div><button type="button" id="studioImageEditorAddColorPresetBtn" class="studio-image-editor-color-preset-add" aria-label="Save current color preset" title="Save current color">+</button></div></div>
-                        <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">7</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness"><label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="1" max="24" value="7" aria-label="Connector thickness"></label></div></div>
+                        <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">2</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness"><label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="0.25" max="24" step="0.25" value="2" aria-label="Connector thickness"></label></div></div>
                         <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
                         </div>
-                        <span id="studioImageEditorDrawActiveLabelValue" class="studio-image-editor-draw-active-label" aria-live="polite">Choose label Draw</span>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size"><label class="studio-image-editor-range-control" title="Paintbrush and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Paintbrush and eraser size"></label></div></div>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="transparency"><button type="button" id="studioImageEditorPaintTransparencyToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPaintTransparencyPopover">Opacity <span id="studioImageEditorPaintTransparencyValue" class="studio-image-editor-range-value" aria-live="polite">65%</span></button><div id="studioImageEditorPaintTransparencyPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush transparency"><label class="studio-image-editor-range-control" title="Paintbrush transparency"><span>Opacity</span><input id="studioImageEditorPaintTransparencyInput" type="range" min="0" max="100" step="1" value="65" aria-label="Paintbrush transparency"></label></div></div>
                         <button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" data-image-editor-tool="labels" id="studioImageEditorLabelsBtn" title="Add labels inside this image editor" aria-label="Add labels inside this image editor" hidden>Labels</button><button type="button" class="auth-action-btn auth-secondary-btn studio-image-tool" id="studioImageEditorVisualAidBtn" title="Show or hide animated Visual Aids" aria-label="Show or hide animated Visual Aids" hidden>Visual Aid</button>
@@ -11403,11 +15960,12 @@ The deletion becomes permanent when you save the diagram.`);
                     </div>
                     <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
                     <div class="studio-image-editor-workspace">
-                      <div id="studioImageEditorVisualAidPanel" class="studio-image-editor-visual-aid-panel hidden" aria-label="Animated Visual Aids"><div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">Only one Visual Aid can be visible at a time. The active visible aid accepts label connector snapping.</div></div><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button></div><div id="studioImageEditorVisualAidList" class="studio-image-editor-visual-aid-list"></div></div>
+                      <div id="studioImageEditorVisualAidPanel" class="studio-image-editor-visual-aid-panel hidden" aria-label="Animated Visual Aids"><div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">One Visual Aid preset is visible at a time. A preset can contain multiple paths; the active path accepts label connector snapping.</div></div><div class="studio-visual-aid-header-buttons"><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button><button id="studioImageEditorAddFlowFillBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Flow Fill Visual Aid</button></div></div><div id="studioImageEditorVisualAidList" class="studio-image-editor-visual-aid-list"></div></div>
                       <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
                         <canvas id="studioImageEditorCanvas"></canvas>
                         <svg id="studioImageEditorVisualAidLayer" class="studio-image-editor-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg><svg id="studioImageEditorConnectorLayer" class="studio-image-editor-connector-layer hidden" aria-hidden="true" focusable="false"></svg>
                         <canvas id="studioImageEditorLabelOverlayCanvas" class="studio-image-editor-label-overlay-canvas hidden" aria-hidden="true"></canvas>
+                        <button id="studioImageEditorVisualAidClosePathBtn" type="button" class="studio-visual-aid-close-path-snap hidden" aria-label="Close Visual Aid path" title="Close path"><span aria-hidden="true">↔</span></button>
                       </div>
                       <div id="studioImageEditorLabelPanel" class="studio-image-editor-label-panel hidden" aria-label="Image labels">
                         <div class="studio-image-editor-label-panel-header">
@@ -11415,6 +15973,18 @@ The deletion becomes permanent when you save the diagram.`);
                           <div class="studio-image-editor-label-panel-actions">
                             <button id="studioImageEditorAddLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Label</button>
                             <button id="studioImageEditorRemoveLastLabelBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last</button>
+                            <div class="studio-label-transfer-wrap">
+                              <button id="studioImageEditorTransferLabelsBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-haspopup="menu" aria-expanded="false" aria-controls="studioImageEditorTransferLabelsMenu">Transfer Labels</button>
+                              <div id="studioImageEditorTransferLabelsMenu" class="studio-label-transfer-menu hidden" role="menu" aria-label="Transfer and save reusable labels" hidden>
+                                <button type="button" role="menuitem" data-label-transfer-target="all">To All Angles</button>
+                                <button type="button" role="menuitem" data-label-transfer-target="next">To Next Angle</button>
+                                <div class="studio-label-transfer-divider" aria-hidden="true"></div>
+                                <button type="button" role="menuitem" data-label-transfer-target="save-set">Save Label Set</button>
+                                <button type="button" role="menuitem" data-label-transfer-target="load-set">Load Label Set</button>
+                                <div id="studioImageEditorLabelSetSubmenu" class="studio-label-set-submenu" aria-live="polite"></div>
+                                <button type="button" role="menuitem" data-label-transfer-target="cancel">Cancel</button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         <div id="studioImageEditorLabelList" class="studio-image-editor-label-list"></div>
@@ -11428,8 +15998,8 @@ The deletion becomes permanent when you save the diagram.`);
                       <button id="studioImageEditorCancelBtn" type="button" class="auth-action-btn auth-secondary-btn">Cancel</button>
                       <button id="studioImageEditorLabelInfoToggleBtn" type="button" class="auth-action-btn auth-secondary-btn hidden" aria-expanded="false" aria-controls="studioImageEditorLabelInfoPanel">Show Label Information</button>
                       <button id="studioImageEditorCanvasSetupBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Canvas Setup</button>
-                      <button id="studioImageEditorSaveDiagramBtn" type="button" class="auth-action-btn auth-primary-btn hidden">Save Diagram</button>
-                      <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Send to Saved Images</button>
+                      <button id="studioImageEditorSaveDiagramBtn" type="button" class="auth-action-btn auth-primary-btn hidden">Save &amp; Exit</button>
+                      <button id="studioImageEditorSendSavedBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Save &amp; Exit</button>
                       <button id="studioImageEditorAttachAllFrontBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Attach to All Front</button>
                       <button id="studioImageEditorSaveBtn" type="button" class="auth-action-btn auth-primary-btn">Save Edited Image</button>
                     </div>
@@ -11520,6 +16090,120 @@ The deletion becomes permanent when you save the diagram.`);
         return metadata;
     }
 
+
+    function populateImageEditorOrganizationControls(classId = state.auth.imageEditor?.savedImageClassId || '', folderId = state.auth.imageEditor?.savedImageFolderId || '') {
+        const classSelect = elements.studioImageEditorClassSelect;
+        const folderSelect = elements.studioImageEditorFolderSelect;
+        if (!classSelect || !folderSelect) return;
+        const normalizedClassId = normalizeSheetText(classId) || '__none__';
+        const normalizedFolderId = normalizeSheetText(folderId);
+        classSelect.innerHTML = getSavedImageOrganizationClassOptions(normalizedClassId, { includeAll: false });
+        classSelect.value = Array.from(classSelect.options).some(option => option.value === normalizedClassId) ? normalizedClassId : '__none__';
+        // Phase 23F.33.1: Show Details treats General as an unscoped folder view so existing class-owned folders remain selectable.
+        const folderFilterClassId = classSelect.value === '__none__' ? '' : classSelect.value;
+        folderSelect.innerHTML = getSavedImageOrganizationFolderOptions(folderFilterClassId, normalizedFolderId, { includeAll: false });
+        folderSelect.value = Array.from(folderSelect.options).some(option => option.value === normalizedFolderId) ? normalizedFolderId : '';
+    }
+
+    function captureImageEditorOrganization() {
+        const editor = state.auth.imageEditor;
+        if (!editor || !isImageEditorStandaloneDiagramTarget(editor)) return { classId: '', folderId: '' };
+        const folderId = normalizeSheetText(elements.studioImageEditorFolderSelect?.value || editor.savedImageFolderId || '');
+        const folderClassId = folderId ? getFolderClassId(folderId) : '';
+        const selectedClassId = normalizeSheetText(elements.studioImageEditorClassSelect?.value || editor.savedImageClassId || '');
+        const classId = folderClassId || (selectedClassId === '__none__' ? '' : selectedClassId);
+        editor.savedImageClassId = classId;
+        editor.savedImageFolderId = folderId;
+        return { classId, folderId };
+    }
+
+    function setImageEditorOrganizationCreateMode(kind = 'class', enabled = false, options = {}) {
+        const isClass = kind === 'class';
+        const select = isClass ? elements.studioImageEditorClassSelect : elements.studioImageEditorFolderSelect;
+        const input = isClass ? elements.studioImageEditorClassNewInput : elements.studioImageEditorFolderNewInput;
+        const button = isClass ? elements.studioImageEditorAddClassBtn : elements.studioImageEditorAddFolderBtn;
+        if (!select || !input || !button) return;
+
+        if (enabled) {
+            setImageEditorOrganizationCreateMode(isClass ? 'folder' : 'class', false, { keepValue: false, skipPeer: true });
+        }
+        select.classList.toggle('hidden', enabled);
+        select.hidden = enabled;
+        input.classList.toggle('hidden', !enabled);
+        input.hidden = !enabled;
+        button.textContent = enabled ? '✓' : '+';
+        button.setAttribute('aria-label', enabled ? `Create new ${kind}` : `Create a new ${kind}`);
+        button.title = enabled ? `Create new ${kind}` : `Create a new ${kind}`;
+        button.classList.toggle('is-creating', enabled);
+        if (!enabled && !options.keepValue) input.value = '';
+        if (enabled && options.focus !== false) {
+            window.requestAnimationFrame(() => {
+                input.focus();
+                input.select();
+            });
+        }
+    }
+
+    async function createImageEditorOrganizationClass(nameOverride = '') {
+        const input = elements.studioImageEditorClassNewInput;
+        const name = normalizeSheetText(nameOverride || input?.value || '');
+        if (!name) {
+            setImageEditorStatus('Enter a class name first.');
+            input?.focus();
+            return;
+        }
+        const created = await createSupabaseClassByName(name);
+        const createdId = normalizeSheetText(created?.id || '');
+        if (createdId) {
+            state.auth.supabaseClasses = [
+                ...(state.auth.supabaseClasses || []).filter(item => normalizeSheetText(item?.id) !== createdId),
+                { id: createdId, name: normalizeClassName(created?.name || name), sort_order: Number(created?.sort_order ?? 0) }
+            ];
+            state.auth.supabaseClasses.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        }
+        invalidateSupabaseManagementCache(['classes']);
+        try { await loadSupabaseClasses({ force: true }); } catch (error) { console.warn('Could not immediately refresh classes after creating one.', error); }
+        const editor = state.auth.imageEditor;
+        if (!editor?.open) return;
+        editor.savedImageClassId = createdId;
+        editor.savedImageFolderId = '';
+        setImageEditorOrganizationCreateMode('class', false);
+        populateImageEditorOrganizationControls(editor.savedImageClassId, '');
+        refreshSavedImageOrganizationFilterSelects();
+        setImageEditorStatus(`Created class ${name}.`);
+    }
+
+    async function createImageEditorOrganizationFolder(nameOverride = '') {
+        const input = elements.studioImageEditorFolderNewInput;
+        const name = normalizeSheetText(nameOverride || input?.value || '');
+        if (!name) {
+            setImageEditorStatus('Enter a folder name first.');
+            input?.focus();
+            return;
+        }
+        const classValue = normalizeSheetText(elements.studioImageEditorClassSelect?.value || state.auth.imageEditor?.savedImageClassId || '__none__') || '__none__';
+        const created = await createSupabaseFolderByName(name, { classId: classValue });
+        const createdId = normalizeSheetText(created?.id || '');
+        const createdClassId = normalizeSheetText(created?.class_id || (classValue === '__none__' ? '' : classValue));
+        if (createdId) {
+            state.auth.supabaseFolders = [
+                ...(state.auth.supabaseFolders || []).filter(item => normalizeSheetText(item?.id) !== createdId),
+                { id: createdId, classId: createdClassId, name: normalizeFolderName(created?.name || name), sort_order: Number(created?.sort_order ?? 0) }
+            ];
+            state.auth.supabaseFolders.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        }
+        invalidateSupabaseManagementCache(['folders']);
+        try { await loadCreatorFolders({ force: true }); } catch (error) { console.warn('Could not immediately refresh folders after creating one.', error); }
+        const editor = state.auth.imageEditor;
+        if (!editor?.open) return;
+        editor.savedImageClassId = createdClassId;
+        editor.savedImageFolderId = createdId;
+        setImageEditorOrganizationCreateMode('folder', false);
+        populateImageEditorOrganizationControls(editor.savedImageClassId, editor.savedImageFolderId);
+        refreshSavedImageOrganizationFilterSelects();
+        setImageEditorStatus(`Created folder ${name}.`);
+    }
+
     function refreshImageEditorMetadataUi() {
         const editor = state.auth.imageEditor;
         const enabled = !!editor?.metadataEnabled;
@@ -11544,6 +16228,10 @@ The deletion becomes permanent when you save the diagram.`);
         }
         if (!enabled) return;
         const metadata = normalizeDiagramMetadata(editor.metadata || {});
+        const organizationEnabled = isImageEditorStandaloneDiagramTarget(editor);
+        elements.studioImageEditorClassField?.classList.toggle('hidden', !organizationEnabled);
+        elements.studioImageEditorFolderField?.classList.toggle('hidden', !organizationEnabled);
+        if (organizationEnabled) populateImageEditorOrganizationControls(editor.savedImageClassId, editor.savedImageFolderId);
         if (elements.studioImageEditorDiagramName && elements.studioImageEditorDiagramName !== document.activeElement) elements.studioImageEditorDiagramName.value = metadata.diagramName;
         if (elements.studioImageEditorSubjectName && elements.studioImageEditorSubjectName !== document.activeElement) elements.studioImageEditorSubjectName.value = metadata.subjectName;
         if (elements.studioImageEditorAnatomyType && elements.studioImageEditorAnatomyType !== document.activeElement) elements.studioImageEditorAnatomyType.value = metadata.anatomyType;
@@ -11633,6 +16321,7 @@ The deletion becomes permanent when you save the diagram.`);
                   <input type="text" class="studio-image-editor-label-info-name" value="${escapeHtml(displayMathChemTextForEditor(item.label))}" data-image-editor-label-info-name autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} name" placeholder="Label name">
                   <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-info-add" data-image-editor-label-info-add aria-label="Add information category to label ${index + 1}" title="Add category">+</button>
                   <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-info-collapse" data-image-editor-label-info-collapse aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${expanded ? 'Collapse' : 'Expand'} categories for label ${index + 1}" title="${expanded ? 'Collapse label categories' : 'Expand label categories'}">${expanded ? '▾' : '▸'}</button>
+                  <input type="text" maxlength="${DIAGRAM_LABEL_QUESTION_PROMPT_MAX}" class="studio-image-editor-label-question-prompt" value="${escapeHtml(normalizeDiagramLabelQuestionPrompt(item.questionPrompt))}" data-image-editor-label-question-prompt autocomplete="off" aria-label="Label ${index + 1} Mini Quiz question prompt, maximum 200 characters" placeholder="Mini Quiz question (optional)" title="Mini Quiz question — maximum 200 characters">
                 </div>
                 <div class="studio-image-editor-label-info-categories ${expanded ? '' : 'hidden'}" data-image-editor-label-info-categories aria-hidden="${expanded ? 'false' : 'true'}">
                   ${categoryMarkup}
@@ -11714,6 +16403,514 @@ The deletion becomes permanent when you save the diagram.`);
             .toLocaleLowerCase();
     }
 
+    function getImageEditorLabelInfoDirtyKeys(editor = state.auth.imageEditor) {
+        if (!(editor?.labelInfoDirtyKeys instanceof Set)) editor.labelInfoDirtyKeys = new Set();
+        return editor.labelInfoDirtyKeys;
+    }
+
+    // Phase 23F.41.13 — named label sets and canonical shared information.
+    // Sets contain names with snapshot fallbacks; current information resolves by normalized name.
+    function getStudioLabelLibraryStorageKey(kind = 'sets', userId = state.auth.user?.id) {
+        return `studyBunnyLabelLibraryV1:${normalizeSheetText(userId) || 'anonymous'}:${kind}`;
+    }
+
+    function normalizeStudioLabelSet(value = {}, index = 0) {
+        const item = value && typeof value === 'object' ? value : {};
+        const labels = [];
+        const known = new Set();
+        (Array.isArray(item.labels) ? item.labels : []).slice(0, 500).forEach(raw => {
+            const name = displayMathChemTextForEditor(normalizeSheetText(raw?.label || raw?.name || '')).trim().slice(0, 200);
+            const key = normalizeImageEditorSharedLabelKey(name);
+            if (!key || known.has(key)) return;
+            known.add(key);
+            const infoCategories = normalizeDiagramLabelInfoCategories(raw);
+            labels.push({ label: name, questionPrompt: normalizeDiagramLabelQuestionPrompt(raw?.questionPrompt), infoCategories, description: buildDiagramLabelLegacyDescription(infoCategories, '') });
+        });
+        return {
+            id: normalizeSheetText(item.id || item.set_key) || `label-set-${index + 1}`,
+            name: normalizeSheetText(item.name || `Label Set ${index + 1}`).slice(0, 100),
+            updatedAt: Math.max(0, Number(item.updatedAt) || Date.parse(item.updated_at || '') || 0),
+            labels
+        };
+    }
+
+    function normalizeStudioLabelSets(value = []) {
+        const byId = new Map();
+        (Array.isArray(value) ? value : []).forEach((item, index) => {
+            const set = normalizeStudioLabelSet(item, index);
+            if (set.labels.length) byId.set(set.id, set);
+        });
+        return Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, STUDIO_LABEL_SET_LIMIT);
+    }
+
+    function normalizeStudioSharedLabelRecords(value = []) {
+        const byKey = new Map();
+        (Array.isArray(value) ? value : []).forEach(item => {
+            const key = normalizeImageEditorSharedLabelKey(item?.key || item?.label || '');
+            if (!key) return;
+            const updatedAt = Math.max(0, Number(item?.updatedAt) || Date.parse(item?.updated_at || '') || 0);
+            const record = { key, label: normalizeSheetText(item?.label || key), infoCategories: normalizeDiagramLabelInfoCategories(item?.infoCategories?.infoCategories ? item.infoCategories : item), questionPrompt: normalizeDiagramLabelQuestionPrompt(item?.questionPrompt ?? item?.infoCategories?.questionPrompt ?? ''), updatedAt, deleted: item?.deleted === true || item?.infoCategories?.deleted === true };
+            if (!byKey.has(key) || updatedAt >= byKey.get(key).updatedAt) byKey.set(key, record);
+        });
+        return Array.from(byKey.values());
+    }
+
+    function readLocalStudioLabelLibrary(kind = 'sets', userId = state.auth.user?.id) {
+        try {
+            const raw = window.localStorage?.getItem(getStudioLabelLibraryStorageKey(kind, userId));
+            const parsed = raw ? JSON.parse(raw) : [];
+            return kind === 'sets' ? normalizeStudioLabelSets(parsed) : normalizeStudioSharedLabelRecords(parsed);
+        } catch (error) {
+            console.warn('Could not read the local label library:', error);
+            return [];
+        }
+    }
+
+    function writeLocalStudioLabelLibrary(kind = 'sets', records = []) {
+        invalidateReviewModeNormalRevealSnapshot();
+        invalidateReviewModeNormalDataCaches();
+        const normalized = kind === 'sets' ? normalizeStudioLabelSets(records) : normalizeStudioSharedLabelRecords(records);
+        if (kind === 'sets') state.auth.labelSets = normalized;
+        else state.auth.sharedLabelInformation = normalized;
+        try { window.localStorage?.setItem(getStudioLabelLibraryStorageKey(kind), JSON.stringify(normalized)); }
+        catch (error) { console.warn('Could not cache label library:', error); }
+        return normalized;
+    }
+
+    function isStudioLabelLibraryTableMissing(error = null, table = '') {
+        const message = normalizeSheetText(error?.message).toLowerCase();
+        return ['42P01', 'PGRST205'].includes(normalizeSheetText(error?.code)) || (!!table && message.includes(table) && (message.includes('does not exist') || message.includes('not found')));
+    }
+
+    async function loadStudioLabelLibraryForUser() {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        if (state.auth.labelLibrarySync.loadedUserId !== userId) {
+            state.auth.labelLibrarySync = { loadedUserId: userId, setTableUnavailable: false, infoTableUnavailable: false, infoLoaded: false, infoReconcile: null, inFlight: null, lastLoadedAt: 0 };
+            state.auth.labelSets = readLocalStudioLabelLibrary('sets', userId);
+            state.auth.sharedLabelInformation = readLocalStudioLabelLibrary('info', userId);
+        }
+        if (!userId || !state.auth.client) return state.auth.labelSets;
+        if (state.auth.labelLibrarySync.inFlight) return state.auth.labelLibrarySync.inFlight;
+        if (Date.now() - (state.auth.labelLibrarySync.lastLoadedAt || 0) < 120000) return state.auth.labelSets;
+        const task = (async () => {
+            const sync = state.auth.labelLibrarySync;
+            if (!sync.setTableUnavailable) {
+                const { data, error } = await state.auth.client.from(STUDIO_LABEL_SET_TABLE).select('set_key,name,labels,updated_at').eq('user_id', userId);
+                if (error) {
+                    if (isStudioLabelLibraryTableMissing(error, STUDIO_LABEL_SET_TABLE)) sync.setTableUnavailable = true;
+                    else console.warn('Could not load saved label sets:', error);
+                } else if (state.auth.user?.id === userId) {
+                    const local = readLocalStudioLabelLibrary('sets', userId);
+                    const merged = new Map(local.map(item => [item.id, item]));
+                    (data || []).map(row => normalizeStudioLabelSet({ id: row.set_key, name: row.name, labels: row.labels, updated_at: row.updated_at })).forEach(item => {
+                        if (!merged.has(item.id) || item.updatedAt >= merged.get(item.id).updatedAt) merged.set(item.id, item);
+                    });
+                    writeLocalStudioLabelLibrary('sets', Array.from(merged.values()));
+                    const remoteKeys = new Map((data || []).map(row => [normalizeSheetText(row.set_key), Date.parse(row.updated_at || '') || 0]));
+                    const unsynced = local.filter(item => item.updatedAt > (remoteKeys.get(item.id) || 0));
+                    if (unsynced.length) {
+                        const rows = unsynced.map(item => ({ user_id: userId, set_key: item.id, name: item.name, labels: item.labels, updated_at: new Date(item.updatedAt).toISOString() }));
+                        state.auth.client.from(STUDIO_LABEL_SET_TABLE).upsert(rows, { onConflict: 'user_id,set_key' }).then(({ error }) => {
+                            if (error) console.warn('Could not reconcile locally saved label sets:', error);
+                        }).catch(error => console.warn('Could not reconcile locally saved label sets:', error));
+                    }
+                }
+            }
+            if (!sync.infoTableUnavailable) {
+                const { data, error } = await state.auth.client.from(STUDIO_SHARED_LABEL_TABLE).select('label_key,label,info_categories,updated_at').eq('user_id', userId);
+                if (error) {
+                    if (isStudioLabelLibraryTableMissing(error, STUDIO_SHARED_LABEL_TABLE)) sync.infoTableUnavailable = true;
+                    else console.warn('Could not load shared label information:', error);
+                } else if (state.auth.user?.id === userId) {
+                    sync.infoLoaded = true;
+                    const local = readLocalStudioLabelLibrary('info', userId);
+                    const merged = new Map(local.map(item => [item.key, item]));
+                    (data || []).forEach(row => {
+                        const item = normalizeStudioSharedLabelRecords([{ key: row.label_key, label: row.label, infoCategories: row.info_categories, updated_at: row.updated_at }])[0];
+                        if (item && (!merged.has(item.key) || item.updatedAt >= merged.get(item.key).updatedAt)) merged.set(item.key, item);
+                    });
+                    writeLocalStudioLabelLibrary('info', Array.from(merged.values()));
+                    const remoteKeys = new Map((data || []).map(row => [normalizeImageEditorSharedLabelKey(row.label_key), Date.parse(row.updated_at || '') || 0]));
+                    const unsynced = local.filter(item => item.updatedAt > (remoteKeys.get(item.key) || 0));
+                    if (unsynced.length) {
+                        const rows = unsynced.map(item => ({ user_id: userId, label_key: item.key, label: item.label, info_categories: { infoCategories: item.infoCategories, questionPrompt: item.questionPrompt || '', deleted: item.deleted === true }, updated_at: new Date(item.updatedAt).toISOString() }));
+                        const reconciliation = state.auth.client.from(STUDIO_SHARED_LABEL_TABLE).upsert(rows, { onConflict: 'user_id,label_key' }).then(({ error }) => {
+                            if (error) console.warn('Could not reconcile cached shared label information:', error);
+                        }).catch(error => console.warn('Could not reconcile cached shared label information:', error));
+                        sync.infoReconcile = reconciliation;
+                        reconciliation.finally(() => { if (sync.infoReconcile === reconciliation) sync.infoReconcile = null; });
+                    }
+                }
+            }
+            sync.lastLoadedAt = Date.now();
+            if (state.auth.imageEditor?.open) {
+                const panel = document.getElementById('studioImageEditorLabelSetSubmenu');
+                if (panel?.dataset.mode === 'load') renderStudioLabelSetSubmenu('load');
+            }
+            return state.auth.labelSets;
+        })().catch(error => { console.warn('Could not synchronize label library:', error); return state.auth.labelSets; }).finally(() => {
+            if (state.auth.labelLibrarySync.inFlight === task) state.auth.labelLibrarySync.inFlight = null;
+        });
+        state.auth.labelLibrarySync.inFlight = task;
+        return task;
+    }
+
+    // Phase 23F.41.17 — hide shared names with no surviving Saved Image/angle.
+    // Tombstones travel in the existing JSON column so stale caches on other devices
+    // cannot restore a misspelling. Never scan a partial/pending Saved Images index.
+    async function pruneStudioOrphanedSharedLabelInformation(remoteIndexRows = []) {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        if (!userId || !state.auth.client || state.auth.studioSavedImageSync?.loadedUserId !== userId
+            || state.auth.labelLibrarySync?.loadedUserId !== userId || !state.auth.labelLibrarySync.infoLoaded
+            || state.auth.labelLibrarySync.infoTableUnavailable || !isStudioSavedImageLegacyMigrationComplete(userId)
+            || getStudioSavedImagePendingDeletes(userId).length || getStudioSavedImagePendingUpsertKeys(userId).size) return 0;
+        const activeRows = (Array.isArray(remoteIndexRows) ? remoteIndexRows : []).filter(row => !row?.deleted_at);
+        if (activeRows.length > STUDIO_SAVED_IMAGE_LIBRARY_LIMIT || remoteIndexRows.length >= 500) return 0;
+        const library = getStudioSavedImageLibraryForPicker();
+        const loadedKeys = new Set(library.map(entry => getStudioSavedImageSyncKey(entry)).filter(Boolean));
+        if (activeRows.some(row => !loadedKeys.has(getStudioSavedImageRemoteRowKey(row)))) return 0;
+        const livingKeys = new Set();
+        const collect = labels => normalizeDiagramLabels(labels || []).forEach(label => {
+            const key = normalizeImageEditorSharedLabelKey(label.label);
+            if (key) livingKeys.add(key);
+        });
+        library.forEach(entry => {
+            if (isMultiAngleSavedImageEntry(entry)) getStudioSavedImageAngles(entry).forEach(angle => collect(angle?.labels));
+            else collect(entry?.labels);
+        });
+        const orphaned = normalizeStudioSharedLabelRecords(state.auth.sharedLabelInformation || [])
+            .filter(record => !record.deleted && !livingKeys.has(record.key));
+        if (!orphaned.length) return 0;
+        const now = Date.now();
+        const tombstones = new Map(orphaned.map(record => [record.key, { ...record, infoCategories: [], questionPrompt: '', deleted: true, updatedAt: now }]));
+        writeLocalStudioLabelLibrary('info', (state.auth.sharedLabelInformation || [])
+            .map(record => tombstones.get(record.key) || record));
+        const rows = Array.from(tombstones.values()).map(record => ({
+            user_id: userId, label_key: record.key, label: record.label,
+            info_categories: { infoCategories: [], questionPrompt: '', deleted: true },
+            updated_at: new Date(now).toISOString()
+        }));
+        try {
+            const { error } = await state.auth.client.from(STUDIO_SHARED_LABEL_TABLE)
+                .upsert(rows, { onConflict: 'user_id,label_key' });
+            if (error) throw error;
+        } catch (error) {
+            console.warn('Shared label cleanup is cached locally; remote sync will retry:', error);
+        }
+        return orphaned.length;
+    }
+
+    async function persistStudioSharedLabelInformation(labels = []) {
+        const now = Date.now();
+        const prior = new Map((state.auth.sharedLabelInformation || []).map(item => [item.key, item]));
+        const changed = [];
+        normalizeDiagramLabels(labels).forEach(label => {
+            const key = normalizeImageEditorSharedLabelKey(label.label);
+            if (!key) return;
+            const infoCategories = normalizeDiagramLabelInfoCategories(label);
+            const questionPrompt = normalizeDiagramLabelQuestionPrompt(label.questionPrompt);
+            if (prior.has(key) && prior.get(key).deleted !== true
+                && JSON.stringify(prior.get(key).infoCategories) === JSON.stringify(infoCategories)
+                && normalizeDiagramLabelQuestionPrompt(prior.get(key).questionPrompt) === questionPrompt) return;
+            const item = { key, label: label.label, infoCategories, questionPrompt, updatedAt: now, deleted: false };
+            prior.set(key, item);
+            changed.push(item);
+        });
+        if (!changed.length) return;
+        writeLocalStudioLabelLibrary('info', Array.from(prior.values()));
+        if (!state.auth.user?.id || !state.auth.client || state.auth.labelLibrarySync.infoTableUnavailable) return;
+        const userId = state.auth.user.id;
+        const rows = changed.map(item => ({ user_id: userId, label_key: item.key, label: item.label, info_categories: { infoCategories: item.infoCategories, questionPrompt: item.questionPrompt || '', deleted: false }, updated_at: new Date(item.updatedAt).toISOString() }));
+        const { error } = await state.auth.client.from(STUDIO_SHARED_LABEL_TABLE).upsert(rows, { onConflict: 'user_id,label_key' });
+        if (error) {
+            if (isStudioLabelLibraryTableMissing(error, STUDIO_SHARED_LABEL_TABLE)) state.auth.labelLibrarySync.infoTableUnavailable = true;
+            console.warn('Could not sync shared label information:', error);
+        }
+    }
+
+    async function persistStudioLabelSet(name, labels) {
+        const safeName = normalizeSheetText(name).slice(0, 100);
+        if (!safeName) throw new Error('Enter a name for the Label Set.');
+        const stamp = Date.now();
+        const existing = normalizeStudioLabelSets(state.auth.labelSets).find(item => item.name.toLocaleLowerCase() === safeName.toLocaleLowerCase());
+        if (existing) throw new Error('A Label Set with this name already exists. Choose a different name.');
+        const set = normalizeStudioLabelSet({ id: `ls-${stamp}-${Math.random().toString(36).slice(2, 10)}`, name: safeName, labels, updatedAt: stamp });
+        if (!set.labels.length) throw new Error('Add at least one named label before saving a set.');
+        const current = state.auth.labelSets || [];
+        if (current.length >= STUDIO_LABEL_SET_LIMIT) throw new Error('Label Set library is full.');
+        if (state.auth.user?.id && (state.auth.labelLibrarySync.setTableUnavailable || state.auth.labelLibrarySync.infoTableUnavailable || !state.auth.client)) throw new Error('The Label Set database is not available. Run the supplied Supabase migration first.');
+        if (state.auth.user?.id && state.auth.client) {
+            const { error } = await state.auth.client.from(STUDIO_LABEL_SET_TABLE).upsert({ user_id: state.auth.user.id, set_key: set.id, name: set.name, labels: set.labels, updated_at: new Date(stamp).toISOString() }, { onConflict: 'user_id,set_key' });
+            if (error) {
+                if (isStudioLabelLibraryTableMissing(error, STUDIO_LABEL_SET_TABLE)) state.auth.labelLibrarySync.setTableUnavailable = true;
+                throw new Error(`Could not save Label Set: ${normalizeSheetText(error.message)}`);
+            }
+        }
+        writeLocalStudioLabelLibrary('sets', [...current, set]);
+        await persistStudioSharedLabelInformation(set.labels);
+        return set;
+    }
+
+    async function deleteStudioLabelSet(id = '') {
+        const key = normalizeSheetText(id);
+        const target = (state.auth.labelSets || []).find(item => item.id === key);
+        if (!target) return false;
+        if (state.auth.user?.id && state.auth.client && !state.auth.labelLibrarySync.setTableUnavailable) {
+            const { error } = await state.auth.client.from(STUDIO_LABEL_SET_TABLE).delete().eq('user_id', state.auth.user.id).eq('set_key', key);
+            if (error) throw new Error(`Could not delete Label Set: ${normalizeSheetText(error.message)}`);
+        }
+        writeLocalStudioLabelLibrary('sets', state.auth.labelSets.filter(item => item.id !== key));
+        return true;
+    }
+
+    function getStudioSavedImageGlobalLabelRecords() {
+        const recordsByKey = new Map();
+        const library = getStudioSavedImageLibraryForPicker()
+            .map(normalizeStudioSavedImageEntry)
+            .filter(Boolean)
+            .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+        const addLabel = (label = {}, entry = {}, angleName = '') => {
+            const name = displayMathChemTextForEditor(label?.label || '').replace(/\s+/g, ' ').trim();
+            const key = normalizeImageEditorSharedLabelKey(name);
+            if (!key) return;
+            const infoCategories = normalizeDiagramLabelInfoCategories(label || {});
+            const description = buildDiagramLabelLegacyDescription(infoCategories, label?.description || '');
+            const questionPrompt = normalizeDiagramLabelQuestionPrompt(label?.questionPrompt);
+            if (key.length < 2 && !description && !questionPrompt) return;
+            const existing = recordsByKey.get(key);
+            const hasVisibleInfo = getDiagramLabelVisibleInfoCategories(label).length > 0;
+            const existingHasVisibleInfo = existing ? getDiagramLabelVisibleInfoCategories({ infoCategories: existing.infoCategories || [], description: existing.description || '' }).length > 0 : false;
+            if (!existing || (!existingHasVisibleInfo && hasVisibleInfo)) {
+                recordsByKey.set(key, {
+                    key,
+                    label: name,
+                    description,
+                    infoCategories,
+                    questionPrompt,
+                    source: normalizeSheetText(angleName || entry?.metadata?.diagramName || entry?.fileName || ''),
+                    entryId: normalizeSheetText(entry?.id || ''),
+                    updatedAt: normalizeSheetText(entry?.updatedAt || '')
+                });
+            } else if (!existing.questionPrompt && questionPrompt) {
+                existing.questionPrompt = questionPrompt;
+            }
+        };
+        library.forEach(entry => {
+            if (isMultiAngleSavedImageEntry(entry)) {
+                getStudioSavedImageAngles(entry).forEach(angle => {
+                    normalizeDiagramLabels(angle?.labels || []).forEach(label => addLabel(label, entry, angle?.name || ''));
+                });
+            } else {
+                normalizeDiagramLabels(entry.labels || []).forEach(label => addLabel(label, entry));
+            }
+        });
+        // Explicitly saved sets remain loadable, but deleted names must not resurface in automatic suggestions.
+        const orphanedKeys = new Set(normalizeStudioSharedLabelRecords(state.auth.sharedLabelInformation || [])
+            .filter(record => record.deleted).map(record => record.key));
+        normalizeStudioLabelSets(state.auth.labelSets || []).forEach(set => {
+            set.labels.forEach(label => {
+                const key = normalizeImageEditorSharedLabelKey(label.label);
+                if (orphanedKeys.has(key)) return;
+                if (!recordsByKey.has(key) || !getDiagramLabelVisibleInfoCategories(recordsByKey.get(key)).length) {
+                    const infoCategories = normalizeDiagramLabelInfoCategories(label);
+                    recordsByKey.set(key, { key, label: label.label, questionPrompt: normalizeDiagramLabelQuestionPrompt(label.questionPrompt), infoCategories, description: buildDiagramLabelLegacyDescription(infoCategories, ''), source: set.name, updatedAt: String(set.updatedAt) });
+                }
+            });
+        });
+        normalizeStudioSharedLabelRecords(state.auth.sharedLabelInformation || []).forEach(record => {
+            // Removed metadata stays as a sync tombstone, never as a usable suggestion.
+            if (record.deleted) return;
+            recordsByKey.set(record.key, { ...record, description: buildDiagramLabelLegacyDescription(record.infoCategories, ''), source: 'Shared Label Information' });
+        });
+        // Unique autocomplete names must have a surviving Saved Image label.
+        // Explicit Label Sets remain accessible in their own Load menu, but
+        // stale names from them never reappear as automatic predictions.
+        const living = new Set(library.flatMap(entry => getStudioSavedImageAngles(entry)
+            .flatMap(angle => normalizeDiagramLabels(angle.labels || []).map(label => normalizeImageEditorSharedLabelKey(label.label)))));
+        return Array.from(recordsByKey.values()).filter(record => living.has(record.key));
+    }
+
+    function applyStudioSavedImageGlobalLabelInformation(labels = [], records = null) {
+        const recordList = Array.isArray(records) ? records : getStudioSavedImageGlobalLabelRecords();
+        const recordsByKey = new Map(recordList.map(record => [record.key, record]));
+        return normalizeDiagramLabels(labels || []).map(label => {
+            const record = recordsByKey.get(normalizeImageEditorSharedLabelKey(label?.label));
+            if (!record) return label;
+            const next = setDiagramLabelInfoCategories({ ...label }, record.infoCategories || []);
+            next.questionPrompt = normalizeDiagramLabelQuestionPrompt(record.questionPrompt);
+            return next;
+        });
+    }
+
+    function applySharedLabelInformationToLabels(labels = [], key = '', categoriesValue = []) {
+        const safeKey = normalizeImageEditorSharedLabelKey(key);
+        const categories = normalizeDiagramLabelInfoCategories(categoriesValue);
+        const description = buildDiagramLabelLegacyDescription(categories, '');
+        const questionPrompt = normalizeDiagramLabelQuestionPrompt(categoriesValue?.questionPrompt);
+        let changed = false;
+        const nextLabels = normalizeDiagramLabels(labels || []).map(label => {
+            if (normalizeImageEditorSharedLabelKey(label?.label) !== safeKey) return label;
+            const currentCategories = normalizeDiagramLabelInfoCategories(label);
+            if (JSON.stringify(currentCategories) === JSON.stringify(categories) && normalizeDiagramLabelInfoBody(label.description || '') === normalizeDiagramLabelInfoBody(description) && normalizeDiagramLabelQuestionPrompt(label.questionPrompt) === questionPrompt) return label;
+            changed = true;
+            return {
+                ...label,
+                infoCategories: categories.map(category => ({ ...category })),
+                description,
+                questionPrompt
+            };
+        });
+        return { labels: nextLabels, changed };
+    }
+
+    function synchronizeStudioSavedImageGlobalLabelInformationFromEntry(sourceEntry = {}) {
+        const source = normalizeStudioSavedImageEntry(sourceEntry);
+        if (!source) return source;
+        const canonicalByKey = new Map();
+        const displayByKey = new Map();
+        const collectLabels = labels => {
+            normalizeDiagramLabels(labels || []).forEach(label => {
+                const key = normalizeImageEditorSharedLabelKey(label?.label);
+                if (!key || canonicalByKey.has(key)) return;
+                displayByKey.set(key, label.label);
+                canonicalByKey.set(key, { infoCategories: normalizeDiagramLabelInfoCategories(label), questionPrompt: normalizeDiagramLabelQuestionPrompt(label.questionPrompt) });
+            });
+        };
+        if (isMultiAngleSavedImageEntry(source)) getStudioSavedImageAngles(source).forEach(angle => collectLabels(angle?.labels || []));
+        else collectLabels(source.labels || []);
+        if (!canonicalByKey.size) return source;
+        const canonicalLabels = Array.from(canonicalByKey.entries()).map(([key, info]) => ({ label: displayByKey.get(key) || key, ...info }));
+        persistStudioSharedLabelInformation(canonicalLabels).catch(error => console.warn('Could not persist shared information:', error));
+
+        const library = getStudioSavedImageLibraryForPicker();
+        let changedCount = 0;
+        const changedEntries = [];
+        const nextLibrary = library.map(entryValue => {
+            const entry = normalizeStudioSavedImageEntry(entryValue);
+            if (!entry) return entryValue;
+            let changed = false;
+            let nextEntry = entry;
+            if (isMultiAngleSavedImageEntry(entry)) {
+                let nextAngles = getStudioSavedImageAngles(entry);
+                canonicalByKey.forEach((info, key) => {
+                    nextAngles = nextAngles.map(angle => {
+                        const applied = applySharedLabelInformationToLabels(angle?.labels || [], key, info);
+                        if (!applied.changed) return angle;
+                        changed = true;
+                        return { ...angle, labels: applied.labels };
+                    });
+                });
+                if (changed) {
+                    nextEntry = normalizeStudioSavedImageEntry({
+                        ...entry,
+                        labels: nextAngles[0]?.labels || entry.labels || [],
+                        angles: nextAngles,
+                        isMultiAngle: true,
+                        updatedAt: entry.updatedAt
+                    }) || entry;
+                }
+            } else {
+                let nextLabels = entry.labels || [];
+                canonicalByKey.forEach((info, key) => {
+                    const applied = applySharedLabelInformationToLabels(nextLabels, key, info);
+                    if (applied.changed) changed = true;
+                    nextLabels = applied.labels;
+                });
+                if (changed) {
+                    nextEntry = normalizeStudioSavedImageEntry({ ...entry, labels: nextLabels, updatedAt: entry.updatedAt }) || entry;
+                }
+            }
+            if (changed) {
+                changedCount += 1;
+                changedEntries.push(nextEntry);
+            }
+            return nextEntry;
+        });
+        if (changedCount) {
+            const merged = mergeStudioSavedImageEntries(nextLibrary);
+            state.auth.studioSavedImageMemoryLibrary = merged;
+            saveStudioSavedImageLibrary(merged);
+            changedEntries.forEach(markStudioSavedImagePendingUpsert);
+            scheduleStudioSavedImageRemoteSync({ reason: 'shared-label-information' });
+        }
+        const sourceId = normalizeSheetText(source.id || '');
+        return getStudioSavedImageLibraryForPicker().find(entry => normalizeSheetText(entry.id || '') === sourceId) || source;
+    }
+
+    function preserveStudioSavedImageGlobalLabelInformationBeforeDelete(entryValue = {}) {
+        const entry = normalizeStudioSavedImageEntry(entryValue);
+        if (!entry) return;
+        const globalByKey = new Map(getStudioSavedImageGlobalLabelRecords().map(record => [record.key, record]));
+        const keys = new Set();
+        const collect = labels => normalizeDiagramLabels(labels || []).forEach(label => {
+            const key = normalizeImageEditorSharedLabelKey(label?.label);
+            if (key) keys.add(key);
+        });
+        if (isMultiAngleSavedImageEntry(entry)) getStudioSavedImageAngles(entry).forEach(angle => collect(angle?.labels || []));
+        else collect(entry.labels || []);
+        if (!keys.size) return;
+        const sourceId = normalizeSheetText(entry.id || '');
+        const library = getStudioSavedImageLibraryForPicker();
+        const stillUsed = new Set();
+        library.filter(item => normalizeSheetText(item?.id || '') !== sourceId).forEach(item => {
+            const collectRemaining = labels => normalizeDiagramLabels(labels || []).forEach(label => {
+                const key = normalizeImageEditorSharedLabelKey(label.label);
+                if (key) stillUsed.add(key);
+            });
+            if (isMultiAngleSavedImageEntry(item)) getStudioSavedImageAngles(item).forEach(angle => collectRemaining(angle?.labels));
+            else collectRemaining(item?.labels);
+        });
+        const surviving = Array.from(keys).filter(key => stillUsed.has(key)).map(key => globalByKey.get(key)).filter(Boolean);
+        persistStudioSharedLabelInformation(surviving).catch(error => console.warn('Could not preserve surviving label information:', error));
+        const changedEntries = [];
+        const nextLibrary = library.map(itemValue => {
+            const item = normalizeStudioSavedImageEntry(itemValue);
+            if (!item || normalizeSheetText(item.id || '') === sourceId) return itemValue;
+            let changed = false;
+            let nextItem = item;
+            if (isMultiAngleSavedImageEntry(item)) {
+                let nextAngles = getStudioSavedImageAngles(item);
+                keys.forEach(key => {
+                    const record = globalByKey.get(key);
+                    if (!record) return;
+                    nextAngles = nextAngles.map(angle => {
+                        const applied = applySharedLabelInformationToLabels(angle?.labels || [], key, record);
+                        if (!applied.changed) return angle;
+                        changed = true;
+                        return { ...angle, labels: applied.labels };
+                    });
+                });
+                if (changed) {
+                    nextItem = normalizeStudioSavedImageEntry({
+                        ...item,
+                        labels: nextAngles[0]?.labels || item.labels || [],
+                        angles: nextAngles,
+                        isMultiAngle: true,
+                        updatedAt: item.updatedAt
+                    }) || item;
+                }
+            } else {
+                let nextLabels = item.labels || [];
+                keys.forEach(key => {
+                    const record = globalByKey.get(key);
+                    if (!record) return;
+                    const applied = applySharedLabelInformationToLabels(nextLabels, key, record);
+                    if (applied.changed) changed = true;
+                    nextLabels = applied.labels;
+                });
+                if (changed) nextItem = normalizeStudioSavedImageEntry({ ...item, labels: nextLabels, updatedAt: item.updatedAt }) || item;
+            }
+            if (changed) changedEntries.push(nextItem);
+            return nextItem;
+        });
+        if (!changedEntries.length) return;
+        const merged = mergeStudioSavedImageEntries(nextLibrary);
+        state.auth.studioSavedImageMemoryLibrary = merged;
+        saveStudioSavedImageLibrary(merged);
+        changedEntries.forEach(markStudioSavedImagePendingUpsert);
+        scheduleStudioSavedImageRemoteSync({ reason: 'preserve-shared-label-information-before-delete' });
+    }
+
     function isImageEditorSharedLabelTarget(editor = state.auth.imageEditor) {
         return !!(editor?.open && editor?.labelsEnabled && isImageEditorStandaloneDiagramTarget(editor));
     }
@@ -11731,15 +16928,17 @@ The deletion becomes permanent when you save the diagram.`);
                 if (!key) return;
                 const infoCategories = normalizeDiagramLabelInfoCategories(item);
                 const description = buildDiagramLabelLegacyDescription(infoCategories, item.description || '');
+                const questionPrompt = normalizeDiagramLabelQuestionPrompt(item.questionPrompt);
                 // Single-character untouched defaults are not useful predictions unless they carry study information.
-                if (key.length < 2 && !description) return;
+                if (key.length < 2 && !description && !questionPrompt) return;
                 const existing = recordsByKey.get(key);
                 if (!existing) {
-                    recordsByKey.set(key, { key, label: name, description, infoCategories, source });
+                    recordsByKey.set(key, { key, label: name, description, questionPrompt, infoCategories, source });
                 } else if (!existing.description && description) {
                     existing.description = description;
                     existing.infoCategories = infoCategories;
                 }
+                if (existing && !existing.questionPrompt && questionPrompt) existing.questionPrompt = questionPrompt;
             });
         };
         if (editor.target?.multiAngleDraft === true) {
@@ -11752,6 +16951,10 @@ The deletion becomes permanent when you save the diagram.`);
         } else {
             addLabels(editor.labels, normalizeSheetText(editor.metadata?.diagramName || editor.sourceLabel), excludeIndex);
         }
+        getStudioSavedImageGlobalLabelRecords().forEach(record => {
+            if (!record?.key || recordsByKey.has(record.key)) return;
+            recordsByKey.set(record.key, { ...record });
+        });
         return Array.from(recordsByKey.values());
     }
 
@@ -11771,6 +16974,8 @@ The deletion becomes permanent when you save the diagram.`);
                 `[data-image-editor-label-info-row][data-image-editor-label-index="${index}"]`
             );
             if (!row) return;
+            const promptInput = row.querySelector('[data-image-editor-label-question-prompt]');
+            if (promptInput && promptInput !== sourceElement && promptInput !== document.activeElement) promptInput.value = normalizeDiagramLabelQuestionPrompt(label.questionPrompt);
             const categoryRows = Array.from(row.querySelectorAll('[data-image-editor-label-info-category-row]'));
             if (categoryRows.length !== categories.length) return;
             categoryRows.forEach((categoryRow, categoryIndex) => {
@@ -11793,6 +16998,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!key) return false;
         const categories = normalizeDiagramLabelInfoCategories(categoriesValue);
         const description = buildDiagramLabelLegacyDescription(categories, '');
+        if (options.silent !== true) getImageEditorLabelInfoDirtyKeys(editor).add(key);
         editor.labels.forEach(label => {
             if (normalizeImageEditorSharedLabelKey(label?.label) === key) {
                 label.infoCategories = categories.map(category => ({ ...category }));
@@ -11818,6 +17024,78 @@ The deletion becomes permanent when you save the diagram.`);
         return true;
     }
 
+    function synchronizeImageEditorSharedQuestionPrompt(index, promptValue, options = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.labels?.[index]) return false;
+        const questionPrompt = normalizeDiagramLabelQuestionPrompt(promptValue);
+        const key = normalizeImageEditorSharedLabelKey(editor.labels[index].label);
+        if (!key) return false;
+        if (options.silent !== true) getImageEditorLabelInfoDirtyKeys(editor).add(key);
+        editor.labels.forEach(label => {
+            if (normalizeImageEditorSharedLabelKey(label.label) === key) label.questionPrompt = questionPrompt;
+        });
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            draft.angles.forEach(angle => {
+                angle.labels = normalizeDiagramLabels(angle.labels || []).map(label =>
+                    normalizeImageEditorSharedLabelKey(label.label) === key ? { ...label, questionPrompt } : label
+                );
+            });
+        }
+        (elements.studioImageEditorLabelInfoList?.querySelectorAll('[data-image-editor-label-info-row]') || []).forEach(row => {
+            const rowIndex = Number(row.dataset.imageEditorLabelIndex);
+            if (normalizeImageEditorSharedLabelKey(editor.labels?.[rowIndex]?.label) !== key) return;
+            const input = row.querySelector('[data-image-editor-label-question-prompt]');
+            if (input && input !== options.sourceElement && input !== document.activeElement) input.value = questionPrompt;
+        });
+        return true;
+    }
+
+    // Phase 23F.41.55: reliably commit the last edited field before focus moves
+    // to the canvas, a different label, a collapsing panel, or Save & Exit.
+    // Input events already update the model; focusout/change provide a final
+    // idempotent guard (including browser autofill/IME commit behavior).
+    function commitImageEditorLabelInfoField(input) {
+        const editor = state.auth.imageEditor;
+        const row = input?.closest?.('[data-image-editor-label-info-row]');
+        if (!editor?.open || !editor.labelInfoEnabled || !row) return;
+        const index = Number(row.dataset.imageEditorLabelIndex ?? -1);
+        const label = editor.labels?.[index];
+        if (!Number.isInteger(index) || index < 0 || !label) return;
+        if (input.matches('[data-image-editor-label-info-name]')) {
+            const name = normalizeAuthoredMathChemText(input.value) || getDiagramLabelName(index);
+            if (label.label !== name) {
+                label.label = name;
+                syncImageEditorLabelNameFields(index, input);
+                renderImageEditorCanvas();
+            }
+            return;
+        }
+        if (input.matches('[data-image-editor-label-question-prompt]')) {
+            const prompt = normalizeDiagramLabelQuestionPrompt(input.value);
+            if (label.questionPrompt !== prompt) synchronizeImageEditorSharedQuestionPrompt(index, prompt, { sourceElement: input });
+            return;
+        }
+        const categoryRow = input.closest('[data-image-editor-label-info-category-row]');
+        const categoryIndex = Number(categoryRow?.dataset.imageEditorLabelInfoCategoryIndex ?? -1);
+        if (!Number.isInteger(categoryIndex) || categoryIndex < 0) return;
+        const categories = normalizeDiagramLabelInfoCategories(label);
+        if (!categories[categoryIndex]) return;
+        let changed = false;
+        if (input.matches('[data-image-editor-label-info-category-name]')) {
+            const value = displayMathChemTextForEditor(normalizeSheetText(input.value)).slice(0, DIAGRAM_LABEL_INFO_CATEGORY_NAME_MAX);
+            changed = categories[categoryIndex].name !== value;
+            categories[categoryIndex].name = value;
+        } else if (input.matches('[data-image-editor-label-info-body]')) {
+            const value = normalizeDiagramLabelInfoBody(input.value);
+            changed = categories[categoryIndex].body !== value;
+            categories[categoryIndex].body = value;
+        }
+        if (!changed) return;
+        setDiagramLabelInfoCategories(label, categories);
+        synchronizeImageEditorSharedInfoCategories(index, categories, { sourceElement: input });
+    }
+
     function synchronizeImageEditorSharedDescription(index, descriptionValue, options = {}) {
         const categories = normalizeDiagramLabelInfoCategories([{ name: 'Information', body: normalizeDiagramLabelInfoBody(descriptionValue) }]);
         return synchronizeImageEditorSharedInfoCategories(index, categories, options);
@@ -11826,14 +17104,45 @@ The deletion becomes permanent when you save the diagram.`);
     function commitAllImageEditorSharedLabelMatches() {
         const editor = state.auth.imageEditor;
         if (!isImageEditorSharedLabelTarget(editor)) return;
-        editor.labels.forEach((label, index) => {
-            const record = getImageEditorSharedLabelRecordByName(label?.label, { excludeIndex: index });
-            if (!record) return;
-            label.label = normalizeAuthoredMathChemText(record.label) || getDiagramLabelName(index);
-            setDiagramLabelInfoCategories(label, record.infoCategories || normalizeDiagramLabelInfoCategories([{ name: 'Information', body: record.description || '' }]));
-        });
+        const dirtyKeys = getImageEditorLabelInfoDirtyKeys(editor);
+        const globalByKey = new Map(getStudioSavedImageGlobalLabelRecords().map(record => [record.key, record]));
+        const canonicalByKey = new Map();
+        const remember = labels => {
+            normalizeDiagramLabels(labels || []).forEach(label => {
+                const key = normalizeImageEditorSharedLabelKey(label?.label);
+                if (!key || canonicalByKey.has(key)) return;
+                const globalRecord = globalByKey.get(key);
+                const useCurrentInformation = dirtyKeys.has(key) || !globalRecord;
+                canonicalByKey.set(key, {
+                    label: displayMathChemTextForEditor(label.label).replace(/\s+/g, ' ').trim(),
+                    categories: useCurrentInformation
+                        ? normalizeDiagramLabelInfoCategories(label)
+                        : normalizeDiagramLabelInfoCategories(globalRecord.infoCategories || []),
+                    questionPrompt: normalizeDiagramLabelQuestionPrompt(useCurrentInformation ? label.questionPrompt : globalRecord.questionPrompt)
+                });
+            });
+        };
+        // Current editor/draft names are authoritative. For information, an untouched
+        // reused name inherits the shared Saved Image memory, while an explicitly
+        // edited/cleared label becomes the new shared value when the diagram saves.
+        remember(editor.labels || []);
         if (editor.target?.multiAngleDraft === true) {
             const draft = getMultiAngleCreatorState();
+            draft.angles.forEach(angle => remember(angle.labels || []));
+        }
+        const applyCanonical = labels => normalizeDiagramLabels(labels || []).map(label => {
+            const key = normalizeImageEditorSharedLabelKey(label?.label);
+            const canonical = canonicalByKey.get(key);
+            if (!canonical) return label;
+            const next = { ...label, label: normalizeAuthoredMathChemText(canonical.label) || label.label };
+            setDiagramLabelInfoCategories(next, canonical.categories);
+            next.questionPrompt = canonical.questionPrompt;
+            return next;
+        });
+        editor.labels = applyCanonical(editor.labels || []);
+        if (editor.target?.multiAngleDraft === true) {
+            const draft = getMultiAngleCreatorState();
+            draft.angles.forEach(angle => { angle.labels = applyCanonical(angle.labels || []); });
             const activeAngleId = normalizeSheetText(editor.target.multiAngleAngleId || '');
             const activeAngle = draft.angles.find(angle => normalizeSheetText(angle.id) === activeAngleId);
             if (activeAngle) activeAngle.labels = normalizeDiagramLabels(editor.labels || []);
@@ -11848,7 +17157,10 @@ The deletion becomes permanent when you save the diagram.`);
         records.forEach(record => {
             if (!record.key) return;
             const representativeIndex = (editor.labels || []).findIndex(label => normalizeImageEditorSharedLabelKey(label?.label) === record.key);
-            if (representativeIndex >= 0) synchronizeImageEditorSharedInfoCategories(representativeIndex, record.infoCategories || [], { silent: true });
+            if (representativeIndex >= 0) {
+                synchronizeImageEditorSharedInfoCategories(representativeIndex, record.infoCategories || [], { silent: true });
+                synchronizeImageEditorSharedQuestionPrompt(representativeIndex, record.questionPrompt, { silent: true });
+            }
             else if (editor.target?.multiAngleDraft === true) {
                 const draft = getMultiAngleCreatorState();
                 const categories = normalizeDiagramLabelInfoCategories(record.infoCategories || []);
@@ -11856,12 +17168,359 @@ The deletion becomes permanent when you save the diagram.`);
                 draft.angles.forEach(angle => {
                     angle.labels = normalizeDiagramLabels(angle.labels || []).map(label => (
                         normalizeImageEditorSharedLabelKey(label.label) === record.key
-                            ? { ...label, infoCategories: categories.map(category => ({ ...category })), description }
+                            ? { ...label, infoCategories: categories.map(category => ({ ...category })), description, questionPrompt: normalizeDiagramLabelQuestionPrompt(record.questionPrompt) }
                             : label
                     ));
                 });
             }
         });
+    }
+
+    // Phase 23F.41.61 — explicit, existing-name-only global rename. Only label
+    // metadata is touched; canonical images, thumbnails and media URLs remain intact.
+    let studioGlobalLabelRenameBusy = false;
+
+    function renameStructuredDiagramLabelNames(value, fromKey, toName, parentKey = '') {
+        const labelArrayKeys = new Set(['labels', 'sharedLabels', 'diagramLabels', 'questionImageLabels', 'termImageLabels', 'definitionImageLabels']);
+        if (Array.isArray(value)) {
+            if (labelArrayKeys.has(parentKey)) return value.map(item => {
+                if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+                const changedName = normalizeImageEditorSharedLabelKey(item.label || item.name || '') === fromKey;
+                return { ...item, ...(changedName ? { label: toName } : {}) };
+            });
+            return value.map(item => renameStructuredDiagramLabelNames(item, fromKey, toName));
+        }
+        if (!value || typeof value !== 'object') return value;
+        return Object.fromEntries(Object.entries(value).map(([key, child]) =>
+            [key, renameStructuredDiagramLabelNames(child, fromKey, toName, key)]));
+    }
+
+    function migrateSavedImageReferenceSignatures(value, signatureMap = new Map()) {
+        if (!signatureMap.size) return value;
+        const signatureFields = new Set(['reuseSignature', 'savedImageSignature',
+            'term_image_reuse_signature', 'definition_image_reuse_signature',
+            'term_image_saved_signature', 'definition_image_saved_signature',
+            'termImageSavedSignature', 'definitionImageSavedSignature']);
+        if (Array.isArray(value)) return value.map(item => migrateSavedImageReferenceSignatures(item, signatureMap));
+        if (!value || typeof value !== 'object') return value;
+        return Object.fromEntries(Object.entries(value).map(([key, child]) =>
+            [key, signatureFields.has(key) && typeof child === 'string'
+                ? (signatureMap.get(child) || child)
+                : migrateSavedImageReferenceSignatures(child, signatureMap)]));
+    }
+
+    function renameFlashcardStoredLabelMetadata(html, fromKey, toName, signatureMap = new Map()) {
+        return String(html || '').replace(/<!--STUDY_BUNNY_FLASHCARD_META:([\s\S]*?)-->/g, (whole, encoded) => {
+            let decoded;
+            try { decoded = JSON.parse(decodeURIComponent(encoded)); } catch (error) { return whole; }
+            const next = migrateSavedImageReferenceSignatures(
+                renameStructuredDiagramLabelNames(decoded, fromKey, toName), signatureMap);
+            return JSON.stringify(next) === JSON.stringify(decoded)
+                ? whole : `<!--STUDY_BUNNY_FLASHCARD_META:${encodeURIComponent(JSON.stringify(next))}-->`;
+        });
+    }
+
+    function renameSavedImageLabelMetadata(entryValue, fromKey, toName, stamp) {
+        const entry = normalizeStudioSavedImageEntry(entryValue);
+        if (!entry) return null;
+        const angles = getStudioSavedImageAngles(entry);
+        if (!angles.some(angle => angle.labels.some(label => normalizeImageEditorSharedLabelKey(label.label) === fromKey))) return null;
+        const existingUnique = getSavedImageCreditedUniqueLabelKeys(entry);
+        const existingAngleCertificates = normalizeSavedImageMasteredAngles(entry.masteredAnglesById || {});
+        const pins = normalizeSavedImagePinnedLabels(entry.pinnedLabelsByAngle || {});
+        const nextAngles = angles.map(angle => ({
+            ...angle,
+            labels: angle.labels.map(label => normalizeImageEditorSharedLabelKey(label.label) === fromKey
+                ? { ...label, label: toName } : label)
+        }));
+        // Every certificate is re-signed only if it was valid before the rename.
+        const certificates = {};
+        angles.forEach((angle, i) => {
+            if (existingAngleCertificates[angle.id] === getSavedImageAngleMasterySignature(angle)) {
+                certificates[angle.id] = getSavedImageAngleMasterySignature(nextAngles[i]);
+            }
+        });
+        Object.entries(pins).forEach(([angleId, records]) => {
+            pins[angleId] = records.map(record => record.key === fromKey
+                ? { ...record, key: normalizeImageEditorSharedLabelKey(toName) } : record);
+        });
+        const next = normalizeStudioSavedImageEntry({
+            ...entry, id: getStudioSavedImageSyncKey(entry) || entry.id, labels: nextAngles[0].labels,
+            angles: entry.angles?.length ? nextAngles : [],
+            pinnedLabelsByAngle: pins, masteredAnglesById: certificates,
+            updatedAt: stamp
+        });
+        if (!next) return null;
+        const credited = new Set([...existingUnique].map(key => key === fromKey ? normalizeImageEditorSharedLabelKey(toName) : key));
+        next.masteredUniqueLabels = {
+            signature: getSavedImageUniqueMasterySignature(next), keys: [...credited]
+        };
+        const oldSchedule = normalizeSavedImageSpacedReview(entry.spacedReview);
+        next.spacedReview = { ...oldSchedule,
+            signature: oldSchedule.signature === getSavedImageUniqueMasterySignature(entry)
+                ? getSavedImageUniqueMasterySignature(next) : '',
+            cycleKeys: oldSchedule.cycleKeys.map(key => key === fromKey ? normalizeImageEditorSharedLabelKey(toName) : key)
+        };
+        return next;
+    }
+
+    // Phase 23F.41.63 — Quiz Studio rename is scoped to the same Class + Folder
+    // combinations as the Saved Images actually containing this unique label.
+    // Folder IDs are queryable server-side. Direct-to-class (no-folder) quizzes
+    // store their class in the description metadata, so read only the no-folder
+    // subset and then filter by the matching class locally.
+    async function persistGlobalLabelRenameToQuizRecords(fromKey, toName, signatureMap = new Map(), affectedSavedImages = []) {
+        const client = state.auth.client;
+        const userId = normalizeSheetText(state.auth.user?.id || '');
+        if (!userId || !client || !affectedSavedImages.length) return;
+        const scopes = new Map();
+        affectedSavedImages.forEach(entry => {
+            const organization = getStudioSavedImageOrganization(entry);
+            const classId = normalizeSheetText(organization.classId || '');
+            const folderId = normalizeSheetText(organization.folderId || '');
+            scopes.set(`${classId}\u0000${folderId}`, { classId, folderId });
+        });
+        if (!scopes.size) return;
+        const folderIds = [...new Set([...scopes.values()].map(scope => scope.folderId).filter(Boolean))];
+        const noFolderClasses = new Set([...scopes.values()]
+            .filter(scope => !scope.folderId).map(scope => scope.classId));
+        const readTasks = [];
+        for (let i = 0; i < folderIds.length; i += 60) {
+            const ids = folderIds.slice(i, i + 60);
+            readTasks.push(fetchAllSupabaseRows(() => client.from('quizzes')
+                .select('id,folder_id,description').eq('user_id', userId).in('folder_id', ids),
+                { pageSize: 200, label: 'Scoped label rename folder quizzes' }));
+        }
+        if (noFolderClasses.size) {
+            readTasks.push(fetchAllSupabaseRows(() => client.from('quizzes')
+                .select('id,folder_id,description').eq('user_id', userId).is('folder_id', null),
+                { pageSize: 200, label: 'Scoped label rename direct-to-class quizzes' }));
+        }
+        if (!readTasks.length) return;
+        const found = (await Promise.all(readTasks)).flat();
+        const matchedById = new Map();
+        found.forEach(row => {
+            const quizId = normalizeSheetText(row.id || '');
+            const folderId = normalizeSheetText(row.folder_id || '');
+            if (!quizId) return;
+            if (!folderId) {
+                // An unfiled quiz must belong to the same direct class (or General).
+                if (!noFolderClasses.has(getQuizClassIdFromDescription(row.description || ''))) return;
+            } else {
+                const sameFolder = [...scopes.values()].filter(scope => scope.folderId === folderId);
+                if (!sameFolder.length) return;
+                const actualClassId = getFolderClassId(folderId);
+                // Folder IDs uniquely identify their class. Check class when the
+                // folder catalog is available; an unloaded catalog must not cause
+                // a false negative for an otherwise exact folder-ID match.
+                if (actualClassId && !sameFolder.some(scope => scope.classId === actualClassId)) return;
+            }
+            matchedById.set(quizId, row);
+        });
+        const quizzes = [...matchedById.values()];
+        const quizIds = [...matchedById.keys()];
+        if (!quizIds.length) return;
+        const questionTasks = [];
+        for (let i = 0; i < quizIds.length; i += 60) {
+            const ids = quizIds.slice(i, i + 60);
+            questionTasks.push(fetchAllSupabaseRows(() => client.from('questions')
+                .select('id,question_type,quiz_id').in('quiz_id', ids),
+                { pageSize: 500, label: 'Scoped label rename questions' }));
+        }
+        const questions = (await Promise.all(questionTasks)).flat();
+        const writes = [];
+        for (const row of quizzes) {
+            const description = normalizeSheetText(row.description || '');
+            const metadata = parseQuizMetadata(description);
+            const next = migrateSavedImageReferenceSignatures(
+                renameStructuredDiagramLabelNames(metadata, fromKey, toName), signatureMap);
+            if (JSON.stringify(metadata) !== JSON.stringify(next)) {
+                const updated = buildQuizDescriptionFromMetadata(next);
+                writes.push(() => client.from('quizzes').update({ description: updated }).eq('id', row.id));
+            }
+        }
+        const diagramIds = questions.filter(q => ['multiple_choice','diagrams','typed_answer'].includes(q.question_type)).map(q => q.id);
+        const flashIds = questions.filter(q => q.question_type === 'flashcard').map(q => q.id);
+        const detailReads = [];
+        for (let i = 0; i < diagramIds.length; i += 70) {
+            const ids = diagramIds.slice(i, i + 70);
+            detailReads.push(client.from('multiple_choice_questions')
+                .select('question_id,options_json').in('question_id', ids).then(({ data, error }) => {
+                    if (error) throw error;
+                    (data || []).forEach(row => {
+                        if (!row.options_json || typeof row.options_json !== 'object') return;
+                        const next = migrateSavedImageReferenceSignatures(
+                            renameStructuredDiagramLabelNames(row.options_json, fromKey, toName), signatureMap);
+                        if (JSON.stringify(next) !== JSON.stringify(row.options_json)) {
+                            writes.push(() => client.from('multiple_choice_questions')
+                                .update({ options_json: next }).eq('question_id', row.question_id));
+                        }
+                    });
+                }));
+        }
+        for (let i = 0; i < flashIds.length; i += 70) {
+            const ids = flashIds.slice(i, i + 70);
+            detailReads.push(client.from('flashcard_questions')
+                .select('question_id,term_html,definition_html').in('question_id', ids).then(({ data, error }) => {
+                    if (error) throw error;
+                    (data || []).forEach(row => {
+                        const term_html = renameFlashcardStoredLabelMetadata(row.term_html, fromKey, toName, signatureMap);
+                        const definition_html = renameFlashcardStoredLabelMetadata(row.definition_html, fromKey, toName, signatureMap);
+                        if (term_html !== row.term_html || definition_html !== row.definition_html) {
+                            writes.push(() => client.from('flashcard_questions')
+                                .update({ term_html, definition_html }).eq('question_id', row.question_id));
+                        }
+                    });
+                }));
+        }
+        await Promise.all(detailReads);
+        // Four concurrent metadata-only writes reduce long network wait chains.
+        // Every write is awaited and errors remain visible; no silent partial success.
+        for (let i = 0; i < writes.length; i += 4) {
+            const responses = await Promise.all(writes.slice(i, i + 4).map(run => run()));
+            const failed = responses.find(response => response?.error);
+            if (failed) throw failed.error;
+        }
+    }
+
+    async function updateExistingUniqueLabelNameEverywhere(originalName, replacementName) {
+        if (studioGlobalLabelRenameBusy) return false;
+        const fromKey = normalizeImageEditorSharedLabelKey(originalName);
+        const toName = displayMathChemTextForEditor(normalizeSheetText(replacementName)).replace(/\s+/g, ' ').trim().slice(0, 200);
+        const toKey = normalizeImageEditorSharedLabelKey(toName);
+        if (!fromKey || !toKey || fromKey === toKey) return false;
+        const library = getStudioSavedImageLibraryForPicker();
+        const isInSavedImages = library.some(entry => getStudioSavedImageAngles(entry)
+            .some(angle => angle.labels.some(label => normalizeImageEditorSharedLabelKey(label.label) === fromKey)));
+        if (!isInSavedImages) throw new Error('Only names already saved in a diagram can be updated.');
+        const collision = library.some(entry => getStudioSavedImageAngles(entry)
+            .some(angle => angle.labels.some(label => normalizeImageEditorSharedLabelKey(label.label) === toKey)))
+            || normalizeStudioLabelSets(state.auth.labelSets || []).some(set => set.labels.some(label => normalizeImageEditorSharedLabelKey(label.label) === toKey))
+            || normalizeStudioSharedLabelRecords(state.auth.sharedLabelInformation || []).some(record => !record.deleted && record.key === toKey);
+        if (collision) throw new Error('That unique label name already exists. Choose a different name.');
+        const stamp = new Date().toISOString();
+        const replacements = new Map();
+        const signatureMap = new Map();
+        library.forEach(entry => {
+            const next = renameSavedImageLabelMetadata(entry, fromKey, toName, stamp);
+            if (next) {
+                replacements.set(normalizeSheetText(entry.id), next);
+                for (const getSignature of [getStudioSavedImageSignature, getStudioSavedImagePreMetadataSignature, getStudioSavedImageLegacySignature]) {
+                    const oldSignature = getSignature(entry);
+                    const newSignature = getSignature(next);
+                    if (oldSignature && newSignature && oldSignature !== newSignature) signatureMap.set(oldSignature, newSignature);
+                }
+            }
+        });
+        studioGlobalLabelRenameBusy = true;
+        try {
+            // Quiz/flashcard writes alter metadata only: no cloud image downloads or re-uploads.
+            await persistGlobalLabelRenameToQuizRecords(fromKey, toName, signatureMap, [...replacements.values()]);
+            const now = Date.now();
+            const updatedSets = normalizeStudioLabelSets(state.auth.labelSets || []).map(set => {
+                const labels = set.labels.map(label => normalizeImageEditorSharedLabelKey(label.label) === fromKey
+                    ? { ...label, label: toName } : label);
+                return labels.some((label, i) => label.label !== set.labels[i].label)
+                    ? { ...set, labels, updatedAt: now } : set;
+            });
+            const records = normalizeStudioSharedLabelRecords(state.auth.sharedLabelInformation || []);
+            const oldRecord = records.find(record => record.key === fromKey && !record.deleted);
+            const nextRecords = records.filter(record => record.key !== toKey && record.key !== fromKey);
+            nextRecords.push({ key: fromKey, label: originalName, infoCategories: [], questionPrompt: '', deleted: true, updatedAt: now });
+            if (oldRecord) nextRecords.push({ ...oldRecord, key: toKey, label: toName, deleted: false, updatedAt: now });
+            // Push the name migration to the shared label and Label Set tables.
+            if (state.auth.user?.id && state.auth.client) {
+                const user_id = state.auth.user.id;
+                if (!state.auth.labelLibrarySync.infoTableUnavailable) {
+                    const rows = nextRecords.filter(r => r.key === fromKey || r.key === toKey).map(r => ({
+                        user_id, label_key: r.key, label: r.label,
+                        info_categories: { infoCategories: r.infoCategories, questionPrompt: r.questionPrompt || '', deleted: !!r.deleted },
+                        updated_at: new Date(r.updatedAt).toISOString()
+                    }));
+                    const { error } = await state.auth.client.from(STUDIO_SHARED_LABEL_TABLE).upsert(rows, { onConflict: 'user_id,label_key' });
+                    if (error) throw error;
+                }
+                if (!state.auth.labelLibrarySync.setTableUnavailable) {
+                    for (const set of updatedSets) {
+                        const original = (state.auth.labelSets || []).find(item => item.id === set.id);
+                        if (!original || JSON.stringify(original.labels) === JSON.stringify(set.labels)) continue;
+                        const { error } = await state.auth.client.from(STUDIO_LABEL_SET_TABLE).upsert({
+                            user_id, set_key: set.id, name: set.name, labels: set.labels,
+                            updated_at: new Date(set.updatedAt).toISOString()
+                        }, { onConflict: 'user_id,set_key' });
+                        if (error) throw error;
+                    }
+                }
+            }
+            const nextLibrary = library.map(entry => replacements.get(normalizeSheetText(entry.id)) || entry);
+            const merged = mergeStudioSavedImageEntries(nextLibrary);
+            state.auth.studioSavedImageMemoryLibrary = merged;
+            saveStudioSavedImageLibrary(merged);
+            replacements.forEach(markStudioSavedImagePendingUpsert);
+            if (replacements.size) scheduleStudioSavedImageRemoteSync({ reason: 'global-unique-label-rename' });
+            writeLocalStudioLabelLibrary('sets', updatedSets);
+            writeLocalStudioLabelLibrary('info', nextRecords);
+            const renameLabels = labels => normalizeDiagramLabels(labels || []).map(label =>
+                normalizeImageEditorSharedLabelKey(label.label) === fromKey ? { ...label, label: toName } : label);
+            const editor = state.auth.imageEditor;
+            if (editor?.open) {
+                editor.labels = renameLabels(editor.labels);
+                if (editor.target?.savedImageOriginalEntry) editor.target.savedImageOriginalEntry =
+                    replacements.get(normalizeSheetText(editor.target.savedImageOriginalEntry.id)) || editor.target.savedImageOriginalEntry;
+                if (editor.target?.savedImageEntryId && replacements.has(normalizeSheetText(editor.target.savedImageEntryId))) {
+                    editor.target.savedImageEntryId = replacements.get(normalizeSheetText(editor.target.savedImageEntryId)).id;
+                }
+            }
+            const draft = getMultiAngleCreatorState();
+            draft.angles.forEach(angle => { angle.labels = renameLabels(angle.labels); });
+            if (draft.originalEntry) draft.originalEntry = replacements.get(normalizeSheetText(draft.originalEntry.id)) || draft.originalEntry;
+            if (draft.editingEntryId && replacements.has(normalizeSheetText(draft.editingEntryId))) {
+                draft.editingEntryId = replacements.get(normalizeSheetText(draft.editingEntryId)).id;
+            }
+            state.auth.studioQuestionImageLabels = renameLabels(state.auth.studioQuestionImageLabels);
+            state.auth.studioFlashcardTermImageLabels = renameLabels(state.auth.studioFlashcardTermImageLabels);
+            state.auth.studioFlashcardDefinitionImageLabels = renameLabels(state.auth.studioFlashcardDefinitionImageLabels);
+            if (state.auth.studioDiagramSharing) state.auth.studioDiagramSharing.sharedLabels = renameLabels(state.auth.studioDiagramSharing.sharedLabels);
+            (state.auth.studioQuizQuestions || []).forEach(row => {
+                for (const key of ['term_image_saved_signature','definition_image_saved_signature',
+                    'term_image_reuse_signature','definition_image_reuse_signature']) {
+                    if (row[key] && signatureMap.has(row[key])) row[key] = signatureMap.get(row[key]);
+                }
+                if (row.term_image_labels) row.term_image_labels = renameLabels(row.term_image_labels);
+                if (row.definition_image_labels) row.definition_image_labels = renameLabels(row.definition_image_labels);
+                if (row.diagramLabels) row.diagramLabels = renameLabels(row.diagramLabels);
+                if (row.questionImageLabels) row.questionImageLabels = renameLabels(row.questionImageLabels);
+            });
+            if (state.auth.studioFlashcardReusableImageKeys instanceof Set) {
+                const updated = new Set();
+                state.auth.studioFlashcardReusableImageKeys.forEach(key => updated.add(signatureMap.get(key) || key));
+                state.auth.studioFlashcardReusableImageKeys = updated;
+            }
+            invalidateSupabaseManagementCache(['managedQuizzes', 'quizList']);
+            invalidateReviewModeMiniQuizEntrySnapshot();
+            renderImageEditorLabelList();
+            if (editor?.labelInfoEnabled) renderImageEditorLabelInfoList();
+            renderImageEditorCanvas();
+            renderDiagramCreatorSavedImages();
+            return true;
+        } finally {
+            studioGlobalLabelRenameBusy = false;
+        }
+    }
+
+    function canUpdateExistingImageEditorLabelName(index, key) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor) || !editor.labels?.[index]) return false;
+        if (normalizeImageEditorSharedLabelKey(editor.labels[index].label) !== key) return false;
+        const draft = getMultiAngleCreatorState();
+        const original = editor.target?.multiAngleDraft === true ? draft.originalEntry : editor.target?.savedImageOriginalEntry;
+        if (!original) return false;
+        const angleId = normalizeSheetText(editor.target?.multiAngleAngleId || '');
+        const angle = angleId ? getStudioSavedImageAngles(original).find(a => normalizeSheetText(a.id) === angleId)
+            : getStudioSavedImageAngles(original)[0];
+        if (!angle?.labels?.[index] || normalizeImageEditorSharedLabelKey(angle.labels[index].label) !== key) return false;
+        return getStudioSavedImageLibraryForPicker().some(entry => getStudioSavedImageAngles(entry).some(a =>
+            a.labels.some(label => normalizeImageEditorSharedLabelKey(label.label) === key)));
     }
 
     function ensureImageEditorLabelSuggestionPopup() {
@@ -11875,12 +17534,53 @@ The deletion becomes permanent when you save the diagram.`);
         popup.hidden = true;
         document.body.appendChild(popup);
         popup.addEventListener('pointerdown', event => {
-            const option = event.target.closest('[data-image-editor-label-suggestion-key]');
+            const option = event.target.closest('[data-image-editor-label-suggestion-key], [data-image-editor-label-rename-key]');
             if (!option) return;
             event.preventDefault();
             option.click();
         });
-        popup.addEventListener('click', event => {
+        popup.addEventListener('click', async event => {
+            const renameButton = event.target.closest('[data-image-editor-label-rename-key]');
+            if (renameButton) {
+                const key = normalizeSheetText(renameButton.dataset.imageEditorLabelRenameKey || '');
+                const sourceInput = popup.__sourceInput;
+                const index = Number(popup.__labelIndex);
+                if (!sourceInput || !canUpdateExistingImageEditorLabelName(index, key)) return;
+                const record = getImageEditorSharedLabelRecords({ excludeIndex: index }).find(item => item.key === key);
+                if (!record) return;
+                popup.dataset.renaming = 'true';
+                popup.innerHTML = `<div class="studio-unique-label-rename-editor">
+                  <label for="studioUniqueLabelRenameInput">Update ${escapeHtml(record.label)}</label>
+                  <input id="studioUniqueLabelRenameInput" maxlength="200" value="${escapeHtml(record.label)}" autocomplete="off" spellcheck="false">
+                  <div class="studio-unique-label-rename-actions"><button type="button" data-global-label-rename-cancel>Cancel</button><button type="button" data-global-label-rename-save>Update</button></div>
+                  <span class="studio-unique-label-rename-error" role="alert" hidden></span>
+                </div>`;
+                positionImageEditorLabelSuggestionPopup(sourceInput, popup);
+                popup.querySelector('#studioUniqueLabelRenameInput')?.focus();
+                popup.querySelector('#studioUniqueLabelRenameInput')?.select();
+                return;
+            }
+            if (event.target.closest('[data-global-label-rename-cancel]')) {
+                hideImageEditorLabelSuggestions();
+                return;
+            }
+            if (event.target.closest('[data-global-label-rename-save]')) {
+                const input = popup.querySelector('#studioUniqueLabelRenameInput');
+                const oldName = state.auth.imageEditor?.labels?.[Number(popup.__labelIndex)]?.label;
+                const errorEl = popup.querySelector('.studio-unique-label-rename-error');
+                const saveBtn = popup.querySelector('[data-global-label-rename-save]');
+                if (!input || !oldName || !saveBtn || saveBtn.disabled) return;
+                saveBtn.disabled = true;
+                try {
+                    const completed = await updateExistingUniqueLabelNameEverywhere(oldName, input.value);
+                    if (completed) hideImageEditorLabelSuggestions();
+                    else throw new Error('Choose a different unique label name.');
+                } catch (error) {
+                    if (errorEl) { errorEl.textContent = normalizeSheetText(error?.message || 'Could not update the label name.'); errorEl.hidden = false; }
+                    saveBtn.disabled = false;
+                }
+                return;
+            }
             const option = event.target.closest('[data-image-editor-label-suggestion-key]');
             if (!option) return;
             const sourceInput = popup.__sourceInput;
@@ -11901,6 +17601,7 @@ The deletion becomes permanent when you save the diagram.`);
         popup.innerHTML = '';
         popup.__sourceInput = null;
         popup.__labelIndex = -1;
+        delete popup.dataset.renaming;
     }
 
     function positionImageEditorLabelSuggestionPopup(input, popup) {
@@ -11929,13 +17630,13 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         const records = getImageEditorSharedLabelRecords({ excludeIndex: index });
+        const originalKey = normalizeImageEditorSharedLabelKey(state.auth.imageEditor?.labels?.[index]?.label);
+        const ownSavedRecord = originalKey === query && canUpdateExistingImageEditorLabelName(index, originalKey)
+            ? getStudioSavedImageGlobalLabelRecords().find(record => record.key === originalKey) : null;
+        if (ownSavedRecord && !records.some(record => record.key === originalKey)) records.unshift(ownSavedRecord);
         const suggestions = records
-            .filter(record => record.key.startsWith(query) || record.key.includes(query))
-            .sort((a, b) => {
-                const aStarts = a.key.startsWith(query) ? 0 : 1;
-                const bStarts = b.key.startsWith(query) ? 0 : 1;
-                return aStarts - bStarts || a.label.localeCompare(b.label);
-            })
+            .filter(record => record.key.startsWith(query))
+            .sort((a, b) => a.label.localeCompare(b.label))
             .slice(0, 8);
         if (!suggestions.length) {
             hideImageEditorLabelSuggestions();
@@ -11945,9 +17646,12 @@ The deletion becomes permanent when you save the diagram.`);
         popup.__sourceInput = input;
         popup.__labelIndex = index;
         popup.innerHTML = suggestions.map((record, suggestionIndex) => `
-            <button type="button" class="studio-image-editor-label-suggestion ${suggestionIndex === 0 ? 'is-active' : ''}" data-image-editor-label-suggestion-key="${escapeHtml(record.key)}" role="option" aria-selected="${suggestionIndex === 0 ? 'true' : 'false'}">
-              <span>${escapeHtml(record.label)}</span>
-            </button>
+            <div class="studio-image-editor-suggestion-row">
+              <button type="button" class="studio-image-editor-label-suggestion ${suggestionIndex === 0 ? 'is-active' : ''}" data-image-editor-label-suggestion-key="${escapeHtml(record.key)}" role="option" aria-selected="${suggestionIndex === 0 ? 'true' : 'false'}">
+                <span>${escapeHtml(record.label)}</span>
+              </button>
+              ${canUpdateExistingImageEditorLabelName(index, record.key) ? `<button type="button" class="studio-image-editor-label-update" data-image-editor-label-rename-key="${escapeHtml(record.key)}" aria-label="Update unique label ${escapeHtml(record.label)} everywhere">Update</button>` : ''}
+            </div>
         `).join('');
         popup.classList.remove('hidden');
         popup.hidden = false;
@@ -11959,6 +17663,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!isImageEditorSharedLabelTarget(editor) || !editor.labels?.[index] || !record) return false;
         editor.labels[index].label = normalizeAuthoredMathChemText(record.label) || getDiagramLabelName(index);
         setDiagramLabelInfoCategories(editor.labels[index], record.infoCategories || normalizeDiagramLabelInfoCategories([{ name: 'Information', body: record.description || '' }]));
+        editor.labels[index].questionPrompt = normalizeDiagramLabelQuestionPrompt(record.questionPrompt);
         syncImageEditorLabelNameFields(index, sourceInput);
         if (sourceInput) {
             sourceInput.value = displayMathChemTextForEditor(editor.labels[index].label);
@@ -11970,6 +17675,8 @@ The deletion becomes permanent when you save the diagram.`);
             }
         }
         synchronizeImageEditorSharedInfoCategories(index, editor.labels[index].infoCategories || []);
+        synchronizeImageEditorSharedQuestionPrompt(index, editor.labels[index].questionPrompt);
+        renderImageEditorLabelInfoList();
         renderImageEditorCanvas();
         hideImageEditorLabelSuggestions();
         setImageEditorStatus(`Reused ${displayMathChemTextForEditor(editor.labels[index].label)} and synchronized its label information.`);
@@ -11980,6 +17687,12 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         if (!isImageEditorSharedLabelTarget(editor) || !editor.labels?.[index] || !(input instanceof HTMLInputElement)) return false;
         const typedName = displayMathChemTextForEditor(normalizeSheetText(input.value)).replace(/\s+/g, ' ').trim();
+        // Phase 23F.41.62: clicking an already-named label is not a name edit.
+        // Re-applying the same shared record used to redraw the Label Information
+        // panel and destroy the focused input (and its Update popup).
+        if (normalizeImageEditorSharedLabelKey(typedName) === normalizeImageEditorSharedLabelKey(editor.labels[index].label)) {
+            return false;
+        }
         const record = getImageEditorSharedLabelRecordByName(typedName, { excludeIndex: index });
         if (record) return applyImageEditorSharedLabelRecord(index, record, input);
         editor.labels[index].label = normalizeAuthoredMathChemText(typedName) || getDiagramLabelName(index);
@@ -12006,6 +17719,10 @@ The deletion becomes permanent when you save the diagram.`);
             const context = getImageEditorLabelInputContext(event.target);
             if (context) showImageEditorLabelSuggestions(context.input, context.index);
         });
+        // Focusout fires before the subsequent click action can redraw the panel.
+        // Change is the fallback for browser-committed input without a final keystroke.
+        document.addEventListener('focusout', event => commitImageEditorLabelInfoField(event.target), true);
+        document.addEventListener('change', event => commitImageEditorLabelInfoField(event.target), true);
         document.addEventListener('input', event => {
             const context = getImageEditorLabelInputContext(event.target);
             if (context) {
@@ -12117,7 +17834,12 @@ The deletion becomes permanent when you save the diagram.`);
             if (!context) return;
             window.setTimeout(() => {
                 const popup = document.getElementById('studioImageEditorLabelSuggestionPopup');
-                if (popup?.contains(document.activeElement)) return;
+                if (popup?.dataset.renaming === 'true' || popup?.contains(document.activeElement)) return;
+                // A previous input can lose focus just before a different label
+                // input receives focus. Never let its delayed commit close the
+                // currently active label's suggestion or rebuild its row.
+                const activeLabel = getImageEditorLabelInputContext(document.activeElement);
+                if (activeLabel && activeLabel.input !== context.input) return;
                 commitImageEditorSharedLabelName(context.input, context.index);
             }, 80);
         });
@@ -12150,10 +17872,13 @@ The deletion becomes permanent when you save the diagram.`);
                 sourceLabel,
                 fallbackLabel: 'Saved diagram image.',
                 labelsEnabled: true,
-                labels: normalizeDiagramLabels(target.labels || []),
+                labels: applyStudioSavedImageGlobalLabelInformation(target.labels || []),
                 visualAids: normalizeDiagramVisualAids(target.visualAids || []),
                 drawStrokes: cloneImageEditorDrawStrokes(target.drawStrokes || []),
-                metadata
+                labelSize: normalizeDiagramLabelSize(target.labelSize ?? target.savedImageOriginalEntry?.labelSize),
+                metadata,
+                classId: normalizeSheetText(target.classId || target.savedImageOriginalEntry?.classId || ''),
+                folderId: normalizeSheetText(target.folderId || target.savedImageOriginalEntry?.folderId || '')
             };
         }
         if (target.kind === 'option') {
@@ -12256,7 +17981,11 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function resetImageEditorState() {
+        if (state.auth.imageEditor?.quickReplaceTimerId) {
+            window.clearTimeout(state.auth.imageEditor.quickReplaceTimerId);
+        }
         clearImageEditorObjectUrl();
+        elements.studioImageEditorCanvasWrap?.classList.remove('is-shift-pan-ready');
         state.auth.imageEditor = {
             open: false,
             target: null,
@@ -12265,18 +17994,20 @@ The deletion becomes permanent when you save the diagram.`);
             objectUrl: '',
             originalDataUrl: '',
             baseCanvas: null,
+            imageDirty: false,
             mode: 'crop',
             draftShape: null,
             isDrawing: false,
             dragStart: null,
             history: [],
             arrowColor: '#000000',
-            lineThickness: 7,
+            lineThickness: 2,
             zoomScale: 1,
             zoomX: 0,
             zoomY: 0,
             panMode: false,
             isPanning: false,
+            shiftPanHeld: false,
             panPointerId: null,
             panStartClientX: 0,
             panStartClientY: 0,
@@ -12302,18 +18033,33 @@ The deletion becomes permanent when you save the diagram.`);
             labelInfoEnabled: false,
             labelInfoPanelOpen: false,
             labelInfoExpandedIndex: null,
+            labelInfoDirtyKeys: new Set(),
             activeConnectorLabelIndex: null,
             connectorStylePickerLabelIndex: null,
+            quickMultiAnchorLabelIndex: null,
+            quickReplaceVisibleIndex: null,
+            quickReplaceHoveredIndex: null,
+            quickReplacePressedIndex: null,
+            quickReplacePressedPoint: null,
+            quickReplaceTimerId: null,
             pendingConnectorStyle: 'straight',
             pendingConnectorEndpoint: 'none',
+            pendingBracketStart: null,
+            pendingBracketPreview: null,
+            pendingMultiTargets: null,
             draggingConnectorAnchor: false,
             draggingLabelIndex: null,
             hoveredLabelIndex: null,
             showLabelPanel: false,
             labelsLayerVisible: true,
-            labelPanelWidth: Number(state.auth.diagramLabelPanelWidth) || 340,
+            ghostLabelsEnabled: false,
+            ghostLabelOpacity: 0.35,
+            singleLabelViewEnabled: false,
+            labelSize: 1,
+            ghostActiveLabelIndex: 0,
+            labelPanelWidth: Number(state.auth.diagramLabelPanelWidth) || 410,
             labelPanelCanvasMinWidth: 0,
-            labelPanelAppliedWidth: Number(state.auth.diagramLabelPanelWidth) || 340,
+            labelPanelAppliedWidth: Number(state.auth.diagramLabelPanelWidth) || 410,
             visualAids: [],
             visualAidsEnabled: false,
             showVisualAidPanel: false,
@@ -12340,7 +18086,7 @@ The deletion becomes permanent when you save the diagram.`);
             activeVisualAidDraftPath: null,
             visualAidPreviewProgress: 0,
             visualAidPreviewPlaying: false,
-            visualAidPreviewLoop: false,
+            visualAidPreviewLoop: true,
             visualAidPreviewFrameId: 0,
             visualAidPreviewStartedAt: 0,
             visualAidPreviewActive: false
@@ -12348,7 +18094,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     const IMAGE_EDITOR_MIN_ZOOM = 1;
-    const IMAGE_EDITOR_MAX_ZOOM = 5;
+    const IMAGE_EDITOR_MAX_ZOOM = 7;
     const IMAGE_EDITOR_ZOOM_STEP = 0.5;
 
     function normalizeImageEditorZoomValue(value, fallback = 0) {
@@ -12479,7 +18225,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled) return false;
         const normalizedColor = color == null ? null : normalizeEditorHexColor(color, '#000000').toLowerCase();
-        const normalizedThickness = thickness == null ? null : Math.min(24, Math.max(1, Number(thickness) || 7));
+        const normalizedThickness = thickness == null ? null : Math.min(24, Math.max(0.25, Number(thickness) || 7));
         let changed = false;
         const applyToLabels = labels => {
             const source = Array.isArray(labels) ? labels : [];
@@ -12537,7 +18283,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         if (!editor || !control) return;
         const raw = Number(control.value);
-        const nextThickness = Math.min(24, Math.max(1, Number.isFinite(raw) ? raw : 7));
+        const nextThickness = Math.min(24, Math.max(0.25, Number.isFinite(raw) ? raw : 2));
         control.value = String(nextThickness);
         editor.lineThickness = nextThickness;
         if (elements.studioImageEditorLineThicknessValue) {
@@ -12573,12 +18319,61 @@ The deletion becomes permanent when you save the diagram.`);
             event.stopPropagation();
             toggleImageEditorSliderPopover('thickness');
         });
+        // Trackpads and mouse wheels both emit WheelEvent; only pixel-mode, smooth
+        // non-modifier gestures are eligible for canvas panning. Conventional large
+        // vertical wheel steps stay with browser/page scrolling. A recognized
+        // trackpad burst can contain larger momentum deltas, so keep that burst
+        // active briefly without treating every vertical wheel step as a pan.
+        let trackpadPanEditor = null;
+        let trackpadPanLastTimestamp = -Infinity;
+        let trackpadPanFrame = 0;
+        let trackpadPanDeltaX = 0;
+        let trackpadPanDeltaY = 0;
         bindOnce(elements.studioImageEditorCanvasWrap, 'zoomWheelBound', 'wheel', event => {
             const editor = state.auth.imageEditor;
-            if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor) || (!event.ctrlKey && !event.metaKey)) return;
-            event.preventDefault();
-            const factor = Math.exp(-event.deltaY * 0.01);
-            zoomImageEditorAtPoint((editor.zoomScale || IMAGE_EDITOR_MIN_ZOOM) * factor, event.clientX, event.clientY);
+            if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor)) return;
+            if (event.ctrlKey || event.metaKey) {
+                event.preventDefault();
+                const factor = Math.exp(-event.deltaY * 0.01);
+                zoomImageEditorAtPoint((editor.zoomScale || IMAGE_EDITOR_MIN_ZOOM) * factor, event.clientX, event.clientY);
+                return;
+            }
+            if (editor.zoomScale <= IMAGE_EDITOR_MIN_ZOOM + 0.01 || editor.isPanning || event.shiftKey || event.altKey || event.deltaMode !== 0) return;
+            if (event.target?.closest?.('button, input, textarea, select, [contenteditable="true"]')) return;
+            const dx = Number(event.deltaX) || 0;
+            const dy = Number(event.deltaY) || 0;
+            if (!dx && !dy) return;
+            const elapsed = Number(event.timeStamp) - trackpadPanLastTimestamp;
+            const continuingTrackpadGesture = trackpadPanEditor === editor && elapsed >= 0 && elapsed < 150;
+            const smallSmoothDelta = Math.abs(dy) > 0 && Math.abs(dy) <= 60;
+            const fractionalDelta = Math.abs(dy - Math.round(dy)) > 0.001;
+            if (!continuingTrackpadGesture && !(Math.abs(dx) > 0.01 || smallSmoothDelta || fractionalDelta)) return;
+            if (event.cancelable) event.preventDefault();
+            trackpadPanEditor = editor;
+            trackpadPanLastTimestamp = Number(event.timeStamp);
+            trackpadPanDeltaX += dx;
+            trackpadPanDeltaY += dy;
+            if (trackpadPanFrame) return;
+            trackpadPanFrame = window.requestAnimationFrame(() => {
+                trackpadPanFrame = 0;
+                const deltaX = trackpadPanDeltaX;
+                const deltaY = trackpadPanDeltaY;
+                trackpadPanDeltaX = 0;
+                trackpadPanDeltaY = 0;
+                // Ignore a queued wheel frame if the user has closed/replaced the
+                // editor, switched to a pointer drag, or reset the zoom.
+                if (state.auth.imageEditor !== editor || !editor.open || editor.isPanning
+                    || editor.zoomScale <= IMAGE_EDITOR_MIN_ZOOM + 0.01) return;
+                const next = clampImageEditorZoomPan(editor.zoomScale, editor.zoomX - deltaX, editor.zoomY - deltaY);
+                editor.zoomX = next.x;
+                editor.zoomY = next.y;
+                // Pan only existing layers. Rebuilding the SVG/badge markup for
+                // every trackpad wheel frame would undo the editor's responsiveness.
+                const canvas = elements.studioImageEditorCanvas;
+                if (!canvas) return;
+                canvas.style.transform = `translate3d(${next.x}px, ${next.y}px, 0) scale(${next.scale})`;
+                syncImageEditorVectorOverlayBounds();
+            });
         }, { passive: false });
 
         if (!imageEditorZoomWindowEventsBound) {
@@ -12612,10 +18407,9 @@ The deletion becomes permanent when you save the diagram.`);
                     });
                     return;
                 }
-                if (event.code === 'Space') {
-                    event.preventDefault();
-                    editor.spacePanHeld = true;
-                    elements.studioImageEditorCanvasWrap?.classList.add('is-space-pan-ready');
+                if (event.key === 'Shift') {
+                    editor.shiftPanHeld = true;
+                    elements.studioImageEditorCanvasWrap?.classList.add('is-shift-pan-ready');
                     return;
                 }
                 if (editor.zoomScale <= IMAGE_EDITOR_MIN_ZOOM + 0.01) return;
@@ -12627,15 +18421,15 @@ The deletion becomes permanent when you save the diagram.`);
             });
             window.addEventListener('keyup', event => {
                 handleImageEditorVisualAidPenKeyUp(event);
-                if (event.code !== 'Space') return;
+                if (event.key !== 'Shift') return;
                 const editor = state.auth.imageEditor;
-                if (editor) editor.spacePanHeld = false;
-                elements.studioImageEditorCanvasWrap?.classList.remove('is-space-pan-ready');
+                if (editor) editor.shiftPanHeld = false;
+                elements.studioImageEditorCanvasWrap?.classList.remove('is-shift-pan-ready');
             });
             window.addEventListener('blur', () => {
                 const editor = state.auth.imageEditor;
-                if (editor) editor.spacePanHeld = false;
-                elements.studioImageEditorCanvasWrap?.classList.remove('is-space-pan-ready');
+                if (editor) editor.shiftPanHeld = false;
+                elements.studioImageEditorCanvasWrap?.classList.remove('is-shift-pan-ready');
             });
         }
     }
@@ -12722,8 +18516,8 @@ The deletion becomes permanent when you save the diagram.`);
 
     function getImageEditorLineThickness() {
         const editor = state.auth.imageEditor;
-        const raw = Number(elements.studioImageEditorLineThicknessInput?.value || editor?.lineThickness || 7);
-        return Math.min(24, Math.max(1, Number.isFinite(raw) ? raw : 7));
+        const raw = Number(elements.studioImageEditorLineThicknessInput?.value || editor?.lineThickness || 2);
+        return Math.min(24, Math.max(0.25, Number.isFinite(raw) ? raw : 2));
     }
 
     function getImageEditorDrawSize() {
@@ -12919,8 +18713,7 @@ The deletion becomes permanent when you save the diagram.`);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             return;
         }
-        const width = Math.max(1, img.naturalWidth || canvas.width || 1);
-        const height = Math.max(1, img.naturalHeight || canvas.height || 1);
+        const { width, height } = getImageEditorStrokeOverlayDimensions(img.naturalWidth, img.naturalHeight);
         if (canvas.width !== width) canvas.width = width;
         if (canvas.height !== height) canvas.height = height;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -12956,7 +18749,7 @@ The deletion becomes permanent when you save the diagram.`);
         let svg = frame.querySelector('.flashcard-side-image-connector-layer');
         if (!svg && hasConnectors) svg = ensureFlashcardStudyConnectorLayer(frame);
         if (!svg) return;
-        renderDiagramConnectorSvgLayer(svg, labels, frame.querySelector('.flashcard-side-image'), frame, true);
+        renderDiagramConnectorSvgLayer(svg, labels, frame.querySelector('.flashcard-side-image'), frame, true, { outlineColor: '#ffffff', outlineExtraWidth: 2 });
     }
 
     function ensureFlashcardZoomConnectorLayer() {
@@ -12982,7 +18775,7 @@ The deletion becomes permanent when you save the diagram.`);
         let svg = wrap.querySelector('.flashcard-zoom-image-connector-layer');
         if (!svg && hasConnectors) svg = ensureFlashcardZoomConnectorLayer();
         if (!svg) return;
-        renderDiagramConnectorSvgLayer(svg, labels, elements.flashcardZoomImage, wrap, true);
+        renderDiagramConnectorSvgLayer(svg, labels, elements.flashcardZoomImage, wrap, true, { outlineColor: '#ffffff', outlineExtraWidth: 2 });
     }
 
     function clearFlashcardZoomConnectorLayer() {
@@ -13262,6 +19055,12 @@ The deletion becomes permanent when you save the diagram.`);
     function restoreImageEditorDrawingBackup(editor = state.auth.imageEditor) {
         const key = getImageEditorDrawingBackupKey(editor);
         if (!key || !editor?.open) return false;
+        if (editor.target?.multiAngleDraft === true) {
+            const angle = getMultiAngleCreatorState().angles.find(item => item.id === normalizeSheetText(editor.target.multiAngleAngleId || ''));
+            // Recovery backups are for interrupted sessions. Once this angle has
+            // been captured into the current draft, its draft state wins on reopen.
+            if (angle?.editorDraftCheckpointed === true) return false;
+        }
         try {
             const raw = window.localStorage?.getItem(key);
             if (!raw) return false;
@@ -13304,7 +19103,7 @@ The deletion becomes permanent when you save the diagram.`);
         }
         editor.drawSaveDirty = true;
         editor.drawSaveRetryCount = Math.min(3, (Number(editor.drawSaveRetryCount) || 0) + 1);
-        setImageEditorDrawingSaveStatus(editor.drawSaveRetryCount < 3 ? 'Drawing backup failed—retrying…' : 'Drawing is still open. Press Save Diagram before leaving.', { ...options, persist: editor.drawSaveRetryCount >= 3 });
+        setImageEditorDrawingSaveStatus(editor.drawSaveRetryCount < 3 ? 'Drawing backup failed—retrying…' : 'Drawing is still open. Press Save before leaving.', { ...options, persist: editor.drawSaveRetryCount >= 3 });
         if (editor.drawSaveRetryCount < 3) scheduleImageEditorDrawingCommit({ delayMs: 1200, silent: options.silent });
         return false;
     }
@@ -13564,9 +19363,12 @@ The deletion becomes permanent when you save the diagram.`);
         if ((respectLayerVisibility && editor?.labelsLayerVisible === false) || !canvas || !strokes.length) return;
         const labels = normalizeImageEditorLabels(editor?.labels || []);
         const maxLabelIndex = Math.max(labels.length - 1, 0);
+        const singleLabelIndex = respectLayerVisibility && isImageEditorSingleLabelViewEnabled(editor)
+            ? getImageEditorSingleLabelViewIndex(editor) : -1;
         const grouped = new Map();
         strokes.forEach(stroke => {
             const labelIndex = Math.min(maxLabelIndex, Math.max(0, Number(stroke.labelIndex) || 0));
+            if (singleLabelIndex >= 0 && labelIndex !== singleLabelIndex) return;
             if (!isImageEditorLabelDrawVisible(labelIndex)) return;
             if (!grouped.has(labelIndex)) grouped.set(labelIndex, []);
             grouped.get(labelIndex).push(stroke);
@@ -13622,6 +19424,384 @@ The deletion becomes permanent when you save the diagram.`);
         renderImageEditorCanvas();
     }
 
+    function getImageEditorBracketSide(start = null, end = null, label = null, canvas = elements.studioImageEditorCanvas) {
+        if (!start || !end || !label || !canvas) return 1;
+        const startPx = { x: (start.x / 100) * canvas.width, y: (start.y / 100) * canvas.height };
+        const endPx = { x: (end.x / 100) * canvas.width, y: (end.y / 100) * canvas.height };
+        const labelPx = getImageEditorLabelPixelPosition(label, canvas);
+        const spanX = endPx.x - startPx.x;
+        const spanY = endPx.y - startPx.y;
+        const length = Math.hypot(spanX, spanY);
+        if (length <= 0.0001) return 1;
+        const normalX = -spanY / length;
+        const normalY = spanX / length;
+        const midpointX = (startPx.x + endPx.x) / 2;
+        const midpointY = (startPx.y + endPx.y) / 2;
+        const labelSide = ((labelPx.x - midpointX) * normalX) + ((labelPx.y - midpointY) * normalY);
+        return labelSide >= 0 ? -1 : 1;
+    }
+
+    function getImageEditorBracketPlacementPoint(start = null, candidate = null, canvas = elements.studioImageEditorCanvas, snapToAxis = false) {
+        if (!start || !candidate || !canvas || !snapToAxis) return candidate;
+        const dx = ((candidate.x - start.x) / 100) * canvas.width;
+        const dy = ((candidate.y - start.y) / 100) * canvas.height;
+        if (Math.abs(dx) >= Math.abs(dy)) return { x: candidate.x, y: start.y };
+        return { x: start.x, y: candidate.y };
+    }
+
+    // Multi Connector authoring is transient until Finish is pressed. Store
+    // normalized target positions only; the derived SVG is never saved as art.
+    function finishImageEditorMultiConnector() {
+        const editor = state.auth.imageEditor;
+        const index = editor?.activeConnectorLabelIndex;
+        const targets = Array.isArray(editor?.pendingMultiTargets) ? editor.pendingMultiTargets : [];
+        if (!editor?.labelsEnabled || editor.mode !== 'connector' || !editor.labels?.[index] || targets.length < 2) return;
+        pushImageEditorLabelHistory();
+        const existing = normalizeDiagramConnector(editor.labels[index].connector);
+        editor.labels[index].connector = normalizeDiagramConnector({
+            anchorX: targets[0].x,
+            anchorY: targets[0].y,
+            targets: targets.map(target => ({ ...target })),
+            color: normalizeEditorHexColor(editor.arrowColor || '#000000', '#000000'),
+            thickness: Math.min(24, Math.max(0.25, Number(editor.lineThickness) || getImageEditorLineThickness())),
+            style: 'multi',
+            endpoint: normalizeDiagramConnectorEndpoint(editor.pendingConnectorEndpoint || existing?.endpoint || 'none')
+        });
+        editor.pendingMultiTargets = null;
+        editor.quickMultiAnchorLabelIndex = null;
+        editor.activeConnectorLabelIndex = null;
+        editor.mode = 'labels';
+        editor.draggingConnectorAnchor = false;
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+        setImageEditorStatus(`Multi Connector saved with ${targets.length} landmarks. Drag the label to reposition its leader; select Connector to add more landmarks.`);
+    }
+
+    // The + shortcut does not commit or change the saved connector until Finish.
+    // The existing angled/no-ball anchor becomes landmark one in the normal Multi draft.
+    function beginImageEditorMultiConnectorFromAnchor() {
+        const editor = state.auth.imageEditor;
+        const index = editor?.activeConnectorLabelIndex;
+        const connector = normalizeDiagramConnector(editor?.labels?.[index]?.connector);
+        if (!editor?.open || !editor.labelsEnabled || editor.mode !== 'connector' || editor.isDrawing
+            || editor.quickMultiAnchorLabelIndex !== index || !connector
+            || normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || '') !== 'angled'
+            || getDiagramConnectorStyle(connector) !== 'angled'
+            || getDiagramConnectorEndpoint(connector) !== 'none') return;
+        editor.pendingConnectorStyle = 'multi';
+        editor.pendingConnectorEndpoint = 'none';
+        editor.pendingMultiTargets = [{ x: connector.anchorX, y: connector.anchorY }];
+        editor.quickMultiAnchorLabelIndex = null;
+        editor.pendingBracketStart = null;
+        editor.pendingBracketPreview = null;
+        editor.connectorStylePickerLabelIndex = null;
+        editor.draggingConnectorAnchor = false;
+        editor.dragStart = null;
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+        setImageEditorStatus('Multi Connector: first landmark kept. Click another landmark, then tap ✓ Finish.');
+    }
+
+    // Phase 23F.41.53: the optional × beside the first placed connector is a
+    // one-step Delete + re-arm of that SAME label's default connector tool.
+    // Reuse the established delete / activate handlers (one undo checkpoint),
+    // not a new connector or media-saving path. The + shortcut is unchanged.
+    function replaceImageEditorConnectorFromAnchor() {
+        const editor = state.auth.imageEditor;
+        const index = editor?.activeConnectorLabelIndex;
+        const connector = normalizeDiagramConnector(editor?.labels?.[index]?.connector);
+        if (!editor?.open || !editor.labelsEnabled || editor.mode !== 'connector' || editor.isDrawing
+            || !Number.isInteger(index) || editor.quickMultiAnchorLabelIndex !== index || !connector
+            || normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || '') !== 'angled'
+            || getDiagramConnectorStyle(connector) !== 'angled'
+            || getDiagramConnectorEndpoint(connector) !== 'none') return;
+        replaceImageEditorConnectorForLabel(index);
+    }
+
+    // Phase 23F.41.54: the hover/tap × uses the SAME delete-and-rearm path
+    // as Phase .53. It never changes saved connector data until explicitly used.
+    function clearImageEditorQuickReplace({ resetHover = true } = {}) {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        if (editor.quickReplaceTimerId) window.clearTimeout(editor.quickReplaceTimerId);
+        editor.quickReplaceTimerId = null;
+        editor.quickReplaceVisibleIndex = null;
+        editor.canvasSelectedQuickReplaceIndex = null;
+        if (resetHover) editor.quickReplaceHoveredIndex = null;
+        updateImageEditorQuickReplaceControl();
+    }
+
+    function canShowImageEditorQuickReplace(index, editor = state.auth.imageEditor) {
+        // Shared eligibility for the label shortcut and the dedicated anchor ×.
+        // Connector replacement must remain callable while the + / × pair is visible.
+        return !!(editor?.open && isImageEditorStandaloneDiagramTarget(editor)
+            && editor.labelsEnabled && editor.labelsLayerVisible !== false
+            && ['labels', 'connector'].includes(editor.mode) && !editor.isPanning
+            && !editor.activeDrawStroke && !isImageEditorLabelDrawActive()
+            && Number.isInteger(index) && index >= 0 && editor.labels?.[index]
+            && normalizeDiagramConnector(editor.labels[index].connector)
+            && (!isImageEditorSingleLabelViewEnabled(editor) || index === getImageEditorSingleLabelViewIndex(editor)));
+    }
+
+    function canShowImageEditorSoloQuickReplace(index, editor = state.auth.imageEditor) {
+        // Phase .57: contextual label hover/tap × is only available in Labels
+        // mode. Connector placement retains the dedicated + / × anchor pair.
+        // Keep the legacy 2-second tap × accessible when clicking a label
+        // now focuses its input and (via that input) activates its connector.
+        // This narrowly scoped exception is NOT used during connector placement.
+        const isSelectedCanvasTap = editor?.mode === 'connector'
+            && editor.activeConnectorLabelIndex === index
+            && editor.canvasSelectedQuickReplaceIndex === index
+            && editor.quickMultiAnchorLabelIndex == null
+            && !editor.draggingConnectorAnchor;
+        return (editor?.mode === 'labels' || isSelectedCanvasTap)
+            && canShowImageEditorQuickReplace(index, editor);
+    }
+
+    function showImageEditorQuickReplace(index) {
+        const editor = state.auth.imageEditor;
+        if (!canShowImageEditorSoloQuickReplace(index, editor)) return;
+        if (editor.quickReplaceTimerId) window.clearTimeout(editor.quickReplaceTimerId);
+        editor.quickReplaceVisibleIndex = index;
+        editor.quickReplaceTimerId = window.setTimeout(() => {
+            // An old timer must never alter a subsequently opened editor.
+            if (state.auth.imageEditor !== editor) return;
+            editor.quickReplaceTimerId = null;
+            editor.quickReplaceVisibleIndex = null;
+            editor.canvasSelectedQuickReplaceIndex = null;
+            updateImageEditorQuickReplaceControl();
+        }, 2000);
+        updateImageEditorQuickReplaceControl();
+    }
+
+    function showImageEditorSelectedLabelTapReplace(index) {
+        const editor = state.auth.imageEditor;
+        if (!canShowImageEditorQuickReplace(index, editor)
+            || editor?.mode !== 'connector' || editor.activeConnectorLabelIndex !== index
+            || editor.quickMultiAnchorLabelIndex != null) return;
+        editor.canvasSelectedQuickReplaceIndex = index;
+        showImageEditorQuickReplace(index);
+    }
+
+    function noteImageEditorQuickReplaceHover(index, event) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor) || editor.isDrawing) return;
+        // Touch drags must not create a faux hover; taps are handled on release.
+        if (event?.pointerType === 'touch') return;
+        const hoverIndex = canShowImageEditorSoloQuickReplace(index, editor) ? index : null;
+        if (editor.quickReplaceHoveredIndex === hoverIndex) return;
+        editor.quickReplaceHoveredIndex = hoverIndex;
+        if (hoverIndex !== null) showImageEditorQuickReplace(hoverIndex);
+    }
+
+    function replaceImageEditorConnectorForLabel(index) {
+        const editor = state.auth.imageEditor;
+        if (!canShowImageEditorQuickReplace(index, editor)) return;
+        clearImageEditorQuickReplace();
+        removeImageEditorLabelConnector(index);
+        // The default tool is always No Ball Angled, regardless of the deleted style.
+        toggleImageEditorLabelConnector(index, 'angled', 'none');
+        setImageEditorStatus('Connector removed. Click the diagram to place a new No Ball Angled connector for this label.');
+    }
+
+    function updateImageEditorQuickReplaceControl() {
+        const wrap = elements.studioImageEditorCanvasWrap;
+        const canvas = elements.studioImageEditorCanvas;
+        const editor = state.auth.imageEditor;
+        if (!wrap || !canvas) return;
+        let button = wrap.querySelector('[data-image-editor-label-quick-replace]');
+        if (!button) {
+            button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'studio-image-editor-multi-finish studio-image-editor-label-quick-replace hidden';
+            button.setAttribute('data-image-editor-label-quick-replace', 'true');
+            button.textContent = '×';
+            button.title = 'Replace this label’s connector with a new No Ball Angled connector';
+            button.setAttribute('aria-label', button.title);
+            button.addEventListener('pointerdown', event => event.stopPropagation());
+            button.addEventListener('click', event => {
+                event.preventDefault(); event.stopPropagation();
+                replaceImageEditorConnectorForLabel(state.auth.imageEditor?.quickReplaceVisibleIndex);
+            });
+            wrap.appendChild(button);
+        }
+        const index = editor?.quickReplaceVisibleIndex;
+        const visible = canShowImageEditorSoloQuickReplace(index, editor) && !editor.isDrawing;
+        button.classList.toggle('hidden', !visible);
+        if (!visible) return;
+        const label = getImageEditorDisplayLabels(editor.labels || [])[index];
+        const pos = getImageEditorLabelPixelPosition(label, canvas);
+        const canvasRect = canvas.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        const scale = (canvasRect.width / Math.max(1, canvas.width)) * getImageEditorBadgeScale(editor);
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.font = '800 34px Arial';
+        const text = htmlToDisplayText(label.label) || label.label;
+        const halfBadgeWidth = (Math.max(44, ctx.measureText(text).width + 26) / 2) * scale;
+        ctx.restore();
+        const x = canvasRect.left - wrapRect.left + (pos.x / canvas.width) * canvasRect.width;
+        const y = canvasRect.top - wrapRect.top + (pos.y / canvas.height) * canvasRect.height;
+        button.style.left = `${Math.max(2, Math.min(wrapRect.width - 30, x + halfBadgeWidth + 7))}px`;
+        button.style.top = `${Math.max(2, Math.min(wrapRect.height - 30, y - 25 * scale))}px`;
+    }
+
+    function buildImageEditorMultiConnectorDraftSvgMarkup(editor = state.auth.imageEditor, canvas = elements.studioImageEditorCanvas, screenScale = 1) {
+        const targets = editor?.pendingMultiTargets;
+        const label = editor?.labels?.[editor.activeConnectorLabelIndex];
+        if (editor?.mode !== 'connector' || normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || '') !== 'multi'
+            || !Array.isArray(targets) || !targets.length || !label || !canvas) return '';
+        const geometry = getDiagramConnectorSvgGeometry({
+            style: 'multi',
+            anchorX: targets[0].x, anchorY: targets[0].y,
+            targets,
+            endpoint: editor.pendingConnectorEndpoint,
+            color: normalizeEditorHexColor(editor.arrowColor || '#000000', '#000000'),
+            thickness: Number(editor.lineThickness) || getImageEditorLineThickness()
+        }, label, canvas.width, canvas.height, screenScale);
+        if (!geometry) return '';
+        const r = Math.max(3 / Math.max(screenScale, 0.0001), geometry.thickness * 0.9);
+        const endpoints = targets.map(target => {
+            const x = ((target.x / 100) * canvas.width).toFixed(3);
+            const y = ((target.y / 100) * canvas.height).toFixed(3);
+            return `<circle cx="${x}" cy="${y}" r="${r.toFixed(3)}" fill="${geometry.endpoint === 'ball' ? geometry.color : 'none'}" stroke="#facc15" stroke-width="${(2 / Math.max(screenScale, 0.0001)).toFixed(3)}"/>`;
+        }).join('');
+        const extraContrastWidth = getDiagramConnectorContrastExtraWidth(geometry.thickness * geometry.screenScale);
+        const contrastThickness = geometry.thickness + extraContrastWidth / geometry.screenScale;
+        return `<g class="studio-image-editor-multi-draft" pointer-events="none" opacity="0.82"><path d="${geometry.path}" fill="none" stroke="#ffffff" stroke-width="${contrastThickness.toFixed(3)}" stroke-linecap="round" stroke-linejoin="round"/><path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${geometry.thickness}" stroke-linecap="round" stroke-linejoin="round"/>${endpoints}</g>`;
+    }
+
+    function updateImageEditorMultiConnectorFinishControl() {
+        const wrap = elements.studioImageEditorCanvasWrap;
+        const canvas = elements.studioImageEditorCanvas;
+        const editor = state.auth.imageEditor;
+        if (!wrap || !canvas) return;
+        let button = wrap.querySelector('[data-image-editor-multi-finish]');
+        if (!button) {
+            button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'studio-image-editor-multi-finish hidden';
+            button.setAttribute('data-image-editor-multi-finish', 'true');
+            button.textContent = '✓ Finish';
+            button.title = 'Finish the Multi Connector and save its landmark branches';
+            button.addEventListener('pointerdown', event => event.stopPropagation());
+            button.addEventListener('click', event => {
+                event.preventDefault(); event.stopPropagation();
+                finishImageEditorMultiConnector();
+            });
+            wrap.appendChild(button);
+        }
+        const targets = editor?.pendingMultiTargets;
+        const visible = editor?.mode === 'connector' && editor.labelsLayerVisible !== false
+            && normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || '') === 'multi'
+            && Array.isArray(targets) && targets.length >= 2;
+        button.classList.toggle('hidden', !visible);
+        if (!visible) return;
+        const last = targets[targets.length - 1];
+        const canvasRect = canvas.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        const x = canvasRect.left - wrapRect.left + ((last.x / 100) * canvasRect.width);
+        const y = canvasRect.top - wrapRect.top + ((last.y / 100) * canvasRect.height);
+        button.style.left = `${Math.max(2, Math.min(wrapRect.width - 82, x + 14))}px`;
+        button.style.top = `${Math.max(2, Math.min(wrapRect.height - 33, y - 35))}px`;
+    }
+
+    // Only offered after this session places an angled, no-ball connector for
+    // its active label. Ignoring + leaves the existing connector fully unchanged.
+    function updateImageEditorMultiConnectorAddControl() {
+        const wrap = elements.studioImageEditorCanvasWrap;
+        const canvas = elements.studioImageEditorCanvas;
+        const editor = state.auth.imageEditor;
+        if (!wrap || !canvas) return;
+        let button = wrap.querySelector('[data-image-editor-multi-add]');
+        let replaceButton = wrap.querySelector('[data-image-editor-connector-replace]');
+        if (!replaceButton) {
+            replaceButton = document.createElement('button');
+            replaceButton.type = 'button';
+            replaceButton.className = 'studio-image-editor-multi-finish studio-image-editor-connector-replace hidden';
+            replaceButton.setAttribute('data-image-editor-connector-replace', 'true');
+            replaceButton.textContent = '×';
+            replaceButton.title = 'Delete this connector and immediately place a new No Ball Angled connector';
+            replaceButton.setAttribute('aria-label', replaceButton.title);
+            replaceButton.addEventListener('pointerdown', event => event.stopPropagation());
+            replaceButton.addEventListener('click', event => {
+                event.preventDefault(); event.stopPropagation();
+                replaceImageEditorConnectorFromAnchor();
+            });
+            wrap.appendChild(replaceButton);
+        }
+        if (!button) {
+            button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'studio-image-editor-multi-finish studio-image-editor-multi-add hidden';
+            button.setAttribute('data-image-editor-multi-add', 'true');
+            button.textContent = '+';
+            button.title = 'Add another landmark — turn this into a Multi Connector';
+            button.setAttribute('aria-label', button.title);
+            button.addEventListener('pointerdown', event => event.stopPropagation());
+            button.addEventListener('click', event => {
+                event.preventDefault(); event.stopPropagation();
+                beginImageEditorMultiConnectorFromAnchor();
+            });
+            wrap.appendChild(button);
+        }
+        const index = editor?.activeConnectorLabelIndex;
+        const connector = normalizeDiagramConnector(editor?.labels?.[index]?.connector);
+        const visible = !!(editor?.open && editor.labelsEnabled && editor.labelsLayerVisible !== false
+            && editor.mode === 'connector' && !editor.isDrawing
+            && Number.isInteger(index) && editor.quickMultiAnchorLabelIndex === index && connector
+            && normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || '') === 'angled'
+            && getDiagramConnectorStyle(connector) === 'angled'
+            && getDiagramConnectorEndpoint(connector) === 'none');
+        button.classList.toggle('hidden', !visible);
+        replaceButton.classList.toggle('hidden', !visible);
+        if (!visible) return;
+        const canvasRect = canvas.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        const x = canvasRect.left - wrapRect.left + (connector.anchorX / 100) * canvasRect.width;
+        const y = canvasRect.top - wrapRect.top + (connector.anchorY / 100) * canvasRect.height;
+        // Treat the + and × as one 60px row so neither overlaps or clips near
+        // the right edge; both retain the existing tiny Finish-button design.
+        const left = Math.max(2, Math.min(wrapRect.width - 62, x + 14));
+        const top = Math.max(2, Math.min(wrapRect.height - 32, y - 35));
+        button.style.left = `${left}px`;
+        button.style.top = `${top}px`;
+        replaceButton.style.left = `${left + 32}px`;
+        replaceButton.style.top = `${top}px`;
+    }
+
+    function buildImageEditorBracketDraftSvgMarkup(editor = state.auth.imageEditor, canvas = elements.studioImageEditorCanvas, screenScale = 1) {
+        const start = editor?.pendingBracketStart;
+        const end = editor?.pendingBracketPreview;
+        const label = editor?.labels?.[editor?.activeConnectorLabelIndex];
+        if (!start || !end || !label || !canvas) return '';
+        const dx = ((end.x - start.x) / 100) * canvas.width;
+        const dy = ((end.y - start.y) / 100) * canvas.height;
+        if (Math.hypot(dx, dy) < 1) return '';
+        const side = getImageEditorBracketSide(start, end, label, canvas);
+        const geometry = getDiagramConnectorSvgGeometry({
+            anchorX: (start.x + end.x) / 2,
+            anchorY: (start.y + end.y) / 2,
+            bracketStartX: start.x,
+            bracketStartY: start.y,
+            bracketEndX: end.x,
+            bracketEndY: end.y,
+            bracketSide: side,
+            color: normalizeEditorHexColor(editor.arrowColor || '#000000', '#000000'),
+            thickness: Math.min(24, Math.max(0.25, Number(editor.lineThickness) || getImageEditorLineThickness())),
+            style: 'bracket',
+            endpoint: 'none'
+        }, label, canvas.width, canvas.height, screenScale);
+        if (!geometry) return '';
+        const thickness = geometry.thickness;
+        const radius = Math.max(3 / Math.max(0.0001, Number(screenScale) || 1), thickness * 1.4);
+        const sx = (start.x / 100) * canvas.width;
+        const sy = (start.y / 100) * canvas.height;
+        const ex = (end.x / 100) * canvas.width;
+        const ey = (end.y / 100) * canvas.height;
+        return `<g class="studio-image-editor-bracket-draft" opacity="0.72" pointer-events="none"><path d="${geometry.path}" fill="none" stroke="${geometry.color}" stroke-width="${thickness}" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="${sx.toFixed(3)}" cy="${sy.toFixed(3)}" r="${radius.toFixed(3)}" fill="none" stroke="#facc15" stroke-width="${Math.max(1, thickness * 0.75).toFixed(3)}"></circle><circle cx="${ex.toFixed(3)}" cy="${ey.toFixed(3)}" r="${radius.toFixed(3)}" fill="none" stroke="#facc15" stroke-width="${Math.max(1, thickness * 0.75).toFixed(3)}"></circle></g>`;
+    }
+
     function getImageEditorConnectorStylePreviewSvg(style = 'straight', endpoint = 'ball') {
         const safeStyle = normalizeDiagramConnectorStyle(style);
         const safeEndpoint = normalizeDiagramConnectorEndpoint(endpoint);
@@ -13629,10 +19809,14 @@ The deletion becomes permanent when you save the diagram.`);
             straight: 'M4 11 H50',
             curved: 'M4 17 C18 17 32 5 50 5',
             elbow: 'M4 17 H27 V5 H50',
-            angled: 'M4 17 H14 L50 5'
+            angled: 'M4 17 H14 L50 5',
+            bracket: 'M10 4 H4 M10 4 V18 M10 18 H4 M10 11 H20 L50 5',
+            multi: 'M50 5 H43 L34 10 M34 10 L5 4 M34 10 L10 13 M34 10 L21 20'
         };
-        const endpointMarkup = safeEndpoint === 'ball'
-            ? `<circle cx="50" cy="${safeStyle === 'straight' ? 11 : 5}" r="3" fill="currentColor"></circle>`
+        const endpointMarkup = safeStyle !== 'bracket' && safeEndpoint === 'ball'
+            ? (safeStyle === 'multi'
+                ? '<circle cx="5" cy="4" r="2.5" fill="currentColor"></circle><circle cx="10" cy="13" r="2.5" fill="currentColor"></circle><circle cx="21" cy="20" r="2.5" fill="currentColor"></circle>'
+                : `<circle cx="50" cy="${safeStyle === 'straight' ? 11 : 5}" r="3" fill="currentColor"></circle>`)
             : '';
         return `<svg class="studio-image-editor-connector-style-preview" viewBox="0 0 54 22" aria-hidden="true" focusable="false"><path d="${pathByStyle[safeStyle]}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>${endpointMarkup}</svg>`;
     }
@@ -13645,58 +19829,171 @@ The deletion becomes permanent when you save the diagram.`);
         return true;
     }
 
+    // Phase 23F.41.33: move only the scrollable Labels list, never the zoomed
+    // canvas or the surrounding modal, when newly added labels or connector
+    // style options would otherwise be out of sight in a long diagram.
+    function revealImageEditorLabelControls(index, { focusInput = false, connectorOptions = false } = {}) {
+        const list = elements.studioImageEditorLabelList;
+        if (!list || index < 0) return;
+        const row = Array.from(list.querySelectorAll('[data-image-editor-label-row]'))
+            .find(item => Number(item.dataset.imageEditorLabelIndex) === index);
+        if (!row) return;
+        if (focusInput) {
+            const input = row.querySelector('[data-image-editor-label-text]');
+            if (input) {
+                // Keep keyboard focus tied to the Add Label click (not a delayed
+                // callback), including iPad; do not scroll the whole page.
+                try { input.focus({ preventScroll: true }); }
+                catch (_) { input.focus(); }
+                input.select();
+            }
+        }
+        const target = connectorOptions
+            ? (row.querySelector('[data-image-editor-connector-style-picker]') || row)
+            : row;
+        const listRect = list.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        if (!listRect.height || !targetRect.height) return;
+        const margin = 8;
+        if (connectorOptions && target !== row) {
+            // Picker may be taller than the list: show the *start* of its
+            // choices immediately; the remaining options stay scrollable.
+            list.scrollTop += targetRect.top - listRect.top - margin;
+        } else if (targetRect.top < listRect.top + margin) {
+            list.scrollTop += targetRect.top - listRect.top - margin;
+        } else if (targetRect.bottom > listRect.bottom - margin) {
+            list.scrollTop += targetRect.bottom - listRect.bottom + margin;
+        }
+    }
+
+    // Phase 23F.41.72: a label selected on the image becomes the same active
+    // label as clicking its name field. Run only AFTER pointerup so dragging,
+    // connector anchors, drawing, and pointer capture finish unchanged.
+    function focusImageEditorCanvasSelectedLabel(index) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !editor.labelsEnabled || !editor.labels?.[index]) return;
+        editor.ghostActiveLabelIndex = index;
+        // The existing input-focus pathway selects the connector without
+        // creating, deleting, or altering the saved connector itself.
+        if (editor.mode !== 'connector' || editor.activeConnectorLabelIndex !== index) {
+            toggleImageEditorLabelConnector(index, null, null, { preserveLabelInputs: true });
+        }
+        revealImageEditorLabelControls(index, { focusInput: true });
+    }
+
     function toggleImageEditorConnectorStylePicker(index) {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
-        setImageEditorPanMode(false);
         const isSameActive = editor.mode === 'connector' && editor.activeConnectorLabelIndex === index;
-        if (isSameActive) {
-            toggleImageEditorLabelConnector(index);
+        if (!isSameActive) {
+            // First press: place an angled connector without a ball immediately.
+            // Retain the style of an already saved connector until explicitly changed.
+            const existing = normalizeDiagramConnector(editor.labels[index].connector);
+            toggleImageEditorLabelConnector(index,
+                existing ? getDiagramConnectorStyle(existing) : 'angled',
+                existing ? getDiagramConnectorEndpoint(existing) : 'none');
+            revealImageEditorLabelControls(index);
             return;
         }
-        const isOpen = editor.connectorStylePickerLabelIndex === index;
-        editor.connectorStylePickerLabelIndex = isOpen ? null : index;
-        const existingConnector = normalizeDiagramConnector(editor.labels[index].connector);
-        editor.pendingConnectorStyle = getDiagramConnectorStyle(existingConnector);
-        editor.pendingConnectorEndpoint = existingConnector ? getDiagramConnectorEndpoint(existingConnector) : 'none';
-        editor.showLabelPanel = true;
-        editor.mode = 'labels';
-        editor.activeDrawLabelIndex = null;
-        editor.activeDrawStroke = null;
-        editor.activeConnectorLabelIndex = null;
-        editor.draggingConnectorAnchor = false;
-        editor.draggingLabelIndex = null;
-        editor.hoveredLabelIndex = null;
-        elements.studioImageEditorToolButtons?.forEach(button => button.classList.remove('active'));
+        // Second press: offer all connector styles without deactivating placement.
+        editor.connectorStylePickerLabelIndex = editor.connectorStylePickerLabelIndex === index ? null : index;
         refreshImageEditorLabelUi();
-        renderImageEditorCanvas();
-        setImageEditorStatus(isOpen ? '' : 'Choose a connector style for this label.');
+        revealImageEditorLabelControls(index, { connectorOptions: editor.connectorStylePickerLabelIndex === index });
+        setImageEditorStatus(editor.connectorStylePickerLabelIndex === index
+            ? 'Choose a connector style, or keep placing the current connector.'
+            : 'Connector ready. Click its target on the diagram.');
     }
 
     function selectImageEditorConnectorStyle(index, style = 'straight', endpoint = 'none') {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
         const nextStyle = normalizeDiagramConnectorStyle(style);
-        const nextEndpoint = normalizeDiagramConnectorEndpoint(endpoint);
+        const nextEndpoint = nextStyle === 'bracket' ? 'none' : normalizeDiagramConnectorEndpoint(endpoint);
         const existing = normalizeDiagramConnector(editor.labels[index].connector);
-        if (existing && (getDiagramConnectorStyle(existing) !== nextStyle || getDiagramConnectorEndpoint(existing) !== nextEndpoint)) {
+        const existingStyle = existing ? getDiagramConnectorStyle(existing) : 'straight';
+        if (existing && nextStyle !== 'bracket' && nextStyle !== 'multi' && (existingStyle !== nextStyle || getDiagramConnectorEndpoint(existing) !== nextEndpoint)) {
             pushImageEditorLabelHistory();
             const nextConnector = { ...existing };
+            delete nextConnector.bracketStartX;
+            delete nextConnector.bracketStartY;
+            delete nextConnector.bracketEndX;
+            delete nextConnector.bracketEndY;
+            delete nextConnector.bracketSide;
+            delete nextConnector.targets;
             if (nextStyle === 'straight') delete nextConnector.style;
             else nextConnector.style = nextStyle;
             if (nextEndpoint === 'none') nextConnector.endpoint = 'none';
             else delete nextConnector.endpoint;
             editor.labels[index] = { ...editor.labels[index], connector: nextConnector };
         }
+        editor.quickMultiAnchorLabelIndex = null;
         editor.pendingConnectorStyle = nextStyle;
         editor.pendingConnectorEndpoint = nextEndpoint;
+        editor.pendingBracketStart = null;
+        editor.pendingBracketPreview = null;
+        editor.pendingMultiTargets = null;
         editor.connectorStylePickerLabelIndex = null;
+        // A style chosen on the second press should keep the connector tool active.
+        // Clear the active selection before re-entering through its normal setup path.
+        editor.activeConnectorLabelIndex = null;
+        editor.mode = 'labels';
         toggleImageEditorLabelConnector(index, nextStyle, nextEndpoint);
     }
 
-    function toggleImageEditorLabelConnector(index, preferredStyle = null, preferredEndpoint = null) {
+    // Phase 23F.41.18: update connector indicators without rebuilding a focused
+    // label input; rebuilding would steal its caret and swallow the user's click.
+    function refreshImageEditorConnectorFocusIndicators() {
+        const editor = state.auth.imageEditor;
+        // Keyboard/input focus closes any connector picker without rebuilding
+        // the focused text input, so also release the picker's scroll spacer.
+        if (elements.studioImageEditorLabelList) elements.studioImageEditorLabelList.style.paddingBottom = '';
+        elements.studioImageEditorLabelList?.querySelectorAll('[data-image-editor-label-row]').forEach(row => {
+            const index = Number(row.dataset.imageEditorLabelIndex);
+            const active = editor?.mode === 'connector' && editor.activeConnectorLabelIndex === index;
+            row.classList.toggle('is-connector-selected', active);
+            row.classList.remove('is-connector-style-open', 'is-draw-selected');
+            row.querySelector('[data-image-editor-connector-style-picker]')?.remove();
+            const connectorButton = row.querySelector('[data-image-editor-label-connector]');
+            if (connectorButton) {
+                connectorButton.classList.toggle('active', active);
+                connectorButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+                connectorButton.setAttribute('aria-expanded', 'false');
+                const labelName = displayMathChemTextForEditor(editor.labels[index]?.label || getDiagramLabelName(index));
+                const title = active ? `Choose connector style for label ${labelName}`
+                    : `${normalizeDiagramConnector(editor.labels[index]?.connector) ? 'Edit connector for' : 'Place No Ball Angled connector for'} label ${labelName}`;
+                connectorButton.title = title;
+                connectorButton.setAttribute('aria-label', title);
+            }
+            const drawButton = row.querySelector('[data-image-editor-label-draw]');
+            drawButton?.classList.remove('active');
+            drawButton?.setAttribute('aria-pressed', 'false');
+        });
+    }
+
+    function bindImageEditorConnectorInputFocusEvents() {
+        const list = elements.studioImageEditorLabelList;
+        if (!list || list.dataset.connectorInputFocusBound === 'true') return;
+        list.dataset.connectorInputFocusBound = 'true';
+        list.addEventListener('focusin', event => {
+            if (!event.target.matches('[data-image-editor-label-text]')) return;
+            const row = event.target.closest('[data-image-editor-label-row]');
+            const index = Number(row?.dataset.imageEditorLabelIndex ?? -1);
+            const editor = state.auth.imageEditor;
+            if (!editor?.open || !editor.labelsEnabled || !editor.labels?.[index]) return;
+            editor.ghostActiveLabelIndex = index;
+            if (editor.mode !== 'connector' || editor.activeConnectorLabelIndex !== index) {
+                toggleImageEditorLabelConnector(index, null, null, { preserveLabelInputs: true });
+            }
+        });
+    }
+
+    function toggleImageEditorLabelConnector(index, preferredStyle = null, preferredEndpoint = null, { preserveLabelInputs = false } = {}) {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index]) return;
+        // Phase 23F.41.57: the solo hover/tap × belongs to label interaction only.
+        // Connector placement uses its dedicated + / × anchor pair; clear any
+        // pending solo timeout so that pair can never be accompanied by a third ×.
+        clearImageEditorQuickReplace();
         setImageEditorPanMode(false);
         const requestedStyle = preferredStyle === null || preferredStyle === undefined
             ? null
@@ -13708,11 +20005,16 @@ The deletion becomes permanent when you save the diagram.`);
         editor.activeDrawLabelIndex = null;
         editor.activeDrawStroke = null;
         editor.connectorStylePickerLabelIndex = null;
+        editor.pendingBracketStart = null;
+        editor.pendingBracketPreview = null;
+        editor.pendingMultiTargets = null;
+        editor.quickMultiAnchorLabelIndex = null;
         editor.draggingConnectorAnchor = false;
         editor.draggingLabelIndex = null;
         editor.hoveredLabelIndex = null;
         editor.draftShape = null;
         editor.showLabelPanel = true;
+        editor.ghostActiveLabelIndex = index;
         if (isSameActive) {
             editor.mode = 'labels';
             editor.activeConnectorLabelIndex = null;
@@ -13721,21 +20023,42 @@ The deletion becomes permanent when you save the diagram.`);
             editor.mode = 'connector';
             editor.activeConnectorLabelIndex = index;
             const connector = normalizeDiagramConnector(editor.labels[index].connector);
-            editor.pendingConnectorStyle = requestedStyle || getDiagramConnectorStyle(connector);
-            editor.pendingConnectorEndpoint = requestedEndpoint || (connector ? getDiagramConnectorEndpoint(connector) : 'none');
+            // Fresh labels default to No Ball Angled; saved connectors keep their existing style.
+            editor.pendingConnectorStyle = requestedStyle || (connector ? getDiagramConnectorStyle(connector) : 'angled');
+            editor.pendingConnectorEndpoint = editor.pendingConnectorStyle === 'bracket' ? 'none' : (requestedEndpoint || (connector ? getDiagramConnectorEndpoint(connector) : 'none'));
+            editor.pendingBracketStart = null;
+            editor.pendingBracketPreview = null;
+            editor.pendingMultiTargets = editor.pendingConnectorStyle === 'multi'
+                ? (getDiagramConnectorStyle(connector) === 'multi' ? connector.targets.map(target => ({ ...target })) : [])
+                : null;
             if (connector) {
                 editor.arrowColor = connector.color;
                 editor.lineThickness = connector.thickness;
                 if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = connector.color;
                 if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(connector.thickness);
                 if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(connector.thickness);
+            }
+            if (editor.pendingConnectorStyle === 'multi') {
+                setImageEditorStatus('Multi Connector: click two or more landmarks, then tap the small ✓ Finish control. Every target branches from the same label.');
+            } else if (editor.pendingConnectorStyle === 'bracket') {
+                if (connector && getDiagramConnectorStyle(connector) === 'bracket') {
+                    setImageEditorStatus('Bracket connector active. Drag the label to move its midpoint leader. The two region points stay fixed.');
+                } else {
+                    setImageEditorStatus('Bracket connector active. Click the first edge of the region, then click the second edge.');
+                }
+            } else if (connector) {
                 setImageEditorStatus(`${editor.pendingConnectorStyle[0].toUpperCase()}${editor.pendingConnectorStyle.slice(1)} connector active. Drag its image anchor or drag any label. Use RGB and Thickness to restyle every connector in this diagram.`);
             } else {
                 setImageEditorStatus(`${editor.pendingConnectorStyle[0].toUpperCase()}${editor.pendingConnectorStyle.slice(1)} connector active. Click the target area on the image to place its fixed anchor.`);
             }
         }
         elements.studioImageEditorToolButtons?.forEach(button => button.classList.remove('active'));
-        refreshImageEditorLabelUi();
+        if (preserveLabelInputs) {
+            refreshImageEditorConnectorFocusIndicators();
+            updateImageEditorCanvasPointerState();
+        } else {
+            refreshImageEditorLabelUi();
+        }
         renderImageEditorCanvas();
     }
 
@@ -13744,6 +20067,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor?.labelsEnabled || index < 0 || !editor.labels?.[index] || !normalizeDiagramConnector(editor.labels[index].connector)) return;
         pushImageEditorLabelHistory();
         editor.labels[index] = { ...editor.labels[index], connector: null };
+        editor.pendingMultiTargets = null;
         if (editor.connectorStylePickerLabelIndex === index) editor.connectorStylePickerLabelIndex = null;
         if (editor.activeConnectorLabelIndex === index) {
             editor.activeConnectorLabelIndex = null;
@@ -13761,6 +20085,8 @@ The deletion becomes permanent when you save the diagram.`);
         pushImageEditorHistory();
         editor.labels = normalizeImageEditorLabels(editor.labels || []);
         editor.labels.splice(index, 1);
+        if (editor.ghostActiveLabelIndex === index) editor.ghostActiveLabelIndex = Math.max(0, Math.min(index, editor.labels.length - 1));
+        else if (editor.ghostActiveLabelIndex > index) editor.ghostActiveLabelIndex -= 1;
         const currentVisibility = { ...(editor.drawVisibilityByLabel || {}) };
         const nextVisibility = {};
         editor.labels.forEach((label, nextIndex) => {
@@ -13801,7 +20127,7 @@ The deletion becomes permanent when you save the diagram.`);
         const angle = Math.atan2(dy, dx);
         const length = Math.hypot(dx, dy);
         if (length < 8) return;
-        const thickness = Math.min(24, Math.max(1, Number(shape.thickness) || getImageEditorLineThickness()));
+        const thickness = Math.min(24, Math.max(0.25, Number(shape.thickness) || getImageEditorLineThickness()));
         const headLength = Math.min(28, Math.max(14, length * 0.18));
         ctx.save();
         ctx.strokeStyle = color;
@@ -13826,7 +20152,7 @@ The deletion becomes permanent when you save the diagram.`);
     function drawEditorLine(ctx, shape, preview = false) {
         const length = Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
         if (length < 8) return;
-        const thickness = Math.min(24, Math.max(1, Number(shape.thickness) || getImageEditorLineThickness()));
+        const thickness = Math.min(24, Math.max(0.25, Number(shape.thickness) || getImageEditorLineThickness()));
         ctx.save();
         ctx.strokeStyle = shape.color || '#000000';
         ctx.lineWidth = thickness;
@@ -13900,6 +20226,9 @@ The deletion becomes permanent when you save the diagram.`);
             layer.style.width = `${canvasRect.width}px`;
             layer.style.height = `${canvasRect.height}px`;
         });
+        updateImageEditorMultiConnectorFinishControl();
+        updateImageEditorMultiConnectorAddControl();
+        updateImageEditorQuickReplaceControl();
         if (animate) {
             window.setTimeout(() => {
                 visualSvg?.classList.remove('is-zoom-resetting');
@@ -13919,12 +20248,51 @@ The deletion becomes permanent when you save the diagram.`);
         });
     }
 
+    function wrapMultiFinishHide() {
+        elements.studioImageEditorCanvasWrap?.querySelector('[data-image-editor-multi-finish]')?.classList.add('hidden');
+        elements.studioImageEditorCanvasWrap?.querySelector('[data-image-editor-multi-add]')?.classList.add('hidden');
+        elements.studioImageEditorCanvasWrap?.querySelector('[data-image-editor-connector-replace]')?.classList.add('hidden');
+        elements.studioImageEditorCanvasWrap?.querySelector('[data-image-editor-label-quick-replace]')?.classList.add('hidden');
+    }
+
+    function getImageEditorGhostActiveIndex(editor = state.auth.imageEditor) {
+        if (!editor || !Array.isArray(editor.labels) || !editor.labels.length) return -1;
+        if (editor.mode === 'connector' && Number.isInteger(editor.activeConnectorLabelIndex)) return editor.activeConnectorLabelIndex;
+        if (editor.mode === 'labels' && Number.isInteger(editor.activeDrawLabelIndex)) return editor.activeDrawLabelIndex;
+        const index = Number(editor.ghostActiveLabelIndex);
+        return Number.isInteger(index) && index >= 0 && index < editor.labels.length ? index : 0;
+    }
+
+    function isImageEditorSingleLabelViewEnabled(editor = state.auth.imageEditor) {
+        return !!(editor?.open && editor.labelsEnabled && editor.labelsLayerVisible !== false
+            && isImageEditorStandaloneDiagramTarget(editor) && editor.singleLabelViewEnabled === true);
+    }
+
+    function getImageEditorSingleLabelViewIndex(editor = state.auth.imageEditor) {
+        const index = Number(editor?.ghostActiveLabelIndex);
+        if (Number.isInteger(index) && index >= 0 && index < (editor?.labels || []).length) return index;
+        return getImageEditorGhostActiveIndex(editor);
+    }
+
+    // Saved per-angle badge multiplier. Canvas/connector anchors remain unchanged.
+    function getImageEditorBadgeScale(editor = state.auth.imageEditor) {
+        if (!editor?.open || !(isImageEditorStandaloneDiagramTarget(editor) || editor?.target?.multiAngleDraft === true)) return 1;
+        return normalizeDiagramLabelSize(editor.labelSize);
+    }
+
+    function getImageEditorGhostInactiveOpacity(editor = state.auth.imageEditor) {
+        if (!editor?.labelsEnabled || !isImageEditorStandaloneDiagramTarget(editor) || editor.ghostLabelsEnabled !== true) return 1;
+        const value = Number(editor.ghostLabelOpacity ?? 0.35);
+        return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.35;
+    }
+
     function renderImageEditorVectorOverlays({ animate = false } = {}) {
         const editor = state.auth.imageEditor;
         const canvas = elements.studioImageEditorCanvas;
         const layers = ensureImageEditorVectorOverlayLayers();
         if (!canvas || !layers) return;
         if (!editor?.open || !editor.baseCanvas || !syncImageEditorVectorOverlayBounds({ animate })) {
+            wrapMultiFinishHide();
             layers.svg.innerHTML = '';
             const emptyCtx = layers.labelCanvas.getContext('2d');
             emptyCtx?.clearRect(0, 0, layers.labelCanvas.width || 1, layers.labelCanvas.height || 1);
@@ -13934,6 +20302,8 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const baseScreenScale = Math.max(0.0001, (canvas.offsetWidth || canvas.clientWidth || 1) / Math.max(1, canvas.width || 1));
         const labelsLayerVisible = editor.labelsLayerVisible !== false;
+        const singleLabelView = isImageEditorSingleLabelViewEnabled(editor);
+        const singleLabelIndex = singleLabelView ? getImageEditorSingleLabelViewIndex(editor) : -1;
         const connectorOptions = {
             outlineColor: '#ffffff',
             outlineExtraWidth: 2,
@@ -13941,14 +20311,33 @@ The deletion becomes permanent when you save the diagram.`);
             activeRingColor: '#facc15',
             activeRingExtraRadius: 5.75,
             activeRingThicknessFactor: 0.85,
-            activeRingLineWidth: 2.25
+            activeRingLineWidth: 2.25,
+            ghostActiveIndex: getImageEditorGhostActiveIndex(editor),
+            ghostInactiveOpacity: getImageEditorGhostInactiveOpacity(editor)
         };
         layers.svg.setAttribute('viewBox', `0 0 ${Math.max(1, canvas.width)} ${Math.max(1, canvas.height)}`);
         layers.svg.setAttribute('preserveAspectRatio', 'none');
         layers.svg.setAttribute('shape-rendering', 'geometricPrecision');
         layers.svg.dataset.vectorConnectorLayer = 'true';
-        layers.svg.innerHTML = labelsLayerVisible ? buildDiagramConnectorSvgMarkup(editor.labels || [], canvas.width, canvas.height, baseScreenScale, connectorOptions) : '';
-        layers.svg.classList.toggle('hidden', !labelsLayerVisible || !normalizeDiagramLabels(editor.labels || []).some(label => !!normalizeDiagramConnector(label.connector)));
+        // While authoring a Multi Connector, show its live branch draft instead of
+        // rendering an older saved connector on top of that draft.
+        const connectorLabels = editor.mode === 'connector' && editor.pendingConnectorStyle === 'multi'
+            && Number.isInteger(editor.activeConnectorLabelIndex)
+            ? (editor.labels || []).map((label, index) => index === editor.activeConnectorLabelIndex
+                ? { ...label, connector: null } : label)
+            : (editor.labels || []);
+        // Preserve original label indexes (and connector drag targets) by masking
+        // inactive connectors instead of filtering the labels array.
+        const visibleConnectorLabels = singleLabelView
+            ? connectorLabels.map((label, index) => index === singleLabelIndex ? label : { ...label, connector: null })
+            : connectorLabels;
+        const connectorMarkup = labelsLayerVisible ? buildDiagramConnectorSvgMarkup(visibleConnectorLabels, canvas.width, canvas.height, baseScreenScale, connectorOptions) : '';
+        const bracketDraftMarkup = labelsLayerVisible ? buildImageEditorBracketDraftSvgMarkup(editor, canvas, baseScreenScale) : '';
+        const multiDraftMarkup = labelsLayerVisible ? buildImageEditorMultiConnectorDraftSvgMarkup(editor, canvas, baseScreenScale) : '';
+        layers.svg.innerHTML = `${connectorMarkup}${bracketDraftMarkup}${multiDraftMarkup}`;
+        layers.svg.classList.toggle('hidden', !labelsLayerVisible || (!connectorMarkup && !bracketDraftMarkup && !multiDraftMarkup));
+        updateImageEditorMultiConnectorFinishControl();
+        updateImageEditorMultiConnectorAddControl();
 
         if (layers.labelCanvas.width !== canvas.width) layers.labelCanvas.width = canvas.width;
         if (layers.labelCanvas.height !== canvas.height) layers.labelCanvas.height = canvas.height;
@@ -13956,6 +20345,7 @@ The deletion becomes permanent when you save the diagram.`);
         labelCtx.clearRect(0, 0, layers.labelCanvas.width, layers.labelCanvas.height);
         if (editor.labelsEnabled && labelsLayerVisible) drawImageEditorLabels(labelCtx, getImageEditorDisplayLabels(editor.labels || []), layers.labelCanvas);
         layers.labelCanvas.classList.toggle('hidden', !editor.labelsEnabled || !labelsLayerVisible);
+        updateImageEditorVisualAidClosePathSnap();
     }
 
     function findImageEditorActiveConnectorAnchorAtPoint(point) {
@@ -13963,6 +20353,7 @@ The deletion becomes permanent when you save the diagram.`);
         const canvas = elements.studioImageEditorCanvas;
         if (!point || !canvas || !isImageEditorConnectorMode(editor)) return false;
         const connector = getImageEditorActiveConnector(editor);
+        if (['bracket', 'multi'].includes(getDiagramConnectorStyle(connector))) return false;
         const anchor = getImageEditorConnectorCanvasPoint(connector, canvas);
         if (!anchor) return false;
         const tolerance = getImageEditorCanvasScreenTolerance(20);
@@ -13976,7 +20367,12 @@ The deletion becomes permanent when you save the diagram.`);
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        const singleLabelView = isImageEditorSingleLabelViewEnabled(editor);
+        const activeIndex = singleLabelView ? getImageEditorSingleLabelViewIndex(editor) : getImageEditorGhostActiveIndex(editor);
+        const inactiveOpacity = getImageEditorGhostInactiveOpacity(editor);
+        const badgeScale = getImageEditorBadgeScale(editor);
         drafts.forEach((item, index) => {
+            if (singleLabelView && index !== activeIndex) return;
             const isDragging = editor?.draggingLabelIndex === index;
             const isHovered = !isDragging && editor?.hoveredLabelIndex === index;
             const fontSize = isDragging ? 40 : (isHovered ? 38 : 34);
@@ -13988,6 +20384,11 @@ The deletion becomes permanent when you save the diagram.`);
             const height = isDragging ? 50 : (isHovered ? 48 : 42);
             const radius = height / 2;
             ctx.save();
+            // Scale around the label's own anchor, never the image origin.
+            ctx.translate(x, y);
+            ctx.scale(badgeScale, badgeScale);
+            ctx.translate(-x, -y);
+            if (index !== activeIndex) ctx.globalAlpha = inactiveOpacity;
             ctx.shadowColor = isDragging
                 ? 'rgba(250, 204, 21, 0.72)'
                 : (isHovered ? 'rgba(124, 108, 255, 0.62)' : 'rgba(0, 0, 0, 0.28)');
@@ -14025,18 +20426,20 @@ The deletion becomes permanent when you save the diagram.`);
         const canvas = elements.studioImageEditorCanvas;
         if (!editor?.labels?.length || editor.labelsLayerVisible === false || !canvas || !point) return -1;
         const ctx = canvas.getContext('2d');
+        const badgeScale = getImageEditorBadgeScale(editor);
         ctx.save();
         ctx.font = '800 34px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         let found = -1;
+        const singleLabelIndex = isImageEditorSingleLabelViewEnabled(editor) ? getImageEditorSingleLabelViewIndex(editor) : -1;
         getImageEditorDisplayLabels(editor.labels || []).forEach((item, index) => {
-            if (found !== -1) return;
+            if (found !== -1 || (singleLabelIndex >= 0 && index !== singleLabelIndex)) return;
             const pos = getImageEditorLabelPixelPosition(item, canvas);
             const text = htmlToDisplayText(item.label) || item.label;
             const metrics = ctx.measureText(text);
-            const width = Math.max(56, metrics.width + 38);
-            const height = 54;
+            const width = Math.max(56, metrics.width + 38) * badgeScale;
+            const height = 54 * badgeScale;
             if (point.x >= pos.x - width / 2 && point.x <= pos.x + width / 2 && point.y >= pos.y - height / 2 && point.y <= pos.y + height / 2) {
                 found = index;
             }
@@ -14073,7 +20476,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function getImageEditorLabelPanelWidth(editor = state.auth.imageEditor) {
-        const desiredWidth = Math.max(IMAGE_EDITOR_LABEL_PANEL_MIN_WIDTH, Number(editor?.labelPanelWidth) || Number(state.auth.diagramLabelPanelWidth) || 340);
+        const desiredWidth = Math.max(IMAGE_EDITOR_LABEL_PANEL_MIN_WIDTH, Number(editor?.labelPanelWidth) || Number(state.auth.diagramLabelPanelWidth) || 410);
         const maxWidth = getImageEditorLabelPanelMaxWidth(editor);
         return Math.min(maxWidth, desiredWidth);
     }
@@ -14126,6 +20529,64 @@ The deletion becomes permanent when you save the diagram.`);
         event.stopPropagation();
     }
 
+    // Visual Aids use the same pointer-captured ↔ resize pattern as Labels,
+    // mirrored on the left edge of the canvas (dragging right increases width).
+    const IMAGE_EDITOR_VISUAL_AID_PANEL_MIN_WIDTH = 260;
+    const IMAGE_EDITOR_VISUAL_AID_PANEL_MAX_WIDTH = 620;
+    let imageEditorVisualAidPanelResizeDrag = null;
+
+    function getImageEditorVisualAidPanelMaxWidth(editor = state.auth.imageEditor) {
+        const workspaceWidth = Math.max(320, Number(elements.studioImageEditorWorkspace?.clientWidth) || 900);
+        // Labels can relinquish spare width when the left panel expands;
+        // reserve their minimum rather than treating their old width as fixed.
+        const labelsWidth = editor?.showLabelPanel ? Math.min(IMAGE_EDITOR_LABEL_PANEL_MIN_WIDTH, Math.max(0, Number(elements.studioImageEditorLabelPanel?.getBoundingClientRect().width) || Number(editor?.labelPanelAppliedWidth) || 340)) : 0;
+        const canvasMinimum = editor?.showLabelPanel ? Math.max(320, Number(editor?.labelPanelCanvasMinWidth) || 320) : 320;
+        const gaps = IMAGE_EDITOR_WORKSPACE_GAP * (editor?.showLabelPanel ? 2 : 1);
+        return Math.min(IMAGE_EDITOR_VISUAL_AID_PANEL_MAX_WIDTH, Math.max(1,workspaceWidth - labelsWidth - canvasMinimum - gaps));
+    }
+
+    function applyImageEditorVisualAidPanelWidth() {
+        const editor = state.auth.imageEditor;
+        if (!editor || !elements.studioImageEditorVisualAidPanel) return;
+        const desired = Math.max(IMAGE_EDITOR_VISUAL_AID_PANEL_MIN_WIDTH, Number(editor.visualAidPanelWidth) || Number(state.auth.diagramVisualAidPanelWidth) || 290);
+        const max = window.innerWidth <= 920 ? desired : getImageEditorVisualAidPanelMaxWidth(editor);
+        const width = Math.min(desired, max);
+        elements.studioImageEditorWorkspace?.style.setProperty('--studio-visual-aid-panel-width', `${width}px`);
+        elements.studioImageEditorVisualAidPanel.style.width = window.innerWidth <= 920 ? '' : `${width}px`;
+        if (editor.showLabelPanel) applyImageEditorLabelPanelWidth();
+    }
+
+    function beginImageEditorVisualAidPanelResize(event) {
+        const editor = state.auth.imageEditor;
+        const panel = elements.studioImageEditorVisualAidPanel;
+        if (!editor?.open || !panel || window.innerWidth <= 920 || (event.button !== undefined && event.button !== 0)) return;
+        imageEditorVisualAidPanelResizeDrag = {pointerId:event.pointerId,startX:event.clientX,startWidth:panel.getBoundingClientRect().width || 290};
+        panel.classList.add('is-resizing');
+        try { elements.studioImageEditorVisualAidPanelResizeHandle?.setPointerCapture?.(event.pointerId); } catch (_) {}
+        event.preventDefault(); event.stopPropagation();
+    }
+
+    function moveImageEditorVisualAidPanelResize(event) {
+        const drag = imageEditorVisualAidPanelResizeDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        const max = getImageEditorVisualAidPanelMaxWidth(editor);
+        editor.visualAidPanelWidth = Math.max(Math.min(IMAGE_EDITOR_VISUAL_AID_PANEL_MIN_WIDTH,max), Math.min(max, drag.startWidth + event.clientX - drag.startX));
+        state.auth.diagramVisualAidPanelWidth = editor.visualAidPanelWidth;
+        applyImageEditorVisualAidPanelWidth();
+        event.preventDefault(); event.stopPropagation();
+    }
+
+    function endImageEditorVisualAidPanelResize(event) {
+        const drag = imageEditorVisualAidPanelResizeDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        imageEditorVisualAidPanelResizeDrag = null;
+        elements.studioImageEditorVisualAidPanel?.classList.remove('is-resizing');
+        try { elements.studioImageEditorVisualAidPanelResizeHandle?.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        event.preventDefault(); event.stopPropagation();
+    }
+
     function toggleImageEditorLabelPanel() {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled) return;
@@ -14160,13 +20621,41 @@ The deletion becomes permanent when you save the diagram.`);
         popover.className = 'studio-image-editor-layer-visibility-popover hidden';
         popover.setAttribute('role', 'dialog');
         popover.setAttribute('aria-hidden', 'true');
-        popover.innerHTML = '<div class="studio-image-editor-layer-visibility-title" data-layer-visibility-title></div><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-visibility-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span data-layer-visibility-state>Show</span></label><div class="studio-image-editor-layer-visibility-help" data-layer-visibility-help></div>';
+        popover.innerHTML = '<div class="studio-image-editor-layer-visibility-title" data-layer-visibility-title></div><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-visibility-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span data-layer-visibility-state>Show</span></label><div class="studio-image-editor-layer-visibility-help" data-layer-visibility-help></div><div class="studio-image-editor-ghost-controls hidden" data-layer-ghost-controls><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-single-label-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span>Single Label View</span></label><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-ghost-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span>Ghost Labels</span></label><label class="studio-image-editor-ghost-range"><span>Inactive label opacity <output data-layer-ghost-value>35%</output></span><input type="range" min="0" max="100" step="5" value="35" data-layer-ghost-opacity aria-label="Ghost labels inactive opacity"></label><div class="studio-image-editor-layer-visibility-help" data-layer-single-label-help>Single Label View shows only the active label, connector and drawings. It takes priority over Ghost Labels.</div></div><div class="studio-image-editor-ghost-controls hidden" data-layer-small-labels-controls><label class="studio-image-editor-ghost-range"><span>Label Size <output data-layer-small-labels-value>100%</output></span><input type="range" min="25" max="200" step="5" value="100" data-layer-small-labels-scale aria-label="Diagram label size"></label></div>';
         overlay.appendChild(popover);
         popover.addEventListener('click', event => event.stopPropagation());
         popover.querySelector('[data-layer-visibility-input]')?.addEventListener('change', event => {
             const kind = normalizeSheetText(popover.dataset.layerVisibilityKind || '');
             setImageEditorLayerContentVisible(kind, !!event.target.checked);
             syncImageEditorLayerVisibilityPopover();
+        });
+        popover.querySelector('[data-layer-single-label-input]')?.addEventListener('change', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor || popover.dataset.layerVisibilityKind !== 'labels') return;
+            editor.singleLabelViewEnabled = !!event.target.checked;
+            syncImageEditorLayerVisibilityPopover();
+            renderImageEditorCanvas();
+        });
+        popover.querySelector('[data-layer-ghost-input]')?.addEventListener('change', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor || popover.dataset.layerVisibilityKind !== 'labels') return;
+            editor.ghostLabelsEnabled = !!event.target.checked;
+            syncImageEditorLayerVisibilityPopover();
+            renderImageEditorVectorOverlays();
+        });
+        popover.querySelector('[data-layer-small-labels-scale]')?.addEventListener('input', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor || popover.dataset.layerVisibilityKind !== 'labels') return;
+            editor.labelSize = normalizeDiagramLabelSize(Number(event.target.value) / 100);
+            syncImageEditorLayerVisibilityPopover();
+            renderImageEditorVectorOverlays();
+        });
+        popover.querySelector('[data-layer-ghost-opacity]')?.addEventListener('input', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor || popover.dataset.layerVisibilityKind !== 'labels') return;
+            editor.ghostLabelOpacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+            syncImageEditorLayerVisibilityPopover();
+            renderImageEditorVectorOverlays();
         });
         return popover;
     }
@@ -14178,6 +20667,17 @@ The deletion becomes permanent when you save the diagram.`);
         popover.setAttribute('aria-hidden', 'true');
         popover.dataset.layerVisibilityKind = '';
     }
+
+    // Bind independently of the old broad editor-event guard. The legacy editor
+    // marks that guard as bound before the modern Labels options binder runs.
+    // A capture listener also handles clicks outside the editor overlay.
+    document.addEventListener('pointerdown', event => {
+        const popover = document.getElementById('studioImageEditorLayerVisibilityPopover');
+        if (!popover || popover.classList.contains('hidden')) return;
+        const target = event.target;
+        if (popover.contains(target) || target.closest?.('#studioImageEditorLabelsBtn, #studioImageEditorVisualAidBtn')) return;
+        closeImageEditorLayerVisibilityPopover();
+    }, true);
 
     function isImageEditorLayerVisibilityPopoverOpen(kind = '') {
         const popover = document.getElementById('studioImageEditorLayerVisibilityPopover');
@@ -14199,6 +20699,30 @@ The deletion becomes permanent when you save the diagram.`);
         if (title) title.textContent = isLabels ? 'Labels' : 'Visual Aids';
         if (stateText) stateText.textContent = visible ? 'Show' : 'Hide';
         if (help) help.textContent = isLabels ? 'Labels, connectors, and label drawings' : 'All Visual Aids in Diagram Creator';
+        const ghostControls = popover.querySelector('[data-layer-ghost-controls]');
+        const singleLabelInput = popover.querySelector('[data-layer-single-label-input]');
+        const ghostInput = popover.querySelector('[data-layer-ghost-input]');
+        const ghostSlider = popover.querySelector('[data-layer-ghost-opacity]');
+        const ghostValue = popover.querySelector('[data-layer-ghost-value]');
+        const smallSlider = popover.querySelector('[data-layer-small-labels-scale]');
+        const smallValue = popover.querySelector('[data-layer-small-labels-value]');
+        ghostControls?.classList.toggle('hidden', !isLabels || !isImageEditorStandaloneDiagramTarget(editor));
+        const smallControls = popover.querySelector('[data-layer-small-labels-controls]');
+        smallControls?.classList.toggle('hidden', !isLabels || !(isImageEditorStandaloneDiagramTarget(editor) || editor.target?.multiAngleDraft === true));
+        if (singleLabelInput) singleLabelInput.checked = editor.singleLabelViewEnabled === true;
+        if (ghostInput) ghostInput.checked = editor.ghostLabelsEnabled === true;
+        const opacity = Math.round(Math.min(1, Math.max(0, Number(editor.ghostLabelOpacity ?? 0.35))) * 100);
+        if (ghostSlider) {
+            ghostSlider.value = String(opacity);
+            ghostSlider.disabled = !visible || editor.ghostLabelsEnabled === false;
+        }
+        if (ghostValue) ghostValue.textContent = `${opacity}%`;
+        const badgeSize = Math.round(normalizeDiagramLabelSize(editor.labelSize) * 100);
+        if (smallSlider) {
+            smallSlider.value = String(badgeSize);
+            smallSlider.disabled = !visible;
+        }
+        if (smallValue) smallValue.textContent = `${badgeSize}%`;
     }
 
     function openImageEditorLayerVisibilityPopover(kind = '', button = null) {
@@ -14206,14 +20730,18 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor?.open || !button) return;
         const popover = ensureImageEditorLayerVisibilityPopover();
         popover.dataset.layerVisibilityKind = normalizeSheetText(kind);
+        popover.classList.toggle('is-labels', kind === 'labels');
         popover.classList.remove('hidden');
         popover.setAttribute('aria-hidden', 'false');
         syncImageEditorLayerVisibilityPopover();
         const rect = button.getBoundingClientRect();
-        const estimatedWidth = 230;
+        const estimatedWidth = 256;
         const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - estimatedWidth - 8));
         popover.style.left = `${left}px`;
-        popover.style.top = `${Math.min(window.innerHeight - 120, rect.bottom + 8)}px`;
+        // New single-label option makes the Labels popup taller; use its real
+        // height and clamp it to the viewport rather than a stale estimate.
+        const popupHeight = popover.getBoundingClientRect().height || (kind === 'labels' ? 300 : 120);
+        popover.style.top = `${Math.max(8, Math.min(Math.max(8, window.innerHeight - popupHeight - 8), rect.bottom + 8))}px`;
     }
 
     function setImageEditorLayerContentVisible(kind = '', visible = true) {
@@ -14222,6 +20750,7 @@ The deletion becomes permanent when you save the diagram.`);
         const show = visible !== false;
         if (kind === 'labels') {
             editor.labelsLayerVisible = show;
+            syncImageEditorLayerVisibilityPopover();
             if (!show) {
                 finishImageEditorActiveStroke(null, { silent: true });
                 editor.activeDrawLabelIndex = null;
@@ -14251,29 +20780,44 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    function toggleImageEditorLabelDetailFocus(index) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor) || !editor.labels?.[index]) return;
+        const label = editor.labels[index];
+        label.detailFocus = label.detailFocus !== true;
+        // Metadata-only edit: leave canonical image bytes, draw strokes and connectors unchanged.
+        renderImageEditorLabelList();
+        setImageEditorStatus(label.detailFocus ? 'Detail Focus override enabled for this label.' : 'Detail Focus override disabled for this label.');
+    }
+
     function renderImageEditorLabelList() {
         const editor = state.auth.imageEditor;
         if (!elements.studioImageEditorLabelList) return;
         if (!editor?.labelsEnabled || !editor.showLabelPanel) {
             elements.studioImageEditorLabelList.innerHTML = '';
+            elements.studioImageEditorLabelList.style.paddingBottom = '';
             return;
         }
         const labels = syncImageEditorLabels();
         if (!labels.length) {
             elements.studioImageEditorLabelList.innerHTML = '<div class="studio-image-editor-label-empty">No labels yet. Click Add Label, then drag it on the image to move it.</div>';
+            elements.studioImageEditorLabelList.style.paddingBottom = '';
             return;
         }
         const connectorStyles = [
             ['straight', 'Straight'],
             ['curved', 'Curved'],
             ['elbow', 'Elbow'],
-            ['angled', 'Angled']
+            ['angled', 'Angled'],
+            ['bracket', 'Bracket'],
+            ['multi', 'Multi']
         ];
         const connectorEndpointRows = [
             ['none', 'No ball'],
             ['ball', 'Ball']
         ];
         const isNumberedLabelTarget = isImageEditorNumberedLabelTarget(editor);
+        const hasDetailFocusButton = isImageEditorStandaloneDiagramTarget(editor);
         elements.studioImageEditorLabelList.innerHTML = labels.map((item, index) => {
             const isDrawActive = editor.activeDrawLabelIndex === index;
             const isVisible = isImageEditorLabelDrawVisible(index);
@@ -14289,10 +20833,12 @@ The deletion becomes permanent when you save the diagram.`);
                 ${connectorEndpointRows.map(([endpoint, rowLabel]) => `
                   <div class="studio-image-editor-connector-style-row-label">${rowLabel}</div>
                   ${connectorStyles.map(([style, title]) => {
-                    const isSelected = currentConnectorStyle === style && currentConnectorEndpoint === endpoint;
+                    if (style === 'bracket' && endpoint === 'ball') return '<span class="studio-image-editor-connector-style-spacer" aria-hidden="true"></span>';
+                    const effectiveEndpoint = style === 'bracket' ? 'none' : endpoint;
+                    const isSelected = currentConnectorStyle === style && currentConnectorEndpoint === effectiveEndpoint;
                     return `
-                    <button type="button" class="studio-image-editor-connector-style-option ${isSelected ? 'is-selected' : ''}" data-image-editor-connector-style="${style}" data-image-editor-connector-endpoint="${endpoint}" role="menuitemradio" aria-checked="${isSelected ? 'true' : 'false'}" title="${title} connector — ${rowLabel.toLowerCase()}">
-                      ${getImageEditorConnectorStylePreviewSvg(style, endpoint)}
+                    <button type="button" class="studio-image-editor-connector-style-option ${isSelected ? 'is-selected' : ''}" data-image-editor-connector-style="${style}" data-image-editor-connector-endpoint="${effectiveEndpoint}" role="menuitemradio" aria-checked="${isSelected ? 'true' : 'false'}" title="${title} connector${style === 'bracket' ? ' — region bracket' : ` — ${rowLabel.toLowerCase()}`}">
+                      ${getImageEditorConnectorStylePreviewSvg(style, effectiveEndpoint)}
                       <span>${title}</span>
                     </button>`;
                   }).join('')}
@@ -14300,18 +20846,25 @@ The deletion becomes permanent when you save the diagram.`);
               </div>
             ` : '';
             return `
-            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isConnectorActive ? 'is-connector-selected' : ''} ${isConnectorStylePickerOpen ? 'is-connector-style-open' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
+            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isConnectorActive ? 'is-connector-selected' : ''} ${isConnectorStylePickerOpen ? 'is-connector-style-open' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''} ${hasDetailFocusButton ? 'has-detail-focus' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
               ${isNumberedLabelTarget ? `<span class="studio-image-editor-label-number" aria-hidden="true">${index + 1}.</span>` : ''}
               <input type="text" value="${labelText}" data-image-editor-label-text autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} answer" placeholder="Label answer">
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}" aria-label="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}"><span aria-hidden="true">🖌</span></button>
-              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector ${isConnectorActive ? 'active' : ''} ${hasConnector ? 'has-connector' : ''}" data-image-editor-label-connector aria-pressed="${isConnectorActive ? 'true' : 'false'}" aria-expanded="${isConnectorStylePickerOpen ? 'true' : 'false'}" aria-haspopup="menu" title="${isConnectorActive ? 'Exit connector editing for' : (hasConnector ? 'Choose or edit connector style for' : 'Choose connector style for')} label ${labelText}" aria-label="${isConnectorActive ? 'Exit connector editing for' : (hasConnector ? 'Choose or edit connector style for' : 'Choose connector style for')} label ${labelText}"><span class="studio-image-editor-label-connector-icon" aria-hidden="true">🔗</span></button>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector ${isConnectorActive ? 'active' : ''} ${hasConnector ? 'has-connector' : ''}" data-image-editor-label-connector aria-pressed="${isConnectorActive ? 'true' : 'false'}" aria-expanded="${isConnectorStylePickerOpen ? 'true' : 'false'}" aria-haspopup="menu" title="${isConnectorActive ? 'Choose connector style for' : (hasConnector ? 'Edit connector for' : 'Place No Ball Angled connector for')} label ${labelText}" aria-label="${isConnectorActive ? 'Choose connector style for' : (hasConnector ? 'Edit connector for' : 'Place No Ball Angled connector for')} label ${labelText}"><span class="studio-image-editor-label-connector-icon" aria-hidden="true">🔗</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector-delete" data-image-editor-label-connector-delete title="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" aria-label="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" ${hasConnector ? '' : 'disabled'}><span aria-hidden="true">✕</span></button>
+              ${hasDetailFocusButton ? `<button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-detail-focus ${item.detailFocus === true ? 'is-detail' : ''}" data-image-editor-label-detail-focus aria-pressed="${item.detailFocus === true ? 'true' : 'false'}" title="${item.detailFocus === true ? 'Disable Detail Focus override' : 'Use Detail Focus for'} label ${labelText}" aria-label="${item.detailFocus === true ? 'Disable 700 percent Detail Focus override for' : 'Enable 700 percent Detail Focus override for'} label ${labelText}"><span aria-hidden="true">⌕</span></button>` : ''}
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-visibility ${isVisible ? 'is-visible' : 'is-hidden'}" data-image-editor-label-visibility aria-pressed="${isVisible ? 'true' : 'false'}" title="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}" aria-label="${isVisible ? 'Hide' : 'Show'} draw strokes for label ${labelText}"><span aria-hidden="true">👁</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-delete studio-image-editor-label-delete-icon" data-image-editor-label-delete title="Delete label ${labelText}" aria-label="Delete label ${labelText}"><span aria-hidden="true">🗑</span></button>
               ${stylePicker}
             </div>
         `;
         }).join('');
+        // Leave enough scroll room to bring the first connector style choice
+        // into view even when its picker belongs to the last label in the list.
+        // This space is temporary and cleared when the picker closes.
+        elements.studioImageEditorLabelList.style.paddingBottom = editor.connectorStylePickerLabelIndex !== null
+            && editor.connectorStylePickerLabelIndex !== undefined
+            ? `${Math.max(0, elements.studioImageEditorLabelList.clientHeight - 32)}px` : '';
     }
 
 
@@ -14322,29 +20875,35 @@ The deletion becomes permanent when you save the diagram.`);
         const canvas = elements.studioImageEditorCanvas;
         if (!svg || !canvas || !editor?.visualAidsEnabled || editor.visualAidsLayerVisible === false) {
             if (svg) svg.classList.add('hidden');
+            updateImageEditorVisualAidClosePathSnap();
             return;
         }
         if (animationFrame && diagramVisualAidPlaybackSurfaceCache.has(svg)) {
             updateDiagramVisualAidPlaybackSurface(svg, editor.visualAidPreviewProgress);
+            updateDiagramVisualAidBehaviorBalls(svg, editor.visualAidPreviewProgress);
             renderImageEditorVisualAidPreviewSequence({ animationFrame: true });
+            updateImageEditorVisualAidClosePathSnap();
             return;
         }
         const storedAids = normalizeDiagramVisualAids(editor.visualAids || []);
         const visibleId = normalizeSheetText(editor.sessionVisibleVisualAidId || '');
-        const aids = storedAids.map(aid => ({ ...aid, visible: aid.id === visibleId }));
-        const activeAid = aids.find(aid => aid.id === editor.activeVisualAidId && aid.visible && aid.path.length > 1) || null;
+        const visibleGroup = getDiagramVisualAidGroup(storedAids, visibleId);
+        const visibleIds = new Set(visibleGroup.map(item => item.id));
+        const aids = storedAids.map(aid => ({ ...aid, visible: visibleIds.has(aid.id) }));
+        const activeAid = aids.find(aid => aid.id === editor.activeVisualAidId && aid.visible && (aid.path.length > 1 || hasFlowFillGeometry(aid))) || null;
         const width = Math.max(1, canvas.width || 1);
         const height = Math.max(1, canvas.height || 1);
         const previewOptions = editor.visualAidPreviewActive && activeAid
-            ? { progress: editor.visualAidPreviewProgress, activeOnlyId: activeAid.id }
+            ? { progress: editor.visualAidPreviewProgress, activeOnlyId: visibleGroup.length > 1 ? '' : activeAid.id }
             : {};
         renderDiagramVisualAidPlaybackSurface(svg, aids, width, height, previewOptions, { animationFrame });
         const penAid = aids.find(aid => aid.id === editor.activeVisualAidId) || null;
         if (!animationFrame && penAid) renderImageEditorVisualAidPenOverlay(svg, penAid);
         if (!animationFrame) renderImageEditorVisualAidLazyGuide(svg);
         const hasCurveEditorGeometry = !!(isImageEditorVisualAidCurveMode(editor) && penAid && (penAid.curveAnchors || []).length);
-        svg.classList.toggle('hidden', !aids.some(aid => aid.visible && aid.path.length > 1) && !hasCurveEditorGeometry);
+        svg.classList.toggle('hidden', !aids.some(aid => aid.visible && (aid.path.length > 1 || hasFlowFillGeometry(aid))) && !hasCurveEditorGeometry);
         renderImageEditorVisualAidPreviewSequence({ animationFrame });
+        updateImageEditorVisualAidClosePathSnap();
     }
 
     function stopImageEditorVisualAidPreview({ reset = false, deactivate = false } = {}) {
@@ -14363,11 +20922,11 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor || !list) return;
         const aid = getActiveImageEditorVisualAid(editor);
         const sequence = list.querySelector('[data-visual-aid-preview-sequence]');
-        const loopBtn = list.querySelector('[data-visual-aid-preview-action="loop"]');
-        if (loopBtn) { loopBtn.classList.toggle('active', !!editor.visualAidPreviewLoop); loopBtn.setAttribute('aria-pressed', editor.visualAidPreviewLoop ? 'true' : 'false'); }
-        if (!sequence || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || aid.path.length < 2) { if (sequence) sequence.innerHTML = ''; return; }
+        const loopSwitch = list.querySelector('[data-visual-aid-preview-loop]');
+        if (loopSwitch) loopSwitch.checked = !!editor.visualAidPreviewLoop;
+        if (!sequence || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || (aid.path.length < 2 && !hasFlowFillGeometry(aid))) { if (sequence) sequence.innerHTML = ''; return; }
         const items = getDiagramVisualAidSequenceItems(aid);
-        const progress = normalizeDiagramVisualAidPosition(editor.visualAidPreviewProgress);
+        const progress = getDiagramVisualAidPlaybackLeadProgress(aid, editor.visualAidPreviewProgress);
         let active = items.findIndex(item => item.type === 'point' && Math.abs(item.position - progress) <= 0.012);
         if (active < 0) active = items.findIndex(item => item.type === 'division' && progress >= Number(item.start || 0) && (progress < Number(item.end || 1) || progress >= 0.999));
         if (active < 0) items.forEach((item, index) => { if (item.position <= progress) active = index; });
@@ -14389,7 +20948,12 @@ The deletion becomes permanent when you save the diagram.`);
         if (sequence.dataset.visualAidActiveKey !== activeKey) {
             sequence.dataset.visualAidActiveKey = activeKey;
             sequence.querySelectorAll('.visual-aid-sequence-stop').forEach((button, index) => button.classList.toggle('is-active', index === active));
-            sequence.querySelector('.visual-aid-sequence-stop.is-active')?.scrollIntoView?.({ behavior: animationFrame ? 'auto' : 'smooth', inline: 'center', block: 'nearest' });
+            // Flow Fill: never scroll the enclosing editor to the timeline when
+            // its active action changes. Existing Path Visual Aids retain their
+            // original stop-tracking behavior.
+            if (aid.flowFillType !== 'flow-fill') {
+                sequence.querySelector('.visual-aid-sequence-stop.is-active')?.scrollIntoView?.({ behavior: animationFrame ? 'auto' : 'smooth', inline: 'center', block: 'nearest' });
+            }
         }
     }
 
@@ -14404,10 +20968,10 @@ The deletion becomes permanent when you save the diagram.`);
     function playImageEditorVisualAidPreview() {
         const editor = state.auth.imageEditor;
         const aid = getActiveImageEditorVisualAid(editor);
-        if (!editor || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || aid.path.length < 2 || editor.visualAidPreviewPlaying) return;
+        if (!editor || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || (aid.path.length < 2 && !hasFlowFillGeometry(aid)) || editor.visualAidPreviewPlaying) return;
         editor.visualAidPreviewActive = true;
         editor.visualAidPreviewPlaying = true;
-        const duration = getDiagramVisualAidDurationMs(aid.speed);
+        const duration = getDiagramVisualAidPlaybackDurationMs(aid);
         editor.visualAidPreviewStartedAt = performance.now() - (editor.visualAidPreviewProgress * duration);
         // Mount the shared persistent surface once before RAF playback starts.
         renderImageEditorVisualAidLayer();
@@ -14424,6 +20988,32 @@ The deletion becomes permanent when you save the diagram.`);
         });
     }
 
+    function getFlowFillEditorPanelMarkup(aid, editor, pathAuthoringUi, visualAidToggle, previewReady) {
+        const items=aid.flowItems||[];
+        const selected=items.find(item=>item.id===aid.flowActiveItemId)||items[0];
+        const regions=items.filter(item=>item.type==='region');
+        const paths=items.filter(item=>item.type==='connection');
+        const options=(rows,value,placeholder='Choose...')=>`<option value="">${escapeHtml(placeholder)}</option>${rows.map(item=>`<option value="${escapeHtml(item.id)}" ${item.id===value?'selected':''}>${escapeHtml(item.name)}</option>`).join('')}`;
+        const actionRows=aid.flowActions.map(action=>{
+            const label=action.type==='transfer' ? `${regions.find(item=>item.id===action.fromId)?.name||'?'} → ${regions.find(item=>item.id===action.toId)?.name||'?'}` : (regions.find(item=>item.id===action.regionId)?.name||'?');
+            return `<div class="studio-flow-action-row"><div class="studio-flow-action-head"><strong>${escapeHtml(action.name)}</strong><span>${escapeHtml(label)}</span><button type="button" data-flow-delete-action="${escapeHtml(action.id)}" aria-label="Delete flow action">×</button></div><div class="studio-visual-aid-section-title">Edit Action Timing</div><div class="studio-flow-times"><label>Start (s)<input type="number" min="0" max="60" step="0.1" data-flow-action-start="${escapeHtml(action.id)}" value="${action.start}"></label><label>End (s)<input type="number" min="0.1" max="60" step="0.1" data-flow-action-end="${escapeHtml(action.id)}" value="${action.end}"></label></div><label>Quiz question (optional)<input data-flow-action-question="${escapeHtml(action.id)}" value="${escapeHtml(action.question)}" placeholder="e.g. What happens at this stage?"></label><label>Quiz answer (optional)<input data-flow-action-answer="${escapeHtml(action.id)}" value="${escapeHtml(action.answer)}" placeholder="Answer shown in Mini Quiz"></label></div>`;
+        }).join('');
+        const selectedUi=selected?`<div class="studio-flow-selected"><div class="studio-visual-aid-section-title">Selected ${selected.type==='region'?'Fill Region':'Flow Path'}</div><label>Name <input data-flow-item-name="${escapeHtml(selected.id)}" value="${escapeHtml(selected.name)}" maxlength="100"></label><label>Color <input type="color" data-flow-item-color="${escapeHtml(selected.id)}" value="${escapeHtml(selected.color)}"></label>${selected.type==='region'?`<label>Starting fill <input type="range" min="0" max="100" data-flow-item-initial="${escapeHtml(selected.id)}" value="${selected.initialFill}"><span>${selected.initialFill}%</span></label><label>Filled With (Mini Quiz answer)<input type="text" data-flow-item-contents="${escapeHtml(selected.id)}" value="${escapeHtml(selected.fillContents || 'Fluid')}" maxlength="200" placeholder="e.g. Blood, lymph, water" aria-label="Substance filling this region"></label><span class="studio-flow-hint">Every region gets an automatic “What is this region filled with?” question. Replace the default “Fluid” with the actual contents.</span><div class="studio-flow-angle-controls"><div class="studio-visual-aid-section-title">Region Fill Direction</div><label>Fill angle <input type="range" min="0" max="359" step="1" data-flow-item-fill-angle="${escapeHtml(selected.id)}" value="${selected.fillAngle}" aria-label="Fill direction angle"><input type="number" min="0" max="359" step="1" data-flow-item-fill-angle="${escapeHtml(selected.id)}" value="${selected.fillAngle}" aria-label="Fill angle in degrees">°</label><label>Empty angle <input type="range" min="0" max="359" step="1" data-flow-item-empty-angle="${escapeHtml(selected.id)}" value="${selected.emptyAngle}" aria-label="Empty direction angle"><input type="number" min="0" max="359" step="1" data-flow-item-empty-angle="${escapeHtml(selected.id)}" value="${selected.emptyAngle}" aria-label="Empty angle in degrees">°</label><span class="studio-flow-hint">0° keeps the current vertical fill (bottom origin), 90° starts from the right, 180° from the top, 270° from the left. Fill and Empty are independent.</span></div>`:`<label>From region <select data-flow-item-from="${escapeHtml(selected.id)}">${options(regions,selected.fromId,'Select starting region')}</select></label><label>To region <select data-flow-item-to="${escapeHtml(selected.id)}">${options(regions,selected.toId,'Select destination')}</select></label><label>Flow Path thickness <input data-flow-item-thickness="${escapeHtml(selected.id)}" type="range" min="2" max="80" step="1" value="${selected.thickness}"><span>${selected.thickness}</span></label><div class="studio-flow-arrow-settings"><div class="studio-visual-aid-section-title">Direction arrows (optional)</div>${visualAidToggle('End arrow',`data-flow-item-end-arrow="${escapeHtml(selected.id)}"`,selected.endArrow)}${visualAidToggle('Continuous arrows',`data-flow-item-continuous-arrows="${escapeHtml(selected.id)}"`,selected.continuousArrows)}${visualAidToggle('Reveal path when transfer starts',`data-flow-item-reveal-on-transfer="${escapeHtml(selected.id)}"`,selected.revealOnTransfer)}<label>Continuous arrow count <input data-flow-item-arrow-count="${escapeHtml(selected.id)}" type="range" min="1" max="24" step="1" value="${selected.continuousArrowCount}" ${selected.continuousArrows?'':'disabled'}><span>${selected.continuousArrowCount}</span></label>${visualAidToggle('Match path color (darker shade)',`data-flow-item-arrow-sync="${escapeHtml(selected.id)}"`,selected.arrowColorSync)}<label>Continuous arrow color <input type="color" data-flow-item-arrow-color="${escapeHtml(selected.id)}" value="${escapeHtml(selected.arrowColorSync ? getFlowFillMatchingArrowColor(selected.color) : selected.arrowColor)}" ${selected.continuousArrows && !selected.arrowColorSync?'':'disabled'}></label><span class="studio-flow-hint">The filled end arrow belongs to the Flow Path and matches its color and thickness. Continuous arrows appear and move only during this path's Transfer action. The end arrow appears when transfer starts. Optional Reveal hides the route until its first transfer, then leaves it visible. Paths stay visible while editing.</span></div>`}<label>Quiz question (optional)<input data-flow-item-question="${escapeHtml(selected.id)}" value="${escapeHtml(selected.question)}" maxlength="400" placeholder="Identify this structure"></label><label>Quiz answer (optional)<input data-flow-item-answer="${escapeHtml(selected.id)}" value="${escapeHtml(selected.answer)}" maxlength="300" placeholder="Name or explanation"></label><text class="studio-flow-hint">Use Draw Path → Brush or Curves to draw or replace this ${selected.type==='region'?'region outline':'connecting flow path'}.</text></div>`:'';
+        const initialRegion=regions[0]?.id||'';
+        const secondRegion=regions[1]?.id||initialRegion;
+        // Suggest the next chronological transfer instead of restarting at 0s.
+        const lastAction=aid.flowActions.length ? aid.flowActions.slice().sort((a,b)=>b.end-a.end)[0] : null;
+        const usedPaths=new Set(aid.flowActions.filter(action=>action.type==='transfer').map(action=>action.pathId));
+        const availablePath=paths.find(item=>!usedPaths.has(item.id) && item.fromId===lastAction?.toId)
+            || paths.find(item=>!usedPaths.has(item.id)) || paths[0] || null;
+        const nextFrom=availablePath?.fromId || lastAction?.toId || initialRegion;
+        const nextTo=availablePath?.toId || regions.find(item=>item.id!==nextFrom)?.id || secondRegion;
+        const nextStart=lastAction?Math.min(60,Math.round(lastAction.end*10)/10):0;
+        const nextEnd=Math.min(60,Math.round((nextStart+3)*10)/10);
+        const editorReady=hasFlowFillGeometry(aid);
+        return `<div class="studio-flow-editor" aria-label="Flow Fill editor"><div class="studio-flow-tools"><button type="button" data-flow-add-item="region">+ Fill Region</button><button type="button" data-flow-add-item="connection">+ Flow Path</button></div><div class="studio-flow-item-list">${items.map(item=>`<button type="button" data-flow-select-item="${escapeHtml(item.id)}" class="${item.id===selected?.id?'active':''}" title="Select ${escapeHtml(item.name)}">${item.type==='region'?'◉':'↝'} ${escapeHtml(item.name)} ${item.path.length?'✓':''}</button>`).join('')}</div><div class="studio-flow-drawing">${pathAuthoringUi}<button type="button" data-flow-delete-item="${escapeHtml(selected?.id||'')}" ${items.length<=1?'disabled':''}>Delete Selected Shape</button></div>${selectedUi}<div class="studio-flow-timeline"><div class="studio-visual-aid-section-title">Animation &amp; Actions</div><label>Total animation duration <input type="range" min="2" max="60" step="1" data-flow-duration value="${aid.flowDurationSec}"><span>${aid.flowDurationSec}s</span></label><div class="studio-flow-new-action"><label>Action<select data-flow-new-type><option value="transfer" ${regions.length>=2?'selected':''}>Transfer</option><option value="fill" ${regions.length<2?'selected':''}>Fill</option><option value="empty">Empty</option><option value="hold">Hold</option></select></label><label>Region (Fill, Empty, Hold)<select data-flow-new-region>${options(regions,initialRegion)}</select></label><label>From (Transfer)<select data-flow-new-from>${options(regions,nextFrom)}</select></label><label>To (Transfer)<select data-flow-new-to>${options(regions,nextTo)}</select></label><label>Connecting flow path<select data-flow-new-path>${options(paths,availablePath?.id||'')}</select></label><div class="studio-visual-aid-section-title">New Action Timing</div><div class="studio-flow-times"><label>Start (sec)<input type="number" min="0" max="60" step="0.1" data-flow-new-start value="${nextStart}"></label><label>End (sec)<input type="number" min="0.1" max="60" step="0.1" data-flow-new-end value="${nextEnd}"></label></div><div class="studio-flow-times"><label>Target fill %<input type="number" min="0" max="100" step="5" data-flow-new-target value="100"></label><label>Transfer % of source <input type="number" min="0" max="100" step="5" data-flow-new-amount value="100"></label></div><button type="button" data-flow-add-action ${!regions.length?'disabled':''}>+ Add Timed Action</button><span data-flow-action-feedback class="studio-flow-action-feedback" role="status" aria-live="polite">${aid.flowActions.length ? `${aid.flowActions.length} action${aid.flowActions.length===1?'':'s'} saved. Suggested start: ${nextStart}s.` : 'Set the time range and click Add Timed Action.'}</span><span class="studio-flow-hint">Actions run at your chosen times. Regions hold their last fill when no action changes them. Use a connection with Transfer for visible movement.</span></div><div class="studio-flow-action-list">${actionRows||'<span class="studio-flow-hint">No actions yet. Set starting fill, then add Fill, Empty, Hold, or Transfer.</span>'}</div></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Flow Fill playback controls"><button type="button" data-visual-aid-preview-action="play" ${editorReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" ${editorReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" ${editorReady?'':'disabled'}>↺</button>${visualAidToggle('Loop','data-visual-aid-preview-loop',editor.visualAidPreviewLoop,!editorReady)}</div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence></div></div></div>`;
+    }
+
     function renderImageEditorVisualAidPanel() {
         const editor = state.auth.imageEditor;
         const panel = elements.studioImageEditorVisualAidPanel;
@@ -14432,11 +21022,23 @@ The deletion becomes permanent when you save the diagram.`);
         const enabled = !!editor?.visualAidsEnabled;
         panel.classList.toggle('hidden', !enabled || !editor.showVisualAidPanel);
         if (!enabled) return;
+        applyImageEditorVisualAidPanelWidth();
         const aids = normalizeDiagramVisualAids(editor.visualAids || []);
-        list.innerHTML = aids.map((aid, index) => {
+        const activeAid = aids.find(item => item.id === editor.activeVisualAidId) || null;
+        const activeGroup = activeAid ? getDiagramVisualAidGroup(aids, activeAid) : [];
+        const presets = normalizeVisualAidPresetList(state.auth.visualAidPresets || []);
+        const presetName = normalizeSheetText(activeAid?.presetName || activeAid?.name || '');
+        const flowFillScrollTop = activeAid?.flowFillType === 'flow-fill' ? list.scrollTop : null;
+        const presetBar = `<div class="studio-visual-aid-preset-bar" aria-label="Visual Aid presets"><input data-visual-aid-preset-name value="${escapeHtml(presetName)}" maxlength="100" placeholder="Visual Aid" aria-label="Visual Aid preset name"><button type="button" class="studio-visual-aid-preset-icon" data-visual-aid-preset-action="save" ${activeAid?'':'disabled'} aria-label="Save Visual Aid preset" title="Save preset">💾</button><details class="studio-visual-aid-preset-load"><summary class="studio-visual-aid-preset-icon" aria-label="Load Visual Aid preset" title="Load preset">📂</summary><div class="studio-visual-aid-preset-menu" role="menu">${presets.length ? presets.map(item => `<button type="button" data-visual-aid-preset-load="${escapeHtml(item.id)}" class="${item.id===editor.visualAidPresetLibraryId?'active':''}" role="menuitem">${escapeHtml(item.name)}</button>`).join('') : '<div class="studio-visual-aid-empty">No saved presets yet.</div>'}</div></details><button type="button" class="studio-visual-aid-preset-icon" data-visual-aid-preset-action="delete" ${editor.visualAidPresetLibraryId?'':'disabled'} aria-label="Delete selected Visual Aid preset" title="Delete preset">🗑</button></div>`;
+        const itemMarkup = aids.map((aid, index) => {
             const active = aid.id === editor.activeVisualAidId;
             const divisions = aid.divisions.map((division, divisionIndex) => `<div class="studio-visual-aid-subrow"><input data-visual-aid-division-name="${escapeHtml(division.id)}" value="${escapeHtml(division.name)}" aria-label="Division name"><input data-visual-aid-division-color="${escapeHtml(division.id)}" type="color" value="${escapeHtml(division.color)}" aria-label="Division color"><button type="button" data-visual-aid-delete-division="${escapeHtml(division.id)}" aria-label="Delete division">×</button></div>`).join('');
             const points = aid.points.map((point, pointIndex) => `<div class="studio-visual-aid-subrow studio-visual-aid-point-row"><label class="studio-visual-aid-point-color ${point.pointStyle === 'solid' ? 'is-solid' : 'is-ring'}" style="--point-ring-color:${escapeHtml(point.ringColor)};--point-center-color:${escapeHtml(aid.defaultColor)}" title="Change ${escapeHtml(point.name)} ring color"><span class="studio-visual-aid-point-ring-swatch" aria-hidden="true"></span><input data-visual-aid-point-ring-color="${escapeHtml(point.id)}" type="color" value="${escapeHtml(point.ringColor)}" aria-label="${escapeHtml(point.name)} color"></label><button type="button" class="studio-visual-aid-point-style-toggle" data-visual-aid-point-style-toggle="${escapeHtml(point.id)}" aria-label="Change ${escapeHtml(point.name)} between hollow and solid" title="${point.pointStyle === 'solid' ? 'Solid point — click for hollow ring' : 'Hollow ring — click for solid point'}">${point.pointStyle === 'solid' ? '●' : '○'}</button><input data-visual-aid-point-name="${escapeHtml(point.id)}" value="${escapeHtml(point.name)}" aria-label="Point name"><div class="studio-visual-aid-point-order"><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="up" aria-label="Move point earlier in sequence" ${pointIndex===0?'disabled':''}>↑</button><button type="button" data-visual-aid-point-move="${escapeHtml(point.id)}" data-direction="down" aria-label="Move point later in sequence" ${pointIndex===aid.points.length-1?'disabled':''}>↓</button></div><button type="button" data-visual-aid-delete-point="${escapeHtml(point.id)}" aria-label="Delete point">×</button></div>`).join('');
+            const balls = aid.balls.map((ball, ballIndex) => {
+                const directionOpen = active && editor.visualAidBallMenuId === ball.id && editor.visualAidBallMenuKind === 'direction';
+                const functionOpen = active && editor.visualAidBallMenuId === ball.id && editor.visualAidBallMenuKind === 'function';
+                return `<div class="studio-visual-aid-ball-row"><span class="studio-visual-aid-ball-index">${ballIndex + 1}</span><input data-visual-aid-ball-color-id="${escapeHtml(ball.id)}" type="color" value="${escapeHtml(ball.color)}" aria-label="Ball ${ballIndex + 1} color" ${aid.divisionColorSync?'disabled':''}><button type="button" class="studio-visual-aid-ball-option ${directionOpen?'active':''}" data-visual-aid-ball-menu="direction" data-ball-id="${escapeHtml(ball.id)}" title="Direction: ${escapeHtml(ball.direction)}" aria-label="Ball direction">↕</button><button type="button" class="studio-visual-aid-ball-option ${functionOpen?'active':''}" data-visual-aid-ball-menu="function" data-ball-id="${escapeHtml(ball.id)}" title="Function: ${escapeHtml(ball.function)}" aria-label="Ball function">ƒx</button><button type="button" data-visual-aid-delete-ball="${escapeHtml(ball.id)}" aria-label="Delete ball">×</button>${directionOpen ? `<div class="studio-visual-aid-ball-popover" role="menu"><button type="button" data-visual-aid-ball-direction-value="forward" data-ball-id="${escapeHtml(ball.id)}" class="${ball.direction==='forward'?'active':''}">Forward</button><button type="button" data-visual-aid-ball-direction-value="reverse" data-ball-id="${escapeHtml(ball.id)}" class="${ball.direction==='reverse'?'active':''}">Reverse</button></div>` : ''}${functionOpen ? `<div class="studio-visual-aid-ball-popover" role="menu"><button type="button" data-visual-aid-ball-function-value="loop" data-ball-id="${escapeHtml(ball.id)}" class="${ball.function==='loop'?'active':''}">Loop</button><button type="button" data-visual-aid-ball-function-value="stop" data-ball-id="${escapeHtml(ball.id)}" class="${ball.function==='stop'?'active':''}">Stop</button></div>` : ''}</div>`;
+            }).join('');
             const sessionVisible = isImageEditorVisualAidSessionVisible(editor, aid.id);
             const previewReady = sessionVisible && aid.path.length > 1;
             const pathMethod = active ? normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || aid.pathAuthoring || 'brush') : aid.pathAuthoring;
@@ -14446,11 +21048,18 @@ The deletion becomes permanent when you save the diagram.`);
             const lazyEnabled = editor.visualAidLazyDragEnabled === true;
             const lazyDistance = Math.min(120, Math.max(4, Number(editor.visualAidLazyDistance) || 36));
             const lazyStep = Math.min(20, Math.max(1, Number(editor.visualAidLazyStep) || 3));
-            const brushLazyUi = brushMode ? `<div class="studio-visual-aid-lazy-controls${lazyEnabled ? ' is-enabled' : ''}" aria-label="Brush Lazy Drag controls"><label class="studio-visual-aid-lazy-toggle"><input data-visual-aid-lazy-enabled type="checkbox" ${lazyEnabled?'checked':''}> Lazy Drag</label>${lazyEnabled ? `<label>Lazy Distance <input data-visual-aid-lazy-distance type="range" min="4" max="120" step="1" value="${lazyDistance}"><span data-visual-aid-lazy-distance-value>${lazyDistance}</span></label><label>Lazy Step <input data-visual-aid-lazy-step type="range" min="1" max="20" step="1" value="${lazyStep}"><span data-visual-aid-lazy-step-value>${lazyStep}</span></label>` : ''}</div>` : '';
+            const visualAidToggle = (label, attribute, checked, disabled = false) => `<label class="studio-visual-aid-switch${disabled ? ' is-disabled' : ''}"><span class="studio-visual-aid-switch-control"><input ${attribute} type="checkbox" role="switch" aria-label="${label}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="studio-visual-aid-switch-track" aria-hidden="true"></span></span><span>${label}</span></label>`;
+            const brushLazyUi = brushMode ? `<div class="studio-visual-aid-lazy-controls${lazyEnabled ? ' is-enabled' : ''}" aria-label="Brush Lazy Drag controls">${visualAidToggle('Lazy Drag', 'data-visual-aid-lazy-enabled', lazyEnabled)}${lazyEnabled ? `<label>Lazy Distance <input data-visual-aid-lazy-distance type="range" min="4" max="120" step="1" value="${lazyDistance}"><span data-visual-aid-lazy-distance-value>${lazyDistance}</span></label><label>Lazy Step <input data-visual-aid-lazy-step type="range" min="1" max="20" step="1" value="${lazyStep}"><span data-visual-aid-lazy-step-value>${lazyStep}</span></label>` : ''}</div>` : '';
             const pathAuthoringUi = `<div class="studio-visual-aid-path-tool-wrap"><button type="button" data-visual-aid-path-menu-toggle class="${editor.activeVisualAidTool==='path'?'active':''}" aria-expanded="${pathMenuOpen?'true':'false'}">Draw Path <span aria-hidden="true">▾</span></button>${pathMenuOpen ? `<div class="studio-visual-aid-path-menu" role="menu"><button type="button" data-visual-aid-path-method="brush" class="${pathMethod==='brush'?'active':''}" role="menuitem">Brush</button><button type="button" data-visual-aid-path-method="curves" class="${pathMethod==='curves'?'active':''}" role="menuitem">Curves</button></div>` : ''}</div>${curveMode ? `<div class="studio-visual-aid-curve-controls" aria-label="Curves path controls"><button type="button" data-visual-aid-curve-action="add">Add</button><button type="button" data-visual-aid-curve-action="reset">Reset</button><button type="button" data-visual-aid-curve-action="finish" ${(aid.curveAnchors||[]).length<2?'disabled':''}>Finish</button></div>` : ''}${brushLazyUi}`;
-            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Visual Aid name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid">🗑</button></div>${active ? `<div class="studio-visual-aid-tools">${pathAuthoringUi}<button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="24" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls"><label class="studio-visual-aid-arrow-toggle"><input data-visual-aid-arrows type="checkbox" ${aid.arrows?'checked':''}> Arrow</label><label class="studio-visual-aid-ball-toggle"><input data-visual-aid-ball type="checkbox" ${aid.ball?'checked':''}> Ball</label>${aid.ball ? `<label class="studio-visual-aid-ball-color">Ball color <input data-visual-aid-ball-color type="color" value="${escapeHtml(aid.ballColor)}" aria-label="Ball color"></label>` : ''}</div></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button><button type="button" data-visual-aid-preview-action="loop" aria-label="Loop preview" aria-pressed="${editor.visualAidPreviewLoop?'true':'false'}" class="${editor.visualAidPreviewLoop?'active':''}" ${previewReady?'':'disabled'}>↻</button></div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-title">Divisions</div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-title">Points</div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
-        }).join('') || '<div class="studio-visual-aid-empty">Add a Visual Aid, draw its path, then add divisions and named points.</div>';
+            if (aid.flowFillType === 'flow-fill') {
+                return `<section class="studio-visual-aid-item ${active?'is-active':''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index+1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Flow Fill Visual Aid name"><button type="button" class="studio-visual-aid-eye" data-visual-aid-visibility="${escapeHtml(aid.id)}">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}">🗑</button></div>${active?getFlowFillEditorPanelMarkup(aid,editor,pathAuthoringUi,visualAidToggle,previewReady):''}</section>`;
+            }
+            const behaviorUi = `<div class="studio-visual-aid-behavior"><div class="studio-visual-aid-section-title">Behavior</div>${visualAidToggle('Display Full Path', 'data-visual-aid-complete-path', aid.completePath)}${visualAidToggle('Trailing Path', 'data-visual-aid-trailing-enabled', aid.trailingEnabled)}${aid.trailingEnabled ? `<label class="studio-visual-aid-trailing-control">Trail Length <input data-visual-aid-trailing-length type="range" min="5" max="100" step="1" value="${aid.trailingLength}" aria-label="Trailing path length"><span data-visual-aid-trailing-length-value>${aid.trailingLength}%</span></label>` : ''}${visualAidToggle('Multiple Balls', 'data-visual-aid-multiple-balls', aid.multipleBalls)}${visualAidToggle('Division Color Sync', 'data-visual-aid-division-color-sync', aid.divisionColorSync)}${visualAidToggle('Ball Follows Division Order', 'data-visual-aid-ball-follows-divisions', aid.ballFollowsDivisionOrder)}${visualAidToggle('Multiple Paths', 'data-visual-aid-multiple-paths', aid.multiplePaths)}${visualAidToggle('Continue to Next Path', 'data-visual-aid-continue-next-path', aid.continueToNextPath, !aid.multiplePaths)}</div>`;
+            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Path name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid path">🗑</button></div>${active ? `<div class="studio-visual-aid-tools">${pathAuthoringUi}<button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><button type="button" data-visual-aid-tool="ball" class="${editor.activeVisualAidTool==='ball'?'active':''}" ${aid.path.length>1?'':'disabled'}>Add Ball</button>${aid.multiplePaths ? `<button type="button" data-visual-aid-add-path>Add Path</button>` : ''}<label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="48" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls">${visualAidToggle('Arrow', 'data-visual-aid-arrows', aid.arrows)}</div></div>${behaviorUi}<div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button>${visualAidToggle('Loop', 'data-visual-aid-preview-loop', editor.visualAidPreviewLoop, !previewReady)}</div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Balls</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='ball'?'active':''}" data-visual-aid-tool="ball" ${aid.path.length>1?'':'disabled'}>+ Add Ball</button></div>${balls || '<div class="studio-visual-aid-empty">Click Add Ball, then click anywhere on the path to set its start position.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Divisions</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='division'?'active':''}" data-visual-aid-tool="division">+ Add Division</button></div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Points</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='point'?'active':''}" data-visual-aid-tool="point">+ Add Point</button></div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
+        }).join('') || '<div class="studio-visual-aid-empty">Add a Visual Aid, draw its path, then add divisions, points, and balls.</div>';
+        list.innerHTML = `${presetBar}${itemMarkup}`;
         renderImageEditorVisualAidPreviewSequence();
+        if (flowFillScrollTop !== null) list.scrollTop = flowFillScrollTop;
     }
 
     function refreshImageEditorVisualAidUi() {
@@ -14468,13 +21077,15 @@ The deletion becomes permanent when you save the diagram.`);
     function addImageEditorVisualAid() {
         const editor = state.auth.imageEditor;
         if (!editor?.visualAidsEnabled) return;
-        const aids = normalizeDiagramVisualAids(editor.visualAids || []);
+        const aids = normalizeDiagramVisualAids(editor.visualAids || []).map(item => ({ ...item, visible: false }));
         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
-        const aid = normalizeDiagramVisualAid({ name: `Visual Aid ${aids.length + 1}`, visible: true, defaultColor: '#8b5cf6', speed: 1, arrows: false, ball: false, ballColor: '#8b5cf6', path: [] }, aids.length);
+        const name = `Visual Aid ${aids.length + 1}`;
+        const aid = normalizeDiagramVisualAid({ name, presetName: name, presetInstanceId: createDiagramVisualAidId('preset-instance'), visible: true, defaultColor: '#8b5cf6', speed: 1, arrows: false, ball: false, balls: [], path: [] }, aids.length);
         aids.push(aid);
         editor.visualAids = aids;
         editor.activeVisualAidId = aid.id;
         editor.sessionVisibleVisualAidId = aid.id;
+        editor.visualAidPresetLibraryId = '';
         editor.activeVisualAidTool = 'path';
         editor.activeVisualAidPathMethod = 'brush';
         editor.visualAidPathMenuOpen = false;
@@ -14484,6 +21095,121 @@ The deletion becomes permanent when you save the diagram.`);
         setImageEditorMode('visual-aid');
         refreshImageEditorVisualAidUi();
         setImageEditorStatus('Draw the active Visual Aid path directly over the diagram.');
+    }
+
+    function addImageEditorFlowFillAid() {
+        const editor=state.auth.imageEditor;
+        if(!editor?.visualAidsEnabled) return;
+        const aids=normalizeDiagramVisualAids(editor.visualAids||[]).map(item=>({...item,visible:false}));
+        stopImageEditorVisualAidPreview({reset:true,deactivate:true});
+        const id=createDiagramVisualAidId('flow-region');
+        const name=`Flow Fill ${aids.length+1}`;
+        const aid=normalizeDiagramVisualAid({name,presetName:name,flowFillType:'flow-fill',flowDurationSec:10,flowActiveItemId:id,flowItems:[{id,type:'region',name:'Region 1',path:[],initialFill:0,fillContents:'Fluid',color:'#3b82f6'}],flowActions:[],path:[],visible:true,defaultColor:'#3b82f6',speed:1,arrows:false,balls:[],ball:false},aids.length);
+        aids.push(aid);
+        editor.visualAids=aids;
+        editor.activeVisualAidId=aid.id;
+        editor.sessionVisibleVisualAidId=aid.id;
+        editor.visualAidPresetLibraryId='';
+        editor.activeVisualAidTool='path';
+        editor.activeVisualAidPathMethod='brush';
+        editor.visualAidCurveAddMode=true;
+        editor.visualAidCurveSelectedAnchorId='';
+        editor.visualAidPathMenuOpen=false;
+        editor.showVisualAidPanel=true;
+        setImageEditorMode('visual-aid');
+        refreshImageEditorVisualAidUi();
+        setImageEditorStatus('Flow Fill: draw the first region outline with Brush or Curves, name it, then add another region and a connecting flow path.');
+    }
+
+    function addImageEditorVisualAidPath() {
+        const editor = state.auth.imageEditor;
+        const aids = normalizeDiagramVisualAids(editor?.visualAids || []);
+        const active = aids.find(item => item.id === editor?.activeVisualAidId);
+        if (!editor || !active) return false;
+        const group = getDiagramVisualAidGroup(aids, active);
+        if (!active.multiplePaths) { setImageEditorStatus('Turn on Multiple Paths before adding another path.'); return false; }
+        if (aids.length >= DIAGRAM_VISUAL_AID_MAX_ITEMS) { setImageEditorStatus(`Maximum ${DIAGRAM_VISUAL_AID_MAX_ITEMS} Visual Aid paths reached.`); return false; }
+        const instanceId = active.presetInstanceId || createDiagramVisualAidId('preset-instance');
+        const nextOrder = group.length ? Math.max(...group.map(item => item.pathOrder)) + 1 : 0;
+        const newAid = normalizeDiagramVisualAid({
+            name: `Path ${group.length + 1}`,
+            presetName: active.presetName || active.name,
+            presetInstanceId: instanceId,
+            pathOrder: nextOrder,
+            completePath: active.completePath,
+            multipleBalls: active.multipleBalls,
+            divisionColorSync: active.divisionColorSync,
+            ballFollowsDivisionOrder: active.ballFollowsDivisionOrder,
+            multiplePaths: true,
+            continueToNextPath: active.continueToNextPath,
+            trailingEnabled: active.trailingEnabled,
+            trailingLength: active.trailingLength,
+            visible: true,
+            defaultColor: active.defaultColor,
+            thickness: active.thickness,
+            speed: active.speed,
+            arrows: active.arrows,
+            path: [], divisions: [], points: [], balls: []
+        }, aids.length);
+        const updated = aids.map(item => item.id === active.id ? normalizeDiagramVisualAid({ ...item, presetInstanceId: instanceId, multiplePaths: true }, item.pathOrder) : item);
+        updated.push(newAid);
+        editor.visualAids = normalizeDiagramVisualAids(updated);
+        editor.activeVisualAidId = newAid.id;
+        editor.sessionVisibleVisualAidId = newAid.id;
+        editor.activeVisualAidTool = 'path';
+        editor.activeVisualAidPathMethod = 'brush';
+        editor.visualAidPathMenuOpen = false;
+        editor.visualAidBallMenuId = '';
+        editor.visualAidBallMenuKind = '';
+        refreshImageEditorVisualAidUi();
+        setImageEditorStatus(`Path ${group.length + 1} added. Draw its route on the diagram.`);
+        return true;
+    }
+
+    async function saveActiveImageEditorVisualAidPreset() {
+        const editor = state.auth.imageEditor;
+        const aids = normalizeDiagramVisualAids(editor?.visualAids || []);
+        const active = aids.find(item => item.id === editor?.activeVisualAidId);
+        if (!editor || !active) return false;
+        const group = getDiagramVisualAidGroup(aids, active).filter(item => item.path.length > 1 || item.id === active.id);
+        const nameInput = elements.studioImageEditorVisualAidList?.querySelector('[data-visual-aid-preset-name]');
+        const name = normalizeSheetText(nameInput?.value || active.presetName || active.name).slice(0, 100);
+        if (!name) { setImageEditorStatus('Enter a preset name before saving.'); nameInput?.focus(); return false; }
+        const id = normalizeSheetText(editor.visualAidPresetLibraryId) || createDiagramVisualAidId('preset');
+        const paths = group.sort((a, b) => a.pathOrder - b.pathOrder).map((item, index) => normalizeDiagramVisualAid({ ...item, presetInstanceId: '', presetName: name, pathOrder: index, visible: true }, index));
+        const preset = await persistVisualAidPreset({ id, name, paths, updatedAt: Date.now() });
+        editor.visualAidPresetLibraryId = preset.id;
+        const groupIds = new Set(group.map(item => item.id));
+        editor.visualAids = normalizeDiagramVisualAids(aids.map(item => groupIds.has(item.id) ? normalizeDiagramVisualAid({ ...item, presetName: name }, item.pathOrder) : item));
+        renderImageEditorVisualAidPanel();
+        setImageEditorStatus(`Saved Visual Aid preset “${name}” with ${paths.length} path${paths.length===1?'':'s'} and its behavior settings.`);
+        return true;
+    }
+
+    function applyImageEditorVisualAidPreset(presetId = '') {
+        const editor = state.auth.imageEditor;
+        if (!editor?.visualAidsEnabled) return false;
+        const preset = normalizeVisualAidPresetList(state.auth.visualAidPresets).find(item => item.id === normalizeSheetText(presetId));
+        if (!preset) return false;
+        const cloned = cloneVisualAidPresetPathsForDiagram(preset);
+        if (!cloned.length) { setImageEditorStatus('That preset has no saved paths.'); return false; }
+        const current = normalizeDiagramVisualAids(editor.visualAids || []);
+        const room = Math.max(0, DIAGRAM_VISUAL_AID_MAX_ITEMS - current.length);
+        if (room < cloned.length) { setImageEditorStatus('Not enough Visual Aid path slots are available to load that preset.'); return false; }
+        stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
+        editor.visualAids = normalizeDiagramVisualAids([...current.map(item => ({ ...item, visible: false })), ...cloned]);
+        editor.activeVisualAidId = cloned[0].id;
+        editor.sessionVisibleVisualAidId = cloned[0].id;
+        editor.visualAidPresetLibraryId = preset.id;
+        editor.activeVisualAidTool = 'path';
+        editor.activeVisualAidPathMethod = normalizeDiagramVisualAidPathAuthoring(cloned[0].pathAuthoring);
+        editor.visualAidPathMenuOpen = false;
+        editor.visualAidBallMenuId = '';
+        editor.visualAidBallMenuKind = '';
+        setImageEditorMode('visual-aid');
+        refreshImageEditorVisualAidUi();
+        setImageEditorStatus(`Loaded Visual Aid preset “${preset.name}”.`);
+        return true;
     }
 
     function getImageEditorVisualAidPointerPosition(point) {
@@ -14898,14 +21624,14 @@ The deletion becomes permanent when you save the diagram.`);
         aid.pathAuthoring='curves';
         aid.path=compileDiagramVisualAidCurvePath(aid.curveAnchors);
         aid.curveFinished=true;
-        if (aid.path.length>1 && !aid.divisions.length && !aid.points.length) aid.divisions.push({ id:createDiagramVisualAidId('division'), name:'Division 1', position:0, color:aid.defaultColor });
-        if (aid.path.length>1) aid=ensureDiagramVisualAidEndpointPoints(aid);
+        if (aid.flowFillType !== 'flow-fill' && aid.path.length>1 && !aid.divisions.length && !aid.points.length) aid.divisions.push({ id:createDiagramVisualAidId('division'), name:'Division 1', position:0, color:aid.defaultColor });
+        if (aid.flowFillType !== 'flow-fill' && aid.path.length>1) aid=ensureDiagramVisualAidEndpointPoints(aid);
         aids[aidIndex]=normalizeDiagramVisualAid(aid,aidIndex);
         editor.visualAids=aids;
         editor.visualAidCurveAddMode=false;
         editor.visualAidCurveSelectedAnchorId=aid.curveAnchors?.[aid.curveAnchors.length-1]?.id || '';
         refreshImageEditorVisualAidUi();
-        setImageEditorStatus('Curve path finished. It now uses the same Divisions, Points, Review, Mini Quiz, and animation system as Brush paths.');
+        setImageEditorStatus(aid.flowFillType === 'flow-fill' ? 'Flow Fill outline finished. Name it and set its starting fill or add a flow path.' : 'Curve path finished. It now uses the same Divisions, Points, Review, Mini Quiz, and animation system as Brush paths.');
     }
 
     function resetImageEditorVisualAidCurvePath() {
@@ -14913,7 +21639,7 @@ The deletion becomes permanent when you save the diagram.`);
         const aids=normalizeDiagramVisualAids(editor?.visualAids || []);
         const aidIndex=aids.findIndex(aid=>aid.id===editor?.activeVisualAidId);
         if (aidIndex<0) return;
-        aids[aidIndex]={...aids[aidIndex], pathAuthoring:'curves', curveAnchors:[], curveFinished:false, path:[]};
+        aids[aidIndex]={...aids[aidIndex], pathAuthoring:'curves', curveAnchors:[], curveFinished:false, closedPath:false, path:[]};
         editor.visualAids=normalizeDiagramVisualAids(aids);
         editor.visualAidCurveSelectedAnchorId='';
         editor.visualAidCurveHover=null;
@@ -14992,7 +21718,7 @@ The deletion becomes permanent when you save the diagram.`);
         const snap = getNearestActiveVisualAidPointSnap(point);
         if (!snap) return false;
         const connector = normalizeDiagramConnector(editor.labels[index].connector);
-        if (!connector) return false;
+        if (!connector || getDiagramConnectorStyle(connector) === 'bracket') return false;
         editor.labels[index].connector = { ...connector, anchorX: snap.point.x, anchorY: snap.point.y, visualAidId: snap.aid.id, visualAidPointId: snap.item.id };
         setImageEditorStatus(`Connector snapped to ${snap.item.name}.`);
         return true;
@@ -15057,18 +21783,9 @@ The deletion becomes permanent when you save the diagram.`);
         const connectorActive = isImageEditorConnectorMode(editor);
         const activeTool = normalizeImageEditorDrawTool(editor?.drawTool || 'paintbrush');
         updateImageEditorCurrentColorSwatch(editor?.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000');
-        const activeLabelIndex = drawActive ? editor.activeDrawLabelIndex : editor?.activeConnectorLabelIndex;
-        const activeLabel = (drawActive || connectorActive) ? normalizeDiagramLabels(editor?.labels || [])[activeLabelIndex] : null;
-        const activeLabelText = htmlToDisplayText(activeLabel?.label || activeLabel?.name || '') || `Label ${Number(activeLabelIndex) + 1}`;
         const drawToolbar = elements.studioImageEditorDrawToolButtons?.[0]?.closest('.studio-image-editor-draw-toolbar');
         drawToolbar?.classList.toggle('is-draw-ready', drawActive);
         drawToolbar?.classList.toggle('is-draw-waiting', !drawActive);
-        if (elements.studioImageEditorDrawActiveLabelValue) {
-            elements.studioImageEditorDrawActiveLabelValue.textContent = connectorActive
-                ? `Connector: ${activeLabelText}`
-                : (drawActive ? `Drawing: ${activeLabelText}` : 'Choose label Draw');
-            elements.studioImageEditorDrawActiveLabelValue.classList.toggle('is-active', drawActive || connectorActive);
-        }
         elements.studioImageEditorDrawToolButtons?.forEach(button => {
             const tool = normalizeImageEditorDrawTool(button.dataset.imageEditorDrawTool);
             const isActive = drawActive && tool === activeTool;
@@ -15077,7 +21794,7 @@ The deletion becomes permanent when you save the diagram.`);
             button.disabled = !drawActive;
         });
         if (elements.studioImageEditorLineThicknessInput) {
-            const thicknessValue = Math.min(24, Math.max(1, Number(editor?.lineThickness) || getImageEditorLineThickness()));
+            const thicknessValue = Math.min(24, Math.max(0.25, Number(editor?.lineThickness) || getImageEditorLineThickness()));
             elements.studioImageEditorLineThicknessInput.value = String(thicknessValue);
             if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(thicknessValue);
             elements.studioImageEditorLineThicknessInput.disabled = false;
@@ -15125,6 +21842,8 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.studioImageEditorSaveDiagramBtn) {
             elements.studioImageEditorSaveDiagramBtn.classList.toggle('hidden', !isMultiAngleDraftTarget);
             elements.studioImageEditorSaveDiagramBtn.disabled = !isMultiAngleDraftTarget || draft.editorSwitching || draft.saving || !editor?.baseCanvas;
+            elements.studioImageEditorSaveDiagramBtn.textContent = 'Save & Exit';
+            elements.studioImageEditorSaveDiagramBtn.title = 'Save the complete diagram and return to Saved Images';
         }
         if (!isMultiAngleDraftTarget) return;
         const activeId = normalizeSheetText(editor.target.multiAngleAngleId || '');
@@ -15135,15 +21854,16 @@ The deletion becomes permanent when you save the diagram.`);
             const nextMarkup = draft.angles.map((angle, index) => `<option value="${index}">${escapeHtml(`${index + 1} of ${draft.angles.length} — ${angle.name || `Angle ${index + 1}`}`)}</option>`).join('');
             if (elements.studioImageEditorAngleSelect.innerHTML !== nextMarkup) elements.studioImageEditorAngleSelect.innerHTML = nextMarkup;
             elements.studioImageEditorAngleSelect.value = currentValue;
-            elements.studioImageEditorAngleSelect.disabled = draft.editorSwitching || draft.angles.length < 2;
+            elements.studioImageEditorAngleSelect.disabled = draft.editorSwitching || draft.saving || draft.angles.length < 2;
         }
-        if (elements.studioImageEditorPrevAngleBtn) elements.studioImageEditorPrevAngleBtn.disabled = draft.editorSwitching || draft.angles.length < 2;
-        if (elements.studioImageEditorNextAngleBtn) elements.studioImageEditorNextAngleBtn.disabled = draft.editorSwitching || draft.angles.length < 2;
+        if (elements.studioImageEditorPrevAngleBtn) elements.studioImageEditorPrevAngleBtn.disabled = draft.editorSwitching || draft.saving || draft.angles.length < 2;
+        if (elements.studioImageEditorNextAngleBtn) elements.studioImageEditorNextAngleBtn.disabled = draft.editorSwitching || draft.saving || draft.angles.length < 2;
         if (elements.studioImageEditorMultiAngleBackgroundInput) {
-            elements.studioImageEditorMultiAngleBackgroundInput.value = draft.canvas.background;
-            elements.studioImageEditorMultiAngleBackgroundInput.disabled = draft.editorSwitching;
+            const activeAngle = draft.angles[draft.activeIndex];
+            elements.studioImageEditorMultiAngleBackgroundInput.value = activeAngle?.background || draft.canvas.background;
+            elements.studioImageEditorMultiAngleBackgroundInput.disabled = draft.editorSwitching || activeAngle?.setupLocked === true;
         }
-        if (elements.studioImageEditorMultiAngleBackgroundValue) elements.studioImageEditorMultiAngleBackgroundValue.textContent = draft.canvas.background.toUpperCase();
+        if (elements.studioImageEditorMultiAngleBackgroundValue) elements.studioImageEditorMultiAngleBackgroundValue.textContent = (draft.angles[draft.activeIndex]?.background || draft.canvas.background).toUpperCase();
     }
 
     function refreshImageEditorLabelUi() {
@@ -15173,14 +21893,14 @@ The deletion becomes permanent when you save the diagram.`);
             const isMultiAngleDraftTarget = isImageEditorStandaloneDiagramTarget(editor) && editor?.target?.multiAngleDraft === true;
             const isUpdatingSavedImage = isImageEditorStandaloneDiagramTarget(editor) && !!normalizeSheetText(editor?.target?.savedImageEntryId || '');
             elements.studioImageEditorSendSavedBtn.classList.toggle('hidden', !isSavedDiagramTarget);
-            elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas || (isMultiAngleDraftTarget && (getMultiAngleCreatorState().saving || getMultiAngleCreatorState().editorSwitching));
-            elements.studioImageEditorSendSavedBtn.textContent = isMultiAngleDraftTarget ? 'Save Angle' : (isUpdatingSavedImage ? 'Update Saved Image' : 'Send to Saved Images');
+            elements.studioImageEditorSendSavedBtn.disabled = !isSavedDiagramTarget || !editor?.baseCanvas || !!editor?.savingSingleDiagram || (isMultiAngleDraftTarget && (getMultiAngleCreatorState().saving || getMultiAngleCreatorState().editorSwitching));
+            elements.studioImageEditorSendSavedBtn.textContent = editor?.savingSingleDiagram ? 'Saving…' : (isMultiAngleDraftTarget ? 'Save' : (isImageEditorStandaloneDiagramTarget(editor) ? 'Save & Exit' : 'Send to Saved Images'));
             elements.studioImageEditorSendSavedBtn.title = isSavedDiagramTarget
                 ? (isMultiAngleDraftTarget
-                    ? 'Save this angle image, labels, descriptions, connector lines, draw strokes, and shared diagram details back to the multi-angle set'
+                    ? 'Save the complete diagram and keep working in Diagram Creator'
                     : (isUpdatingSavedImage
-                        ? 'Replace this Saved Image with the current image, labels, descriptions, connector lines, draw strokes, and diagram details'
-                        : 'Save this edited image, labels, connector lines, draw strokes, and diagram details to Saved Images'))
+                        ? 'Save your changes to this diagram and return to Saved Images'
+                        : 'Save the diagram, labels, Visual Aids, connectors, drawings, and details, then return to Saved Images'))
                 : 'Saved Images are available for flashcard and standalone diagrams';
         }
         if (elements.studioImageEditorAttachAllFrontBtn) {
@@ -15203,6 +21923,14 @@ The deletion becomes permanent when you save the diagram.`);
         applyImageEditorLabelPanelWidth();
         if (elements.studioImageEditorAddLabelBtn) elements.studioImageEditorAddLabelBtn.disabled = !editor?.labelsEnabled;
         if (elements.studioImageEditorRemoveLastLabelBtn) elements.studioImageEditorRemoveLastLabelBtn.disabled = !editor?.labelsEnabled || !(editor?.labels?.length);
+        const canTransferLabels = !!(editor?.open && editor?.labelsEnabled && isImageEditorSharedLabelTarget(editor));
+        const canTransferBetweenAngles = canTransferLabels && editor.target?.multiAngleDraft === true && getMultiAngleCreatorState().angles.length > 1;
+        if (elements.studioImageEditorTransferLabelsBtn) {
+            elements.studioImageEditorTransferLabelsBtn.classList.toggle('hidden', !canTransferLabels);
+            elements.studioImageEditorTransferLabelsBtn.disabled = !canTransferLabels || getMultiAngleCreatorState().saving || getMultiAngleCreatorState().editorSwitching;
+        }
+        if (elements.studioImageEditorTransferLabelsMenu) elements.studioImageEditorTransferLabelsMenu.querySelectorAll('[data-label-transfer-target="all"], [data-label-transfer-target="next"]').forEach(item => { item.disabled = !canTransferBetweenAngles || !editor?.labels?.length; });
+        if (!canTransferLabels) closeImageEditorLabelTransferMenu();
         if (!shouldShowPanel || !editor?.labels?.length) {
             editor.activeDrawLabelIndex = null;
             editor.activeDrawStroke = null;
@@ -15217,19 +21945,217 @@ The deletion becomes permanent when you save the diagram.`);
         updateImageEditorCanvasPointerState();
     }
 
+    // Phase 23F.41.11 — transfer only named labels between multi-angle draft images.
+    // The destination's positions, connectors and drawing strokes must remain its own.
+    function closeImageEditorLabelTransferMenu() {
+        const menu = elements.studioImageEditorTransferLabelsMenu;
+        const button = elements.studioImageEditorTransferLabelsBtn;
+        if (menu) {
+            menu.hidden = true;
+            menu.classList.add('hidden');
+        }
+        if (button) button.setAttribute('aria-expanded', 'false');
+        renderStudioLabelSetSubmenu();
+    }
+
+    function transferImageEditorLabels(target = 'all') {
+        closeImageEditorLabelTransferMenu();
+        const editor = state.auth.imageEditor;
+        const draft = getMultiAngleCreatorState();
+        if (!editor?.open || !editor.labelsEnabled || editor.target?.multiAngleDraft !== true || draft.saving || draft.editorSwitching || draft.angles.length < 2) return;
+        const fromIndex = draft.angles.findIndex(angle => normalizeSheetText(angle.id) === normalizeSheetText(editor.target.multiAngleAngleId));
+        if (fromIndex < 0) return;
+        const source = normalizeDiagramLabels(editor.labels || []);
+        if (!source.length) { setImageEditorStatus('Add a label to this angle before transferring.'); return; }
+        const destinationIndices = target === 'next'
+            ? [(fromIndex + 1) % draft.angles.length]
+            : draft.angles.map((angle, index) => index).filter(index => index !== fromIndex);
+        let transferred = 0;
+        let skipped = 0;
+        destinationIndices.forEach(index => {
+            const angle = draft.angles[index];
+            if (!angle) return;
+            const existing = Array.isArray(angle.labels) ? angle.labels : [];
+            const next = existing.slice();
+            const known = new Set(existing.map(label => normalizeImageEditorSharedLabelKey(label?.label || label?.text)).filter(Boolean));
+            source.forEach(label => {
+                const key = normalizeImageEditorSharedLabelKey(label.label);
+                if (!key || known.has(key)) { skipped += 1; return; }
+                known.add(key);
+                // Stage new labels in a tidy column; the user positions each label and
+                // authors connectors and drawings independently on the destination angle.
+                const position = next.length;
+                const categories = normalizeDiagramLabelInfoCategories(label);
+                next.push({
+                    label: label.label,
+                    description: label.description || '',
+                    questionPrompt: normalizeDiagramLabelQuestionPrompt(label.questionPrompt),
+                    ...(categories.length ? { infoCategories: categories.map(category => ({ ...category })) } : {}),
+                    x: Math.min(88, 67 + (Math.floor(position / 10) % 3) * 10),
+                    y: 14 + (position % 10) * 8
+                });
+                transferred += 1;
+            });
+            if (next.length !== existing.length) {
+                angle.labels = next;
+                angle.editorDraftCheckpointed = true;
+            }
+        });
+        setImageEditorStatus(`Transferred ${transferred} label${transferred === 1 ? '' : 's'} to ${destinationIndices.length} angle${destinationIndices.length === 1 ? '' : 's'}; skipped ${skipped} existing name${skipped === 1 ? '' : 's'}. Position new labels and add connectors on each angle.`);
+    }
+
+    function renderStudioLabelSetSubmenu(mode = '') {
+        const submenu = document.getElementById('studioImageEditorLabelSetSubmenu');
+        if (!submenu) return;
+        if (!mode) {
+            submenu.innerHTML = '';
+            submenu.dataset.mode = '';
+            return;
+        }
+        submenu.dataset.mode = mode;
+        if (mode === 'save') {
+            submenu.innerHTML = `<label class="studio-label-set-field">Set name<input type="text" data-label-set-name maxlength="100" placeholder="e.g. Heart Anatomy" autocomplete="off"></label><button type="button" data-label-set-confirm="save">Save Set</button><button type="button" data-label-set-back>Back</button>`;
+            submenu.querySelector('[data-label-set-name]')?.focus();
+            return;
+        }
+        const sets = normalizeStudioLabelSets(state.auth.labelSets || []);
+        submenu.innerHTML = sets.length
+            ? `<div class="studio-label-set-caption">Choose a set to add missing labels:</div>${sets.map(set => `<div class="studio-label-set-item"><button type="button" data-label-set-load="${escapeHtml(set.id)}" title="Load ${escapeHtml(set.name)}">${escapeHtml(set.name)} (${set.labels.length})</button><button type="button" class="studio-label-set-delete" data-label-set-delete="${escapeHtml(set.id)}" title="Delete ${escapeHtml(set.name)}" aria-label="Delete ${escapeHtml(set.name)}">×</button></div>`).join('')}<button type="button" data-label-set-back>Back</button>`
+            : `<div class="studio-label-set-caption">No Label Sets saved yet.</div><button type="button" data-label-set-back>Back</button>`;
+    }
+
+    function loadStudioLabelSetIntoEditor(id = '') {
+        const editor = state.auth.imageEditor;
+        const set = (state.auth.labelSets || []).find(item => item.id === id);
+        if (!set || !isImageEditorSharedLabelTarget(editor)) return;
+        const shared = new Map(getStudioSavedImageGlobalLabelRecords().map(record => [record.key, record]));
+        const labels = normalizeDiagramLabels(editor.labels || []).slice();
+        const known = new Set(labels.map(item => normalizeImageEditorSharedLabelKey(item.label)));
+        let added = 0, skipped = 0;
+        set.labels.forEach(item => {
+            const key = normalizeImageEditorSharedLabelKey(item.label);
+            if (!key || known.has(key)) { skipped += 1; return; }
+            known.add(key);
+            const categories = normalizeDiagramLabelInfoCategories(shared.get(key) || item);
+            const next = labels.length;
+            labels.push({ label: item.label, questionPrompt: normalizeDiagramLabelQuestionPrompt(shared.get(key)?.questionPrompt ?? item.questionPrompt), infoCategories: categories.map(category => ({ ...category })), description: buildDiagramLabelLegacyDescription(categories, ''), x: Math.min(88, 67 + (Math.floor(next / 10) % 3) * 10), y: 14 + (next % 10) * 8 });
+            added += 1;
+        });
+        editor.labels = labels;
+        editor.showLabelPanel = true;
+        refreshImageEditorLabelUi();
+        renderImageEditorCanvas();
+        setImageEditorStatus(`Loaded “${set.name}”: added ${added} label${added === 1 ? '' : 's'}, skipped ${skipped} existing. Label information follows its shared name. Position and connect imported labels manually.`);
+        closeImageEditorLabelTransferMenu();
+    }
+
+    function bindImageEditorLabelTransferEvents() {
+        const overlay = elements.studioImageEditorOverlay;
+        const button = elements.studioImageEditorTransferLabelsBtn;
+        const menu = elements.studioImageEditorTransferLabelsMenu;
+        if (!overlay || !button || !menu || overlay.dataset.imageEditorLabelTransferBound === 'true') return;
+        overlay.dataset.imageEditorLabelTransferBound = 'true';
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            if (button.disabled) return;
+            const open = menu.classList.contains('hidden');
+            closeImageEditorLabelTransferMenu();
+            if (open) {
+                menu.hidden = false;
+                menu.classList.remove('hidden');
+                button.setAttribute('aria-expanded', 'true');
+                loadStudioLabelLibraryForUser();
+            }
+        });
+        menu.addEventListener('click', async event => {
+            const buttonAction = event.target.closest('[data-label-set-confirm], [data-label-set-load], [data-label-set-delete], [data-label-set-back]');
+            if (buttonAction) {
+                event.stopPropagation();
+                try {
+                    if (buttonAction.hasAttribute('data-label-set-back')) renderStudioLabelSetSubmenu();
+                    else if (buttonAction.dataset.labelSetLoad) loadStudioLabelSetIntoEditor(buttonAction.dataset.labelSetLoad);
+                    else if (buttonAction.dataset.labelSetDelete) {
+                        const set = (state.auth.labelSets || []).find(item => item.id === buttonAction.dataset.labelSetDelete);
+                        if (set && window.confirm(`Delete Label Set “${set.name}”? This will not remove labels from your diagrams.`)) {
+                            await deleteStudioLabelSet(set.id);
+                            renderStudioLabelSetSubmenu('load');
+                        }
+                    } else if (buttonAction.dataset.labelSetConfirm === 'save') {
+                        const name = menu.querySelector('[data-label-set-name]')?.value || '';
+                        const editor = state.auth.imageEditor;
+                        if (!isImageEditorSharedLabelTarget(editor)) return;
+                        const records = new Map(getStudioSavedImageGlobalLabelRecords().map(item => [item.key, item]));
+                        const labels = normalizeDiagramLabels(editor.labels || []).map(item => {
+                            const record = records.get(normalizeImageEditorSharedLabelKey(item.label));
+                            const selected = getImageEditorLabelInfoDirtyKeys(editor).has(normalizeImageEditorSharedLabelKey(item.label)) ? item : (record || item);
+                            const next = setDiagramLabelInfoCategories({ ...item }, normalizeDiagramLabelInfoCategories(selected));
+                            next.questionPrompt = normalizeDiagramLabelQuestionPrompt(selected.questionPrompt);
+                            return next;
+                        });
+                        const set = await persistStudioLabelSet(name, labels);
+                        closeImageEditorLabelTransferMenu();
+                        setImageEditorStatus(`Saved Label Set “${set.name}” with ${set.labels.length} named label${set.labels.length === 1 ? '' : 's'} and shared study information.`);
+                    }
+                } catch (error) { setImageEditorStatus(error.message || 'Could not complete Label Set action.'); }
+                return;
+            }
+
+            const action = event.target.closest('[data-label-transfer-target]');
+            if (!action) return;
+            event.stopPropagation();
+            const target = action.dataset.labelTransferTarget;
+            if (target === 'all' || target === 'next') transferImageEditorLabels(target);
+            else if (target === 'save-set') renderStudioLabelSetSubmenu('save');
+            else if (target === 'load-set') renderStudioLabelSetSubmenu('load');
+            else closeImageEditorLabelTransferMenu();
+        });
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.studio-label-transfer-wrap')) closeImageEditorLabelTransferMenu();
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeImageEditorLabelTransferMenu();
+        });
+    }
+
+    // Place newly created labels in the portion of the canvas currently visible
+    // to the author, not at the potentially off-screen center of the entire image.
+    // Reading the transformed canvas rectangle accounts for zoom and pan, and
+    // intersecting the viewport handles a canvas partly outside the screen.
+    function getImageEditorVisibleCanvasCenter() {
+        const wrap = elements.studioImageEditorCanvasWrap;
+        const canvas = elements.studioImageEditorCanvas;
+        if (!wrap || !canvas || !canvas.width || !canvas.height) return { x: 50, y: 50 };
+        const viewport = wrap.getBoundingClientRect();
+        const image = canvas.getBoundingClientRect();
+        if (!image.width || !image.height || !viewport.width || !viewport.height) return { x: 50, y: 50 };
+        const left = Math.max(viewport.left, image.left);
+        const right = Math.min(viewport.right, image.right);
+        const top = Math.max(viewport.top, image.top);
+        const bottom = Math.min(viewport.bottom, image.bottom);
+        if (right <= left || bottom <= top) return { x: 50, y: 50 };
+        const clamp = value => Math.min(99, Math.max(1, value));
+        return {
+            x: clamp((((left + right) / 2 - image.left) / image.width) * 100),
+            y: clamp((((top + bottom) / 2 - image.top) / image.height) * 100)
+        };
+    }
+
     function addImageEditorLabel() {
         const editor = state.auth.imageEditor;
         if (!editor?.labelsEnabled) return;
         const labels = normalizeImageEditorLabels(editor.labels || []);
         const nextLabel = isImageEditorSavedDiagramTarget(editor) ? `Label ${labels.length + 1}` : getDiagramLabelName(labels.length);
-        labels.push({ label: nextLabel, description: '', infoCategories: [], x: 50, y: 50 });
+        const position = isImageEditorStandaloneDiagramTarget(editor) ? getImageEditorVisibleCanvasCenter() : { x: 50, y: 50 };
+        labels.push({ label: nextLabel, description: '', infoCategories: [], ...position });
+        editor.ghostActiveLabelIndex = labels.length - 1;
         editor.labels = labels;
         if (editor.labelInfoPanelOpen) editor.labelInfoExpandedIndex = labels.length - 1;
         setImageEditorLabelDrawVisible(labels.length - 1, true);
         editor.showLabelPanel = true;
-        refreshImageEditorLabelUi();
-        renderImageEditorCanvas();
-        setImageEditorStatus('');
+        // Newly created labels own the next canvas connector placement immediately.
+        // Reuse the normal connector setup, preserving saved connector defaults.
+        toggleImageEditorLabelConnector(labels.length - 1);
+        revealImageEditorLabelControls(labels.length - 1, { focusInput: true });
     }
 
     function removeLastImageEditorLabel() {
@@ -15363,6 +22289,7 @@ The deletion becomes permanent when you save the diagram.`);
             ctx.fillRect(shape.x, shape.y, shape.w, shape.h);
         }
         ctx.restore();
+        editor.imageDirty = true;
         editor.draftShape = null;
         renderImageEditorCanvas();
         setImageEditorStatus('');
@@ -15376,6 +22303,7 @@ The deletion becomes permanent when you save the diagram.`);
         pushImageEditorHistory();
         const ctx = baseCanvas.getContext('2d');
         drawEditorArrow(ctx, shape, false);
+        editor.imageDirty = true;
         editor.draftShape = null;
         renderImageEditorCanvas();
         setImageEditorStatus('');
@@ -15389,6 +22317,7 @@ The deletion becomes permanent when you save the diagram.`);
         pushImageEditorHistory();
         const ctx = baseCanvas.getContext('2d');
         drawEditorLine(ctx, shape, false);
+        editor.imageDirty = true;
         editor.draftShape = null;
         renderImageEditorCanvas();
         setImageEditorStatus('');
@@ -15444,6 +22373,7 @@ The deletion becomes permanent when you save the diagram.`);
             points: stroke.points.map(point => ({ x: point.x - x, y: point.y - y }))
         }));
         editor.baseCanvas = nextCanvas;
+        editor.imageDirty = true;
         editor.labels = normalizeImageEditorLabels(nextLabels);
         editor.draftShape = null;
         resetImageEditorZoom();
@@ -15500,6 +22430,7 @@ The deletion becomes permanent when you save the diagram.`);
         editor.activeDrawStroke = null;
         editor.activeDrawLabelIndex = null;
         editor.drawSaveDirty = true;
+        editor.imageDirty = false;
         scheduleImageEditorDrawingCommit();
         paintImageIntoBaseCanvas(image);
         refreshImageEditorLabelUi();
@@ -15520,7 +22451,12 @@ The deletion becomes permanent when you save the diagram.`);
             ? (editor.labelsEnabled ? 'labels' : 'select')
             : requestedMode;
         editor.mode = nextMode;
+        if (!['labels', 'connector'].includes(nextMode)) clearImageEditorQuickReplace();
         editor.connectorStylePickerLabelIndex = null;
+        if (nextMode !== 'connector') {
+            editor.pendingMultiTargets = null;
+            editor.quickMultiAnchorLabelIndex = null;
+        }
         // Phase 22LY: once the Labels panel is opened, keep it visible while the user
         // switches to crop, blur, connector, draw, or other tools. Only label interaction
         // mode changes; the panel itself remains available for reference and editing.
@@ -15540,7 +22476,7 @@ The deletion becomes permanent when you save the diagram.`);
             button.classList.toggle('active', normalizeSheetText(button.dataset.imageEditorTool) === editor.mode);
         });
         refreshImageEditorLabelUi();
-        setImageEditorStatus(editor.mode === 'visual-aid' ? 'Use Draw Path, Add Division, or Add Point in the Visual Aid panel.' : (editor.mode === 'labels'
+        setImageEditorStatus(editor.mode === 'visual-aid' ? 'Use Draw Path, Add Division, Add Point, or Add Ball in the Visual Aid panel.' : (editor.mode === 'labels'
             ? (toggledOff
                 ? 'Tool off. Drag labels to move them.'
                 : 'Click Add Label, then drag labels on the image. Save Image + Labels to keep them.')
@@ -15556,11 +22492,102 @@ The deletion becomes permanent when you save the diagram.`);
         refreshImageEditorMetadataUi();
     }
 
+    function bindImageEditorOrganizationEvents() {
+        const overlay = elements.studioImageEditorOverlay;
+        if (!overlay || overlay.dataset.imageEditorOrganizationEventsBound === 'true') return;
+        overlay.dataset.imageEditorOrganizationEventsBound = 'true';
+        elements.studioImageEditorClassSelect?.addEventListener('change', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor)) return;
+            const value = normalizeSheetText(elements.studioImageEditorClassSelect.value || '__none__') || '__none__';
+            editor.savedImageClassId = value === '__none__' ? '' : value;
+            editor.savedImageFolderId = '';
+            populateImageEditorOrganizationControls(editor.savedImageClassId, '');
+        });
+        elements.studioImageEditorFolderSelect?.addEventListener('change', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor?.open || !isImageEditorStandaloneDiagramTarget(editor)) return;
+            const folderId = normalizeSheetText(elements.studioImageEditorFolderSelect.value || '');
+            const folderClassId = folderId ? getFolderClassId(folderId) : '';
+            editor.savedImageFolderId = folderId;
+            editor.savedImageClassId = folderClassId || (normalizeSheetText(elements.studioImageEditorClassSelect.value) === '__none__' ? '' : normalizeSheetText(elements.studioImageEditorClassSelect.value));
+            if (folderClassId) {
+                populateImageEditorOrganizationControls(folderClassId, folderId);
+            }
+        });
+        elements.studioImageEditorAddClassBtn?.addEventListener('click', () => {
+            if (elements.studioImageEditorClassNewInput?.hidden !== false) {
+                setImageEditorOrganizationCreateMode('class', true);
+                return;
+            }
+            createImageEditorOrganizationClass().catch(error => {
+                console.error(error);
+                setImageEditorStatus(error?.message || 'Could not create that class.');
+            });
+        });
+        elements.studioImageEditorClassNewInput?.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                createImageEditorOrganizationClass().catch(error => {
+                    console.error(error);
+                    setImageEditorStatus(error?.message || 'Could not create that class.');
+                });
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                setImageEditorOrganizationCreateMode('class', false);
+            }
+        });
+        elements.studioImageEditorAddFolderBtn?.addEventListener('click', () => {
+            if (elements.studioImageEditorFolderNewInput?.hidden !== false) {
+                setImageEditorOrganizationCreateMode('folder', true);
+                return;
+            }
+            createImageEditorOrganizationFolder().catch(error => {
+                console.error(error);
+                setImageEditorStatus(error?.message || 'Could not create that folder.');
+            });
+        });
+        elements.studioImageEditorFolderNewInput?.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                createImageEditorOrganizationFolder().catch(error => {
+                    console.error(error);
+                    setImageEditorStatus(error?.message || 'Could not create that folder.');
+                });
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                setImageEditorOrganizationCreateMode('folder', false);
+            }
+        });
+        document.addEventListener('pointerdown', event => {
+            const target = event.target;
+            if (!(target instanceof Node)) return;
+            const classCreating = elements.studioImageEditorClassNewInput?.hidden === false;
+            const folderCreating = elements.studioImageEditorFolderNewInput?.hidden === false;
+            if (!classCreating && !folderCreating) return;
+
+            const classField = document.getElementById('studioImageEditorClassField');
+            const folderField = document.getElementById('studioImageEditorFolderField');
+            if (classCreating && classField && !classField.contains(target)) {
+                setImageEditorOrganizationCreateMode('class', false);
+            }
+            if (folderCreating && folderField && !folderField.contains(target)) {
+                setImageEditorOrganizationCreateMode('folder', false);
+            }
+        });
+    }
+
     function bindStudioImageEditorEvents() {
         const overlay = elements.studioImageEditorOverlay;
         if (!overlay) return;
+        // Phase 23F.33.3: bind Saved Image organization controls independently.
+        // The legacy static editor marks the broad image-editor guard as bound
+        // before the newer Class/Folder controls are reached.
+        bindImageEditorOrganizationEvents();
         bindImageEditorZoomAndThicknessEvents();
         bindImageEditorColorPresetEvents();
+        bindImageEditorLabelTransferEvents();
+        bindImageEditorConnectorInputFocusEvents();
         const bindMultiAngleEditorEvents = () => {
             if (overlay.dataset.imageEditorMultiAngleEventsBound === 'true') return;
             overlay.dataset.imageEditorMultiAngleEventsBound = 'true';
@@ -15585,12 +22612,17 @@ The deletion becomes permanent when you save the diagram.`);
                 console.error(error);
                 setImageEditorStatus('Could not open Canvas Setup.');
             }));
-            elements.studioImageEditorSaveDiagramBtn?.addEventListener('click', () => saveMultiAngleDiagramFromEditor().catch(error => {
-                console.error(error);
-                setImageEditorStatus('Could not save the diagram.');
-            }));
+            elements.studioImageEditorSaveDiagramBtn?.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                saveMultiAngleDiagramFromEditor({ exitAfterSave: true }).catch(error => {
+                    console.error(error);
+                    setImageEditorStatus('Could not save the diagram.');
+                });
+            });
         };
         bindMultiAngleEditorEvents();
+        bindImageEditorExitEvents();
         // Phase 23F.1: the static Diagram Creator marks the legacy editor bindings as complete
         // before ensureStudioImageEditorDom() runs, so Visual Aid events need their own guard.
         if (overlay.dataset.imageEditorVisualAidEventsBound !== 'true') {
@@ -15617,10 +22649,91 @@ The deletion becomes permanent when you save the diagram.`);
                 if (editor.showLabelPanel) requestAnimationFrame(() => applyImageEditorLabelPanelWidth());
             });
             elements.studioImageEditorAddVisualAidBtn?.addEventListener('click', addImageEditorVisualAid);
+            elements.studioImageEditorAddFlowFillBtn?.addEventListener('click', addImageEditorFlowFillAid);
+            elements.studioImageEditorVisualAidClosePathBtn?.addEventListener('click', closeActiveImageEditorVisualAidPath);
             elements.studioImageEditorVisualAidList?.addEventListener('click', event => {
                 const editor = state.auth.imageEditor;
                 if (!editor?.visualAidsEnabled) return;
                 let aids = normalizeDiagramVisualAids(editor.visualAids || []);
+                const flowAddItem=event.target.closest('[data-flow-add-item]');
+                const flowSelectItem=event.target.closest('[data-flow-select-item]');
+                const flowDeleteItem=event.target.closest('[data-flow-delete-item]');
+                const flowAddAction=event.target.closest('[data-flow-add-action]');
+                const flowDeleteAction=event.target.closest('[data-flow-delete-action]');
+                if(flowAddItem||flowSelectItem||flowDeleteItem||flowAddAction||flowDeleteAction){
+                    const aid=aids.find(row=>row.id===editor.activeVisualAidId);
+                    if(!aid||aid.flowFillType!=='flow-fill') return;
+                    stopImageEditorVisualAidPreview({reset:true,deactivate:true});
+                    if(flowAddItem){
+                        if(aid.flowItems.length>=24){setImageEditorStatus('Maximum 24 Flow Fill shapes.');return;}
+                        const type=flowAddItem.dataset.flowAddItem==='connection'?'connection':'region';
+                        const id=createDiagramVisualAidId('flow-item');
+                        aid.flowItems.push({id,type,name:`${type==='region'?'Region':'Flow Path'} ${aid.flowItems.filter(item=>item.type===type).length+1}`,path:[],color:type==='region'?'#3b82f6':'#60a5fa',thickness:30,endArrow:false,continuousArrows:false,revealOnTransfer:false,continuousArrowCount:6,arrowColorSync:true,arrowColor:getFlowFillMatchingArrowColor('#60a5fa'),initialFill:0,...(type==='region'?{fillContents:'Fluid'}:{}),fromId:'',toId:'',question:'',answer:''});
+                        aid.flowActiveItemId=id;
+                        aid.path=[];aid.curveAnchors=[];aid.curveFinished=false;aid.closedPath=false;
+                        editor.activeVisualAidTool='path';editor.activeVisualAidPathMethod='brush';
+                        editor.visualAidCurveAddMode=true;editor.visualAidCurveSelectedAnchorId='';
+                    }
+                    if(flowSelectItem){
+                        const selected=aid.flowItems.find(item=>item.id===flowSelectItem.dataset.flowSelectItem);
+                        if(!selected)return;
+                        aid.flowActiveItemId=selected.id;
+                        aid.path=selected.path.slice();aid.curveAnchors=[];aid.curveFinished=false;aid.closedPath=false;
+                        editor.activeVisualAidTool='path';editor.activeVisualAidPathMethod='brush';
+                        editor.visualAidCurveAddMode=true;editor.visualAidCurveSelectedAnchorId='';
+                    }
+                    if(flowDeleteItem){
+                        if(aid.flowItems.length<=1)return;
+                        aid.flowItems=aid.flowItems.filter(item=>item.id!==flowDeleteItem.dataset.flowDeleteItem);
+                        const selected=aid.flowItems[0];
+                        aid.flowActiveItemId=selected.id;aid.path=selected.path.slice();aid.curveAnchors=[];aid.curveFinished=false;
+                        aid.flowActions=aid.flowActions.filter(action=>!(action.regionId && !aid.flowItems.some(item=>item.id===action.regionId)) && !(action.fromId && !aid.flowItems.some(item=>item.id===action.fromId)) && !(action.toId && !aid.flowItems.some(item=>item.id===action.toId)));
+                    }
+                    if(flowDeleteAction) aid.flowActions=aid.flowActions.filter(action=>action.id!==flowDeleteAction.dataset.flowDeleteAction);
+                    let addedActionMessage='';
+                    if(flowAddAction){
+                        const panel=flowAddAction.closest('.studio-flow-editor');
+                        const feedback=panel?.querySelector('[data-flow-action-feedback]');
+                        const reject=message=>{
+                            if(feedback){feedback.textContent=message;feedback.classList.add('is-error');}
+                            setImageEditorStatus(message);
+                        };
+                        if(aid.flowActions.length>=60){reject('Maximum 60 Flow Fill actions.');return;}
+                        const value=selector=>panel?.querySelector(selector)?.value ?? '';
+                        const type=value('[data-flow-new-type]');
+                        const regionId=value('[data-flow-new-region]');
+                        const fromId=value('[data-flow-new-from]');
+                        const toId=value('[data-flow-new-to]');
+                        const pathId=value('[data-flow-new-path]');
+                        const start=Number(value('[data-flow-new-start]'));
+                        const end=Number(value('[data-flow-new-end]'));
+                        if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end>60||end<=start){
+                            reject('End must be after Start, with both times between 0 and 60 seconds.');return;
+                        }
+                        if(type==='transfer' && (!fromId||!toId||fromId===toId||!pathId)){
+                            reject('Transfer needs two different regions and a connecting Flow Path.');return;
+                        }
+                        if(type!=='transfer' && !regionId){reject('Select a region for this action.');return;}
+                        const subjects=type==='transfer'?[fromId,toId]:[regionId];
+                        const conflict=aid.flowActions.find(action=>action.start<end && action.end>start && subjects.some(id=>id && [action.regionId,action.fromId,action.toId].includes(id)));
+                        if(conflict){
+                            reject(`This overlaps ${conflict.name} (${conflict.start}-${conflict.end}s). Start after ${conflict.end}s or edit the previous action.`);return;
+                        }
+                        const targetFill=Math.max(0,Math.min(100,Number(value('[data-flow-new-target]'))||0));
+                        const index=aid.flowActions.length+1;
+                        aid.flowActions.push({id:createDiagramVisualAidId('flow-action'),type,name:`${type[0].toUpperCase()+type.slice(1)} ${index}`,start,end,regionId:type==='transfer'?'':regionId,fromId:type==='transfer'?fromId:'',toId:type==='transfer'?toId:'',pathId:type==='transfer'?pathId:'',targetFill:type==='empty'?0:targetFill,amount:Math.max(0,Math.min(100,Number(value('[data-flow-new-amount]') ?? 100))),question:'',answer:''});
+                        if(end>aid.flowDurationSec) aid.flowDurationSec=Math.min(60,Math.ceil(end));
+                        addedActionMessage=`Action ${index} added (${start}-${end}s).`;
+                    }
+                    editor.visualAids=normalizeDiagramVisualAids(aids);
+                    refreshImageEditorVisualAidUi();
+                    if(addedActionMessage){
+                        const feedback=elements.studioImageEditorVisualAidList?.querySelector('[data-flow-action-feedback]');
+                        if(feedback){feedback.textContent=addedActionMessage;feedback.classList.remove('is-error');}
+                        setImageEditorStatus(addedActionMessage);
+                    }
+                    return;
+                }
                 const select = event.target.closest('[data-visual-aid-select]');
                 const visibility = event.target.closest('[data-visual-aid-visibility]');
                 const remove = event.target.closest('[data-visual-aid-delete]');
@@ -15634,12 +22747,64 @@ The deletion becomes permanent when you save the diagram.`);
                 const pointStyleToggle = event.target.closest('[data-visual-aid-point-style-toggle]');
                 const previewAction = event.target.closest('[data-visual-aid-preview-action]');
                 const previewPosition = event.target.closest('[data-visual-aid-preview-position]');
+                const addPath = event.target.closest('[data-visual-aid-add-path]');
+                const deleteBall = event.target.closest('[data-visual-aid-delete-ball]');
+                const ballMenu = event.target.closest('[data-visual-aid-ball-menu]');
+                const ballDirectionValue = event.target.closest('[data-visual-aid-ball-direction-value]');
+                const ballFunctionValue = event.target.closest('[data-visual-aid-ball-function-value]');
+                const presetAction = event.target.closest('[data-visual-aid-preset-action]');
+                const presetLoad = event.target.closest('[data-visual-aid-preset-load]');
                 let handled = false;
+                if (presetLoad) {
+                    const presetId = normalizeSheetText(presetLoad.dataset.visualAidPresetLoad || '');
+                    if (presetId) applyImageEditorVisualAidPreset(presetId);
+                    return;
+                }
+                if (presetAction) {
+                    const action = normalizeSheetText(presetAction.dataset.visualAidPresetAction || '');
+                    if (action === 'save') saveActiveImageEditorVisualAidPreset().catch(error => { console.error(error); setImageEditorStatus('Could not save the Visual Aid preset.'); });
+                    if (action === 'delete' && editor.visualAidPresetLibraryId) deleteVisualAidPreset(editor.visualAidPresetLibraryId).then(() => { editor.visualAidPresetLibraryId = ''; renderImageEditorVisualAidPanel(); setImageEditorStatus('Visual Aid preset deleted.'); });
+                    return;
+                }
+                if (addPath) { addImageEditorVisualAidPath(); return; }
+                if (ballMenu) {
+                    const ballId = normalizeSheetText(ballMenu.dataset.ballId || '');
+                    const kind = normalizeSheetText(ballMenu.dataset.visualAidBallMenu || '');
+                    const same = editor.visualAidBallMenuId === ballId && editor.visualAidBallMenuKind === kind;
+                    editor.visualAidBallMenuId = same ? '' : ballId;
+                    editor.visualAidBallMenuKind = same ? '' : kind;
+                    renderImageEditorVisualAidPanel();
+                    return;
+                }
+                if (ballDirectionValue || ballFunctionValue) {
+                    const aid = aids.find(item => item.id === editor.activeVisualAidId);
+                    const button = ballDirectionValue || ballFunctionValue;
+                    const ball = aid?.balls.find(item => item.id === normalizeSheetText(button.dataset.ballId || ''));
+                    if (ball) {
+                        if (ballDirectionValue) ball.direction = normalizeDiagramVisualAidBallDirection(ballDirectionValue.dataset.visualAidBallDirectionValue);
+                        if (ballFunctionValue) ball.function = normalizeDiagramVisualAidBallFunction(ballFunctionValue.dataset.visualAidBallFunctionValue);
+                        editor.visualAidBallMenuId = '';
+                        editor.visualAidBallMenuKind = '';
+                        handled = true;
+                    }
+                }
+                if (deleteBall) {
+                    const aid = aids.find(item => item.id === editor.activeVisualAidId);
+                    if (aid) {
+                        aid.balls = aid.balls.filter(item => item.id !== normalizeSheetText(deleteBall.dataset.visualAidDeleteBall || ''));
+                        aid.ball = aid.balls.length > 0;
+                        editor.visualAidBallMenuId = '';
+                        editor.visualAidBallMenuKind = '';
+                        handled = true;
+                    }
+                }
                 if (select) {
                     stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
                     editor.activeVisualAidId = normalizeSheetText(select.dataset.visualAidSelect || '');
                     editor.sessionVisibleVisualAidId = editor.activeVisualAidId;
                     const selectedAid = aids.find(item => item.id === editor.activeVisualAidId);
+                    const currentPreset = normalizeVisualAidPresetList(state.auth.visualAidPresets).find(item => item.id === editor.visualAidPresetLibraryId);
+                    if (currentPreset && normalizeSheetText(selectedAid?.presetName) !== normalizeSheetText(currentPreset.name)) editor.visualAidPresetLibraryId = '';
                     editor.activeVisualAidPathMethod = normalizeDiagramVisualAidPathAuthoring(selectedAid?.pathAuthoring || 'brush');
                     editor.visualAidPathMenuOpen = false;
                     editor.visualAidCurveSelectedAnchorId = selectedAid?.curveAnchors?.[selectedAid.curveAnchors.length - 1]?.id || '';
@@ -15651,7 +22816,7 @@ The deletion becomes permanent when you save the diagram.`);
                     const target = aids.find(item => item.id === id);
                     if (target) {
                         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
-                        const turnOn = editor.sessionVisibleVisualAidId !== id;
+                        const turnOn = !isImageEditorVisualAidSessionVisible(editor, id);
                         editor.sessionVisibleVisualAidId = turnOn ? id : '';
                         if (turnOn) editor.activeVisualAidId = id;
                         handled = true;
@@ -15747,7 +22912,6 @@ The deletion becomes permanent when you save the diagram.`);
                     if (action === 'play') playImageEditorVisualAidPreview();
                     else if (action === 'pause') { stopImageEditorVisualAidPreview(); renderImageEditorVisualAidLayer(); }
                     else if (action === 'reset') resetImageEditorVisualAidPreview();
-                    else if (action === 'loop') { editor.visualAidPreviewLoop = !editor.visualAidPreviewLoop; renderImageEditorVisualAidPreviewSequence(); }
                     return;
                 }
                 if (previewPosition) {
@@ -15773,6 +22937,10 @@ The deletion becomes permanent when you save the diagram.`);
                     renderImageEditorVisualAidLayer();
                     return;
                 }
+                if (event.target.matches('[data-visual-aid-preview-loop]')) {
+                    editor.visualAidPreviewLoop = !!event.target.checked;
+                    return;
+                }
                 if (event.target.matches('[data-visual-aid-lazy-enabled]')) {
                     editor.visualAidLazyDragEnabled = !!event.target.checked;
                     resetImageEditorVisualAidLazyBrushState(editor);
@@ -15796,23 +22964,143 @@ The deletion becomes permanent when you save the diagram.`);
                 let aids = normalizeDiagramVisualAids(editor.visualAids || []);
                 const aid = aids.find(item => item.id === editor.activeVisualAidId);
                 if (!aid) return;
+                if(aid.flowFillType==='flow-fill') {
+                    let changed=false;
+                    const el=event.target;
+                    const props={flowItemArrowSync:'arrowColorSync',flowItemName:'name',flowItemColor:'color',flowItemInitial:'initialFill',flowItemContents:'fillContents',flowItemFillAngle:'fillAngle',flowItemEmptyAngle:'emptyAngle',flowItemFrom:'fromId',flowItemTo:'toId',flowItemQuestion:'question',flowItemAnswer:'answer',flowItemThickness:'thickness',flowItemArrowCount:'continuousArrowCount',flowItemEndArrow:'endArrow',flowItemContinuousArrows:'continuousArrows',flowItemRevealOnTransfer:'revealOnTransfer',flowItemArrowColor:'arrowColor'};
+                    for(const [field,prop] of Object.entries(props)){
+                        const id=el.dataset[field];
+                        if(!id)continue;
+                        const item=aid.flowItems.find(row=>row.id===id);
+                        if(!item)continue;
+                        if(prop==='initialFill') item[prop]=Math.max(0,Math.min(100,Number(el.value)||0));
+                        else if(prop==='fillAngle'||prop==='emptyAngle') {
+                            item[prop]=Math.max(0,Math.min(359,Math.round(Number(el.value)||0)));
+                            el.closest('.studio-flow-angle-controls')?.querySelectorAll(`[data-flow-item-${prop==='fillAngle'?'fill':'empty'}-angle]`).forEach(control=>{if(control!==el)control.value=String(item[prop]);});
+                        }
+                        else if(prop==='fillContents') item[prop]=normalizeSheetText(el.value || '').slice(0,200) || 'Fluid';
+                        else if(prop==='thickness') item[prop]=Math.max(2,Math.min(80,Number(el.value)||30));
+                        else if(prop==='continuousArrowCount') item[prop]=Math.max(1,Math.min(24,Math.round(Number(el.value)||6)));
+                        else if(prop==='endArrow'||prop==='continuousArrows'||prop==='revealOnTransfer'||prop==='arrowColorSync') item[prop]=!!el.checked;
+                        else if(prop==='color'||prop==='arrowColor') item[prop]=normalizeEditorHexColor(el.value,item[prop]||'#ffffff');
+                        else item[prop]=el.value;
+                        if(prop==='initialFill'||prop==='thickness'||prop==='continuousArrowCount'){
+                            const label=el.closest('label')?.querySelector('span');
+                            if(label)label.textContent=prop==='initialFill'?`${item.initialFill}%`:String(item[prop]);
+                        }
+                        if(prop==='color' && item.arrowColorSync) item.arrowColor = getFlowFillMatchingArrowColor(item.color);
+                        if(prop==='arrowColorSync' && item.arrowColorSync) item.arrowColor = getFlowFillMatchingArrowColor(item.color);
+                        if(prop==='endArrow'||prop==='continuousArrows'||prop==='arrowColorSync'||prop==='color') {
+                            const picker=elements.studioImageEditorVisualAidList?.querySelector(`[data-flow-item-arrow-color="${item.id}"]`);
+                            if(picker) {
+                                picker.disabled=!item.continuousArrows || item.arrowColorSync;
+                                picker.value=item.arrowColorSync ? getFlowFillMatchingArrowColor(item.color) : item.arrowColor;
+                            }
+                            const countSlider=el.closest('.studio-flow-arrow-settings')?.querySelector('[data-flow-item-arrow-count]');
+                            if(countSlider)countSlider.disabled=!item.continuousArrows;
+                        }
+                        changed=true;break;
+                    }
+                    if(el.matches('[data-flow-duration]')){
+                        aid.flowDurationSec=Math.max(2,Math.min(60,Number(el.value)||10));
+                        const label=el.closest('label')?.querySelector('span');if(label)label.textContent=`${aid.flowDurationSec}s`;
+                        aid.flowActions=aid.flowActions.filter(action=>action.end<=aid.flowDurationSec);
+                        changed=true;
+                    }
+                    const actionStart=el.dataset.flowActionStart,actionEnd=el.dataset.flowActionEnd;
+                    if(actionStart||actionEnd){
+                        const action=aid.flowActions.find(row=>row.id===(actionStart||actionEnd));
+                        if(action){
+                            const proposed=Math.round(Math.max(0,Number(el.value)||0)*10)/10;
+                            const nextStart=actionStart?Math.min(aid.flowDurationSec-.1,proposed):action.start;
+                            const nextEnd=actionEnd?Math.min(aid.flowDurationSec,proposed):action.end;
+                            const valid=nextEnd-nextStart>=.09 && !aid.flowActions.some(other=>other.id!==action.id && other.start<nextEnd && other.end>nextStart && [action.regionId,action.fromId,action.toId].filter(Boolean).some(id=>[other.regionId,other.fromId,other.toId].includes(id)));
+                            if(valid){action.start=nextStart;action.end=nextEnd;changed=true;}
+                            else {el.value=String(actionStart?action.start:action.end);setImageEditorStatus('Action time must be within the animation and not overlap another action affecting the same region.');}
+                        }
+                    }
+                    const actionQuestion=el.dataset.flowActionQuestion,actionAnswer=el.dataset.flowActionAnswer;
+                    if(actionQuestion||actionAnswer){
+                        const action=aid.flowActions.find(row=>row.id===(actionQuestion||actionAnswer));
+                        if(action){action[actionQuestion?'question':'answer']=el.value.slice(0,actionQuestion?400:300);changed=true;}
+                    }
+                    if(changed){editor.visualAids=normalizeDiagramVisualAids(aids);renderImageEditorVisualAidLayer();}
+                    return;
+                }
                 const row = event.target.closest('[data-visual-aid-id]');
                 let changed = false;
                 let restartPreview = false;
+                let refreshPanel = false;
+                if (event.target.matches('[data-visual-aid-preset-name]')) {
+                    const name = event.target.value.slice(0, 100);
+                    aids = applyVisualAidGroupBehaviorPatch(aids, aid, { presetName: name });
+                    changed = true;
+                }
                 if (event.target.matches('[data-visual-aid-name]') && row) { const target = aids.find(item => item.id === row.dataset.visualAidId); if (target) { target.name = event.target.value.slice(0, 100); changed = true; } }
+                if (event.target.matches('[data-visual-aid-complete-path]')) {
+                    aids = applyVisualAidGroupBehaviorPatch(aids, aid, { completePath: !!event.target.checked }); changed = true;
+                }
+                if (event.target.matches('[data-visual-aid-multiple-balls]')) {
+                    const enableMultipleBalls = !!event.target.checked;
+                    const groupIds = new Set(getDiagramVisualAidGroup(aids, aid).map(item => item.id));
+                    aids = applyVisualAidGroupBehaviorPatch(aids, aid, { multipleBalls: enableMultipleBalls });
+                    if (enableMultipleBalls) {
+                        aids = aids.map(item => {
+                            if (!groupIds.has(item.id)) return item;
+                            const customBalls = item.balls.filter(ball => !isDiagramVisualAidLegacyAutoBall(ball));
+                            return normalizeDiagramVisualAid({ ...item, ball: customBalls.length > 0, balls: customBalls, multipleBalls: true }, item.pathOrder);
+                        });
+                    }
+                    changed = true; refreshPanel = true;
+                }
+                if (event.target.matches('[data-visual-aid-division-color-sync]')) {
+                    aids = applyVisualAidGroupBehaviorPatch(aids, aid, { divisionColorSync: !!event.target.checked }); changed = true; refreshPanel = true;
+                }
+                if (event.target.matches('[data-visual-aid-ball-follows-divisions]')) {
+                    aids = applyVisualAidGroupBehaviorPatch(aids, aid, { ballFollowsDivisionOrder: !!event.target.checked }); changed = true;
+                }
+                if (event.target.matches('[data-visual-aid-multiple-paths]')) {
+                    const group = getDiagramVisualAidGroup(aids, aid);
+                    if (!event.target.checked && group.length > 1) {
+                        event.target.checked = true;
+                        setImageEditorStatus('Delete the extra paths before turning Multiple Paths off.');
+                        return;
+                    }
+                    aids = applyVisualAidGroupBehaviorPatch(aids, aid, { multiplePaths: !!event.target.checked, continueToNextPath: event.target.checked ? aid.continueToNextPath : false }); changed = true; refreshPanel = true;
+                }
+                if (event.target.matches('[data-visual-aid-continue-next-path]')) {
+                    aids = applyVisualAidGroupBehaviorPatch(aids, aid, { continueToNextPath: !!event.target.checked }); changed = true;
+                }
                 if (event.target.matches('[data-visual-aid-default-color]')) {
                     const previousColor = aid.defaultColor;
                     const nextColor = normalizeEditorHexColor(event.target.value, previousColor);
                     aid.defaultColor = nextColor;
                     aid.divisions = aid.divisions.map(item => ({ ...item, color: item.color === previousColor ? nextColor : item.color }));
+                    aid.balls = aid.balls.map(item => ({ ...item, color: item.color === previousColor ? nextColor : item.color }));
                     if (aid.ballColor === previousColor) aid.ballColor = nextColor;
                     changed = true;
                 }
                 if (event.target.matches('[data-visual-aid-thickness]')) {
-                    aid.thickness = Math.min(24, Math.max(2, Number(event.target.value) || 7));
+                    aid.thickness = Math.min(48, Math.max(2, Number(event.target.value) || 7));
                     const value = event.target.closest('.studio-visual-aid-thickness-control')?.querySelector('[data-visual-aid-thickness-value]');
                     if (value) value.textContent = String(aid.thickness);
                     changed = true;
+                }
+                if (event.target.matches('[data-visual-aid-trailing-enabled]')) {
+                    aid.trailingEnabled = !!event.target.checked;
+                    if (!aid.trailingEnabled) aid.trailingLength = Math.min(100, Math.max(5, Number(aid.trailingLength) || 30));
+                    changed = true;
+                    refreshPanel = true;
+                    restartPreview = !!editor.visualAidPreviewPlaying;
+                    if (restartPreview) stopImageEditorVisualAidPreview();
+                }
+                if (event.target.matches('[data-visual-aid-trailing-length]')) {
+                    aid.trailingLength = Math.min(100, Math.max(5, Number(event.target.value) || 30));
+                    const value = event.target.closest('.studio-visual-aid-trailing-control')?.querySelector('[data-visual-aid-trailing-length-value]');
+                    if (value) value.textContent = `${aid.trailingLength}%`;
+                    changed = true;
+                    restartPreview = !!editor.visualAidPreviewPlaying;
+                    if (restartPreview) stopImageEditorVisualAidPreview();
                 }
                 if (event.target.matches('[data-visual-aid-speed]')) {
                     restartPreview = !!editor.visualAidPreviewPlaying;
@@ -15822,7 +23110,6 @@ The deletion becomes permanent when you save the diagram.`);
                     if (value) value.textContent = `${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×`;
                     changed = true;
                 }
-                let refreshPanel = false;
                 if (event.target.matches('[data-visual-aid-arrows]')) {
                     aid.arrows = !!event.target.checked;
                     if (aid.arrows) aid.ball = false;
@@ -15836,6 +23123,10 @@ The deletion becomes permanent when you save the diagram.`);
                     refreshPanel = true;
                 }
                 if (event.target.matches('[data-visual-aid-ball-color]')) { aid.ballColor = normalizeEditorHexColor(event.target.value, aid.ballColor || aid.defaultColor); changed = true; }
+                if (event.target.matches('[data-visual-aid-ball-color-id]')) {
+                    const item = aid.balls.find(item => item.id === event.target.dataset.visualAidBallColorId);
+                    if (item) { item.color = normalizeEditorHexColor(event.target.value, item.color || aid.defaultColor); changed = true; }
+                }
                 if (event.target.matches('[data-visual-aid-division-name]')) { const item = aid.divisions.find(item => item.id === event.target.dataset.visualAidDivisionName); if (item) { item.name = event.target.value.slice(0, 100); changed = true; } }
                 if (event.target.matches('[data-visual-aid-division-color]')) { const item = aid.divisions.find(item => item.id === event.target.dataset.visualAidDivisionColor); if (item) { item.color = normalizeEditorHexColor(event.target.value, item.color); changed = true; } }
                 if (event.target.matches('[data-visual-aid-point-name]')) { const item = aid.points.find(item => item.id === event.target.dataset.visualAidPointName); if (item) { item.name = event.target.value.slice(0, 100); changed = true; } }
@@ -15871,8 +23162,6 @@ The deletion becomes permanent when you save the diagram.`);
         }
         if (overlay.dataset.imageEditorEventsBound === 'true') return;
         overlay.dataset.imageEditorEventsBound = 'true';
-        elements.studioImageEditorCloseBtn?.addEventListener('click', handleStudioImageEditorCloseRequest);
-        elements.studioImageEditorCancelBtn?.addEventListener('click', handleStudioImageEditorCloseRequest);
         overlay.addEventListener('click', event => {
             if (!event.target.closest?.('#studioImageEditorLayerVisibilityPopover') && !event.target.closest?.('#studioImageEditorLabelsBtn') && !event.target.closest?.('#studioImageEditorVisualAidBtn')) {
                 closeImageEditorLayerVisibilityPopover();
@@ -15891,7 +23180,6 @@ The deletion becomes permanent when you save the diagram.`);
                 toggleImageEditorLabelInfoPanel();
                 return;
             }
-            if (event.target === overlay) handleStudioImageEditorCloseRequest();
         });
         elements.studioImageEditorToolButtons?.forEach(button => {
             button.addEventListener('click', () => {
@@ -15960,6 +23248,7 @@ The deletion becomes permanent when you save the diagram.`);
                 editor.metadata = getImageEditorMetadataFromFields();
             });
         });
+
         elements.studioImageEditorAddLabelBtn?.addEventListener('click', addImageEditorLabel);
         elements.studioImageEditorRemoveLastLabelBtn?.addEventListener('click', removeLastImageEditorLabel);
         elements.studioImageEditorLabelList?.addEventListener('input', event => {
@@ -15985,6 +23274,12 @@ The deletion becomes permanent when you save the diagram.`);
                 renderImageEditorCanvas();
                 return;
             }
+            if (event.target.matches('[data-image-editor-label-question-prompt]')) {
+                const prompt = normalizeDiagramLabelQuestionPrompt(event.target.value);
+                event.target.value = prompt;
+                synchronizeImageEditorSharedQuestionPrompt(index, prompt, { sourceElement: event.target });
+                return;
+            }
             const categoryRow = event.target.closest('[data-image-editor-label-info-category-row]');
             const categoryIndex = Number(categoryRow?.dataset.imageEditorLabelInfoCategoryIndex ?? -1);
             if (!Number.isInteger(categoryIndex) || categoryIndex < 0) return;
@@ -16005,12 +23300,18 @@ The deletion becomes permanent when you save the diagram.`);
             if (!row || !editor?.labelsEnabled) return;
             const index = Number(row.dataset.imageEditorLabelIndex || -1);
             if (index < 0) return;
+            if (editor.ghostActiveLabelIndex !== index) {
+                editor.ghostActiveLabelIndex = index;
+                if (isImageEditorSingleLabelViewEnabled(editor)) renderImageEditorCanvas();
+                else renderImageEditorVectorOverlays();
+            }
             if (editor.labelInfoPanelOpen) setImageEditorLabelInfoExpandedIndex(index);
             const drawBtn = event.target.closest('[data-image-editor-label-draw]');
             const connectorBtn = event.target.closest('[data-image-editor-label-connector]');
             const connectorStyleBtn = event.target.closest('[data-image-editor-connector-style]');
             const connectorDeleteBtn = event.target.closest('[data-image-editor-label-connector-delete]');
             const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
+            const detailFocusBtn = event.target.closest('[data-image-editor-label-detail-focus]');
             const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
             if (connectorStyleBtn) {
                 selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight', connectorStyleBtn.dataset.imageEditorConnectorEndpoint || 'none');
@@ -16046,6 +23347,10 @@ The deletion becomes permanent when you save the diagram.`);
                 setImageEditorStatus(!isSameLabel ? 'Draw on the image for this label.' : '');
                 return;
             }
+            if (detailFocusBtn) {
+                toggleImageEditorLabelDetailFocus(index);
+                return;
+            }
             if (visibilityBtn) {
                 toggleImageEditorLabelDrawVisibility(index);
                 return;
@@ -16078,7 +23383,7 @@ The deletion becomes permanent when you save the diagram.`);
             });
         });
         elements.studioImageEditorSaveBtn?.addEventListener('click', () => saveStudioImageEditorImage());
-        elements.studioImageEditorSendSavedBtn?.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true }));
+        elements.studioImageEditorSendSavedBtn?.addEventListener('click', handleStudioImageEditorSendSavedRequest);
         elements.studioImageEditorAttachAllFrontBtn?.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }));
     }
 
@@ -16117,12 +23422,14 @@ The deletion becomes permanent when you save the diagram.`);
         editor.metadataEnabled = isImageEditorStandaloneDiagramTarget(editor) || isImageEditorFlashcardLabelTarget(editor);
         editor.metadataPanelOpen = false;
         editor.metadata = normalizeDiagramMetadata(info.metadata || {});
+        editor.savedImageClassId = normalizeSheetText(info.classId || '');
+        editor.savedImageFolderId = normalizeSheetText(info.folderId || '');
         // Existing paintbrush, eraser, and legacy highlighter strokes reopen as editable overlay strokes.
         // The eye visibility map below controls what is shown in this editor session.
         if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = editor.arrowColor;
         renderImageEditorColorPresets();
-        if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(editor.lineThickness || 7);
-        if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness || 7);
+        if (elements.studioImageEditorLineThicknessInput) elements.studioImageEditorLineThicknessInput.value = String(editor.lineThickness || 2);
+        if (elements.studioImageEditorLineThicknessValue) elements.studioImageEditorLineThicknessValue.textContent = String(editor.lineThickness || 2);
         if (elements.studioImageEditorDrawSizeInput) elements.studioImageEditorDrawSizeInput.value = String(editor.drawSize || 14);
         if (elements.studioImageEditorDrawSizeValue) elements.studioImageEditorDrawSizeValue.textContent = String(editor.drawSize || 14);
         if (elements.studioImageEditorPaintTransparencyInput) elements.studioImageEditorPaintTransparencyInput.value = String(Math.round((editor.paintTransparency || 0.65) * 100));
@@ -16130,6 +23437,7 @@ The deletion becomes permanent when you save the diagram.`);
         closeImageEditorSliderPopovers();
         editor.labelsEnabled = !!info.labelsEnabled;
         editor.labels = normalizeImageEditorLabels(info.labels || []);
+        editor.labelSize = normalizeDiagramLabelSize(info.labelSize);
         editor.visualAidsEnabled = isImageEditorStandaloneDiagramTarget(editor);
         editor.visualAids = normalizeDiagramVisualAids(info.visualAids || []);
         editor.activeVisualAidId = editor.visualAids[0]?.id || '';
@@ -16140,7 +23448,10 @@ The deletion becomes permanent when you save the diagram.`);
         editor.visualAidCurveAddMode = !(editor.visualAids[0]?.curveFinished === true);
         editor.showVisualAidPanel = false;
         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
-        editor.visualAidPreviewLoop = false;
+        editor.visualAidPreviewLoop = true;
+        editor.visualAidPresetLibraryId = '';
+        editor.visualAidBallMenuId = '';
+        editor.visualAidBallMenuKind = '';
         const diagramConnectorDefaults = getImageEditorDiagramConnectorDefaults(editor);
         if (diagramConnectorDefaults) {
             editor.arrowColor = diagramConnectorDefaults.color;
@@ -16176,12 +23487,18 @@ The deletion becomes permanent when you save the diagram.`);
             const objectUrl = await getCanvasBlobUrlFromSource(sourceValue);
             editor.objectUrl = objectUrl;
             const image = await loadImageElement(objectUrl);
+            editor.sourceMime = await getOpenedCanonicalImageMime(sourceValue, objectUrl);
             paintImageIntoBaseCanvas(image);
             try {
-                editor.originalDataUrl = editor.baseCanvas.toDataURL('image/png');
+                // Flat multi-angle sources are already immutable; Reset can
+                // reload the same source without a second full-size PNG copy.
+                editor.originalDataUrl = target.multiAngleDraft === true
+                    ? objectUrl
+                    : editor.baseCanvas.toDataURL('image/png');
             } catch (error) {
                 editor.originalDataUrl = '';
             }
+            editor.imageDirty = false;
             refreshImageEditorLabelUi();
             setImageEditorMode('crop');
             setImageEditorStatus(recoveredDrawingBackup ? 'Recovered an unsaved drawing from this device.' : '');
@@ -16295,6 +23612,23 @@ The deletion becomes permanent when you save the diagram.`);
         return attachedCount;
     }
 
+    // Single-diagram Save & Exit must never remain blocked forever by thumbnail,
+    // media or optional cloud synchronization. On a timeout the local Saved Image
+    // remains pending for the existing background sync queue.
+    async function awaitSingleDiagramSaveStep(promise, label, milliseconds) {
+        let timeoutId = null;
+        try {
+            return await Promise.race([
+                Promise.resolve(promise),
+                new Promise((_, reject) => {
+                    timeoutId = window.setTimeout(() => reject(new Error(`${label} timed out; cloud synchronization will be retried.`)), milliseconds);
+                })
+            ]);
+        } finally {
+            if (timeoutId !== null) window.clearTimeout(timeoutId);
+        }
+    }
+
     async function saveCurrentImageEditorToSavedImages(imageValue = '', options = {}) {
         const editor = state.auth.imageEditor;
         const normalizedValue = normalizeSheetText(imageValue);
@@ -16305,17 +23639,20 @@ The deletion becomes permanent when you save the diagram.`);
         const metadata = options.metadata !== undefined
             ? normalizeDiagramMetadata(options.metadata || {})
             : captureImageEditorMetadata();
-        const fileName = getImageEditorSavedImageFileName(editor);
+        const fileName = getCanonicalImageFileNameForValue(getImageEditorSavedImageFileName(editor), normalizedValue);
+        const organization = captureImageEditorOrganization();
         const originalEntry = normalizeStudioSavedImageEntry(
             editor.target?.savedImageOriginalEntry
             || getStudioSavedImageLibraryForPicker().find(item => item.id === normalizeSheetText(editor.target?.savedImageEntryId || ''))
             || {}
         );
         const isReplacing = !!originalEntry;
-        setImageEditorStatus(isReplacing ? 'Updating Saved Image...' : 'Sending image to Saved Images...');
+        const fastExit = options.fastExit === true && isImageEditorStandaloneDiagramTarget(editor);
+        let cloudSyncPending = false;
+        setImageEditorStatus(isReplacing ? 'Saving diagram changes…' : 'Saving diagram…');
         let sharedValue = normalizedValue;
         try {
-            sharedValue = await savePrivateMediaValueWithDedupCache(normalizedValue, {
+            const primaryUpload = savePrivateMediaValueWithDedupCache(normalizedValue, {
                 quizId: state.auth.editingQuizId || null,
                 questionId: normalizeSheetText(editor.target?.questionId || state.auth.editingQuestionId || '') || null,
                 usageContext: isReplacing ? 'saved_image_diagram_update' : `saved_image_${getImageEditorTargetSide(editor)}_editor`,
@@ -16323,16 +23660,27 @@ The deletion becomes permanent when you save the diagram.`);
                 mediaSaveCache: state.auth.studioSavedImageMediaSaveCache instanceof Map
                     ? state.auth.studioSavedImageMediaSaveCache
                     : (state.auth.studioSavedImageMediaSaveCache = new Map())
-            }) || normalizedValue;
+            });
+            sharedValue = (fastExit
+                ? await awaitSingleDiagramSaveStep(primaryUpload, 'Image upload', 16000)
+                : await primaryUpload) || normalizedValue;
         } catch (error) {
             console.warn('Could not upload saved image snapshot; keeping local saved image copy instead:', error);
             sharedValue = normalizedValue;
+            cloudSyncPending = true;
         }
         let thumbnail = null;
         let thumbnailValue = '';
         try {
-            thumbnail = await createStudioSavedImageThumbnailFromSource(normalizedValue);
-            thumbnailValue = await uploadStudioSavedImageThumbnail(thumbnail, { fileName }, 'diagram');
+            const thumbnailTask = async () => {
+                const result = await createStudioSavedImageThumbnailFromSource(normalizedValue);
+                return { thumbnail: result, thumbnailValue: await uploadStudioSavedImageThumbnail(result, { fileName }, 'diagram') };
+            };
+            const preview = fastExit
+                ? await awaitSingleDiagramSaveStep(thumbnailTask(), 'Thumbnail generation', 7000)
+                : await thumbnailTask();
+            thumbnail = preview.thumbnail;
+            thumbnailValue = preview.thumbnailValue;
         } catch (error) {
             console.warn('Saved Image thumbnail will be created later when the full image is opened.', error);
         }
@@ -16352,29 +23700,58 @@ The deletion becomes permanent when you save the diagram.`);
             imageLabel: `Saved: ${fileName}`,
             imageOnlyLabel: `Saved: ${fileName}`,
             labels,
+            labelSize: normalizeDiagramLabelSize(editor.labelSize),
+            pinnedLabelsByAngle: originalEntry?.pinnedLabelsByAngle || {},
+            masteredAnglesById: getSavedImageMasteryForReplacement(originalEntry, { imageValue: sharedValue, labels }),
+            masteredUniqueLabels: getSavedImageUniqueMasteryForReplacement(originalEntry, { imageValue: sharedValue, labels }),
+            spacedReview: originalEntry?.spacedReview || {},
             visualAids,
             drawStrokes,
             metadata,
+            classId: organization.classId,
+            folderId: organization.folderId,
             createdAt: originalEntry?.createdAt
         };
-        const entry = isReplacing
+        let entry = isReplacing
             ? replaceStudioSavedImageLibraryEntry(originalEntry, nextEntry)
             : upsertStudioSavedImageLibraryEntry(nextEntry);
+        if (!entry) throw new Error('The diagram could not be added to Saved Images. Please retry.');
+        entry = synchronizeStudioSavedImageGlobalLabelInformationFromEntry(entry) || entry;
         if (entry && state.auth.client && state.auth.user?.id) {
             const syncKey = getStudioSavedImageSyncKey(entry);
-            const remoteResult = await upsertStudioSavedImageRemoteEntry(entry, { syncKey });
-            if (remoteResult.ok) {
+            const remoteTask = upsertStudioSavedImageRemoteEntry(entry, { syncKey });
+            let remoteResult = null;
+            try {
+                remoteResult = fastExit
+                    ? await awaitSingleDiagramSaveStep(remoteTask, 'Saved Images synchronization', 10000)
+                    : await remoteTask;
+            } catch (error) {
+                cloudSyncPending = true;
+                console.warn('Diagram saved locally; remote synchronization remains queued:', error);
+            }
+            if (remoteResult?.ok) {
                 const pendingKeys = getStudioSavedImagePendingUpsertKeys();
                 pendingKeys.delete(syncKey);
                 saveStudioSavedImagePendingUpsertKeys(pendingKeys);
+                if (isReplacing) {
+                    // Old media cleanup is optional and must not block Save & Exit.
+                    const cleanupTask = cleanupReplacedStudioSavedImageMedia(originalEntry, remoteResult.entry || entry);
+                    if (!fastExit) await cleanupTask;
+                    else cleanupTask.catch(error => console.warn('Replaced diagram media cleanup deferred:', error));
+                }
+            } else {
+                cloudSyncPending = true;
             }
+        } else if (state.auth.client && state.auth.user?.id) {
+            cloudSyncPending = true;
         }
-        return { entry, value: sharedValue, replaced: isReplacing };
+        return { entry, value: sharedValue, replaced: isReplacing, cloudSyncPending };
     }
 
     async function saveStudioImageEditorImage(options = {}) {
         const editor = state.auth.imageEditor;
-        await flushImageEditorDrawingCommit({ silent: true });
+        try {
+            await flushImageEditorDrawingCommit({ silent: true });
         synchronizeImageEditorSharedDescriptionsFromDiagram();
         const targetKind = editor?.target?.kind || '';
         const isFlashcardTarget = ['flashcard-term', 'flashcard-definition', 'flashcard-list'].includes(targetKind);
@@ -16383,16 +23760,47 @@ The deletion becomes permanent when you save the diagram.`);
         const isLayeredDiagramTarget = isFlashcardTarget || isStandaloneDiagram;
         const attachToAllFront = !!options.attachToAllFront && isImageEditorFlashcardFrontTarget(editor);
         const outputCanvas = isLayeredDiagramTarget ? editor?.baseCanvas : getImageEditorCompositedCanvas();
-        if (!outputCanvas) return;
-        try {
-            const editedDataUrl = outputCanvas.toDataURL('image/png');
+        if (!outputCanvas) throw new Error('The image is not ready to save yet. Please try again.');
+            const preserveExactSource = isLayeredDiagramTarget && editor?.imageDirty !== true && !isMultiAngleDraftTarget;
+            const canonicalPreferenceValue = isMultiAngleDraftTarget
+                ? normalizeSheetText(editor.target?.canonicalSourceValue || '')
+                : normalizeSheetText(editor.sourceValue || editor.target?.sourceValue || '');
+            const canonicalPreferenceName = isMultiAngleDraftTarget
+                ? normalizeSheetText(editor.target?.canonicalFileName || editor.sourceLabel || '')
+                : normalizeSheetText(editor.sourceLabel || '');
+            // Explicit Canvas Setup format choices must never silently degrade to
+            // a different codec after a subsequent image edit inside the editor.
+            const canvasSetupFormat = isStandaloneDiagram
+                && ['png', 'webp', 'jpeg'].includes(editor.target?.canvasSetupExportFormat)
+                ? editor.target.canvasSetupExportFormat : '';
+            const editedDataUrl = preserveExactSource
+                ? normalizeSheetText(editor.sourceValue || editor.target?.sourceValue || '')
+                : canvasSetupFormat
+                    ? await (async () => {
+                        const blob = await encodeMultiAngleSelectedFormat(outputCanvas, {
+                            exportFormat: canvasSetupFormat,
+                            exportQuality: editor.target.canvasSetupExportQuality
+                        });
+                        if (blob.size > STUDY_BUNNY_IMAGE_MAX_BYTES) {
+                            throw new Error(`Edited image is ${formatMultiAngleBytes(blob.size)}. Reduce its size before Save & Exit; the limit is 3 MB.`);
+                        }
+                        return studioSavedImageBlobToDataUrl(blob);
+                    })()
+                    : await encodeCanvasAsCanonicalImage(
+                        outputCanvas,
+                        (isMultiAngleDraftTarget
+                            ? (getMultiAngleCreatorState().angles.find(angle => angle.id === editor.target?.multiAngleAngleId)?.runtimeMime || editor.sourceMime)
+                            : editor.sourceMime)
+                            || getCanonicalImagePreferredMime(canonicalPreferenceValue, canonicalPreferenceName),
+                        STUDY_BUNNY_IMAGE_MAX_BYTES
+                    );
             const imageLabels = normalizeDiagramLabels(editor?.labels || []);
             const imageDrawStrokes = isLayeredDiagramTarget ? cloneImageEditorDrawStrokes(editor.drawStrokes || []) : [];
             const imageMetadata = isLayeredDiagramTarget ? captureImageEditorMetadata() : {};
             let applyValue = editedDataUrl;
             let savedResult = null;
             if (isMultiAngleDraftTarget) {
-                const updated = await updateMultiAngleDraftFromImageEditor(editedDataUrl, imageLabels, imageDrawStrokes, imageMetadata);
+                const updated = await updateMultiAngleDraftFromImageEditor(editor.imageDirty ? editedDataUrl : '', imageLabels, imageDrawStrokes, imageMetadata);
                 if (updated) {
                     await openMultiAngleCanvasSetupFromEditor({
                         alreadyPersisted: true,
@@ -16404,8 +23812,9 @@ The deletion becomes permanent when you save the diagram.`);
                 return;
             }
             if ((options.sendToSavedImages || attachToAllFront) && isLayeredDiagramTarget) {
-                savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, visualAids: normalizeDiagramVisualAids(editor.visualAids || []), drawStrokes: imageDrawStrokes, metadata: imageMetadata });
-                applyValue = normalizeSheetText(savedResult?.value || editedDataUrl);
+                savedResult = await saveCurrentImageEditorToSavedImages(editedDataUrl, { labels: imageLabels, visualAids: normalizeDiagramVisualAids(editor.visualAids || []), drawStrokes: imageDrawStrokes, metadata: imageMetadata, fastExit: isStandaloneDiagram });
+                if (!savedResult?.entry) throw new Error('Diagram save did not complete. Please retry.');
+                applyValue = normalizeSheetText(savedResult.value || editedDataUrl);
             }
             if (!isStandaloneDiagram) {
                 applyStudioImageEditorResult(applyValue, { drawStrokes: imageDrawStrokes, metadata: imageMetadata });
@@ -16433,20 +23842,27 @@ The deletion becomes permanent when you save the diagram.`);
                 state.auth.diagramCreatorSourceDataUrl = '';
                 state.auth.diagramCreatorSourceLabel = '';
                 if (elements.diagramCreatorFileInput) elements.diagramCreatorFileInput.value = '';
-                if (savedResult?.replaced) {
-                    setDiagramCreatorLibraryView('saved');
-                    renderDiagramCreatorSavedImages();
-                    setCreatorStatus('Saved Image updated. Existing flashcards were not changed.', 'success');
-                } else {
-                    renderDiagramCreatorSavedImages();
-                    setCreatorStatus('Diagram, labels, Visual Aids, connector lines, draw strokes, and search details sent to Saved Images.', 'success');
-                }
+                // Save & Exit must actually take the user to Saved Images, for
+                // both brand-new single diagrams and edits to an existing entry.
+                const diagramLibrary = getDiagramCreatorLibraryState();
+                diagramLibrary.page = 0;
+                // Clear stale filters so the newly saved diagram is visible.
+                clearDiagramCreatorSavedImageFilters();
+                setDiagramCreatorLibraryView('saved');
+                const message = savedResult.cloudSyncPending
+                    ? 'Diagram saved on this device; cloud synchronization is pending. Keep this device online before switching devices.'
+                    : (savedResult.replaced
+                        ? 'Diagram updated and saved. Existing flashcards were not changed.'
+                        : 'Diagram, labels, Visual Aids, connectors, drawings, and details saved successfully.');
+                setCreatorStatus(message, savedResult.cloudSyncPending ? 'error' : 'success');
             } else if (options.sendToSavedImages && isFlashcardTarget) {
                 setCreatorStatus('Image, labels, connector lines, draw strokes, and diagram details sent to Saved Images. Save Changes to keep this card update.', 'success');
             }
+            return true;
         } catch (error) {
-            console.error(error);
-            setImageEditorStatus('Could not save this image. Try re-uploading it, then edit again.');
+            console.error('Image editor save failed:', error);
+            setImageEditorStatus(`Could not save the diagram: ${normalizeSheetText(error?.message || 'Please retry.')}`);
+            return false;
         }
     }
 
@@ -16455,6 +23871,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         if (!editor?.open || editor.isPanning || !['labels', 'connector'].includes(editor.mode) || editor.isDrawing) return;
         editor.hoveredLabelIndex = null;
+        editor.quickReplaceHoveredIndex = null; // leave + re-enter can show a fresh 2-second prompt
         updateImageEditorCanvasPointerState();
         renderImageEditorCanvas();
     }
@@ -16462,11 +23879,11 @@ The deletion becomes permanent when you save the diagram.`);
     function handleImageEditorPointerDown(event) {
         const editor = state.auth.imageEditor;
         if (!editor?.open || !editor.baseCanvas) return;
-        const wantsSpacePan = isImageEditorStandaloneDiagramTarget(editor)
+        const wantsShiftPan = isImageEditorStandaloneDiagramTarget(editor)
             && editor.zoomScale > IMAGE_EDITOR_MIN_ZOOM + 0.01
-            && editor.spacePanHeld
+            && event.shiftKey
             && (event.button == null || event.button === 0);
-        if (wantsSpacePan) {
+        if (wantsShiftPan) {
             event.preventDefault();
             editor.isPanning = true;
             editor.panPointerId = event.pointerId;
@@ -16480,6 +23897,18 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const point = getImageEditorCanvasPoint(event);
         if (!point) return;
+        // Track actual label taps independently of the drag operation. The
+        // 2-second display begins only after a short press is released.
+        editor.quickReplacePressedIndex = null;
+        editor.quickReplacePressedPoint = null;
+        if ((event.button === undefined || event.button === 0)
+            && ['labels', 'connector'].includes(editor.mode)) {
+            const pressedIndex = findImageEditorLabelIndexAtPoint(point);
+            if (canShowImageEditorSoloQuickReplace(pressedIndex, editor)) {
+                editor.quickReplacePressedIndex = pressedIndex;
+                editor.quickReplacePressedPoint = point;
+            }
+        }
         event.preventDefault();
         if (editor.mode === 'visual-aid' && editor.visualAidsEnabled) {
             stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
@@ -16487,6 +23916,10 @@ The deletion becomes permanent when you save the diagram.`);
             if (aidIndex < 0) return;
             const aid = normalizeDiagramVisualAid(editor.visualAids[aidIndex], aidIndex);
             const normalized = getImageEditorVisualAidPointerPosition(point);
+            if (aid.flowFillType === 'flow-fill' && editor.activeVisualAidTool !== 'path') {
+                setImageEditorStatus('Flow Fill: select Draw Path, then draw the named region or flow connection.');
+                return;
+            }
             if (editor.activeVisualAidTool === 'path' && normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || aid.pathAuthoring || 'brush') === 'curves') {
                 if (handleImageEditorVisualAidCurvePointerDown(event, normalized, aidIndex, aid)) return;
             }
@@ -16499,6 +23932,7 @@ The deletion becomes permanent when you save the diagram.`);
                 aid.pathAuthoring = 'brush';
                 aid.curveAnchors = [];
                 aid.curveFinished = false;
+                aid.closedPath = false;
                 editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
                 captureImageEditorPointer(event);
                 return;
@@ -16521,6 +23955,30 @@ The deletion becomes permanent when you save the diagram.`);
                 setImageEditorStatus('Point added. Name it in the Visual Aid panel. Active Visual Aid points accept label connector snapping.');
                 return;
             }
+            if (editor.activeVisualAidTool === 'ball') {
+                if (!aid.multipleBalls && aid.balls.length >= 1) {
+                    setImageEditorStatus('This path already has a ball. Turn on Multiple Balls to add another.');
+                    return;
+                }
+                if (aid.balls.length >= DIAGRAM_VISUAL_AID_MAX_BALLS) {
+                    setImageEditorStatus(`Maximum ${DIAGRAM_VISUAL_AID_MAX_BALLS} balls reached for this path.`);
+                    return;
+                }
+                aid.balls.push(normalizeDiagramVisualAidBall({
+                    name: `Ball ${aid.balls.length + 1}`,
+                    position: nearest.position,
+                    direction: 'forward',
+                    function: 'loop',
+                    color: aid.defaultColor,
+                    legacyAuto: false
+                }, aid.balls.length, aid.defaultColor));
+                aid.ball = true;
+                aid.arrows = false;
+                editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
+                refreshImageEditorVisualAidUi();
+                setImageEditorStatus('Ball added at that path position. Use ↕ for direction and ƒx for Loop or Stop.');
+                return;
+            }
             return;
         }
         if (editor.mode === 'select') return;
@@ -16528,6 +23986,7 @@ The deletion becomes permanent when you save the diagram.`);
             const labelIndex = findImageEditorLabelIndexAtPoint(point);
             editor.hoveredLabelIndex = labelIndex >= 0 ? labelIndex : null;
             if (labelIndex >= 0) {
+                editor.ghostActiveLabelIndex = labelIndex;
                 if (editor.labelInfoPanelOpen) setImageEditorLabelInfoExpandedIndex(labelIndex);
                 pushImageEditorLabelHistory();
                 editor.isDrawing = true;
@@ -16542,26 +24001,106 @@ The deletion becomes permanent when you save the diagram.`);
             const activeIndex = editor.activeConnectorLabelIndex;
             const activeLabel = editor.labels?.[activeIndex];
             if (!activeLabel) return;
+            const canvas = elements.studioImageEditorCanvas;
+            const existing = normalizeDiagramConnector(activeLabel.connector);
+            const pendingStyle = normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || (existing ? getDiagramConnectorStyle(existing) : 'straight'));
+            if (pendingStyle === 'multi') {
+                const targets = Array.isArray(editor.pendingMultiTargets) ? editor.pendingMultiTargets : (editor.pendingMultiTargets = []);
+                if (targets.length >= 32) {
+                    setImageEditorStatus('Multi Connector supports up to 32 landmarks. Tap ✓ Finish to save.');
+                    return;
+                }
+                const target = {
+                    x: Math.min(100, Math.max(0, (point.x / canvas.width) * 100)),
+                    y: Math.min(100, Math.max(0, (point.y / canvas.height) * 100))
+                };
+                const tolerance = getImageEditorCanvasScreenTolerance(8);
+                if (targets.some(item => Math.hypot(((item.x - target.x) / 100) * canvas.width, ((item.y - target.y) / 100) * canvas.height) < tolerance)) {
+                    setImageEditorStatus('This landmark is already selected. Choose another, or tap ✓ Finish.');
+                    return;
+                }
+                targets.push(target);
+                renderImageEditorVectorOverlays();
+                setImageEditorStatus(targets.length < 2
+                    ? 'First landmark selected. Click another landmark to create a branch.'
+                    : `${targets.length} landmarks selected. Click more landmarks or tap ✓ Finish near the last target.`);
+                return;
+            }
+            if (pendingStyle === 'bracket') {
+                if (existing && getDiagramConnectorStyle(existing) === 'bracket') {
+                    setImageEditorStatus('Bracket endpoints are fixed. Drag the label to reposition its midpoint leader, or choose another connector style.');
+                    return;
+                }
+                const rawNormalizedPoint = {
+                    x: Math.min(100, Math.max(0, (point.x / canvas.width) * 100)),
+                    y: Math.min(100, Math.max(0, (point.y / canvas.height) * 100))
+                };
+                const normalizedPoint = editor.pendingBracketStart
+                    ? getImageEditorBracketPlacementPoint(editor.pendingBracketStart, rawNormalizedPoint, canvas, !!event.shiftKey)
+                    : rawNormalizedPoint;
+                if (!editor.pendingBracketStart) {
+                    editor.pendingBracketStart = normalizedPoint;
+                    editor.pendingBracketPreview = normalizedPoint;
+                    editor.draggingConnectorAnchor = false;
+                    editor.dragStart = null;
+                    renderImageEditorCanvas();
+                    setImageEditorStatus('First bracket point set. Click the second edge of the region. Hold Shift to align it horizontally or vertically.');
+                    return;
+                }
+                const start = editor.pendingBracketStart;
+                const screenDistance = Math.hypot(((normalizedPoint.x - start.x) / 100) * canvas.width, ((normalizedPoint.y - start.y) / 100) * canvas.height);
+                if (screenDistance < getImageEditorCanvasScreenTolerance(8)) {
+                    editor.pendingBracketPreview = normalizedPoint;
+                    renderImageEditorCanvas();
+                    setImageEditorStatus('Place the second bracket point farther from the first point.');
+                    return;
+                }
+                pushImageEditorLabelHistory();
+                const bracketSide = getImageEditorBracketSide(start, normalizedPoint, activeLabel, canvas);
+                activeLabel.connector = {
+                    anchorX: (start.x + normalizedPoint.x) / 2,
+                    anchorY: (start.y + normalizedPoint.y) / 2,
+                    bracketStartX: start.x,
+                    bracketStartY: start.y,
+                    bracketEndX: normalizedPoint.x,
+                    bracketEndY: normalizedPoint.y,
+                    bracketSide,
+                    color: existing?.color || normalizeEditorHexColor(editor.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000', '#000000'),
+                    thickness: existing?.thickness || Math.min(24, Math.max(0.25, Number(editor.lineThickness) || getImageEditorLineThickness())),
+                    style: 'bracket',
+                    endpoint: 'none'
+                };
+                editor.pendingBracketStart = null;
+                editor.pendingBracketPreview = null;
+                editor.draggingConnectorAnchor = false;
+                editor.dragStart = null;
+                updateImageEditorCanvasPointerState();
+                refreshImageEditorLabelUi();
+                renderImageEditorCanvas();
+                setImageEditorStatus('Bracket connector placed. Drag the label to move its midpoint leader; the two region points stay fixed.');
+                return;
+            }
             pushImageEditorLabelHistory();
             editor.isDrawing = true;
             editor.draggingLabelIndex = null;
             editor.draggingConnectorAnchor = true;
             editor.dragStart = point;
-            const canvas = elements.studioImageEditorCanvas;
-            const existing = normalizeDiagramConnector(activeLabel.connector);
             const clickedExistingAnchor = findImageEditorActiveConnectorAnchorAtPoint(point);
             if (!existing || !clickedExistingAnchor) {
                 const connectorStyle = existing
                     ? getDiagramConnectorStyle(existing)
-                    : normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || 'straight');
+                    : pendingStyle;
                 activeLabel.connector = {
                     anchorX: Math.min(100, Math.max(0, (point.x / canvas.width) * 100)),
                     anchorY: Math.min(100, Math.max(0, (point.y / canvas.height) * 100)),
                     color: existing?.color || normalizeEditorHexColor(editor.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000', '#000000'),
-                    thickness: existing?.thickness || Math.min(24, Math.max(1, Number(editor.lineThickness) || getImageEditorLineThickness())),
+                    thickness: existing?.thickness || Math.min(24, Math.max(0.25, Number(editor.lineThickness) || getImageEditorLineThickness())),
                     ...(connectorStyle !== 'straight' ? { style: connectorStyle } : {}),
                     ...(normalizeDiagramConnectorEndpoint(editor.pendingConnectorEndpoint || 'none') === 'none' ? { endpoint: 'none' } : {})
                 };
+                editor.quickMultiAnchorLabelIndex = connectorStyle === 'angled'
+                    && normalizeDiagramConnectorEndpoint(editor.pendingConnectorEndpoint || 'none') === 'none'
+                    ? activeIndex : null;
             }
             updateImageEditorCanvasPointerState();
             refreshImageEditorLabelUi();
@@ -16582,6 +24121,7 @@ The deletion becomes permanent when you save the diagram.`);
             const labelIndex = findImageEditorLabelIndexAtPoint(point);
             editor.hoveredLabelIndex = labelIndex >= 0 ? labelIndex : null;
             if (labelIndex >= 0) {
+                editor.ghostActiveLabelIndex = labelIndex;
                 if (editor.labelInfoPanelOpen) setImageEditorLabelInfoExpandedIndex(labelIndex);
                 editor.isDrawing = true;
                 editor.draggingLabelIndex = labelIndex;
@@ -16631,6 +24171,16 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         if (editor?.mode === 'connector' && editor.labelsEnabled && isImageEditorConnectorMode(editor)) {
+            if (!editor.isDrawing && editor.pendingBracketStart && normalizeDiagramConnectorStyle(editor.pendingConnectorStyle || '') === 'bracket') {
+                const canvas = elements.studioImageEditorCanvas;
+                const rawPreviewPoint = {
+                    x: Math.min(100, Math.max(0, (point.x / canvas.width) * 100)),
+                    y: Math.min(100, Math.max(0, (point.y / canvas.height) * 100))
+                };
+                editor.pendingBracketPreview = getImageEditorBracketPlacementPoint(editor.pendingBracketStart, rawPreviewPoint, canvas, !!event.shiftKey);
+                renderImageEditorVectorOverlays();
+                return;
+            }
             if (editor.isDrawing && editor.draggingLabelIndex !== null) {
                 event.preventDefault();
                 const canvas = elements.studioImageEditorCanvas;
@@ -16664,6 +24214,7 @@ The deletion becomes permanent when you save the diagram.`);
                 return;
             }
             const nextHover = findImageEditorLabelIndexAtPoint(point);
+            noteImageEditorQuickReplaceHover(nextHover, event);
             const normalizedHover = nextHover >= 0 ? nextHover : null;
             if (editor.hoveredLabelIndex !== normalizedHover) {
                 editor.hoveredLabelIndex = normalizedHover;
@@ -16694,6 +24245,7 @@ The deletion becomes permanent when you save the diagram.`);
             }
             if (isImageEditorLabelDrawActive()) return;
             const nextHover = findImageEditorLabelIndexAtPoint(point);
+            noteImageEditorQuickReplaceHover(nextHover, event);
             const normalizedHover = nextHover >= 0 ? nextHover : null;
             if (editor.hoveredLabelIndex !== normalizedHover) {
                 editor.hoveredLabelIndex = normalizedHover;
@@ -16740,8 +24292,21 @@ The deletion becomes permanent when you save the diagram.`);
             handleImageEditorVisualAidCurvePointerUp(event);
             return;
         }
-        if (!editor?.isDrawing) return;
+        if (!editor?.isDrawing) {
+            if (editor) { editor.quickReplacePressedIndex = null; editor.quickReplacePressedPoint = null; }
+            return;
+        }
         const point = getImageEditorCanvasPoint(event);
+        const pressedIndex = editor.quickReplacePressedIndex;
+        const pressedPoint = editor.quickReplacePressedPoint;
+        editor.quickReplacePressedIndex = null;
+        editor.quickReplacePressedPoint = null;
+        const releasedLabelIndex = event.type === 'pointerup'
+            && canShowImageEditorSoloQuickReplace(pressedIndex, editor)
+            && pressedPoint && point
+            && Math.hypot(pressedPoint.x - point.x, pressedPoint.y - point.y) <= getImageEditorCanvasScreenTolerance(8)
+            && findImageEditorLabelIndexAtPoint(point) === pressedIndex
+            ? pressedIndex : null;
         event.preventDefault();
         editor.isDrawing = false;
         releaseImageEditorPointer(event);
@@ -16760,25 +24325,33 @@ The deletion becomes permanent when you save the diagram.`);
                     else path[path.length - 1] = finalPoint;
                     aid = normalizeDiagramVisualAid({ ...aid, path }, aidIndex);
                 }
-                if (aid.path.length > 1 && !aid.divisions.length && !aid.points.length) aid.divisions.push({ id: createDiagramVisualAidId('division'), name: 'Division 1', position: 0, color: aid.defaultColor });
-                if (aid.path.length > 1) aid = ensureDiagramVisualAidEndpointPoints(aid);
+                if (aid.flowFillType !== 'flow-fill' && aid.path.length > 1 && !aid.divisions.length && !aid.points.length) aid.divisions.push({ id: createDiagramVisualAidId('division'), name: 'Division 1', position: 0, color: aid.defaultColor });
+                if (aid.flowFillType !== 'flow-fill' && aid.path.length > 1) aid = ensureDiagramVisualAidEndpointPoints(aid);
                 editor.visualAids[aidIndex] = normalizeDiagramVisualAid(aid, aidIndex);
             }
             editor.activeVisualAidDraftPath = null;
             resetImageEditorVisualAidLazyBrushState(editor);
             editor.dragStart = null;
             refreshImageEditorVisualAidUi();
-            setImageEditorStatus('Visual Aid path saved. Add divisions, points, colors, and arrows from the panel.');
+            setImageEditorStatus(getActiveImageEditorVisualAid(editor)?.flowFillType==='flow-fill' ? 'Flow Fill shape saved. Name it, set starting fill or add another region/connection.' : 'Visual Aid path saved. Add divisions, points, colors, and arrows from the panel.');
             return;
         }
         if (editor.mode === 'connector' && editor.labelsEnabled) {
-            if (editor.draggingConnectorAnchor) snapActiveImageEditorConnectorToVisualAidPoint(point);
+            const selectedCanvasLabel = event.type === 'pointerup' && Number.isInteger(editor.draggingLabelIndex)
+                ? editor.draggingLabelIndex : -1;
+            const activeConnector = getImageEditorActiveConnector(editor);
+            const isBracketConnector = getDiagramConnectorStyle(activeConnector) === 'bracket';
+            if (editor.draggingConnectorAnchor && !isBracketConnector) snapActiveImageEditorConnectorToVisualAidPoint(point);
             editor.draggingLabelIndex = null;
             editor.draggingConnectorAnchor = false;
             editor.dragStart = null;
-            setImageEditorStatus('Connector saved in this editor. Drag the label or anchor to adjust it, or click Connector again to exit.');
+            setImageEditorStatus(isBracketConnector
+                ? 'Bracket connector saved. Drag the label to adjust its midpoint leader; the two region points stay fixed.'
+                : 'Connector saved. Drag the label or anchor to adjust it, or click Connector again to choose another style.');
             refreshImageEditorLabelUi();
             renderImageEditorCanvas();
+            if (selectedCanvasLabel >= 0) focusImageEditorCanvasSelectedLabel(selectedCanvasLabel);
+            else if (releasedLabelIndex !== null) showImageEditorQuickReplace(releasedLabelIndex);
             return;
         }
         if (editor.mode === 'labels' && editor.labelsEnabled) {
@@ -16786,10 +24359,16 @@ The deletion becomes permanent when you save the diagram.`);
                 finishImageEditorActiveStroke(event);
                 return;
             }
+            const selectedCanvasLabel = event.type === 'pointerup' && Number.isInteger(editor.draggingLabelIndex)
+                ? editor.draggingLabelIndex : -1;
             editor.draggingLabelIndex = null;
             editor.dragStart = null;
             setImageEditorStatus('');
             renderImageEditorCanvas();
+            if (selectedCanvasLabel >= 0) {
+                focusImageEditorCanvasSelectedLabel(selectedCanvasLabel);
+                if (releasedLabelIndex === selectedCanvasLabel) showImageEditorSelectedLabelTapReplace(selectedCanvasLabel);
+            } else if (releasedLabelIndex !== null) showImageEditorQuickReplace(releasedLabelIndex);
             return;
         }
         const draft = editor.draftShape;
@@ -23145,13 +30724,6 @@ The deletion becomes permanent when you save the diagram.`);
             indicator.classList.add('hidden');
             return;
         }
-        const row = getCurrentHandwrittenFlashcardRow();
-        const side = getHandwrittenSideKey();
-        const image = normalizeSheetText(row?.[`${side}_image_url`]);
-        if (image && getHandwrittenSideImageLayoutFromEditorState(side) === 'full') {
-            indicator.classList.add('hidden');
-            return;
-        }
         const cardRect = card.getBoundingClientRect();
         const diameter = getHandwrittenToolIndicatorDiameterPx(event);
         const x = event.clientX - cardRect.left;
@@ -23212,7 +30784,32 @@ The deletion becomes permanent when you save the diagram.`);
         popover.style.top = `${Math.round(top)}px`;
     }
 
+    let handwrittenSettingsDismissTimer = null;
+    function cancelHandwrittenSettingsDismiss() {
+        if (handwrittenSettingsDismissTimer !== null) {
+            clearTimeout(handwrittenSettingsDismissTimer);
+            handwrittenSettingsDismissTimer = null;
+        }
+    }
+    function closeHandwrittenSettingsPopover() {
+        cancelHandwrittenSettingsDismiss();
+        elements.flashcardHandwrittenSettingsPopover?.classList.add('hidden');
+        elements.flashcardHandwrittenSettingsBtn?.setAttribute('aria-expanded','false');
+    }
+    function scheduleHandwrittenSettingsDismiss(event) {
+        // Touch has no hover-away semantics; touch users dismiss by tapping elsewhere.
+        if (event?.pointerType === 'touch') return;
+        cancelHandwrittenSettingsDismiss();
+        handwrittenSettingsDismissTimer = setTimeout(() => {
+            handwrittenSettingsDismissTimer = null;
+            const btn = elements.flashcardHandwrittenSettingsBtn;
+            const popover = elements.flashcardHandwrittenSettingsPopover;
+            if (btn?.matches(':hover') || popover?.matches(':hover')) return;
+            closeHandwrittenSettingsPopover();
+        }, 160);
+    }
     function closeHandwrittenFloatingPopovers() {
+        closeHandwrittenSettingsPopover();
         elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
         elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
@@ -23222,6 +30819,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function openHandwrittenSizePopover(anchor = elements.flashcardHandwrittenSizeBtn) {
         if (!elements.flashcardHandwrittenSizePopover || elements.flashcardHandwrittenSizeBtn?.disabled) return;
+        closeHandwrittenSettingsPopover();
         elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         syncHandwrittenSizeControls();
@@ -23231,6 +30829,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function openHandwrittenColorPopover(mode = 'add', color = state.auth.handwrittenFlashcardPenColor, anchor = elements.flashcardHandwrittenSaveColorBtn) {
         if (!elements.flashcardHandwrittenColorPopover || !elements.flashcardHandwrittenBrushColor) return;
+        closeHandwrittenSettingsPopover();
         elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         const normalized = normalizeEditorHexColor(color || state.auth.handwrittenFlashcardPenColor || '#111827', '#111827').toLowerCase();
@@ -23257,6 +30856,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function openHandwrittenSelectionPopover(anchor = elements.flashcardHandwrittenSelectionToolBtn) {
         if (!elements.flashcardHandwrittenSelectionPopover || !anchor) return;
+        closeHandwrittenSettingsPopover();
         elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
         elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
         syncHandwrittenSelectionControls();
@@ -23479,8 +31079,7 @@ The deletion becomes permanent when you save the diagram.`);
         gestureRect.classList.add('hidden'); gesturePath.classList.add('hidden'); box.classList.add('hidden');
         const active = state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardTool === 'select' && getHandwrittenSideModeFromEditorState(getHandwrittenSideKey(side)) === 'handwritten';
         if(!active){overlay.classList.add('hidden');return;}
-        const row=getCurrentHandwrittenFlashcardRow(); const sideKey=getHandwrittenSideKey(side); const image=normalizeSheetText(row?.[`${sideKey}_image_url`]);
-        if(image&&getHandwrittenSideImageLayoutFromEditorState(sideKey)==='full'){overlay.classList.add('hidden');return;}
+        const sideKey=getHandwrittenSideKey(side);
         const drag=state.auth.handwrittenFlashcardPointer;
         if(drag?.side===sideKey&&drag.tool==='select-rect'){
             const minX=Math.min(drag.start.x,drag.current.x),minY=Math.min(drag.start.y,drag.current.y),maxX=Math.max(drag.start.x,drag.current.x),maxY=Math.max(drag.start.y,drag.current.y);
@@ -23558,6 +31157,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardHandwrittenMoveRightBtn) elements.flashcardHandwrittenMoveRightBtn.disabled = !rows.length || index >= rows.length - 1;
         if (elements.flashcardHandwrittenSideSelect) elements.flashcardHandwrittenSideSelect.checked = side === 'definition';
         if (elements.flashcardHandwrittenSideMode) elements.flashcardHandwrittenSideMode.checked = mode === 'typed';
+        if (elements.flashcardHandwrittenClearBtn) elements.flashcardHandwrittenClearBtn.disabled = mode !== 'handwritten' || getHandwrittenSideStrokesFromEditorState(side).length === 0;
         if (elements.flashcardHandwrittenBrushColor) elements.flashcardHandwrittenBrushColor.value = normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827');
         if (elements.flashcardHandwrittenImageLayout) elements.flashcardHandwrittenImageLayout.checked = layout === 'full';
         syncHandwrittenSizeControls();
@@ -23573,7 +31173,7 @@ The deletion becomes permanent when you save the diagram.`);
             if (style.gridType !== 'none') card.classList.add(`grid-${style.gridType}`);
             if (imageValue && layout === 'full') card.classList.add('has-full-image');
             else if (imageValue) card.classList.add('has-half-image');
-            if (mode === 'handwritten' && !(imageValue && layout === 'full')) card.classList.add('is-handwritten-input');
+            if (mode === 'handwritten') card.classList.add('is-handwritten-input');
         }
         const typedEditor = elements.flashcardHandwrittenTypedEditor;
         if (typedEditor) {
@@ -23581,7 +31181,7 @@ The deletion becomes permanent when you save the diagram.`);
             const html = side === 'definition' ? getFlashcardDefinitionEditorHtml() : getFlashcardTermEditorHtml();
             if (document.activeElement !== typedEditor && typedEditor.innerHTML !== html) typedEditor.innerHTML = html;
         }
-        const handwritingInputActive = mode === 'handwritten' && !(imageValue && layout === 'full');
+        const handwritingInputActive = mode === 'handwritten';
         if (elements.flashcardHandwrittenWorkspace) {
             const tool = state.auth.handwrittenFlashcardTool;
             elements.flashcardHandwrittenWorkspace.classList.toggle('is-handwriting-active', handwritingInputActive);
@@ -23593,7 +31193,7 @@ The deletion becomes permanent when you save the diagram.`);
         syncHandwrittenDocumentSelectionGuard();
         if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', !handwritingInputActive);
         if (elements.flashcardHandwrittenImageWrap) elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
-        if (elements.flashcardHandwrittenFullImageNote) elements.flashcardHandwrittenFullImageNote.classList.toggle('hidden', !(imageValue && layout === 'full'));
+        if (elements.flashcardHandwrittenFullImageNote) elements.flashcardHandwrittenFullImageNote.classList.add('hidden');
         if (elements.flashcardHandwrittenImage && imageValue) setImageElementSourceWithMediaResolution(elements.flashcardHandwrittenImage, imageValue);
         if (elements.flashcardHandwrittenRemoveImageBtn) elements.flashcardHandwrittenRemoveImageBtn.disabled = !imageValue;
         elements.handwrittenToolButtons?.forEach(btn => btn.classList.toggle('active', btn.dataset.handwrittenTool === state.auth.handwrittenFlashcardTool));
@@ -23677,8 +31277,7 @@ The deletion becomes permanent when you save the diagram.`);
             if (pointerType === 'pen') state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
             clearHandwrittenDocumentSelection();
         }
-        const row=getCurrentHandwrittenFlashcardRow(); const side=getHandwrittenSideKey(); const image=normalizeSheetText(row?.[`${side}_image_url`]);
-        if (image && getHandwrittenSideImageLayoutFromEditorState(side)==='full') { hideHandwrittenToolSizeIndicator(); return; }
+        const side=getHandwrittenSideKey();
         updateHandwrittenToolSizeIndicator(event);
         event.preventDefault();
         event.stopPropagation();
@@ -23783,11 +31382,26 @@ The deletion becomes permanent when you save the diagram.`);
         if (changedInk) {
             setStudioDirtyState(true);
             updateStudioUnsavedChangesIndicator();
+            // Keep Clear's enabled state in sync even when drawing avoids a toolbar redraw.
+            if (elements.flashcardHandwrittenClearBtn && getHandwrittenSideKey() === side) {
+                elements.flashcardHandwrittenClearBtn.disabled = !getHandwrittenSideStrokesFromEditorState(side).length;
+            }
         }
     }
 
     function undoHandwrittenStroke() { clearHandwrittenSelection({ redraw:false }); const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardUndo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const prev=stack.pop(); const redo=state.auth.handwrittenFlashcardRedo.get(key)||[]; redo.push(current); state.auth.handwrittenFlashcardRedo.set(key,redo); state.auth.handwrittenFlashcardUndo.set(key,stack); setHandwrittenSideState(side,{strokes:prev}); renderHandwrittenFlashcardWorkspace(); }
     function redoHandwrittenStroke() { clearHandwrittenSelection({ redraw:false }); const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardRedo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const next=stack.pop(); const undo=state.auth.handwrittenFlashcardUndo.get(key)||[]; undo.push(current); state.auth.handwrittenFlashcardUndo.set(key,undo); state.auth.handwrittenFlashcardRedo.set(key,stack); setHandwrittenSideState(side,{strokes:next}); renderHandwrittenFlashcardWorkspace(); }
+    function clearCurrentHandwrittenFlashcardSide() {
+        const side = getHandwrittenSideKey();
+        if (getHandwrittenSideModeFromEditorState(side) !== 'handwritten') return false;
+        if (!getHandwrittenSideStrokesFromEditorState(side).length) return false;
+        clearHandwrittenSelection({redraw:false});
+        pushHandwrittenUndo(side); // One Undo restores the full side, independently of the other side.
+        setHandwrittenSideState(side,{strokes:[]});
+        renderHandwrittenFlashcardWorkspace();
+        return true;
+    }
+
 
     async function persistCurrentHandwrittenCardBeforeNavigation() {
         syncHandwrittenTypedEditorToBase();
@@ -25369,8 +32983,7 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         state.auth.diagramCreatorFileMode = 'single';
-        elements.diagramCreatorFileInput.value = '';
-        elements.diagramCreatorFileInput.click();
+        openStudioFlashcardImagePicker({ kind: 'standalone-diagram' }, elements.diagramCreatorFileInput);
     });
     elements.diagramCreatorChooseMultiBtn?.addEventListener('click', () => {
         if (!state.auth.user?.id) {
@@ -25378,13 +32991,11 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         state.auth.diagramCreatorFileMode = 'multi-new';
-        elements.diagramCreatorFileInput.value = '';
-        elements.diagramCreatorFileInput.click();
+        openStudioFlashcardImagePicker({ kind: 'multi-angle-add' }, elements.diagramCreatorFileInput);
     });
     elements.multiAngleAddImagesBtn?.addEventListener('click', () => {
         state.auth.diagramCreatorFileMode = 'multi-add';
-        elements.diagramCreatorFileInput.value = '';
-        elements.diagramCreatorFileInput.click();
+        openStudioFlashcardImagePicker({ kind: 'multi-angle-add' }, elements.diagramCreatorFileInput);
     });
     elements.diagramCreatorFileInput.addEventListener('change', async () => {
         const files = Array.from(elements.diagramCreatorFileInput.files || []);
@@ -25395,18 +33006,13 @@ The deletion becomes permanent when you save the diagram.`);
                 await openMultiAngleCreatorFromFiles(files, { append: mode === 'multi-add' });
                 return;
             }
-            const file = files[0];
-            const dataUrl = await readFileAsDataUrl(file);
-            state.auth.diagramCreatorSourceDataUrl = dataUrl;
-            state.auth.diagramCreatorSourceLabel = `Selected: ${file.name || 'diagram-image.png'}`;
-            await openStudioImageEditor({
-                kind: 'standalone-diagram',
-                sourceValue: dataUrl,
-                sourceLabel: state.auth.diagramCreatorSourceLabel
-            });
+            // Single-image imports get the same local Canvas Setup as multi-angle
+            // imports. This is not a saved multi-angle diagram: after flattening it
+            // opens the original standalone editor and Save & Exit workflow.
+            await openMultiAngleCreatorFromFiles([files[0]], { singleImage: true });
         } catch (error) {
             console.error(error);
-            setCreatorStatus('Could not open those images in Diagram Creator.', 'error');
+            setCreatorStatus(error?.message || 'Could not open those images in Diagram Creator.', 'error');
         }
     });
 }
@@ -26938,6 +34544,8 @@ if (elements.openQuizStudioBtn) {
         );
         if (isSessionRefreshOnly) {
             syncImageEditorColorPresetsFromAuth();
+            loadVisualAidPresetsForUser();
+            loadStudioLabelLibraryForUser();
             updateAuthUI();
             if (state.sourceQuestions.length) {
                 syncQuestionStarButton();
@@ -26948,6 +34556,8 @@ if (elements.openQuizStudioBtn) {
 
         if (state.auth.user?.id) {
             syncImageEditorColorPresetsFromAuth();
+            loadVisualAidPresetsForUser();
+            loadStudioLabelLibraryForUser();
             await loadAuthProfile(state.auth.user.id);
             await syncStudioSavedImagesFromSupabase({ force: !sameSignedInUser, reason: 'auth-session' });
             await refreshStudioManagementData({ force: !sameSignedInUser });
@@ -26961,6 +34571,13 @@ if (elements.openQuizStudioBtn) {
             state.auth.diagramColorPresets = [];
             state.auth.diagramColorLastColor = '#000000';
             state.auth.diagramColorPresetUpdatedAt = 0;
+            state.auth.visualAidPresets = [];
+            state.auth.labelSets = [];
+            state.auth.sharedLabelInformation = [];
+            state.auth.labelLibrarySync = { loadedUserId: '', setTableUnavailable: false, infoTableUnavailable: false, infoLoaded: false, infoReconcile: null, inFlight: null, lastLoadedAt: 0 };
+            state.auth.visualAidPresetSync.loadedUserId = '';
+            state.auth.visualAidPresetSync.tableUnavailable = false;
+            state.auth.visualAidPresetSync.inFlight = null;
             if (elements.studioImageEditorArrowColorInput) elements.studioImageEditorArrowColorInput.value = '#000000';
             if (state.auth.diagramColorPresetSyncTimerId) window.clearTimeout(state.auth.diagramColorPresetSyncTimerId);
             state.auth.diagramColorPresetSyncTimerId = null;
@@ -28077,7 +35694,32 @@ if (elements.openQuizStudioBtn) {
         return handleSaveMultipleChoiceQuiz(options);
     }
 
+    // Phase 23F.33.1: deleting/navigating past the last handwritten card may leave a blank pending editor placeholder.
+    // It is not a real card and must not be validated/saved as one.
+    function isPristineHandwrittenPendingPlaceholder() {
+        if (!state.auth.handwrittenFlashcardEnabled || !isStudioFlashcardMode()) return false;
+        const row = getCurrentHandwrittenFlashcardRow();
+        if (!row || normalizeSheetText(row?.id) !== STUDIO_PENDING_NEW_FLASHCARD_ID) return false;
+        return !hasHandwrittenFlashcardSideContent(row, 'term')
+            && !hasHandwrittenFlashcardSideContent(row, 'definition')
+            && !getLearningResourcesEditorPlain()
+            && !normalizeSheetText(state.auth.studioLearningResourcesImageDataUrl);
+    }
+
     async function handleSaveStudioEditorChanges() {
+        if (state.auth.editingQuizId && isPristineHandwrittenPendingPlaceholder()) {
+            state.auth.studioPendingNewQuestionRow = null;
+            state.auth.editingQuestionId = null;
+            if (hasStudioQuestionDrafts() || hasStudioLocalFlashcardDrafts()) {
+                await saveStudioCachedDrafts();
+                return;
+            }
+            await saveQuizShellFromEditor();
+            setStudioDirtyState(false);
+            updateCreateQuizModeUI();
+            setCreatorStatus('Quiz details saved.', 'success');
+            return;
+        }
         if (!state.auth.editingQuizId) {
             const isBlankQuestion = isCurrentStudioQuestionBlank();
             const canSaveQuestionNow = isCurrentStudioQuestionReadyToSave();
@@ -30481,10 +38123,17 @@ function normalizeClassificationId(value) {
     return normalizeSheetText(value);
 }
 
-function readFileAsDataUrl(file) {
+function readFileAsDataUrl(file, options = {}) {
     return new Promise((resolve, reject) => {
         if (!file) {
             resolve('');
+            return;
+        }
+        const maxBytes = options.canvasSetupImport === true ? STUDY_BUNNY_CANVAS_SOURCE_MAX_BYTES : STUDY_BUNNY_IMAGE_MAX_BYTES;
+        if (/^image\//i.test(file.type || '') && Number(file.size) > maxBytes) {
+            reject(new Error(options.canvasSetupImport === true
+                ? 'Canvas Setup source files must be 20 MB or smaller; final flattened images must be 3 MB or smaller.'
+                : 'Images must be 3 MB or smaller.'));
             return;
         }
 
@@ -36828,23 +44477,21 @@ function buildFlashcardFace(sideData, faceClass) {
     const displayImageLabels = getFlashcardSideImageLabelsForMode(imageLabels, sideData.labelDisplayMode || 'normal');
 
     const imageLayout = normalizeFlashcardImageLayout(sideData.imageLayout, hasImage);
-    const fullImageOnly = !!(sideData.handwrittenQuizEnabled && hasImage && imageLayout === 'full');
+    const fullImageOnly = !!(sideData.handwrittenQuizEnabled && hasImage && imageLayout === 'full' && !handwrittenMode);
     if (fullImageOnly) {
         content.classList.add('handwriting-full-image', 'image-only');
     } else if (handwrittenMode) {
-        if (hasImage && imageLayout === 'full') content.classList.add('handwriting-full-image', 'image-only');
+        if (hasImage && imageLayout === 'full') content.classList.add('handwriting-full-image');
         else if (hasImage) content.classList.add('handwriting-half');
         else content.classList.add('text-only');
-        if (!(hasImage && imageLayout === 'full')) {
-            const handwritingArea = document.createElement('div');
-            handwritingArea.className = 'flashcard-handwriting-area';
-            const handwritingCanvas = document.createElement('canvas');
-            handwritingCanvas.className = 'flashcard-handwriting-canvas';
-            handwritingCanvas.__studyBunnyHandwritingStrokes = normalizeHandwritingStrokes(sideData.handwritingStrokes || []);
-            handwritingArea.appendChild(handwritingCanvas);
-            content.appendChild(handwritingArea);
-            requestAnimationFrame(() => renderHandwritingStrokesToCanvas(handwritingCanvas, handwritingCanvas.__studyBunnyHandwritingStrokes));
-        }
+        const handwritingArea = document.createElement('div');
+        handwritingArea.className = 'flashcard-handwriting-area';
+        const handwritingCanvas = document.createElement('canvas');
+        handwritingCanvas.className = 'flashcard-handwriting-canvas';
+        handwritingCanvas.__studyBunnyHandwritingStrokes = normalizeHandwritingStrokes(sideData.handwritingStrokes || []);
+        handwritingArea.appendChild(handwritingCanvas);
+        content.appendChild(handwritingArea);
+        requestAnimationFrame(() => renderHandwritingStrokesToCanvas(handwritingCanvas, handwritingCanvas.__studyBunnyHandwritingStrokes));
     } else if (hasText && hasImage) {
         content.classList.add('split');
     } else if (hasText) {
@@ -39742,6 +47389,8 @@ if (elements.diagramCreatorSavedViewBtn) {
 const diagramCreatorFilterElements = [
     elements.diagramCreatorSearchInput,
     elements.diagramCreatorDiagramNameFilter,
+    elements.diagramCreatorClassFilter,
+    elements.diagramCreatorFolderFilter,
     elements.diagramCreatorSubjectFilter,
     elements.diagramCreatorAnatomyTypeFilter,
     elements.diagramCreatorOrganSystemFilter,
@@ -39752,25 +47401,78 @@ const diagramCreatorFilterElements = [
 ].filter(Boolean);
 diagramCreatorFilterElements.forEach(control => {
     const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
-    control.addEventListener(eventName, renderDiagramCreatorSavedImages);
+    control.addEventListener(eventName, () => {
+        if (control === elements.diagramCreatorClassFilter && elements.diagramCreatorFolderFilter) elements.diagramCreatorFolderFilter.value = '';
+        refreshSavedImageOrganizationFilterSelects();
+        const library = getDiagramCreatorLibraryState();
+        library.page = 0;
+        library.showAll = false;
+        renderDiagramCreatorSavedImages();
+    });
 });
 if (elements.diagramCreatorClearFiltersBtn) {
     elements.diagramCreatorClearFiltersBtn.addEventListener('click', clearDiagramCreatorSavedImageFilters);
 }
+if (elements.diagramCreatorPagePrevBtn) {
+    elements.diagramCreatorPagePrevBtn.addEventListener('click', () => {
+        const library = getDiagramCreatorLibraryState();
+        library.showAll = false;
+        library.page = Math.max(0, library.page - 1);
+        renderDiagramCreatorSavedImages();
+    });
+}
+if (elements.diagramCreatorPageNextBtn) {
+    elements.diagramCreatorPageNextBtn.addEventListener('click', () => {
+        const library = getDiagramCreatorLibraryState();
+        library.showAll = false;
+        library.page += 1;
+        renderDiagramCreatorSavedImages();
+    });
+}
+if (elements.diagramCreatorShowAllBtn) {
+    elements.diagramCreatorShowAllBtn.addEventListener('click', () => {
+        const library = getDiagramCreatorLibraryState();
+        library.showAll = !library.showAll;
+        if (!library.showAll) library.page = 0;
+        renderDiagramCreatorSavedImages();
+    });
+}
 if (elements.diagramCreatorImageGrid) {
     elements.diagramCreatorImageGrid.addEventListener('click', event => {
+        const clock = event.target.closest('[data-diagram-creator-study-reminder]');
+        if (clock) { event.preventDefault(); event.stopPropagation(); toggleSavedImageStudyReminder(clock.dataset.diagramCreatorStudyReminder); return; }
+        const progress = event.target.closest('[data-study-progress]');
+        if (progress) { event.preventDefault(); event.stopPropagation(); toggleSavedImageStudyProgress(progress.dataset.studyProgress, elements.diagramCreatorImageGrid); return; }
+        const resetButton = event.target.closest('[data-diagram-creator-reset-pinned]');
+        if (resetButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            resetSavedImagePinsById(resetButton.dataset.diagramCreatorResetPinned);
+            return;
+        }
         const deleteButton = event.target.closest('[data-diagram-creator-delete]');
         if (deleteButton) {
             event.preventDefault();
             event.stopPropagation();
             const entryId = normalizeSheetText(deleteButton.dataset.diagramCreatorDelete || '');
-            if (removeStudioSavedImageEntryById(entryId)) {
+            const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
+            if (result === 'cancelled') return;
+            if (result === 'deleted') {
                 setCreatorStatus('Saved image removed. Existing flashcards were not changed.', 'success');
             } else {
                 setCreatorStatus('That saved image could not be found.', 'error');
             }
             renderDiagramCreatorSavedImages();
             if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
+            return;
+        }
+        // Phase 23F.41.37: open this saved diagram directly in the existing
+        // Review Mode overlay, without changing sections or reloading the library.
+        const reviewButton = event.target.closest('[data-diagram-creator-review]');
+        if (reviewButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            openReviewModeImage(reviewButton.dataset.diagramCreatorReview || '');
             return;
         }
         const editButton = event.target.closest('[data-diagram-creator-edit]');
@@ -39796,41 +47498,148 @@ if (elements.multiAngleBackgroundInput) elements.multiAngleBackgroundInput.addEv
     setCreatorStatus('Could not change the shared background.', 'error');
     syncMultiAngleCreatorControls();
 }));
-if (elements.multiAngleApplyDimensionsBtn) elements.multiAngleApplyDimensionsBtn.addEventListener('click', () => {
-    const draft = getMultiAngleCreatorState();
-    draft.canvas = normalizeMultiAngleCanvasConfig({ ...draft.canvas, width: elements.multiAngleCanvasWidth?.value, height: elements.multiAngleCanvasHeight?.value });
-    draft.angles.forEach(angle => clearMultiAngleFlattenedEdit(angle));
-    syncMultiAngleCreatorControls();
-    setCreatorStatus(`Canvas changed to ${draft.canvas.width} × ${draft.canvas.height}. Flattened angle edits were reset so framing stays accurate.`, 'success');
-});
 if (elements.multiAngleNameInput) elements.multiAngleNameInput.addEventListener('input', () => {
     const angle = getActiveMultiAngleDraftAngle();
     if (!angle) return;
     angle.name = normalizeSheetText(elements.multiAngleNameInput.value).slice(0, 80) || `Angle ${getMultiAngleCreatorState().activeIndex + 1}`;
     if (elements.multiAngleIndicator) elements.multiAngleIndicator.textContent = `${angle.name} · ${getMultiAngleCreatorState().activeIndex + 1} of ${getMultiAngleCreatorState().angles.length}`;
+    if (elements.multiAnglePositionActiveName) elements.multiAnglePositionActiveName.textContent = `${angle.name} (${getMultiAngleCreatorState().activeIndex + 1} of ${getMultiAngleCreatorState().angles.length})`;
     if (getMultiAngleCreatorState().listOpen) renderMultiAngleCreatorList();
 });
 const updateMultiAngleFraming = (key, value, label) => {
     const angle = getActiveMultiAngleDraftAngle();
-    if (!angle) return;
+    if (!angle || angle.setupLocked) return;
     clearMultiAngleFlattenedEdit(angle);
     angle.framing = normalizeMultiAngleFraming({ ...angle.framing, [key]: value });
     if (label) label.textContent = `${Math.round((key === 'scale' ? angle.framing[key] : angle.framing[key]) * 100)}%`;
     syncMultiAngleCreatorControls();
 };
+const setMultiAngleCanvasDimension = (key, input) => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle || angle.setupLocked) return;
+    const parsed = Number(input.value);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 3000) { syncMultiAngleCreatorControls(); return; }
+    setMultiAngleDraftCanvasDimensions(key === 'canvasWidth' ? parsed : angle.canvasWidth, key === 'canvasHeight' ? parsed : angle.canvasHeight);
+};
+if (elements.multiAngleSameDimensionsToggle) elements.multiAngleSameDimensionsToggle.addEventListener('change', () => {
+    const draft = getMultiAngleCreatorState();
+    if (draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) { syncMultiAngleCreatorControls(); return; }
+    const angle = getActiveMultiAngleDraftAngle();
+    const enable = elements.multiAngleSameDimensionsToggle.checked;
+    if (enable && draft.angles.some(item => item.setupLocked && (item.canvasWidth !== angle.canvasWidth || item.canvasHeight !== angle.canvasHeight))) {
+        setCreatorStatus('The selected dimensions cannot be applied to an already-flattened angle. Re-upload its original or leave shared dimensions off.', 'error');
+        syncMultiAngleCreatorControls();
+        return;
+    }
+    draft.matchCanvasDimensions = enable;
+    if (enable && angle) {
+        if (angle.setupLocked) {
+            // A locked angle can supply dimensions to new, still-editable angles,
+            // but its own canonical image must never be resized implicitly.
+            draft.angles.filter(item => !item.setupLocked).forEach(item => {
+                item.canvasWidth = angle.canvasWidth;
+                item.canvasHeight = angle.canvasHeight;
+                item.canvasDirty = true;
+                item.estimateKey = '';
+                item.estimatedBytes = 0;
+            });
+            syncMultiAngleCreatorControls();
+        } else {
+            setMultiAngleDraftCanvasDimensions(angle.canvasWidth, angle.canvasHeight);
+        }
+    } else {
+        syncMultiAngleCreatorControls();
+    }
+});
+if (elements.multiAngleWidthInput) elements.multiAngleWidthInput.addEventListener('change', () => setMultiAngleCanvasDimension('canvasWidth', elements.multiAngleWidthInput));
+if (elements.multiAngleHeightInput) elements.multiAngleHeightInput.addEventListener('change', () => setMultiAngleCanvasDimension('canvasHeight', elements.multiAngleHeightInput));
+if (elements.multiAngleFormatSelect) elements.multiAngleFormatSelect.addEventListener('change', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle || angle.setupLocked) return;
+    angle.exportFormat = ['png', 'jpeg', 'webp'].includes(elements.multiAngleFormatSelect.value) ? elements.multiAngleFormatSelect.value : 'webp';
+    angle.estimateKey = '';
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleTransparentToggle) elements.multiAngleTransparentToggle.addEventListener('change', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle || angle.setupLocked) return;
+    angle.transparentBackground = elements.multiAngleTransparentToggle.checked === true;
+    angle.estimateKey = '';
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleQualityInput) elements.multiAngleQualityInput.addEventListener('input', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle || angle.setupLocked || angle.exportFormat === 'png') return;
+    angle.exportQuality = Math.max(0.6, Math.min(1, Number(elements.multiAngleQualityInput.value) / 100 || 0.88));
+    angle.estimateKey = '';
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleResetCanvasBtn) elements.multiAngleResetCanvasBtn.addEventListener('click', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle || angle.setupLocked) return;
+    setMultiAngleDraftCanvasDimensions(angle.naturalWidth, angle.naturalHeight);
+});
+if (elements.multiAngleAutoExpandBtn) elements.multiAngleAutoExpandBtn.addEventListener('click', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle || angle.setupLocked) return;
+    const frame = normalizeMultiAngleFraming(angle.framing || {});
+    const sourceWidth = angle.runtimeEditedImage?.naturalWidth || angle.runtimeImage?.naturalWidth || angle.naturalWidth;
+    const sourceHeight = angle.runtimeEditedImage?.naturalHeight || angle.runtimeImage?.naturalHeight || angle.naturalHeight;
+    // Leave a small margin and account for center-relative displacement.
+    const width = Math.min(3000, Math.max(angle.canvasWidth, Math.ceil(sourceWidth * frame.scale * 1.04 / Math.max(0.1, 1 - 2 * Math.abs(frame.offsetX)))));
+    const height = Math.min(3000, Math.max(angle.canvasHeight, Math.ceil(sourceHeight * frame.scale * 1.04 / Math.max(0.1, 1 - 2 * Math.abs(frame.offsetY)))));
+    setMultiAngleDraftCanvasDimensions(width, height);
+});
+if (elements.multiAngleReplaceBtn) elements.multiAngleReplaceBtn.addEventListener('click', () => elements.multiAngleReplaceInput?.click());
+if (elements.multiAngleReplaceInput) elements.multiAngleReplaceInput.addEventListener('change', async () => {
+    const draft = getMultiAngleCreatorState();
+    const old = getActiveMultiAngleDraftAngle();
+    const file = elements.multiAngleReplaceInput.files?.[0];
+    elements.multiAngleReplaceInput.value = '';
+    if (!old || !file) return;
+    if (file.size > STUDY_BUNNY_CANVAS_SOURCE_MAX_BYTES) { setCreatorStatus('Canvas Setup source files must be 20 MB or smaller.', 'error'); return; }
+    if (!window.confirm(`Re-upload an original for “${old.name}”? The current image framing cannot be recovered. Existing labels and Visual Aids will remain but may need repositioning after the new canvas is flattened.`)) return;
+    try {
+        const value = await readFileAsDataUrl(file, { canvasSetupImport: true });
+        const replacement = await createMultiAngleDraftAngle(value, file.name, draft.activeIndex, {
+            id: old.id, name: old.name, labels: old.labels, visualAids: old.visualAids, drawStrokes: old.drawStrokes,
+            exportFormat: old.exportFormat || 'webp', exportQuality: old.exportQuality || 0.88, background: old.background,
+            transparentBackground: old.transparentBackground === true
+        });
+        if (replacement.naturalWidth * replacement.naturalHeight > STUDY_BUNNY_CANVAS_SOURCE_MAX_PIXELS) {
+            releaseMultiAngleDraftAngleRuntime(replacement);
+            throw new Error('Replacement exceeds the 36-megapixel Canvas Setup safety limit.');
+        }
+        replacement.canvasWidth = Math.min(3000, replacement.naturalWidth);
+        replacement.canvasHeight = Math.min(3000, replacement.naturalHeight);
+        const replacementFit = Math.min(1, replacement.canvasWidth / replacement.naturalWidth, replacement.canvasHeight / replacement.naturalHeight);
+        if (replacementFit < 1) replacement.framing = normalizeMultiAngleFraming({ ...replacement.framing, scale: replacementFit });
+        replacement.currentBytes = file.size;
+        if (draft.matchCanvasDimensions && draft.angles.length > 1) {
+            const reference = draft.angles.find(item => item.id !== old.id);
+            replacement.canvasWidth = reference.canvasWidth;
+            replacement.canvasHeight = reference.canvasHeight;
+            replacement.canvasDirty = true;
+        }
+        releaseMultiAngleDraftAngleRuntime(old);
+        draft.angles[draft.activeIndex] = replacement;
+        syncMultiAngleCreatorControls();
+        setCreatorStatus('Original re-uploaded. Adjust this angle before flattening again.', 'success');
+    } catch (error) { setCreatorStatus(error?.message || 'Could not load replacement image.', 'error'); }
+});
 if (elements.multiAngleScaleInput) elements.multiAngleScaleInput.addEventListener('input', () => updateMultiAngleFraming('scale', Number(elements.multiAngleScaleInput.value) / 100, elements.multiAngleScaleValue));
 if (elements.multiAngleXInput) elements.multiAngleXInput.addEventListener('input', () => updateMultiAngleFraming('offsetX', Number(elements.multiAngleXInput.value) / 100, elements.multiAngleXValue));
 if (elements.multiAngleYInput) elements.multiAngleYInput.addEventListener('input', () => updateMultiAngleFraming('offsetY', Number(elements.multiAngleYInput.value) / 100, elements.multiAngleYValue));
 if (elements.multiAngleFitBtn) elements.multiAngleFitBtn.addEventListener('click', () => {
     const angle = getActiveMultiAngleDraftAngle();
-    if (!angle) return;
+    if (!angle || angle.setupLocked) return;
     clearMultiAngleFlattenedEdit(angle);
     angle.framing = normalizeMultiAngleFraming({ ...angle.framing, scale: 1 });
     syncMultiAngleCreatorControls();
 });
 if (elements.multiAngleCenterBtn) elements.multiAngleCenterBtn.addEventListener('click', () => {
     const angle = getActiveMultiAngleDraftAngle();
-    if (!angle) return;
+    if (!angle || angle.setupLocked) return;
     clearMultiAngleFlattenedEdit(angle);
     angle.framing = normalizeMultiAngleFraming({ ...angle.framing, offsetX: 0, offsetY: 0 });
     syncMultiAngleCreatorControls();
@@ -39840,6 +47649,7 @@ if (elements.multiAngleMatchSizeBtn) elements.multiAngleMatchSizeBtn.addEventLis
     const active = getActiveMultiAngleDraftAngle();
     if (!active) return;
     draft.angles.forEach(angle => {
+        if (angle.setupLocked) return;
         clearMultiAngleFlattenedEdit(angle);
         angle.framing = normalizeMultiAngleFraming({ ...angle.framing, scale: active.framing.scale });
     });
@@ -39852,7 +47662,7 @@ if (elements.multiAngleGuidesToggle) elements.multiAngleGuidesToggle.addEventLis
 });
 if (elements.multiAngleAnchorToggle) elements.multiAngleAnchorToggle.addEventListener('change', () => {
     const angle = getActiveMultiAngleDraftAngle();
-    if (!angle) return;
+    if (!angle || angle.setupLocked) return;
     clearMultiAngleFlattenedEdit(angle);
     angle.framing = normalizeMultiAngleFraming({ ...angle.framing, useAnchor: elements.multiAngleAnchorToggle.checked });
     getMultiAngleCreatorState().settingAnchor = false;
@@ -39878,7 +47688,10 @@ if (elements.multiAngleToggleListBtn) elements.multiAngleToggleListBtn.addEventL
     draft.listOpen = !draft.listOpen;
     syncMultiAngleCreatorControls();
 });
-if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.addEventListener('click', () => saveMultiAngleDraftToSavedImages());
+if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.addEventListener('click', () => flattenSaveAndOpenMultiAngleEditor().catch(error => {
+    console.error(error);
+    setCreatorStatus('Could not save and open Edit Labels + Drawings. Canvas Setup remains available.', 'error');
+}));
 if (elements.multiAngleList) elements.multiAngleList.addEventListener('click', event => {
     const button = event.target.closest('[data-multi-angle-action]');
     if (!button) return;
@@ -39903,18 +47716,18 @@ if (elements.multiAngleCanvas) {
     elements.multiAngleCanvas.addEventListener('pointerdown', event => {
         const draft = getMultiAngleCreatorState();
         const angle = getActiveMultiAngleDraftAngle();
-        if (!angle) return;
+        if (!angle || angle.setupLocked) return;
         const rect = elements.multiAngleCanvas.getBoundingClientRect();
         if (draft.settingAnchor && angle.framing.useAnchor) {
-            const canvasX = ((event.clientX - rect.left) / Math.max(1, rect.width)) * draft.canvas.width;
-            const canvasY = ((event.clientY - rect.top) / Math.max(1, rect.height)) * draft.canvas.height;
-            const bounds = normalizeMultiAngleBounds(angle.bounds || {}, angle.naturalWidth, angle.naturalHeight);
-            const baseScale = Math.min((draft.canvas.width * 0.85) / bounds.width, (draft.canvas.height * 0.85) / bounds.height);
-            const scale = baseScale * angle.framing.scale;
-            const pivotX = angle.framing.useAnchor ? angle.framing.anchorX * angle.naturalWidth : bounds.x + (bounds.width / 2);
-            const pivotY = angle.framing.useAnchor ? angle.framing.anchorY * angle.naturalHeight : bounds.y + (bounds.height / 2);
-            const destinationX = (draft.canvas.width / 2) + (angle.framing.offsetX * draft.canvas.width);
-            const destinationY = (draft.canvas.height / 2) + (angle.framing.offsetY * draft.canvas.height);
+            const canvasWidth = Math.max(1, elements.multiAngleCanvas.width || angle.naturalWidth || 1);
+            const canvasHeight = Math.max(1, elements.multiAngleCanvas.height || angle.naturalHeight || 1);
+            const canvasX = ((event.clientX - rect.left) / Math.max(1, rect.width)) * canvasWidth;
+            const canvasY = ((event.clientY - rect.top) / Math.max(1, rect.height)) * canvasHeight;
+            const scale = angle.framing.scale;
+            const pivotX = angle.framing.useAnchor ? angle.framing.anchorX * angle.naturalWidth : angle.naturalWidth / 2;
+            const pivotY = angle.framing.useAnchor ? angle.framing.anchorY * angle.naturalHeight : angle.naturalHeight / 2;
+            const destinationX = (canvasWidth / 2) + (angle.framing.offsetX * canvasWidth);
+            const destinationY = (canvasHeight / 2) + (angle.framing.offsetY * canvasHeight);
             const sourceX = pivotX + ((canvasX - destinationX) / scale);
             const sourceY = pivotY + ((canvasY - destinationY) / scale);
             clearMultiAngleFlattenedEdit(angle);
@@ -39931,7 +47744,7 @@ if (elements.multiAngleCanvas) {
         const draft = getMultiAngleCreatorState();
         const drag = draft.pointerDrag;
         const angle = getActiveMultiAngleDraftAngle();
-        if (!drag || drag.pointerId !== event.pointerId || !angle) return;
+        if (!drag || drag.pointerId !== event.pointerId || !angle || angle.setupLocked) return;
         const rect = elements.multiAngleCanvas.getBoundingClientRect();
         clearMultiAngleFlattenedEdit(angle);
         angle.framing = normalizeMultiAngleFraming({ ...angle.framing, offsetX: drag.offsetX + ((event.clientX - drag.startX) / Math.max(1, rect.width)), offsetY: drag.offsetY + ((event.clientY - drag.startY) / Math.max(1, rect.height)) });
@@ -39972,6 +47785,7 @@ function getReviewModePointerMidpoint(first, second) {
 }
 
 function cancelReviewModeLabelDragForGesture() {
+    cancelReviewModeLabelHold();
     const drag = reviewModeLabelDrag;
     if (!drag) return;
     drag.marker?.classList.remove('is-dragging');
@@ -40181,12 +47995,55 @@ if (elements.reviewModeImageViewport) {
         resetReviewModeZoom({ animate: true, disableFocus: true });
     });
 
+    // Phase 23F.41.43 — smooth MacBook two-finger pan in normal Review and Mini Quiz.
+    // WheelEvent has no dependable device-type flag: keep coarse mouse wheel steps
+    // and pinch/modified scroll on their previous paths, like Diagram Creator.
+    let reviewTrackpadLastTimestamp = -Infinity;
+    let reviewTrackpadFrame = 0;
+    let reviewTrackpadDeltaX = 0;
+    let reviewTrackpadDeltaY = 0;
+    let reviewTrackpadTarget = null;
     elements.reviewModeImageViewport.addEventListener('wheel', event => {
-        if (!event.ctrlKey && !event.metaKey) return;
-        event.preventDefault();
         const review = getReviewModeState();
-        const factor = Math.exp(-event.deltaY * 0.01);
-        zoomReviewModeAtPoint(review.zoomScale * factor, event.clientX, event.clientY);
+        if (!review.overlayOpen) return;
+        if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            const factor = Math.exp(-event.deltaY * 0.01);
+            zoomReviewModeAtPoint(review.zoomScale * factor, event.clientX, event.clientY);
+            return;
+        }
+        if (event.altKey || event.shiftKey || event.deltaMode !== 0
+            || review.zoomScale <= REVIEW_MODE_MIN_ZOOM + 0.01) return;
+        if (event.target?.closest?.('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar, .review-mode-shortcut-dock, .review-mode-visual-aid-bar, button, input, textarea, select, [contenteditable="true"]')) return;
+        const dx = Number(event.deltaX) || 0;
+        const dy = Number(event.deltaY) || 0;
+        if (!dx && !dy) return;
+        const elapsed = Number(event.timeStamp) - reviewTrackpadLastTimestamp;
+        const continuing = reviewTrackpadTarget?.review === review && elapsed >= 0 && elapsed < 150;
+        const smallDelta = Math.abs(dy) > 0 && Math.abs(dy) <= 60;
+        const fractional = Math.abs(dy - Math.round(dy)) > 0.001;
+        if (!continuing && !(Math.abs(dx) > 0.01 || smallDelta || fractional)) return;
+        if (event.cancelable) event.preventDefault();
+        reviewTrackpadLastTimestamp = Number(event.timeStamp);
+        reviewTrackpadDeltaX += dx;
+        reviewTrackpadDeltaY += dy;
+        // Guard against a queued pan applying to a different diagram or angle.
+        reviewTrackpadTarget = { review, entryId: review.activeEntryId, angle: review.activeAngleIndex };
+        if (reviewTrackpadFrame) return;
+        reviewTrackpadFrame = window.requestAnimationFrame(() => {
+            reviewTrackpadFrame = 0;
+            const deltaX = reviewTrackpadDeltaX;
+            const deltaY = reviewTrackpadDeltaY;
+            reviewTrackpadDeltaX = 0;
+            reviewTrackpadDeltaY = 0;
+            const target = reviewTrackpadTarget;
+            if (!target || !target.review.overlayOpen || target.review.zoomScale <= REVIEW_MODE_MIN_ZOOM + 0.01
+                || target.review.activeEntryId !== target.entryId || target.review.activeAngleIndex !== target.angle
+                || reviewModePanGesture || reviewModePinchGesture) return;
+            target.review.zoomX -= deltaX;
+            target.review.zoomY -= deltaY;
+            applyReviewModeZoomTransform();
+        });
     }, { passive: false });
 }
 
@@ -40202,6 +48059,8 @@ window.addEventListener('resize', () => {
 const reviewModeFilterElements = [
     elements.reviewModeSearchInput,
     elements.reviewModeDiagramNameFilter,
+    elements.reviewModeClassFilter,
+    elements.reviewModeFolderFilter,
     elements.reviewModeSubjectFilter,
     elements.reviewModeAnatomyTypeFilter,
     elements.reviewModeOrganSystemFilter,
@@ -40212,21 +48071,65 @@ const reviewModeFilterElements = [
 ].filter(Boolean);
 reviewModeFilterElements.forEach(control => {
     const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
-    control.addEventListener(eventName, renderReviewModeLibrary);
+    control.addEventListener(eventName, () => {
+        if (control === elements.reviewModeClassFilter && elements.reviewModeFolderFilter) elements.reviewModeFolderFilter.value = '';
+        refreshSavedImageOrganizationFilterSelects();
+        const review = getReviewModeState();
+        review.libraryPage = 0;
+        review.libraryShowAll = false;
+        renderReviewModeLibrary();
+    });
 });
 
 if (elements.reviewModeClearFiltersBtn) {
     elements.reviewModeClearFiltersBtn.addEventListener('click', clearReviewModeFilters);
 }
+if (elements.reviewModePagePrevBtn) {
+    elements.reviewModePagePrevBtn.addEventListener('click', () => {
+        const review = getReviewModeState();
+        review.libraryShowAll = false;
+        review.libraryPage = Math.max(0, review.libraryPage - 1);
+        renderReviewModeLibrary();
+    });
+}
+if (elements.reviewModePageNextBtn) {
+    elements.reviewModePageNextBtn.addEventListener('click', () => {
+        const review = getReviewModeState();
+        review.libraryShowAll = false;
+        review.libraryPage += 1;
+        renderReviewModeLibrary();
+    });
+}
+if (elements.reviewModeShowAllBtn) {
+    elements.reviewModeShowAllBtn.addEventListener('click', () => {
+        const review = getReviewModeState();
+        review.libraryShowAll = !review.libraryShowAll;
+        if (!review.libraryShowAll) review.libraryPage = 0;
+        renderReviewModeLibrary();
+    });
+}
 
 if (elements.reviewModeImageGrid) {
     elements.reviewModeImageGrid.addEventListener('click', event => {
+        const clock = event.target.closest('[data-review-image-study-reminder]');
+        if (clock) { event.preventDefault(); event.stopPropagation(); toggleSavedImageStudyReminder(clock.dataset.reviewImageStudyReminder); return; }
+        const progress = event.target.closest('[data-study-progress]');
+        if (progress) { event.preventDefault(); event.stopPropagation(); toggleSavedImageStudyProgress(progress.dataset.studyProgress, elements.reviewModeImageGrid); return; }
+        const resetPinnedButton = event.target.closest('[data-review-image-reset-pinned]');
+        if (resetPinnedButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            resetSavedImagePinsById(resetPinnedButton.dataset.reviewImageResetPinned);
+            return;
+        }
         const deleteButton = event.target.closest('[data-review-image-delete]');
         if (deleteButton) {
             event.preventDefault();
             event.stopPropagation();
             const entryId = normalizeSheetText(deleteButton.dataset.reviewImageDelete || '');
-            if (removeStudioSavedImageEntryById(entryId)) {
+            const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
+            if (result === 'cancelled') return;
+            if (result === 'deleted') {
                 setCreatorStatus('Saved image removed from Saved Images. Existing flashcards were not changed.', 'success');
             } else {
                 setCreatorStatus('That saved image could not be found.', 'error');
@@ -40249,8 +48152,9 @@ if (elements.reviewModeCloseBtn) {
     elements.reviewModeVisualAidSequence?.addEventListener('click', event => {
         const target = event.target.closest('[data-review-visual-aid-position]');
         if (!target) return;
-        stopReviewModeVisualAidAnimation();
         const review = getReviewModeState();
+        if (review.miniQuiz.active) return; // Anonymous sequence markers cannot select other answers.
+        stopReviewModeVisualAidAnimation();
         review.visualAidProgress = normalizeDiagramVisualAidPosition(target.dataset.reviewVisualAidPosition);
         review.visualAidSelectedKind = normalizeSheetText(target.dataset.reviewVisualAidSelectKind || review.visualAidSelectedKind);
         review.visualAidSelectedId = normalizeSheetText(target.dataset.reviewVisualAidSelectId || review.visualAidSelectedId);
@@ -40326,6 +48230,55 @@ if (elements.reviewModeShowAngleControlsToggle) {
     });
 }
 
+if (elements.reviewModePinBtn) {
+    elements.reviewModePinBtn.addEventListener('click', event => {
+        event.preventDefault();
+        toggleReviewModeSelectedPin();
+    });
+}
+
+function changeReviewModePinnedOnly(enabled) {
+    const review = getReviewModeState();
+    if (review.miniQuiz.active) { syncReviewModeControls(); return; }
+    review.pinnedLabelsOnly = enabled;
+    if (enabled) {
+        const allowed = getReviewModePinnedIndexSet(getActiveReviewModeEntry(), review.activeAngleIndex);
+        review.revealedLabels = new Set([...review.revealedLabels].filter(index => allowed.has(index)));
+    }
+    renderReviewModeLabels();
+    syncReviewModeControls();
+}
+if (elements.reviewModePinnedLabelsOnlyToggle) {
+    elements.reviewModePinnedLabelsOnlyToggle.addEventListener('change', () => changeReviewModePinnedOnly(elements.reviewModePinnedLabelsOnlyToggle.checked));
+}
+if (elements.reviewModeMiniPinnedLabelsOnlyToggle) {
+    elements.reviewModeMiniPinnedLabelsOnlyToggle.addEventListener('change', () => changeReviewModePinnedOnly(elements.reviewModeMiniPinnedLabelsOnlyToggle.checked));
+}
+
+if (elements.reviewModePinAllSharedLabelsToggle) {
+    elements.reviewModePinAllSharedLabelsToggle.addEventListener('change', () => {
+        getReviewModeState().pinAllSharedLabels = elements.reviewModePinAllSharedLabelsToggle.checked;
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeSoloLabelsToggle) {
+    elements.reviewModeSoloLabelsToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active) return;
+        review.soloLabels = elements.reviewModeSoloLabelsToggle.checked;
+        enforceReviewModeSoloLabels(review);
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeAllowLabelMovementToggle) {
+    elements.reviewModeAllowLabelMovementToggle.addEventListener('change', () => {
+        setReviewModeAllowLabelMovement(elements.reviewModeAllowLabelMovementToggle.checked);
+    });
+}
+
 if (elements.reviewModeShowShortcutDockToggle) {
     elements.reviewModeShowShortcutDockToggle.addEventListener('change', () => {
         setReviewModeShortcutDockVisible(elements.reviewModeShowShortcutDockToggle.checked);
@@ -40370,6 +48323,12 @@ if (elements.reviewModeVisualAidOnlyToggle) {
 if (elements.reviewModeDisplayFullPathToggle) {
     elements.reviewModeDisplayFullPathToggle.addEventListener('change', () => {
         const review = getReviewModeState();
+        const activeVisualAid = getReviewModeActiveVisualAid();
+        if (activeVisualAid?.completePath === true) {
+            elements.reviewModeDisplayFullPathToggle.checked = true;
+            syncReviewModeControls();
+            return;
+        }
         const wasPlaying = !!review.visualAidPlaying;
         if (wasPlaying) stopReviewModeVisualAidAnimation();
         review.visualAidDisplayFullPath = elements.reviewModeDisplayFullPathToggle.checked;
@@ -40454,6 +48413,30 @@ if (elements.reviewModeFocusToggle) {
         setReviewModeFocusMode(elements.reviewModeFocusToggle.checked);
     });
 }
+if (elements.reviewModeTwoLevelFocusToggle) {
+    elements.reviewModeTwoLevelFocusToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.twoLevelFocus = elements.reviewModeTwoLevelFocusToggle.checked;
+        if (!review.twoLevelFocus && review.focusMode) {
+            review.focusTargetKey = '';
+            scheduleReviewModeFocusCurrentLabel();
+        }
+        syncReviewModeControls();
+    });
+}
+for (const [slider, field] of [
+    [elements.reviewModeNormalFocusZoom, 'normalFocusZoom'],
+    [elements.reviewModeDetailFocusZoom, 'detailFocusZoom']
+]) {
+    slider?.addEventListener('input', () => {
+        const review = getReviewModeState();
+        review[field] = Math.min(700, Math.max(100, Number(slider.value) || (field === 'normalFocusZoom' ? 200 : 300)));
+        if (review.detailFocusZoom < review.normalFocusZoom) review.detailFocusZoom = review.normalFocusZoom;
+        syncReviewModeControls();
+        if (review.focusMode) scheduleReviewModeFocusCurrentLabel({ animate: false });
+    });
+}
+
 
 if (elements.reviewModeMiniScopeCurrent) {
     elements.reviewModeMiniScopeCurrent.addEventListener('change', () => {
@@ -40511,6 +48494,35 @@ if (elements.reviewModeMiniAllowDuplicatesToggle) {
     });
 }
 
+if (elements.reviewModeMiniQuizLabelInformationToggle) {
+    elements.reviewModeMiniQuizLabelInformationToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active) return;
+        review.quizLabelInformation = elements.reviewModeMiniQuizLabelInformationToggle.checked;
+        if (review.quizLabelInformation) {
+            // Enable the harder combined structure/category prompt by default;
+            // unlike prior phases, do not change the user's ?/number setting.
+            review.identifyStructureForCategory = true;
+            review.typedMiniQuiz = false;
+            review.rapidMiniQuiz = false;
+            review.spellUntilCorrectMiniQuiz = false;
+        } else {
+            review.identifyStructureForCategory = false;
+        }
+        renderReviewModeLabels();
+        syncReviewModeControls();
+    });
+}
+
+if (elements.reviewModeMiniIdentifyStructureForCategoryToggle) {
+    elements.reviewModeMiniIdentifyStructureForCategoryToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || !review.quizLabelInformation) return;
+        review.identifyStructureForCategory = elements.reviewModeMiniIdentifyStructureForCategoryToggle.checked;
+        syncReviewModeControls();
+    });
+}
+
 if (elements.reviewModeMiniTypedToggle) {
     elements.reviewModeMiniTypedToggle.addEventListener('change', () => {
         const review = getReviewModeState();
@@ -40562,6 +48574,9 @@ if (elements.reviewModeMiniMasteryToggle) {
 if (elements.reviewModeTakeMiniQuizBtn) {
     elements.reviewModeTakeMiniQuizBtn.addEventListener('click', startReviewModeMiniQuiz);
 }
+if (elements.reviewModeStartQuizBtn) {
+    elements.reviewModeStartQuizBtn.addEventListener('click', () => startReviewModeMiniQuiz());
+}
 
 if (elements.reviewModeMiniQuizRestartBtn) {
     elements.reviewModeMiniQuizRestartBtn.addEventListener('click', restartReviewModeMiniQuiz);
@@ -40571,18 +48586,23 @@ if (elements.reviewModeMiniQuizEndBtn) {
     elements.reviewModeMiniQuizEndBtn.addEventListener('click', () => endReviewModeMiniQuiz());
 }
 
+if (elements.reviewModeMiniQuizPinMissedBtn) {
+    elements.reviewModeMiniQuizPinMissedBtn.addEventListener('click', pinReviewModeMiniQuizMissedLabels);
+}
+if (elements.reviewModeMiniQuizResetPinsBtn) {
+    elements.reviewModeMiniQuizResetPinsBtn.addEventListener('click', resetReviewModeMiniQuizCheckpointPins);
+}
+if (elements.reviewModeMiniQuizTryAgainBtn) {
+    elements.reviewModeMiniQuizTryAgainBtn.addEventListener('click', retryReviewModeMiniQuizMissedRound);
+}
 if (elements.reviewModeMiniQuizNextAngleBtn) {
     elements.reviewModeMiniQuizNextAngleBtn.addEventListener('click', startReviewModeMiniQuizNextAngle);
 }
 
-if (elements.reviewModeLabelSizeDownBtn) {
-    elements.reviewModeLabelSizeDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
+if (elements.reviewModeLabelSizeSlider) {
+    elements.reviewModeLabelSizeSlider.addEventListener('input', () =>
+        setReviewModeLabelSize(Number(elements.reviewModeLabelSizeSlider.value) / 100));
 }
-
-if (elements.reviewModeLabelSizeUpBtn) {
-    elements.reviewModeLabelSizeUpBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale + 0.1));
-}
-
 if (elements.reviewModeShortcutHideBtn) {
     elements.reviewModeShortcutHideBtn.addEventListener('click', () => setReviewModeShortcutDockVisible(false));
 }
@@ -40590,10 +48610,21 @@ if (elements.reviewModeShortcutShowBtn) {
     elements.reviewModeShortcutShowBtn.addEventListener('click', () => setReviewModeShortcutDockVisible(true));
 }
 if (elements.reviewModeShortcutLabelDownBtn) {
-    elements.reviewModeShortcutLabelDownBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale - 0.1));
+    elements.reviewModeShortcutLabelDownBtn.addEventListener('click', () => nudgeReviewModeLabelSize(-1));
 }
 if (elements.reviewModeShortcutLabelUpBtn) {
-    elements.reviewModeShortcutLabelUpBtn.addEventListener('click', () => setReviewModeLabelScale(getReviewModeState().labelScale + 0.1));
+    elements.reviewModeShortcutLabelUpBtn.addEventListener('click', () => nudgeReviewModeLabelSize(1));
+}
+if (elements.reviewModeShortcutSmallLabelsBtn) {
+    elements.reviewModeShortcutSmallLabelsBtn.addEventListener('click', () => {
+        // Phase .73: one tap alternates two presets; never open Options or
+        // change active question, angle, Mini Quiz, or Focus state.
+        setReviewModeLabelSize(getReviewModeState().labelSize > 1.25 ? 1 : 1.6);
+    });
+}
+if (elements.reviewModeShortcutMovementBtn) {
+    elements.reviewModeShortcutMovementBtn.addEventListener('click', () =>
+        setReviewModeAllowLabelMovement(!getReviewModeState().allowLabelMovement));
 }
 if (elements.reviewModeShortcutColorBtn) {
     elements.reviewModeShortcutColorBtn.addEventListener('click', toggleReviewModeColor);
@@ -40608,7 +48639,7 @@ if (elements.reviewModeShortcutNextBtn) {
     elements.reviewModeShortcutNextBtn.addEventListener('click', () => answerReviewModeMiniQuizCorrectFromShortcut());
 }
 if (elements.reviewModeShortcutFocusBtn) {
-    elements.reviewModeShortcutFocusBtn.addEventListener('click', () => setReviewModeFocusMode(!getReviewModeState().focusMode));
+    elements.reviewModeShortcutFocusBtn.addEventListener('click', cycleReviewModeFocusMode);
 }
 if (elements.reviewModeShortcutGrip) {
     elements.reviewModeShortcutGrip.addEventListener('pointerdown', beginReviewModeShortcutDockDrag);
@@ -40616,6 +48647,35 @@ if (elements.reviewModeShortcutGrip) {
     elements.reviewModeShortcutGrip.addEventListener('pointerup', endReviewModeShortcutDockDrag);
     elements.reviewModeShortcutGrip.addEventListener('pointercancel', endReviewModeShortcutDockDrag);
     elements.reviewModeShortcutGrip.addEventListener('lostpointercapture', endReviewModeShortcutDockDrag);
+}
+
+if (elements.reviewModeVisualAidLabelLayer) {
+    elements.reviewModeVisualAidLabelLayer.addEventListener('click', event => {
+        const button = event.target.closest('[data-review-flow-label-id]');
+        if (!button) return;
+        const review = getReviewModeState();
+        event.preventDefault();
+        event.stopPropagation();
+        if (review.miniQuiz.active) {
+            if (!review.miniQuiz.complete && !review.miniQuiz.answerRevealed) {
+                if (review.typedMiniQuiz) focusReviewModeTypedAnswerInput();
+                else revealReviewModeMiniQuizAnswer();
+            }
+            return;
+        }
+        const aid=getReviewModeActiveVisualAid();
+        if (!aid || aid.flowFillType !== 'flow-fill') return;
+        const kind=button.dataset.reviewFlowLabelKind;
+        const id=button.dataset.reviewFlowLabelId;
+        const selected=getDiagramVisualAidSelectableItems(aid).find(item=>item.type===kind && item.id===id);
+        if (!selected) return;
+        stopReviewModeVisualAidAnimation();
+        review.visualAidSelectedKind=kind;
+        review.visualAidSelectedId=id;
+        review.visualAidProgress=normalizeDiagramVisualAidPosition(selected.position);
+        review.visualAidStartedAt=0;
+        renderReviewModeVisualAids();
+    });
 }
 
 if (elements.reviewModeLabelLayer) {
@@ -40709,17 +48769,43 @@ if (elements.reviewModeLabelLayer) {
         const index = Number(marker.dataset.reviewLabelIndex);
         if (!Number.isInteger(index) || index < 0) return;
         review.focusLabelIndex = index;
+        review.pinSelectedLabelIndex = index;
+        const wasShowingAllNames = review.showAllNames;
+        const previouslyRevealed = review.soloLabels ? Array.from(review.revealedLabels) : [];
         if (review.showAllNames) {
             review.showAllNames = false;
-            review.revealedLabels = new Set(normalizeDiagramLabels(getActiveReviewModeAngle(getActiveReviewModeEntry())?.labels || []).map((_, labelIndex) => labelIndex));
-            review.revealedLabels.delete(index);
+            if (review.soloLabels) {
+                // A tap exits explicit Show All and focuses only that label.
+                review.revealedLabels = new Set([index]);
+            } else {
+                review.revealedLabels = new Set(normalizeDiagramLabels(getActiveReviewModeAngle(getActiveReviewModeEntry())?.labels || []).map((_, labelIndex) => labelIndex));
+                review.revealedLabels.delete(index);
+            }
         } else if (review.revealedLabels.has(index)) {
             review.revealedLabels.delete(index);
+        } else if (review.soloLabels) {
+            review.revealedLabels = new Set([index]);
         } else {
             review.revealedLabels.add(index);
         }
-        renderReviewModeLabels();
-        syncReviewModeControls();
+        // Update the old marker before the new one, using the warmed snapshot;
+        // both mutations share the existing coalesced post-paint layout pass.
+        let updatedInPlace = !wasShowingAllNames;
+        if (!wasShowingAllNames) {
+            for (const oldIndex of previouslyRevealed) {
+                if (oldIndex !== index && !review.revealedLabels.has(oldIndex)) {
+                    const updated = updateReviewModeLabelToggleInPlace(oldIndex);
+                    updatedInPlace = updatedInPlace && updated;
+                }
+            }
+            const updated = updateReviewModeLabelToggleInPlace(index);
+            updatedInPlace = updatedInPlace && updated;
+        }
+        if (!updatedInPlace) {
+            renderReviewModeLabels();
+            syncReviewModeControls();
+        }
+        syncReviewModePinButton();
     });
 }
 
@@ -40734,11 +48820,16 @@ document.addEventListener('keydown', event => {
     const review = getReviewModeState();
     if (event.key === 'Escape' && review.overlayOpen) {
         event.preventDefault();
-        closeReviewModeImage();
+        if (review.miniQuiz.active && review.miniQuiz.roundCheckpoint) endReviewModeMiniQuiz();
+        else closeReviewModeImage();
         return;
     }
     if (!review.overlayOpen || event.ctrlKey || event.metaKey || event.altKey) return;
     const key = String(event.key || '');
+    if (review.miniQuiz.active && review.miniQuiz.roundCheckpoint) {
+        // Prevent keyboard shortcuts from answering the previous round behind the checkpoint.
+        if (key === 'ArrowRight' || key === ' ' || key === 'Spacebar') { event.preventDefault(); return; }
+    }
     if (review.miniQuiz.active && !review.miniQuiz.complete && key === 'ArrowRight') {
         event.preventDefault();
         event.stopPropagation();
@@ -40750,13 +48841,13 @@ document.addEventListener('keydown', event => {
     if (key === ' ' || key === 'Spacebar') {
         event.preventDefault();
         if (event.repeat) return;
-        setReviewModeFocusMode(!review.focusMode);
+        cycleReviewModeFocusMode();
     } else if (key === '+' || key === '=' || key === 'Add') {
         event.preventDefault();
-        setReviewModeLabelScale(review.labelScale + 0.1);
+        nudgeReviewModeLabelSize(1);
     } else if (key === '-' || key === '_' || key === 'Subtract') {
         event.preventDefault();
-        setReviewModeLabelScale(review.labelScale - 0.1);
+        nudgeReviewModeLabelSize(-1);
     } else if (lowerKey === 'd') {
         event.preventDefault();
         toggleReviewModeColor();
@@ -40957,12 +49048,20 @@ if (elements.createOptionFieldsContainer) {
         }
     });
 
+    elements.createOptionFieldsContainer.addEventListener('click', event => {
+        const fileInput = event.target.closest('[data-option-image-file]');
+        if (!fileInput || fileInput.dataset.savedImagePickerUploadBypass === 'true') return;
+        event.preventDefault();
+        const row = fileInput.closest('[data-option-index]');
+        openStudioFlashcardImagePicker({ kind: 'option', row }, fileInput);
+    });
+
     elements.createOptionFieldsContainer.addEventListener('change', event => {
         const fileInput = event.target.closest('[data-option-image-file]');
         if (!fileInput) return;
         handleStudioOptionImageFileInput(fileInput).catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the option image.', 'error');
+            setCreatorStatus(err?.message || 'Could not load the option image.', 'error');
         });
     });
 }
@@ -41075,6 +49174,13 @@ if (elements.removeClassifyItemBtn) {
 }
 
 if (elements.createClassifyCategoriesContainer) {
+    elements.createClassifyCategoriesContainer.addEventListener('click', event => {
+        const fileInput = event.target.closest('[data-classify-category-image-file]');
+        if (!fileInput || fileInput.dataset.savedImagePickerUploadBypass === 'true') return;
+        event.preventDefault();
+        const wrapper = fileInput.closest('[data-classify-category-index]');
+        openStudioFlashcardImagePicker({ kind: 'classify-category', wrapper }, fileInput);
+    });
     elements.createClassifyCategoriesContainer.addEventListener('change', event => {
         const fileInput = event.target.closest('[data-classify-category-image-file]');
         if (!fileInput) return;
@@ -41085,7 +49191,7 @@ if (elements.createClassifyCategoriesContainer) {
             setStudioDirtyState(true);
         }).catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the category image.', 'error');
+            setCreatorStatus(err?.message || 'Could not load the category image.', 'error');
         });
     });
 
@@ -41135,6 +49241,13 @@ if (elements.createClassifyCategoriesContainer) {
 }
 
 if (elements.createClassifyItemsContainer) {
+    elements.createClassifyItemsContainer.addEventListener('click', event => {
+        const fileInput = event.target.closest('[data-classify-item-image-file]');
+        if (!fileInput || fileInput.dataset.savedImagePickerUploadBypass === 'true') return;
+        event.preventDefault();
+        const wrapper = fileInput.closest('[data-classify-item-index]');
+        openStudioFlashcardImagePicker({ kind: 'classify-item', wrapper }, fileInput);
+    });
     elements.createClassifyItemsContainer.addEventListener('change', event => {
         const fileInput = event.target.closest('[data-classify-item-image-file]');
         if (!fileInput) return;
@@ -41144,7 +49257,7 @@ if (elements.createClassifyItemsContainer) {
             setStudioDirtyState(true);
         }).catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the item image.', 'error');
+            setCreatorStatus(err?.message || 'Could not load the item image.', 'error');
         });
     });
 
@@ -41775,7 +49888,7 @@ if (elements.studioQuestionList) {
             setCreatorStatus(`${side === 'definition' ? 'Definition' : 'Term'} image attached. Save Changes to keep it.`, 'success');
         }).catch(err => {
             console.error(err);
-            setCreatorStatus(`Could not load the ${side} image.`, 'error');
+            setCreatorStatus(err?.message || `Could not load the ${side} image.`, 'error');
         });
     });
 
@@ -42283,10 +50396,15 @@ if (elements.createQuestionImageToggleBtn) {
 }
 
 if (elements.createQuestionImageFile) {
+    elements.createQuestionImageFile.addEventListener('click', event => {
+        if (elements.createQuestionImageFile.dataset.savedImagePickerUploadBypass === 'true') return;
+        event.preventDefault();
+        openStudioFlashcardImagePicker({ kind: 'question' }, elements.createQuestionImageFile);
+    });
     elements.createQuestionImageFile.addEventListener('change', () => {
         handleStudioFileInput(elements.createQuestionImageFile, 'question').catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the question image.', 'error');
+            setCreatorStatus(err?.message || 'Could not load the question image.', 'error');
         });
     });
 }
@@ -42307,10 +50425,15 @@ if (elements.createQuestionImageClearBtn) {
 }
 
 if (elements.createLearningResourcesImageFile) {
+    elements.createLearningResourcesImageFile.addEventListener('click', event => {
+        if (elements.createLearningResourcesImageFile.dataset.savedImagePickerUploadBypass === 'true') return;
+        event.preventDefault();
+        openStudioFlashcardImagePicker({ kind: 'learning' }, elements.createLearningResourcesImageFile);
+    });
     elements.createLearningResourcesImageFile.addEventListener('change', () => {
         handleStudioFileInput(elements.createLearningResourcesImageFile, 'learning').catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the learning resources image.', 'error');
+            setCreatorStatus(err?.message || 'Could not load the learning resources image.', 'error');
         });
     });
 }
@@ -42572,19 +50695,7 @@ elements.flashcardRichCommandChoices.forEach(button => {
 });
 
 
-if (elements.studioImageEditorCloseBtn) {
-    elements.studioImageEditorCloseBtn.addEventListener('click', handleStudioImageEditorCloseRequest);
-}
-
-if (elements.studioImageEditorCancelBtn) {
-    elements.studioImageEditorCancelBtn.addEventListener('click', handleStudioImageEditorCloseRequest);
-}
-
-if (elements.studioImageEditorOverlay) {
-    elements.studioImageEditorOverlay.addEventListener('click', event => {
-        if (event.target === elements.studioImageEditorOverlay) handleStudioImageEditorCloseRequest();
-    });
-}
+bindImageEditorExitEvents();
 
 elements.studioImageEditorToolButtons?.forEach(button => {
     button.addEventListener('click', () => {
@@ -42620,6 +50731,8 @@ elements.studioImageEditorPaintTransparencyInput?.addEventListener('input', () =
 
 elements.studioImageEditorAddLabelBtn?.addEventListener('click', addImageEditorLabel);
 elements.studioImageEditorRemoveLastLabelBtn?.addEventListener('click', removeLastImageEditorLabel);
+bindImageEditorLabelTransferEvents();
+bindImageEditorConnectorInputFocusEvents();
 elements.studioImageEditorLabelList?.addEventListener('input', event => {
     const row = event.target.closest('[data-image-editor-label-row]');
     const editor = state.auth.imageEditor;
@@ -42641,6 +50754,12 @@ elements.studioImageEditorLabelInfoList?.addEventListener('input', event => {
         editor.labels[index].label = normalizeAuthoredMathChemText(event.target.value) || getDiagramLabelName(index);
         syncImageEditorLabelNameFields(index, event.target);
         renderImageEditorCanvas();
+        return;
+    }
+    if (event.target.matches('[data-image-editor-label-question-prompt]')) {
+        const prompt = normalizeDiagramLabelQuestionPrompt(event.target.value);
+        event.target.value = prompt;
+        synchronizeImageEditorSharedQuestionPrompt(index, prompt, { sourceElement: event.target });
         return;
     }
     const categoryRow = event.target.closest('[data-image-editor-label-info-category-row]');
@@ -42669,6 +50788,7 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
     const connectorStyleBtn = event.target.closest('[data-image-editor-connector-style]');
     const connectorDeleteBtn = event.target.closest('[data-image-editor-label-connector-delete]');
     const visibilityBtn = event.target.closest('[data-image-editor-label-visibility]');
+    const detailFocusBtn = event.target.closest('[data-image-editor-label-detail-focus]');
     const deleteBtn = event.target.closest('[data-image-editor-label-delete]');
     if (connectorStyleBtn) {
         selectImageEditorConnectorStyle(index, connectorStyleBtn.dataset.imageEditorConnectorStyle || 'straight', connectorStyleBtn.dataset.imageEditorConnectorEndpoint || 'none');
@@ -42686,6 +50806,9 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
         editor.mode = 'labels';
         editor.activeConnectorLabelIndex = null;
         editor.connectorStylePickerLabelIndex = null;
+        editor.pendingBracketStart = null;
+        editor.pendingBracketPreview = null;
+        editor.pendingMultiTargets = null;
         editor.draggingConnectorAnchor = false;
         editor.showLabelPanel = true;
         const isSameLabel = editor.activeDrawLabelIndex === index;
@@ -42701,6 +50824,10 @@ elements.studioImageEditorLabelList?.addEventListener('click', event => {
         refreshImageEditorLabelUi();
         renderImageEditorCanvas();
         setImageEditorStatus(!isSameLabel ? 'Draw on the image for this label.' : '');
+        return;
+    }
+    if (detailFocusBtn) {
+        toggleImageEditorLabelDetailFocus(index);
         return;
     }
     if (visibilityBtn) {
@@ -42747,7 +50874,7 @@ if (elements.studioImageEditorSaveBtn) {
     elements.studioImageEditorSaveBtn.addEventListener('click', () => saveStudioImageEditorImage());
 }
 if (elements.studioImageEditorSendSavedBtn) {
-    elements.studioImageEditorSendSavedBtn.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true }));
+    elements.studioImageEditorSendSavedBtn.addEventListener('click', handleStudioImageEditorSendSavedRequest);
 }
 if (elements.studioImageEditorAttachAllFrontBtn) {
     elements.studioImageEditorAttachAllFrontBtn.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }));
@@ -42770,6 +50897,8 @@ if (elements.studioImageEditorLabelInfoToggleBtn) {
     });
 }
 if (elements.studioImageEditorOverlay) {
+    // Phase 23F.33.3: bind organization controls before the legacy broad guard is stamped.
+    bindImageEditorOrganizationEvents();
     elements.studioImageEditorOverlay.dataset.imageEditorEventsBound = 'true';
 }
 window.addEventListener('pointerup', handleImageEditorGlobalPointerEnd, true);
@@ -42805,7 +50934,11 @@ document.addEventListener('keydown', event => {
             closeImageEditorConnectorStylePicker(true);
             return;
         }
-        if (state.auth.imageEditor?.open) closeStudioImageEditor();
+        if (state.auth.imageEditor?.open) {
+            event.preventDefault();
+            handleStudioImageEditorCloseRequest();
+            return;
+        }
         if (state.auth.studioSavedImagePicker?.open) closeStudioSavedImagePicker();
     }
 });
@@ -42826,7 +50959,7 @@ if (elements.createFlashcardTermImageFile) {
     elements.createFlashcardTermImageFile.addEventListener('change', () => {
         handleStudioFileInput(elements.createFlashcardTermImageFile, 'term').catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the term image.', 'error');
+            setCreatorStatus(err?.message || 'Could not load the term image.', 'error');
         });
     });
 }
@@ -42835,7 +50968,7 @@ if (elements.createFlashcardDefinitionImageFile) {
     elements.createFlashcardDefinitionImageFile.addEventListener('change', () => {
         handleStudioFileInput(elements.createFlashcardDefinitionImageFile, 'definition').catch(err => {
             console.error(err);
-            setCreatorStatus('Could not load the definition image.', 'error');
+            setCreatorStatus(err?.message || 'Could not load the definition image.', 'error');
         });
     });
 }
@@ -43934,10 +52067,6 @@ elements.questionImage.onclick = function () {
         if (!state.auth.handwrittenFlashcardEnabled || !state.auth.handwrittenFlashcardSetupApplied) return false;
         if (elements.flashcardHandwrittenWorkspace?.classList.contains('hidden')) return false;
         if (getHandwrittenSideModeFromEditorState() !== 'handwritten') return false;
-        const row = getCurrentHandwrittenFlashcardRow();
-        const side = getHandwrittenSideKey();
-        const imageValue = normalizeSheetText(row?.[`${side}_image_url`]);
-        if (imageValue && getHandwrittenSideImageLayoutFromEditorState(side) === 'full') return false;
         // Typed editor is hidden in this state, but keep the exemption explicit so
         // future mixed-mode changes cannot accidentally break normal text editing.
         if (event?.target?.closest?.('#flashcardHandwrittenTypedEditor, input, textarea, select, option')) return false;
@@ -43963,10 +52092,7 @@ elements.questionImage.onclick = function () {
         if (!state.auth.handwrittenFlashcardEnabled || !state.auth.handwrittenFlashcardSetupApplied) return false;
         if (elements.flashcardHandwrittenWorkspace?.classList.contains('hidden')) return false;
         if (getHandwrittenSideModeFromEditorState() !== 'handwritten') return false;
-        const row = getCurrentHandwrittenFlashcardRow();
-        const side = getHandwrittenSideKey();
-        const imageValue = normalizeSheetText(row?.[`${side}_image_url`]);
-        return !(imageValue && getHandwrittenSideImageLayoutFromEditorState(side) === 'full');
+        return true;
     }
 
     function syncHandwrittenDocumentSelectionGuard() {
@@ -44135,6 +52261,26 @@ elements.questionImage.onclick = function () {
         closeHandwrittenFloatingPopovers();
         renderHandwrittenFlashcardColorPresets();
     });
+    elements.flashcardHandwrittenClearBtn?.addEventListener('click', event => {
+        event.preventDefault();
+        clearCurrentHandwrittenFlashcardSide();
+    });
+    elements.flashcardHandwrittenSettingsBtn?.addEventListener('click', event => {
+        event.preventDefault();
+        const popover = elements.flashcardHandwrittenSettingsPopover;
+        const button = elements.flashcardHandwrittenSettingsBtn;
+        if (!popover || !button) return;
+        const opening = popover.classList.contains('hidden');
+        closeHandwrittenFloatingPopovers();
+        if (!opening) return;
+        popover.classList.remove('hidden');
+        button.setAttribute('aria-expanded','true');
+        requestAnimationFrame(() => positionHandwrittenFloatingPopover(popover, button, {forceBelow:true}));
+    });
+    [elements.flashcardHandwrittenSettingsBtn, elements.flashcardHandwrittenSettingsPopover].forEach(control => {
+        control?.addEventListener('pointerenter',cancelHandwrittenSettingsDismiss);
+        control?.addEventListener('pointerleave',scheduleHandwrittenSettingsDismiss);
+    });
     elements.flashcardHandwrittenUndoBtn?.addEventListener('click',undoHandwrittenStroke);
     elements.flashcardHandwrittenRedoBtn?.addEventListener('click',redoHandwrittenStroke);
     // Capture Pencil input as early as possible on iPad. passive:false is required
@@ -44205,22 +52351,15 @@ elements.questionImage.onclick = function () {
             ? normalizeSheetText(row?.definition_image_url || state.auth.studioFlashcardDefinitionImageDataUrl)
             : normalizeSheetText(row?.term_image_url || state.auth.studioFlashcardTermImageDataUrl);
         if (!imageValue) return;
-        const existingInk=getHandwrittenSideStrokesFromEditorState(side);
-        if(layout==='full' && existingInk.length){
-            if(!window.confirm('Changing to Full card will erase the handwriting on this side because drawing is disabled over a full-card image. Continue?')){
-                elements.flashcardHandwrittenImageLayout.checked=getHandwrittenSideImageLayoutFromEditorState(side)==='full';
-                return;
-            }
-            setHandwrittenSideState(side,{strokes:[]});
-        }
+        // Phase 23F.32.3: Half/Full is a pure layout mutation.
+        // Do NOT call cacheCurrentStudioQuestionDraft() here: on a pending new card
+        // that generic navigation cache promotes the row into a local draft and leaves
+        // the editor on a fresh pending row, producing an orphan/incomplete card at Save.
         setHandwrittenSideState(side,{imageLayout:layout});
         renderHandwrittenFlashcardWorkspace();
-        cacheCurrentStudioQuestionDraft();
     });
     elements.flashcardHandwrittenAddImageBtn?.addEventListener('click',()=>{
         const side=getHandwrittenSideKey(); const layout=elements.flashcardHandwrittenImageLayout?.checked?'full':'half';
-        const existingInk=getHandwrittenSideStrokesFromEditorState(side);
-        if(existingInk.length && !window.confirm(`Adding a ${layout==='full'?'full-card':'half-card'} image will erase the handwriting already on this side. Continue?`)) return;
         state.auth.handwrittenPendingImageLayout={side,layout};
         const fileInput=side==='definition'?elements.createFlashcardDefinitionImageFile:elements.createFlashcardTermImageFile;
         openStudioFlashcardImagePicker({kind:side==='definition'?'flashcard-definition':'flashcard-term'},fileInput);
@@ -44323,11 +52462,12 @@ elements.questionImage.onclick = function () {
     // propagation so tapping anywhere else on the screen always dismisses open popovers.
     document.addEventListener('pointerdown', event => {
         if (!state.auth.handwrittenFlashcardEnabled) return;
-        const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSelectionPopover,#flashcardHandwrittenSizeBtn,#flashcardHandwrittenSelectionToolBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color],[data-handwritten-selection-type]');
+        const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSelectionPopover,#flashcardHandwrittenSettingsPopover,#flashcardHandwrittenSettingsBtn,#flashcardHandwrittenSizeBtn,#flashcardHandwrittenSelectionToolBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color],[data-handwritten-selection-type]');
         if (!inside) closeHandwrittenFloatingPopovers();
     }, { capture: true, passive: true });
     window.addEventListener('keydown',event=>{
         if(!state.auth.handwrittenFlashcardEnabled||!state.auth.handwrittenFlashcardSetupApplied||elements.flashcardHandwrittenWorkspace?.classList.contains('hidden'))return;
+        if (event.key === 'Escape' && !elements.flashcardHandwrittenSettingsPopover?.classList.contains('hidden')) { event.preventDefault(); closeHandwrittenSettingsPopover(); return; }
         const tag=event.target?.tagName?.toLowerCase(); if(event.target?.isContentEditable||['input','textarea','select'].includes(tag))return;
         const key=event.key.toLowerCase();
         if(event.code==='Escape' && state.auth.handwrittenFlashcardFocusMode){event.preventDefault();setHandwrittenFlashcardFocusMode(false);return;}

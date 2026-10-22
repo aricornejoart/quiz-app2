@@ -8387,6 +8387,7 @@ body.active-question-multiple-choice:not(.fullscreen-mode) .options {
   width: var(--flashcard-image-visual-width, 100%);
   height: var(--flashcard-image-visual-height, 100%);
   pointer-events: none;
+  z-index: 14;
 }
 
 .flashcard-side-image-label-layer .diagram-study-label {
@@ -9585,14 +9586,19 @@ body.ipad-portrait-mc-image-top-layout .option-delay-notice {
   }
 }
 
+/* Phase 23F.33.1: picker cards keep a stable browsing footprint even when filters return a single Saved Image. */
 .studio-saved-image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 220px));
+  justify-content: start;
+  align-items: start;
   gap: 12px;
 }
 
 .studio-saved-image-card {
   display: flex;
+  width: 100%;
+  max-width: 220px;
   flex-direction: column;
   gap: 8px;
   padding: 10px;
@@ -10738,6 +10744,59 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   gap: 13px;
 }
 
+
+/* Phase 23F.32: Saved Images load ten thumbnail cards at a time by default. */
+.studio-saved-image-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.studio-saved-image-pagination.hidden {
+  display: none;
+}
+
+.studio-saved-image-page-arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.studio-saved-image-page-arrow:hover:not(:disabled),
+.studio-saved-image-page-arrow:focus-visible:not(:disabled) {
+  border-color: rgba(250, 204, 21, 0.78);
+  background: rgba(250, 204, 21, 0.12);
+  outline: none;
+}
+
+.studio-saved-image-page-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.studio-saved-image-page-status {
+  min-width: 104px;
+  color: rgba(239, 235, 255, 0.84);
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.studio-saved-image-show-all {
+  min-width: 116px;
+}
+
 .studio-review-image-card {
   position: relative;
   display: flex;
@@ -10866,11 +10925,22 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   top: max(10px, env(safe-area-inset-top));
   left: max(10px, env(safe-area-inset-left));
   right: max(10px, env(safe-area-inset-right));
-  z-index: 8;
+  z-index: 14;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   pointer-events: none;
+}
+
+.review-mode-quiz-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: 6px;
+  pointer-events: auto;
 }
 
 .review-mode-toolbar-btn {
@@ -10951,8 +11021,7 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   font-weight: 950;
 }
 
-.review-mode-switch-row,
-.review-mode-size-row {
+.review-mode-switch-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -11020,37 +11089,23 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   outline-offset: 2px;
 }
 
-.review-mode-size-controls {
-  display: inline-flex;
-  align-items: center;
+/* Phase 23F.41.42 — optional small review/quiz labels, separate from editor sizing. */
+.review-mode-small-labels-range {
+  display: grid;
   gap: 7px;
+  padding: 3px 0 11px;
+  color: rgba(239, 235, 255, .85);
+  font-size: .78rem;
+  font-weight: 700;
 }
-
-.review-mode-size-controls button {
-  width: 34px;
-  height: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 9px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.09);
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 950;
-  cursor: pointer;
+.review-mode-small-labels-range > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
 }
-
-.review-mode-size-controls button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-#reviewModeLabelSizeValue {
-  min-width: 45px;
-  color: #fde68a;
-  text-align: center;
-  font-size: 0.78rem;
-  font-weight: 900;
-}
+.review-mode-small-labels-range output { color: #fde68a; font-variant-numeric: tabular-nums; }
+.review-mode-small-labels-range input[type="range"] { width: 100%; min-width: 0; accent-color: #facc15; }
+.review-mode-small-labels-range input:disabled { opacity: .45; }
 
 .review-mode-options-help {
   margin-top: 8px;
@@ -11191,7 +11246,7 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   font-weight: 950;
   line-height: 1.15;
   text-align: center;
-  cursor: grab;
+  cursor: pointer;
   pointer-events: auto;
   touch-action: none;
   user-select: none;
@@ -11199,6 +11254,15 @@ body.fullscreen-mode.ipad-portrait-flashcard-layout #progressContainer {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
+
+.review-mode-label-layer.allow-label-movement .review-mode-label-marker {
+  cursor: grab;
+}
+
+.review-mode-label-layer:not(.allow-label-movement) .review-mode-label-marker {
+  touch-action: manipulation;
+}
+
 
 .review-mode-label-marker.is-dragging {
   cursor: grabbing;
@@ -11435,6 +11499,13 @@ body.review-mode-image-open {
   min-height: 31px;
 }
 
+.studio-image-editor-label-question-prompt {
+  flex: 2 1 54%;
+  width: 54%;
+  min-width: 0;
+  min-height: 31px;
+}
+
 .studio-image-editor-label-info-add,
 .studio-image-editor-label-info-collapse,
 .studio-image-editor-label-info-category-delete {
@@ -11536,6 +11607,11 @@ body.review-mode-image-open {
     flex: 1 1 calc(100% - 120px);
     width: auto;
     max-width: none;
+  }
+
+  .studio-image-editor-label-question-prompt {
+    flex: 1 1 100%;
+    width: 100%;
   }
 
   .studio-image-editor-label-info-categories {
@@ -11863,7 +11939,7 @@ body.review-mode-image-open {
   grid-column: 1 / -1;
   grid-row: 2;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 43px repeat(6, minmax(0, 1fr));
   gap: 5px;
   margin-top: 3px;
   padding: 7px;
@@ -11882,6 +11958,11 @@ body.review-mode-image-open {
   font-weight: 800;
   line-height: 1.1;
   text-align: center;
+}
+
+
+.studio-image-editor-connector-style-spacer {
+  min-height: 48px;
 }
 
 .studio-image-editor-connector-style-option {
@@ -11928,6 +12009,7 @@ body.review-mode-image-open {
 
 @media (max-width: 700px) {
   .studio-image-editor-connector-style-picker {
+    grid-template-columns: 38px repeat(6, minmax(0, 1fr));
     gap: 3px;
     padding: 5px;
   }
@@ -12048,14 +12130,31 @@ body.review-mode-image-open {
   padding: 0 10px 10px;
 }
 
-.studio-diagram-library-edit {
-  min-height: 38px;
+/* Phase 23F.41.37: saved-diagram Edit / Review shortcuts share a column. */
+.studio-diagram-library-main-actions {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
 }
 
+.studio-diagram-library-edit,
+.studio-diagram-library-review {
+  min-height: 38px;
+  width: 100%;
+}
+
+/* Phase 23F.41.38: trash stays square beside the stacked Edit/Review buttons. */
 .studio-diagram-library-delete {
   display: grid;
+  box-sizing: border-box;
+  width: 42px;
+  height: 42px;
   min-width: 42px;
-  min-height: 38px;
+  min-height: 42px;
+  align-self: start;
+  justify-self: end;
+  padding: 0;
   place-items: center;
   border: 1px solid rgba(248, 113, 113, 0.38);
   border-radius: 11px;
@@ -12123,10 +12222,7 @@ body.review-mode-image-open {
 }
 
 .review-mode-mini-quiz-controls {
-  position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  z-index: 10;
+  position: static;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -12205,6 +12301,10 @@ body.review-mode-image-open {
   position: relative;
   inset: auto;
   transform: none;
+  cursor: pointer;
+}
+
+.review-mode-label-layer.allow-label-movement .review-mode-mini-label-wrap .review-mode-label-marker {
   cursor: grab;
 }
 
@@ -12217,6 +12317,16 @@ body.review-mode-image-open {
   cursor: grabbing;
 }
 
+
+/* Phase 23F.41.15 — long custom quiz prompts replace the anonymous marker only during Mini Quiz. */
+.review-mode-mini-label-marker.has-question-prompt {
+  max-width: min(76vw, 480px);
+  width: max-content;
+  border-radius: calc(14px * var(--review-label-scale));
+  padding: calc(9px * var(--review-label-scale)) calc(12px * var(--review-label-scale));
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 
 .review-mode-mini-label-marker.is-mini-glowing {
   animation: review-mode-mini-label-glow 1.15s ease-in-out infinite alternate;
@@ -12458,6 +12568,8 @@ body.review-mode-image-open {
 .multi-angle-inline-actions { flex-wrap: wrap; margin-top: 12px; }
 .multi-angle-check-row { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 8px !important; }
 .multi-angle-check-row input { margin: 0; }
+.multi-angle-same-dimensions { margin-top: 12px !important; line-height: 1.35; }
+.multi-angle-same-dimensions input { flex: 0 0 auto; width: 17px; height: 17px; }
 .multi-angle-workflow-actions { flex-wrap: wrap; }
 .multi-angle-list-drawer { margin-top: 15px; padding: 12px; border-radius: 14px; background: #fff; border: 1px solid rgba(148, 163, 184, 0.3); }
 .multi-angle-list-heading { margin-bottom: 9px; font-weight: 900; color: #0f172a; }
@@ -12941,20 +13053,31 @@ body.review-mode-image-open {
   display: flex;
   align-items: stretch;
   gap: 7px;
+  min-width: 0;
+  min-height: 0;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
 }
 
 .review-mode-shortcut-dock[data-edge="left"] .review-mode-shortcut-actions,
 .review-mode-shortcut-dock[data-edge="right"] .review-mode-shortcut-actions {
   flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
 }
 
 .review-mode-shortcut-dock[data-edge="top"] .review-mode-shortcut-actions,
 .review-mode-shortcut-dock[data-edge="bottom"] .review-mode-shortcut-actions {
   flex-direction: row;
   align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
 }
 
 .review-mode-shortcut-dock button {
+  flex-shrink: 0;
   min-width: 70px;
   min-height: 60px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -13261,9 +13384,13 @@ body.review-mode-image-open {
   }
 }
 
-/* Phase 22NK2 — keyboard panning and two-row connector endpoint styles. */
-.studio-image-editor-canvas-wrap.is-space-pan-ready.is-zoomed {
+/* Diagram Creator modifier-key panning and two-row connector endpoint styles. */
+.studio-image-editor-canvas-wrap.is-shift-pan-ready.is-zoomed {
   cursor: grab;
+}
+
+.studio-image-editor-canvas-wrap.is-shift-pan-ready.is-zoomed:not(.is-panning) .studio-image-editor-canvas {
+  cursor: grab !important;
 }
 
 .studio-image-editor-canvas-wrap.is-panning {
@@ -13850,7 +13977,8 @@ body.review-mode-image-open {
 .studio-handwritten-card.grid-dots .studio-handwritten-grid { background-image:radial-gradient(circle, var(--hand-grid-color,#94a3b8) 1.2px, transparent 1.4px); background-size:24px 24px; }
 .studio-handwritten-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:2; touch-action:none; }
 .studio-handwritten-card.has-half-image .studio-handwritten-canvas, .studio-handwritten-card.has-half-image .studio-handwritten-typed-editor { right:50%; width:50%; }
-.studio-handwritten-card.has-full-image .studio-handwritten-canvas, .studio-handwritten-card.has-full-image .studio-handwritten-typed-editor { display:none !important; }
+.studio-handwritten-card.has-full-image .studio-handwritten-canvas { display:block !important; left:0; right:0; width:100%; height:100%; }
+.studio-handwritten-card.has-full-image .studio-handwritten-typed-editor { display:none !important; }
 .studio-handwritten-typed-editor { position:absolute; inset:0; z-index:3; padding:8%; color:var(--hand-card-text,#111827); overflow:auto; outline:none; font-size:clamp(18px,3vw,34px); line-height:1.35; white-space:pre-wrap; }
 .studio-handwritten-typed-editor:empty::before { content:attr(data-placeholder); color:rgba(100,116,139,.72); }
 .studio-handwritten-image-wrap { position:absolute; top:0; right:0; bottom:0; width:50%; z-index:1; background:#111; }
@@ -13870,7 +13998,9 @@ body.review-mode-image-open {
 .flashcard-side-content.handwriting-half { display:grid; grid-template-columns:1fr 1fr; padding:0; gap:0; }
 .flashcard-side-content.handwriting-half .flashcard-handwriting-area { position:relative; min-width:0; min-height:0; }
 .flashcard-side-content.handwriting-half .flashcard-side-image-wrap { width:100%; min-width:0; min-height:0; }
-.flashcard-side-content.handwriting-full-image { padding:0; }
+.flashcard-side-content.handwriting-full-image { position:relative; display:block; padding:0; }
+.flashcard-side-content.handwriting-full-image .flashcard-side-image-wrap { position:absolute; inset:0; width:100%; height:100%; border-radius:0; }
+.flashcard-side-content.handwriting-full-image .flashcard-handwriting-area { position:absolute; inset:0; width:100%; height:100%; z-index:3; pointer-events:none; }
 .flashcard-handwriting-area { position:relative; width:100%; height:100%; z-index:1; }
 @media (max-width: 760px) { .studio-handwritten-setup-grid { grid-template-columns:1fr 1fr; } .studio-handwritten-toolbar { align-items:flex-start; } }
 @media (max-width: 520px) { .studio-handwritten-setup-grid { grid-template-columns:1fr; } }
@@ -14510,7 +14640,9 @@ body.studio-handwritten-focus-open {
   width: 50%;
 }
 .studio-handwritten-card.has-full-image .studio-handwritten-selection-overlay {
-  display: none !important;
+  left:0;
+  right:0;
+  width:100%;
 }
 .studio-handwritten-selection-gesture {
   position: absolute;
@@ -14753,7 +14885,7 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   border-radius: 14px;
   background: rgba(20,16,28,.96);
 }
-.studio-image-editor-visual-aid-list { display: grid; gap: 10px; margin-top: 10px; }
+.studio-image-editor-visual-aid-list { display: grid; gap: 10px; margin-top: 10px; align-content: start; grid-auto-rows: max-content; }
 .studio-visual-aid-item { border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 9px; background: rgba(255,255,255,.025); }
 .studio-visual-aid-item.is-active { border-color: rgba(167,139,250,.8); box-shadow: 0 0 0 1px rgba(139,92,246,.2); }
 .studio-visual-aid-item-head { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; gap: 7px; align-items: center; }
@@ -15242,14 +15374,17 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 }
 .review-mode-mini-visual-question {
   display: block;
-  font-size: .72rem;
+  /* Phase 23F.41.56: quiz prompt text responds to Label Size, not only its card.
+     At 100% retain the original .72rem appearance. */
+  font-size: calc(.72rem * var(--review-label-text-scale, 1));
   font-weight: 800;
   letter-spacing: .025em;
   color: rgba(255,255,255,.78);
 }
 .review-mode-mini-visual-prompt .review-mode-label-name {
   display: block;
-  font-size: 1rem;
+  /* Answer font tracks Review/Mini Quiz Label Size; 100% remains 1rem. */
+  font-size: calc(1rem * var(--review-label-text-scale, 1));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -15386,6 +15521,13 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 
 /* Disabled until the primary Visual Aid switch is enabled. */
 .review-mode-visual-aid-only-row:has(input:disabled) {
+  opacity: .5;
+}
+
+/* Phase 23F.35: visually mute dependent Label Information quiz controls while disabled. */
+.review-mode-switch-row:has(#reviewModeLabelNumberToggle:disabled),
+.review-mode-switch-row:has(#reviewModeMiniIdentifyStructureForCategoryToggle:disabled),
+.review-mode-switch-row:has(#reviewModeMiniTypedToggle:disabled) {
   opacity: .5;
 }
 
@@ -15818,4 +15960,1370 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   .review-mode-visual-aid-controls { flex-wrap: wrap; }
   .review-mode-visual-aid-sequence { grid-column: 3; }
   .review-mode-visual-aid-speed { justify-self: auto; }
+}
+
+
+/* Phase 23F.33 — Saved Image organization + picker paging */
+.studio-image-editor-metadata-select-with-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
+  align-items: end;
+}
+.studio-image-editor-metadata-select-with-add > label { min-width: 0; }
+.studio-image-editor-metadata-add-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.08);
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.studio-image-editor-metadata-add-btn:hover { background: rgba(255,255,255,.14); }
+.studio-saved-image-picker-pagination { margin-top: 12px; }
+
+
+/* Phase 23F.33.2 — inline Saved Image Class/Folder creation */
+.studio-image-editor-metadata-select-with-add input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.studio-image-editor-metadata-add-btn.is-creating {
+  border-color: rgba(110, 231, 183, .72);
+  background: rgba(16, 185, 129, .18);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+
+/* Phase 23F.33.5 — Diagram Creator save/exit confirmation */
+.studio-diagram-exit-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 6, 22, 0.66);
+  backdrop-filter: blur(8px);
+}
+
+.studio-diagram-exit-prompt {
+  width: min(520px, calc(100vw - 32px));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  padding: 22px;
+  background: #24134b;
+  color: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
+
+.studio-diagram-exit-prompt-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.studio-diagram-exit-prompt-copy {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.studio-diagram-exit-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* Phase 23F.36: reusable Visual Aid presets, multi-path authoring, and per-ball behavior. */
+.studio-visual-aid-preset-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px 36px 36px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  margin: 0 0 8px;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.studio-visual-aid-preset-bar input {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+}
+.studio-visual-aid-preset-icon,
+.studio-visual-aid-preset-load > summary {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 9px;
+  color: inherit;
+  background: rgba(255,255,255,.06);
+  cursor: pointer;
+  list-style: none;
+  line-height: 1;
+}
+.studio-visual-aid-preset-load { position: relative; margin: 0; }
+.studio-visual-aid-preset-load > summary::-webkit-details-marker { display: none; }
+.studio-visual-aid-preset-load[open] > summary,
+.studio-visual-aid-preset-icon:hover,
+.studio-visual-aid-preset-load > summary:hover { border-color: rgba(167,139,250,.65); background: rgba(139,92,246,.16); }
+.studio-visual-aid-preset-icon:disabled { opacity: .4; cursor: default; }
+.studio-visual-aid-preset-menu {
+  position: absolute;
+  z-index: 18;
+  top: calc(100% + 5px);
+  right: 0;
+  display: grid;
+  gap: 3px;
+  width: min(230px, calc(100vw - 48px));
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 10px;
+  background: #251f4a;
+  box-shadow: 0 10px 26px rgba(0,0,0,.32);
+}
+.studio-visual-aid-preset-menu button {
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.studio-visual-aid-preset-menu button:hover,
+.studio-visual-aid-preset-menu button.active { background: rgba(139,92,246,.22); }
+.studio-visual-aid-behavior {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 10px;
+  background: rgba(255,255,255,.035);
+}
+.studio-visual-aid-behavior label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  font-size: .82rem;
+}
+.studio-visual-aid-behavior label.is-disabled { opacity: .48; }
+.studio-visual-aid-ball-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 34px 34px 38px 28px;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  margin: 4px 0;
+}
+.studio-visual-aid-ball-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  font-size: .74rem;
+  font-weight: 700;
+}
+.studio-visual-aid-ball-row input[type="color"] {
+  width: 32px;
+  height: 30px;
+  padding: 2px;
+}
+.studio-visual-aid-ball-option {
+  min-width: 34px;
+  height: 30px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 8px;
+  color: inherit;
+  background: rgba(255,255,255,.05);
+  cursor: pointer;
+  font-weight: 700;
+}
+.studio-visual-aid-ball-option.active {
+  border-color: #8b5cf6;
+  background: rgba(139,92,246,.18);
+}
+.studio-visual-aid-ball-popover {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 2px);
+  left: 58px;
+  display: grid;
+  min-width: 112px;
+  padding: 5px;
+  gap: 3px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 9px;
+  background: #251f4a;
+  box-shadow: 0 8px 20px rgba(0,0,0,.28);
+}
+.studio-visual-aid-ball-popover button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 7px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.studio-visual-aid-ball-popover button:hover,
+.studio-visual-aid-ball-popover button.active { background: rgba(139,92,246,.22); }
+@media (max-width: 900px) {
+  .studio-visual-aid-preset-bar { grid-template-columns: minmax(0, 1fr) 36px 36px 36px; }
+}
+
+/* Phase 23F.36.2 — optional Visual Aid path closure + saved Display Full Path affordance. */
+.studio-visual-aid-close-path-snap {
+  position: absolute;
+  z-index: 8;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(37,31,74,.94);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 4px 12px rgba(0,0,0,.32);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+.studio-visual-aid-close-path-snap:hover,
+.studio-visual-aid-close-path-snap:focus-visible {
+  border-color: rgba(196,181,253,.96);
+  background: rgba(76,63,132,.98);
+}
+.studio-visual-aid-close-path-snap:disabled {
+  pointer-events: none;
+  opacity: .72;
+}
+.studio-visual-aid-close-path-snap.hidden {
+  display: none !important;
+}
+.review-mode-display-full-path-row.is-saved-setting {
+  opacity: .78;
+}
+
+
+/* Phase 23F.36.3 — scoped Visual Aid quick-add + accessible on/off switches. */
+.studio-visual-aid-section-heading {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.studio-visual-aid-section-heading .studio-visual-aid-section-title { margin-top: 0; }
+.studio-visual-aid-section-heading .studio-visual-aid-quick-add {
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid rgba(167,139,250,.42);
+  border-radius: 8px;
+  background: rgba(139,92,246,.12);
+  color: #f7f3ff;
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 740;
+  cursor: pointer;
+}
+.studio-visual-aid-section-heading .studio-visual-aid-quick-add.active {
+  border-color: #a78bfa;
+  background: rgba(139,92,246,.34);
+  box-shadow: inset 0 0 0 1px rgba(167,139,250,.26);
+}
+.studio-visual-aid-section-heading .studio-visual-aid-quick-add:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.studio-visual-aid-section-heading .studio-visual-aid-quick-add:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 28px;
+  color: rgba(248,250,252,.92);
+  font-size: .8rem;
+  cursor: pointer;
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch.is-disabled { opacity: .48; cursor: default; }
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-control {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 23px;
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-control input[type="checkbox"] {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-control input[type="checkbox"]:disabled { cursor: default; }
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-track {
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.3);
+  background: rgba(255,255,255,.13);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.25);
+  transition: background .16s ease, border-color .16s ease;
+  pointer-events: none;
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(0,0,0,.3);
+  transition: transform .16s ease;
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-control input:checked + .studio-visual-aid-switch-track {
+  border-color: #a78bfa;
+  background: #7c3aed;
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-control input:checked + .studio-visual-aid-switch-track::after {
+  transform: translateX(17px);
+}
+.studio-image-editor-visual-aid-panel .studio-visual-aid-switch-control input:focus-visible + .studio-visual-aid-switch-track {
+  outline: 2px solid #ddd6fe;
+  outline-offset: 2px;
+}
+.studio-visual-aid-preview-controls .studio-visual-aid-switch { margin-left: 6px; }
+@media (prefers-reduced-motion: reduce) {
+  .studio-image-editor-visual-aid-panel .studio-visual-aid-switch-track,
+  .studio-image-editor-visual-aid-panel .studio-visual-aid-switch-track::after { transition: none; }
+}
+
+/* Phase 23F.37 — precise finalized canvas outline, per-angle dimensions, and quality readouts. */
+.multi-angle-creator-panel .multi-angle-canvas { outline: 2px solid #62d9c4; outline-offset: 0; box-shadow: 0 0 0 1px rgba(0,0,0,.8), 0 0 16px rgba(98,217,196,.26); background: transparent; }
+.multi-angle-dimension-fields { display: flex; gap: 12px; }
+.multi-angle-dimension-fields label { flex: 1; min-width: 0; }
+.multi-angle-canvas-spec { margin-top: 9px; font-size: .82rem; color: var(--color-text-main); font-weight: 700; }
+.multi-angle-format-choice select { width: 100%; padding: 9px 10px; border-radius: 9px; color: var(--color-text-main); background: var(--color-bg-control); border: 1px solid var(--color-border-soft); }
+.multi-angle-export-metrics { display: grid; gap: 7px; margin-top: 10px; }
+.multi-angle-export-metrics > div { display: flex; justify-content: space-between; gap: 12px; font-size: .84rem; color: var(--color-text-muted); }
+.multi-angle-export-metrics strong { color: var(--color-text-main); font-variant-numeric: tabular-nums; }
+.multi-angle-export-note { margin-top: 9px; line-height: 1.45; font-size: .78rem; color: var(--color-text-muted); }
+.multi-angle-flatten-notice { padding: 11px 12px; border: 1px solid var(--color-border-soft-2); border-radius: 11px; color: var(--color-text-main); background: var(--color-bg-control); font-size: .84rem; line-height: 1.5; }
+.multi-angle-replace-btn { justify-self: start; }
+@media (max-width: 600px) { .multi-angle-dimension-fields { flex-wrap: wrap; } }
+
+
+/* Phase 23F.39 — Visual Aid trailing path and expanded thickness range. */
+.studio-visual-aid-trailing-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 34px;
+  font-size: 13px;
+}
+.studio-visual-aid-trailing-control input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 110px;
+}
+.studio-visual-aid-trailing-control span {
+  min-width: 3.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phase 23F.41 — Flow Fill Visual Aid editor. Separate from regular Path Visual Aids. */
+.studio-flow-add-row {display:flex;padding:8px 4px 10px}
+.studio-flow-add-row button {width:100%;min-height:35px;color:#dbeafe;border:1px solid rgba(96,165,250,.65);background:rgba(37,99,235,.16);border-radius:9px;font-weight:700;cursor:pointer}
+.studio-flow-editor {display:grid;gap:12px;padding:8px 0 4px}
+.studio-flow-tools {display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.studio-flow-tools button,.studio-flow-drawing>button,.studio-flow-new-action>button {border:1px solid rgba(96,165,250,.5);background:rgba(37,99,235,.12);color:inherit;border-radius:8px;padding:8px;cursor:pointer;font-weight:600}
+.studio-flow-item-list {display:flex;flex-wrap:wrap;gap:5px}
+.studio-flow-item-list button {color:inherit;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:7px;padding:7px 9px;cursor:pointer;font-size:12px}
+.studio-flow-item-list button.active {background:rgba(59,130,246,.23);border-color:#60a5fa}
+.studio-flow-drawing {display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.studio-flow-selected,.studio-flow-timeline {display:grid;gap:9px;border:1px solid rgba(96,165,250,.25);border-radius:10px;padding:11px;background:rgba(59,130,246,.055)}
+.studio-flow-selected label,.studio-flow-timeline label,.studio-flow-action-row label {display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.studio-flow-selected input:not([type="color"]):not([type="range"]),.studio-flow-selected select,.studio-flow-timeline select,.studio-flow-timeline input[type="number"],.studio-flow-action-row input {flex:1;min-width:85px;max-width:100%;background:#251f4a;color:#fff;border:1px solid rgba(147,197,253,.3);border-radius:7px;padding:7px;font:inherit}
+.studio-flow-selected input[type="range"],.studio-flow-timeline input[type="range"] {min-width:90px;flex:1}
+.studio-flow-selected input[type="color"] {width:35px;height:29px;padding:1px}
+.studio-flow-selected label span,.studio-flow-timeline label span {font-variant-numeric:tabular-nums}
+.studio-flow-hint {font-size:11px;color:#cbd5e1;line-height:1.45}
+.studio-flow-new-action {display:grid;gap:9px}
+.studio-flow-new-action>label select {width:100%;flex-basis:100%}
+.studio-flow-times {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.studio-flow-times label {display:grid;gap:4px}
+.studio-flow-times input {width:100%}
+.studio-flow-action-list {display:grid;gap:9px}
+.studio-flow-action-row {display:grid;gap:8px;padding:9px;border:1px solid rgba(96,165,250,.18);border-radius:9px;background:rgba(255,255,255,.03)}
+.studio-flow-action-head {display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:5px;align-items:center;font-size:12px}
+.studio-flow-action-head span {font-size:10px;opacity:.75}
+.studio-flow-action-head button {border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:inherit;border-radius:5px;min-width:24px;min-height:24px;cursor:pointer}
+.studio-flow-editor .studio-visual-aid-preview {min-width:0}
+
+/* Phase 23F.41.1 — independent Flow Path width and optional contained arrows. */
+.studio-flow-arrow-settings {
+  display: grid;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(147,197,253,.22);
+  border-radius: 8px;
+  background: rgba(96,165,250,.045);
+}
+.studio-flow-arrow-settings .studio-visual-aid-section-title {
+  margin: 0;
+}
+.studio-flow-arrow-settings .studio-visual-aid-switch {
+  width: max-content;
+  max-width: 100%;
+}
+.studio-flow-arrow-settings label input[type="color"] {
+  margin-left: auto;
+}
+
+/* Phase 23F.41.2: local validation feedback for the Flow Fill action editor. */
+.studio-flow-action-feedback {display:block;padding:8px 10px;font-size:12px;line-height:1.45;border-radius:8px;color:#e0f2fe;background:rgba(56,189,248,.12);border:1px solid rgba(125,211,252,.2)}
+.studio-flow-action-feedback.is-error {color:#fde68a;background:rgba(180,83,9,.17);border-color:rgba(251,191,36,.45)}
+
+/* Phase 23F.41.5: Visual Aids shares Labels' pointer-drag horizontal resize UX. */
+.studio-image-editor-workspace {
+  --studio-visual-aid-panel-width: 290px;
+}
+.studio-image-editor-visual-aid-panel {
+  position: relative;
+  min-width: 0;
+}
+.studio-image-editor-visual-aid-panel.is-resizing {
+  user-select: none;
+}
+.studio-image-editor-visual-aid-resize-handle {
+  left: auto;
+  right: -17px;
+}
+@media (min-width: 921px) {
+  .studio-image-editor-workspace:has(.studio-image-editor-visual-aid-panel:not(.hidden)):not(:has(.studio-image-editor-label-panel:not(.hidden))) {
+    grid-template-columns: var(--studio-visual-aid-panel-width) minmax(0,1fr) !important;
+  }
+  .studio-image-editor-workspace:has(.studio-image-editor-visual-aid-panel:not(.hidden)):has(.studio-image-editor-label-panel:not(.hidden)) {
+    grid-template-columns: var(--studio-visual-aid-panel-width) minmax(var(--studio-canvas-min-width),1fr) var(--studio-label-panel-width) !important;
+  }
+}
+@media (max-width: 920px) {
+  .studio-image-editor-visual-aid-resize-handle { display: none; }
+  .studio-image-editor-visual-aid-panel { width: 100% !important; }
+}
+
+/* Directional masks can be steered independently for filling and emptying. */
+.studio-flow-angle-controls {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(96,165,250,.25);
+  border-radius: 9px;
+}
+.studio-flow-angle-controls .studio-visual-aid-section-title { margin-top: 0; }
+.studio-flow-angle-controls label { flex-wrap: nowrap; min-width: 0; }
+.studio-flow-angle-controls input[type="range"] { flex: 1 1 75px; min-width: 55px; }
+.studio-flow-angle-controls input[type="number"] { flex: 0 0 65px !important; min-width: 0 !important; width: 65px; text-align: right; }
+
+/* Phase 23F.41.6: Both Visual Aid creation buttons use the same native styling. */
+.studio-visual-aid-header-buttons {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0;
+}
+.studio-visual-aid-header-buttons .auth-action-btn {
+  min-height: 34px; white-space: normal; text-align: center;
+}
+
+/* Phase 23F.41.7 — clickable, positioned Flow Fill labels in Review and Mini Quiz. */
+.review-mode-flow-item-label {
+  pointer-events: auto;
+  cursor: pointer;
+  max-width: min(34%, 260px);
+  z-index: 1;
+  touch-action: manipulation;
+  font-family: inherit;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.review-mode-flow-item-label:hover,
+.review-mode-flow-item-label:focus-visible,
+.review-mode-flow-item-label.is-selected {
+  border-color: #b9e5ff;
+  background: rgba(33, 55, 98, .95);
+  outline-offset: 2px;
+}
+.review-mode-flow-item-label.is-mini-target {
+  z-index: 2;
+  min-width: 38px;
+  min-height: 38px;
+  font-size: 1.15rem;
+  border: 2px solid #fbbf24;
+  background: rgba(34, 27, 65, .96);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, .2), 0 4px 18px rgba(0,0,0,.4);
+}
+.review-mode-flow-item-label.is-mini-target.is-revealed {
+  font-size: .86rem;
+  border-color: #a9eac9;
+}
+
+
+/* Phase 23F.41.8 — generated 2 px Visual Aid connector lines.
+   Match Diagram Creator: black 2 px stroke, with a 4 px white
+   under-stroke when connector contrast is enabled. No extra quiz marker. */
+.review-mode-auto-connector-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  z-index: 0;
+  pointer-events: none !important;
+}
+.review-mode-visual-aid-label-layer > .review-mode-visual-aid-auto-label { z-index: 1; }
+
+/* Phase 23F.41.11 — compact Transfer Labels popup in Diagram Creator. */
+.studio-image-editor-label-panel-header { position: relative; z-index: 3; }
+.studio-label-transfer-wrap { position: relative; }
+.studio-label-transfer-menu {
+  position: absolute;
+  z-index: 25;
+  right: 0;
+  top: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 155px;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 10px;
+  background: #251f4a;
+  box-shadow: 0 10px 24px rgba(0,0,0,.4);
+}
+.studio-label-transfer-menu.hidden, .studio-label-transfer-menu[hidden] { display: none !important; }
+.studio-label-transfer-menu button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: .78rem;
+  text-align: left;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+.studio-label-transfer-menu button:hover, .studio-label-transfer-menu button:focus-visible {
+  background: rgba(255,255,255,.14);
+  outline-offset: 1px;
+}
+
+
+/* Phase 23F.41.13 — named Label Set save/load inside Transfer Labels. */
+.studio-label-transfer-menu { min-width: 224px; max-width: min(320px, 90vw); max-height: min(390px, 65vh); overflow-y: auto; }
+.studio-label-transfer-menu button:disabled { opacity: .36; cursor: not-allowed; }
+.studio-label-transfer-divider { height: 1px; background: rgba(255,255,255,.2); margin: 3px 2px; }
+.studio-label-set-submenu:not(:empty) { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,.2); padding-top: 6px; }
+.studio-label-set-field, .studio-label-set-caption { color: #fff; font-size: .76rem; padding: 4px 8px; }
+.studio-label-set-field input { display: block; width: 100%; min-width: 0; box-sizing: border-box; background: #fff; color: #201a42; border: 1px solid #b9b2cf; border-radius: 5px; font: inherit; margin-top: 6px; padding: 7px; }
+.studio-label-set-item { display: flex; align-items: center; gap: 4px; }
+.studio-label-set-item > button:first-child { flex: 1; overflow-wrap: anywhere; }
+.studio-label-transfer-menu .studio-label-set-delete { flex: 0 0 28px; text-align: center; font-size: 1rem; }
+
+/* Phase 23F.41.14 — small touch-friendly completion control for multi-target connectors. */
+.studio-image-editor-multi-finish {
+  position: absolute;
+  z-index: 22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid #facc15;
+  border-radius: 10px;
+  background: #252040;
+  color: #fff;
+  box-shadow: 0 2px 9px rgba(0,0,0,.5);
+  font: 700 12px/1.2 system-ui, sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.studio-image-editor-multi-finish.hidden { display: none !important; }
+
+/* Phase 23F.41.52 — optional first-anchor +, using the existing Finish design. */
+.studio-image-editor-multi-add {
+  min-width: 28px;
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  font-size: 19px;
+  line-height: 1;
+}
+.studio-image-editor-multi-add.hidden { display: none !important; }
+
+
+/* Phase 23F.41.53 — optional × next to +: remove and immediately re-arm. */
+.studio-image-editor-connector-replace {
+  min-width: 28px;
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  font-size: 19px;
+  line-height: 1;
+}
+.studio-image-editor-connector-replace.hidden { display: none !important; }
+
+
+/* Phase 23F.41.24 — contextual top-right pin, gray until selected, teal if pinned. */
+.review-mode-pin-btn {
+  margin-left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  padding: 8px;
+  color: #acafbc;
+}
+.review-mode-pin-btn:disabled {
+  color: #858899;
+  opacity: 0.45;
+  cursor: default;
+}
+.review-mode-pin-btn.is-pinned:not(:disabled) {
+  color: #2dd4bf;
+  border-color: rgba(45, 212, 191, 0.65);
+  background: rgba(12, 71, 74, 0.92);
+}
+
+/* Phase 23F.41.26 — Progress Mode round checkpoint. */
+.review-mode-mini-quiz-round-checkpoint {
+  position: absolute;
+  inset: 0;
+  z-index: 13;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 75px 18px 20px;
+  box-sizing: border-box;
+  background: rgba(8, 7, 20, 0.78);
+  pointer-events: auto;
+}
+.review-mode-mini-quiz-round-checkpoint.hidden { display: none !important; }
+.review-mode-mini-quiz-checkpoint-card {
+  display: grid;
+  gap: 11px;
+  width: min(390px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 22px;
+  border: 1px solid rgba(45, 212, 191, 0.62);
+  border-radius: 18px;
+  background: #201d38;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.5);
+}
+.review-mode-mini-quiz-checkpoint-title { font-size: 1.15rem; font-weight: 950; }
+.review-mode-mini-quiz-checkpoint-summary,
+.review-mode-mini-quiz-checkpoint-status { margin: 0; font-size: 0.88rem; line-height: 1.4; color: rgba(255,255,255,0.82); }
+.review-mode-mini-quiz-checkpoint-status:empty { display: none; }
+.review-mode-mini-quiz-checkpoint-button {
+  min-height: 42px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 11px;
+  padding: 8px 12px;
+  color: #fff;
+  background: #34314e;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+.review-mode-mini-quiz-checkpoint-button:disabled { opacity: 0.45; cursor: default; }
+.review-mode-mini-quiz-checkpoint-button:focus-visible { outline: 3px solid #2dd4bf; outline-offset: 2px; }
+.review-mode-mini-quiz-checkpoint-reset { color: #fecaca; }
+.review-mode-mini-quiz-checkpoint-primary { color: #092f31; background: #2dd4bf; border-color: #5eead4; }
+@media (max-width: 620px) {
+  .review-mode-quiz-actions { gap: 4px; }
+  .review-mode-mini-quiz-round-checkpoint { padding-top: 120px; }
+  .review-mode-mini-quiz-checkpoint-card { padding: 16px; }
+}
+
+/* Phase 23F.41.30: encoded output preview, purely local until final save. */
+.multi-angle-converted-preview { width: min(100%, 260px); max-height: 170px; object-fit: contain; display: block; margin: 8px auto; border: 1px solid rgba(130,155,169,.4); border-radius: 8px; background: repeating-conic-gradient(#eee 0% 25%, #ccc 0% 50%) 50% / 16px 16px; }
+.multi-angle-converted-preview.hidden { display: none; }
+
+/* Phase 23F.41.31 — precision connector slider and editor-only Ghost Labels. */
+.studio-image-editor-thickness-control .studio-image-editor-popover-panel {
+  width: min(400px, calc(100vw - 20px));
+  max-width: min(400px, calc(100vw - 20px));
+}
+.studio-image-editor-thickness-control .studio-image-editor-popover-panel .studio-image-editor-range-control input[type="range"] {
+  width: min(340px, calc(100vw - 82px));
+  min-width: 0;
+}
+.studio-image-editor-layer-visibility-popover.is-labels {
+  width: min(256px, calc(100vw - 16px));
+}
+.studio-image-editor-ghost-controls {
+  border-top: 1px solid rgba(255,255,255,.14);
+  margin-top: 10px;
+  padding-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+.studio-image-editor-ghost-controls.hidden { display: none !important; }
+.studio-image-editor-ghost-range {
+  display: grid;
+  gap: 6px;
+  font-size: .75rem;
+  font-weight: 700;
+  color: rgba(248,250,252,.9);
+}
+.studio-image-editor-ghost-range > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.studio-image-editor-ghost-range input[type="range"] {
+  width: 100%;
+  accent-color: #a599ff;
+}
+.studio-image-editor-ghost-range input:disabled { opacity: .5; }
+
+/* Phase 23F.41.34 — per-label Detail Focus and optional two-level Focus controls. */
+.studio-image-editor-label-row .studio-image-editor-label-detail-focus { grid-row: 2; grid-column: -4; min-width: 34px; width: 34px; height: 34px; padding: 0; font-size: 1.3rem; line-height: 1; }
+.studio-image-editor-label-row .studio-image-editor-label-detail-focus.is-detail { color: #5eead4; background: rgba(13,148,136,.2); border-color: #14b8a6; }
+.studio-image-editor-label-row .studio-image-editor-label-connector { grid-column: -6; }
+.studio-image-editor-label-row .studio-image-editor-label-connector-delete { grid-column: -5; }
+.studio-image-editor-label-row { grid-template-columns: minmax(0,1fr) auto auto auto auto auto; }
+.studio-image-editor-label-row.is-numbered-label-row { grid-template-columns: auto minmax(0,1fr) auto auto auto auto auto; }
+@media (max-width:700px) { .studio-image-editor-label-row { grid-template-columns: minmax(0,1fr) auto auto auto auto auto; } .studio-image-editor-label-row .studio-image-editor-label-detail-focus { min-width: 32px; width: 32px; height: 32px; } }
+.review-mode-shortcut-dock button.is-active.is-detail { border-color: rgba(20,184,166,.88); background: rgba(13,148,136,.62); color: #ecfeff; }
+.review-mode-focus-settings { padding: 7px 12px 13px; display: grid; gap: 6px; }
+.review-mode-focus-settings label { display: flex; justify-content: space-between; gap: 10px; font-size: .82rem; font-weight: 700; }
+.review-mode-focus-settings input[type="range"] { width: 100%; accent-color: #facc15; }
+.review-mode-focus-settings small { font-size: .7rem; opacity: .76; }
+.review-mode-detail-zoom-row { display: grid; gap: 6px; padding-top: 6px; }
+.review-mode-detail-zoom-row.hidden { display: none; }
+.review-mode-detail-zoom-row input[type="range"] { accent-color: #14b8a6; }
+/* Inverse scale keeps Focus labels legible and clickable at 700%, with no saved-coordinate edits. */
+.review-mode-label-layer.is-focus-zoomed > .review-mode-label-marker { transform: translate(-50%, -50%) scale(var(--review-focus-label-inverse, 1)); }
+.review-mode-label-layer.is-focus-zoomed > .review-mode-mini-label-wrap { transform: translate(-50%, -50%) scale(var(--review-focus-label-inverse, 1)); }
+
+/* Phase 23F.41.35 — six control buttons stay together and inside a padded Labels panel. */
+.studio-image-editor-workspace { --studio-label-panel-width: 410px; }
+.studio-image-editor-label-panel {
+  box-sizing: border-box;
+  padding-right: 16px;
+  container-type: inline-size;
+}
+.studio-image-editor-label-list { padding-right: 4px; min-width: 0; }
+.studio-image-editor-label-row.has-detail-focus {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 10px 12px;
+  gap: 4px;
+  grid-template-columns: minmax(0,1fr) repeat(6,30px);
+}
+.studio-image-editor-label-row.has-detail-focus.is-numbered-label-row {
+  grid-template-columns: auto minmax(0,1fr) repeat(6,30px);
+}
+.studio-image-editor-label-row.has-detail-focus:not(.is-numbered-label-row) input[type="text"] { grid-column: 1 / -7; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus.is-numbered-label-row input[type="text"] { grid-column: 2 / -7; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus input[type="text"] { box-sizing: border-box; min-width: 0; text-overflow: ellipsis; }
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-draw { grid-column: -7; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector { grid-column: -6; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector-delete { grid-column: -5; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-detail-focus { grid-column: -4; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-visibility { grid-column: -3; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-delete-icon { grid-column: -2; grid-row: 1; }
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-draw,
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector,
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector-delete,
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-detail-focus,
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-visibility,
+.studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-delete-icon {
+  box-sizing: border-box;
+  width: 30px;
+  min-width: 0;
+  height: 30px;
+  justify-self: center;
+}
+/* Resizing a panel smaller than six buttons + a useful name field puts the
+   entire button group together on row 2. Never strand one button by itself. */
+@container (max-width: 352px) {
+  .studio-image-editor-label-row.has-detail-focus,
+  .studio-image-editor-label-row.has-detail-focus.is-numbered-label-row {
+    grid-template-columns: repeat(6,minmax(0,1fr));
+    column-gap: 4px;
+    row-gap: 8px;
+  }
+  .studio-image-editor-label-row.has-detail-focus:not(.is-numbered-label-row) input[type="text"] { grid-column: 1 / -1; grid-row: 1; }
+  .studio-image-editor-label-row.has-detail-focus.is-numbered-label-row .studio-image-editor-label-number { grid-column: 1; grid-row: 1; }
+  .studio-image-editor-label-row.has-detail-focus.is-numbered-label-row input[type="text"] { grid-column: 2 / -1; grid-row: 1; }
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-draw { grid-column: 1; grid-row: 2; }
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector { grid-column: 2; grid-row: 2; }
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector-delete { grid-column: 3; grid-row: 2; }
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-detail-focus { grid-column: 4; grid-row: 2; }
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-visibility { grid-column: 5; grid-row: 2; }
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-delete-icon { grid-column: 6; grid-row: 2; }
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-connector-style-picker { grid-row: 3; }
+}
+@media (max-width: 700px) {
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-draw,
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector,
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-connector-delete,
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-detail-focus,
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-visibility,
+  .studio-image-editor-label-row.has-detail-focus .studio-image-editor-label-delete-icon {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* Phase 23F.41.36 — session-only Single Label View and Ghost options. */
+.studio-image-editor-layer-visibility-popover.is-labels {
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.studio-image-editor-ghost-controls [data-layer-single-label-help] {
+  margin-top: -2px;
+  font-size: .7rem;
+  line-height: 1.35;
+}
+
+/* Phase 23F.41.42 — saved image content must retain its true square pixel edges.
+   Frame/card radius is intentionally not changed: only image surfaces and aligned
+   overlay surfaces are squared so image pixels are never masked at the corners. */
+.studio-image-editor-canvas,
+#studioImageEditorCanvas,
+.studio-diagram-preview,
+.flashcard-side-image-wrap,
+.studio-image-editor-label-overlay-canvas,
+.studio-image-editor-connector-layer,
+.studio-image-editor-visual-aid-layer,
+.studio-diagram-preview-image,
+.studio-saved-image-thumb,
+.studio-diagram-library-thumb,
+.studio-review-image-thumb,
+.studio-diagram-library-card img,
+.studio-review-image-card img,
+.review-mode-image,
+.flashcard-side-image,
+#flashcardZoomImage,
+.diagram-study-image-wrap img,
+.studio-option-image-preview,
+.studio-inline-image-preview,
+.option-image,
+#questionImage,
+#hintImage,
+.image-container img {
+  border-radius: 0;
+}
+
+/* Phase 23F.41.43 — one Review label-size slider; keyboard +/- uses the same size. */
+.review-mode-small-labels-range small { font-size: .69rem; font-weight: 600; opacity: .8; line-height: 1.35; }
+
+
+/* Phase 23F.41.48 — IMPORTANT: SCOPED TO REVIEW/MINI QUIZ SHORTCUTS ONLY.
+   Rebuilt from verified 23F.41.44 CSS. No Diagram Creator labels, Visual Aid
+   panels, app-wide buttons, or other menu/layout selectors are modified. */
+#reviewModeShortcutDock {
+  gap: 5px;
+  padding: 5px;
+}
+#reviewModeShortcutDock #reviewModeShortcutActions {
+  gap: 5px;
+  min-width: 0;
+  min-height: 0;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+#reviewModeShortcutDock[data-edge="left"] #reviewModeShortcutActions,
+#reviewModeShortcutDock[data-edge="right"] #reviewModeShortcutActions {
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+}
+#reviewModeShortcutDock[data-edge="top"] #reviewModeShortcutActions,
+#reviewModeShortcutDock[data-edge="bottom"] #reviewModeShortcutActions {
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
+}
+#reviewModeShortcutDock button {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 76px;
+  min-width: 76px;
+  height: 54px;
+  min-height: 54px;
+  padding: 7px;
+  font-size: 0.78rem;
+  line-height: 1.14;
+  text-align: center;
+  white-space: nowrap;
+}
+#reviewModeShortcutDock #reviewModeShortcutSmallLabelsBtn,
+#reviewModeShortcutDock #reviewModeShortcutMovementBtn {
+  white-space: normal;
+}
+#reviewModeShortcutDock #reviewModeShortcutLabelUpBtn,
+#reviewModeShortcutDock #reviewModeShortcutLabelDownBtn {
+  font-size: 1rem;
+}
+#reviewModeShortcutDock #reviewModeShortcutGrip {
+  padding: 7px !important;
+}
+@media (max-width: 620px) {
+  #reviewModeShortcutDock button {
+    width: 74px;
+    min-width: 74px;
+    height: 52px;
+    min-height: 52px;
+    font-size: 0.74rem;
+  }
+  #reviewModeShortcutDock #reviewModeShortcutLabelUpBtn,
+  #reviewModeShortcutDock #reviewModeShortcutLabelDownBtn {
+    font-size: 1rem;
+  }
+}
+
+/* Phase 23F.41.54 — two-second contextual connector-replace × at the label. */
+.studio-image-editor-label-quick-replace {
+  min-width: 28px;
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  font-size: 19px;
+  line-height: 1;
+}
+.studio-image-editor-label-quick-replace.hidden { display: none !important; }
+
+
+/* Phase 23F.41.58: metadata-only mastery and pinned study cues.  Ribbons
+   overlay the THUMBNAIL (not the card) and do not change the raster. */
+.studio-mastered-thumb-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  flex: 0 0 auto;
+  border-radius: 12px;
+}
+.studio-mastered-thumb-wrap > img { display: block; width: 100%; }
+.studio-mastered-ribbon {
+  position: absolute;
+  z-index: 2;
+  left: -37px;
+  top: 18px;
+  width: 144px;
+  transform: rotate(-45deg);
+  transform-origin: center;
+  padding: 4px 0;
+  color: #362606;
+  background: #facc15;
+  box-shadow: 0 2px 7px rgba(0,0,0,.32);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .45px;
+  text-align: center;
+  pointer-events: none;
+}
+.studio-saved-image-pinned-count {
+  color: #2dd4bf;
+  font-size: .78rem;
+  line-height: 1.35;
+  font-weight: 800;
+  white-space: normal;
+}
+.studio-diagram-library-card-body .studio-saved-image-pinned-count,
+.studio-review-image-card-body .studio-saved-image-pinned-count { margin-top: 2px; }
+.studio-saved-image-reset-pinned {
+  align-self: flex-start;
+  border: 1px solid rgba(45,212,191,.5);
+  border-radius: 7px;
+  background: rgba(18,74,79,.24);
+  color: #67e8d3;
+  font-size: .74rem;
+  font-weight: 750;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.studio-saved-image-reset-pinned:hover,
+.studio-saved-image-reset-pinned:focus-visible {
+  border-color: #2dd4bf;
+  background: rgba(18,74,79,.55);
+}
+.studio-diagram-reset-pinned { margin: 0 10px 7px; }
+.studio-review-reset-pinned { margin: 0 12px 10px; }
+.studio-saved-image-pinned-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+.studio-saved-image-label-total {
+  color: rgba(250, 204, 21, .82);
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.studio-saved-image-pinned-count { display: inline-flex; align-items: center; gap: 5px; }
+.studio-saved-image-pin-icon { flex: 0 0 auto; }
+
+
+/* Phase 23F.41.59: keep image details directly beneath the system name.
+   Pinned count / Reset pinned are shown on every card (including zero pins).
+   Remove the old bottom-anchoring that created gaps in empty-pin cards. */
+.studio-diagram-library-preview,
+.studio-review-image-open { flex: 0 0 auto; }
+.studio-diagram-library-card-body,
+.studio-review-image-card-body { flex: 0 0 auto; }
+.studio-diagram-library-label-count,
+.studio-review-image-label-count { margin-top: 0; }
+.studio-diagram-library-card-actions { margin-top: auto; }
+.studio-saved-image-reset-pinned:disabled {
+  cursor: default;
+  opacity: .6;
+}
+.studio-saved-image-reset-pinned:disabled:hover { border-color: rgba(45,212,191,.5); background: rgba(18,74,79,.24); }
+
+/* Confirmation alongside Mini Quiz Complete when every angle is MASTERED. */
+.review-mode-mini-quiz-mastered-notice {
+  display: block;
+  color: #facc15;
+  font-size: clamp(1.05rem, 2.7vw, 1.6rem);
+  font-weight: 950;
+  letter-spacing: 1.2px;
+  text-shadow: 0 2px 8px rgba(0,0,0,.42);
+}
+.review-mode-mini-quiz-mastered-notice.hidden { display: none !important; }
+
+/* Phase 23F.41.61 — fast rename shortcut for an already-saved unique label. */
+.studio-image-editor-suggestion-row { display:flex; align-items:center; gap:4px; }
+.studio-image-editor-suggestion-row .studio-image-editor-label-suggestion { flex:1; min-width:0; width:auto; }
+.studio-image-editor-label-update { flex:none; padding:7px 9px; border:1px solid rgba(250,204,21,.45); border-radius:7px; background:rgba(250,204,21,.10); color:#facc15; font-size:.74rem; font-weight:800; cursor:pointer; }
+.studio-image-editor-label-update:hover, .studio-image-editor-label-update:focus-visible { background:rgba(250,204,21,.22); }
+.studio-unique-label-rename-editor { display:grid; gap:7px; padding:7px; color:#fff; }
+.studio-unique-label-rename-editor label { font-size:.77rem; font-weight:700; }
+.studio-unique-label-rename-editor input { min-width:0; width:100%; box-sizing:border-box; color:#fff; background:#221b38; border:1px solid #8e7fae; border-radius:7px; padding:9px; font-size:.84rem; }
+.studio-unique-label-rename-actions { display:flex; justify-content:flex-end; gap:7px; }
+.studio-unique-label-rename-actions button { border:1px solid #a494b9; border-radius:7px; padding:7px 10px; color:#fff; background:#302745; cursor:pointer; }
+.studio-unique-label-rename-actions [data-global-label-rename-save] { border-color:#facc15; color:#facc15; }
+.studio-unique-label-rename-actions button:disabled { opacity:.5; cursor:wait; }
+.studio-unique-label-rename-error { color:#fda4af; font-size:.75rem; }
+
+/* Phase 23F.41.64 — learning/mastered ribbons and first-stage progress UI.
+   All indicators are DOM/metadata only; thumbnails are not re-encoded. */
+.studio-learning-ribbon { background: #2dd4bf; color: #073534; }
+.review-mode-mini-quiz-mastered-notice.is-learning { color: #2dd4bf; }
+.studio-study-progress-button {
+  align-self: flex-start;
+  margin: 0 10px 8px;
+  padding: 5px 11px;
+  font-size: .77rem;
+  font-weight: 800;
+  border: 1px solid rgba(250,204,21,.48);
+  border-radius: 8px;
+  background: rgba(250,204,21,.08);
+  color: #facc15;
+  cursor: pointer;
+}
+.studio-review-image-card > .studio-study-progress-button { margin: 0 12px 9px; }
+.studio-study-progress-button:hover,
+.studio-study-progress-button:focus-visible { background: rgba(250,204,21,.18); }
+.studio-spaced-review-progress {
+  padding: 11px;
+  margin: 0 10px 10px;
+  border: 1px solid rgba(45,212,191,.35);
+  border-radius: 10px;
+  background: rgba(6,25,34,.72);
+  color: #fff;
+  font-size: .78rem;
+  overflow-wrap: anywhere;
+}
+.studio-spaced-review-progress[hidden] { display: none !important; }
+.studio-review-image-card > .studio-spaced-review-progress { margin: 0 12px 12px; }
+.studio-spaced-review-status { color: #2dd4bf; font-weight: 900; margin-bottom: 5px; }
+.studio-spaced-review-stage { color: #facc15; font-weight: 750; margin-bottom: 5px; }
+.studio-spaced-review-subtle { opacity: .84; margin: 5px 0; line-height: 1.45; }
+.studio-spaced-review-history { margin: 7px 0; padding-left: 18px; line-height: 1.45; }
+.studio-study-icon-column { display: flex; flex-direction: column; gap: 7px; align-items: flex-end; }
+.studio-image-reminder-toggle {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 10px;
+  background: rgba(255,255,255,.05);
+  color: #7b738b;
+  width: 42px;
+  height: 38px;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.studio-image-reminder-toggle.is-on { color: #facc15; border-color: rgba(250,204,21,.5); background: rgba(250,204,21,.09); }
+.studio-image-reminder-toggle:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
+.studio-study-review-icon-column { position: absolute; z-index: 3; top: 8px; right: 8px; display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.studio-study-review-icon-column .studio-review-image-delete { position: static; }
+.studio-study-review-icon-column .studio-image-reminder-toggle { width: 38px; height: 38px; }
+
+/* Phase 23F.41.65 — detached, click-to-open progress popup; never grows a card. */
+.studio-spaced-review-popover {
+  position: fixed;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  padding: 14px;
+  border: 1px solid rgba(45,212,191,.46);
+  border-radius: 12px;
+  background: #101b29;
+  box-shadow: 0 12px 32px rgba(0,0,0,.55);
+  color: #fff;
+  font-size: .82rem;
+  pointer-events: auto;
+}
+.studio-spaced-review-popover .studio-spaced-review-status { color: #2dd4bf; font-size: .9rem; font-weight: 900; margin-bottom: 14px; }
+.studio-spaced-review-popover .studio-spaced-review-status.is-mastered { color: #facc15; }
+.studio-spaced-review-block + .studio-spaced-review-block { margin-top: 15px; }
+.studio-spaced-review-bar-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 750; margin-bottom: 7px; }
+.studio-spaced-review-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.studio-spaced-review-track { height: 8px; background: rgba(255,255,255,.15); border-radius: 100px; overflow: hidden; }
+.studio-spaced-review-fill { display: block; height: 100%; border-radius: inherit; background: #2dd4bf; }
+.studio-spaced-review-popover:has(.studio-spaced-review-status.is-mastered) .studio-spaced-review-fill { background: #facc15; }
+
+/* Phase 23F.41.66 — calculated six-hour retry time alongside current stage. */
+.studio-spaced-review-popover .studio-spaced-review-bar-heading { flex-wrap: wrap; column-gap: 7px; row-gap: 4px; }
+.studio-spaced-review-popover .studio-spaced-review-heading-text { white-space: nowrap; }
+.studio-spaced-review-popover .studio-spaced-review-next-at { color: #facc15; font-weight: 800; font-size: .73rem; line-height: 1.3; }
+.studio-spaced-review-popover .studio-spaced-review-count { margin-left: auto; }
+
+/* Phase 23F.41.68: keep Mini Quiz image/navigation chrome unobtrusive.
+   Each control brightens independently on hover, keyboard focus or touch.
+   Exit, pinning and quiz actions remain fully visible and accessible. */
+.review-mode-overlay.review-mode-mini-quiz-chrome-dimmed :is(
+  #reviewModeOptionsBtn, #reviewModeAngleNavigation, #reviewModeResetZoomBtn,
+  #reviewModeZoomPercent, #reviewModeVisualAidNavigation
+) {
+  opacity: 0.25;
+  transition: opacity 150ms ease;
+}
+.review-mode-overlay.review-mode-mini-quiz-chrome-dimmed :is(
+  #reviewModeOptionsBtn, #reviewModeAngleNavigation, #reviewModeResetZoomBtn,
+  #reviewModeZoomPercent, #reviewModeVisualAidNavigation
+):is(:hover, :focus-within, :active) { opacity: 1; }
+/* Read-only zoom text is still hoverable to reveal its full contrast. */
+.review-mode-overlay.review-mode-mini-quiz-chrome-dimmed #reviewModeZoomPercent { pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .review-mode-overlay.review-mode-mini-quiz-chrome-dimmed :is(
+    #reviewModeOptionsBtn, #reviewModeAngleNavigation, #reviewModeResetZoomBtn,
+    #reviewModeZoomPercent, #reviewModeVisualAidNavigation
+  ) { transition: none; }
+}
+
+/* Phase 23F.41.69 — compact Saved Image actions, metadata-only quick filters. */
+.studio-saved-image-card-controls { display:flex; align-items:center; gap:7px; margin:0 10px 8px; flex-wrap:nowrap; }
+.studio-review-image-card > .studio-saved-image-card-controls { margin:0 12px 9px; }
+.studio-saved-image-card-controls .studio-saved-image-reset-pinned,
+.studio-saved-image-card-controls .studio-study-progress-button { margin:0; width:auto; min-width:0; flex:1 1 0; text-align:center; white-space:nowrap; }
+.studio-saved-image-quick-filters { display:flex; flex-wrap:wrap; gap:8px; margin:7px 0 10px; }
+.studio-saved-image-quick-filter { border:1px solid rgba(139,153,181,.5); border-radius:8px; background:rgba(32,38,65,.25); color:inherit; font-size:.8rem; font-weight:750; padding:7px 14px; cursor:pointer; }
+.studio-saved-image-quick-filter[aria-pressed="true"] { border-color:#2dd4bf; background:rgba(45,212,191,.17); color:#67e8d3; }
+.studio-saved-image-quick-filter:focus-visible { outline:2px solid #facc15; outline-offset:2px; }
+
+/* Phase 23F.41.71 — Start Quiz matches the existing Restart/End quiz controls. */
+.review-mode-start-quiz-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  padding: 5px 9px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(20, 17, 43, 0.78);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.26);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 900;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.review-mode-start-quiz-btn:hover,
+.review-mode-start-quiz-btn:focus-visible { border-color: rgba(250, 204, 21, 0.72); outline: none; }
+.review-mode-start-quiz-btn:disabled { opacity: 0.45; cursor: default; }
+.review-mode-start-quiz-btn.hidden { display: none !important; }
+@media (max-width: 620px) { .review-mode-start-quiz-btn { min-height: 30px; padding: 4px 7px; font-size: 0.64rem; } }
+
+/* Clear works on handwriting strokes on the visible side only. */
+.studio-handwritten-clear-btn {
+  min-height: 42px;
+  padding: 8px 12px;
+  font-size: .86rem;
+  font-weight: 400;
+  line-height: 1;
+  color: inherit;
+  white-space: nowrap;
+}
+#flashcardHandwrittenSettingsBtn { color: #fff; }
+.studio-handwritten-clear-btn:disabled { opacity: .42; cursor: default; }
+.studio-handwritten-settings-popover {
+  min-width: 245px;
+  width: max-content;
+  max-width: calc(100vw - 20px);
+  color: #f4f1ff;
+}
+.studio-handwritten-settings-popover .studio-handwritten-toggle-pair { min-height: 36px; }
+
+
+/* Phase 23F.41.73 — scoped Mini Quiz label-information layout repair.
+   Leave bare question-mark/ordinary labels on their established path. */
+.review-mode-mini-label-wrap:has(.review-mode-mini-label-marker.has-description) {
+  max-width: none;
+}
+.review-mode-mini-label-wrap .review-mode-mini-label-marker.has-description {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: min(240px, 72vw);
+  max-width: min(520px, 82vw);
+  border-radius: calc(14px * var(--review-label-scale));
+  text-align: left;
+  white-space: normal;
+}
+/* Keep the category/body readable without forcing every word onto a new row.
+   A long unbroken token wraps within the body, not the entire card. */
+.review-mode-mini-label-marker.has-description .review-mode-label-info-row {
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+}
+.review-mode-mini-label-marker.has-description .review-mode-label-info-body {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+/* Mini Quiz question and revealed name use identical typography across sizes. */
+.review-mode-mini-label-marker .review-mode-mini-visual-question {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: normal;
+  color: inherit;
+}
+.review-mode-mini-label-marker.has-description .review-mode-label-description {
+  max-height: min(36vh, 280px);
+}
+/* Two-state preset matches existing shortcut button visuals, not a separate theme. */
+.review-mode-shortcut-dock #reviewModeShortcutSmallLabelsBtn {
+  white-space: normal;
+  text-wrap: balance;
+}
+
+
+/* Phase 23F.41.74: stop information answers collapsing into character columns.
+   Only revealed Mini Quiz cards with information are affected. */
+.review-mode-mini-label-wrap .review-mode-mini-label-marker.has-description {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  max-width: none; /* exact viewport-safe inline width applied after each render */
+  border-radius: calc(14px * var(--review-label-scale));
+  overflow-wrap: normal;
+}
+.review-mode-mini-label-marker.has-description.is-stacked-information .review-mode-label-info-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(3px * var(--review-label-scale));
+}
+.review-mode-mini-label-marker.has-description.is-stacked-information .review-mode-label-info-category {
+  white-space: normal;
+}
+.review-mode-mini-label-marker.has-description .review-mode-label-info-body {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.review-mode-mini-label-marker.has-description .review-mode-label-description {
+  max-height: min(45vh, 390px);
+}
+/* Narrow touch screens: keep quiz decisions visible, while giving the
+   information paragraph enough real characters per line at 160% labels. */
+@media (max-width: 620px) {
+  .review-mode-mini-label-wrap:has(.review-mode-mini-label-marker.has-description) .review-mode-mini-answer {
+    width: clamp(42px, 12vw, 50px);
+    height: clamp(42px, 12vw, 50px);
+    font-size: 1.05rem;
+  }
+  .review-mode-mini-label-marker.has-description.is-stacked-information .review-mode-label-info-category,
+  .review-mode-mini-label-marker.has-description.is-stacked-information .review-mode-label-info-body {
+    font-size: clamp(.92rem, 4vw, 1.12rem);
+    line-height: 1.4;
+  }
+}
+
+/* On phones and smaller tablets, move the two judgement actions beneath an
+   information card. This keeps the card wide and prevents the right-side dock
+   from covering the green check; ordinary quiz labels retain side buttons. */
+@media (max-width: 800px) {
+  .review-mode-mini-label-wrap.is-compact-information-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "info info" "no yes";
+    justify-items: center;
+    align-items: center;
+    width: min(520px, calc(100vw - 112px));
+    gap: 7px;
+  }
+  .review-mode-mini-label-wrap.is-compact-information-layout .review-mode-mini-label-marker {
+    grid-area: info;
+  }
+  .review-mode-mini-label-wrap.is-compact-information-layout .review-mode-mini-dont-know { grid-area: no; }
+  .review-mode-mini-label-wrap.is-compact-information-layout .review-mode-mini-know { grid-area: yes; }
+  .review-mode-mini-label-wrap.is-compact-information-layout .review-mode-mini-answer {
+    width: clamp(42px, 9vw, 50px);
+    height: clamp(42px, 9vw, 50px);
+    font-size: 1.05rem;
+  }
 }
