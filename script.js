@@ -6496,66 +6496,85 @@ MODIFICATION RULES FOR THIS APP
         await deleteSupabaseMediaReferences(refs);
     }
 
+    // Phase 23F.41.77: bulk-check the media linked to a quiz before deletion.
+    // The old implementation re-read each question and its detail sequentially,
+    // resulting in 2+ network round trips per non-flashcard question (60+ for
+    // a 30-question quiz), before the actual delete could begin.
+    // Keep the media safety scan, but fetch each detail type in bounded batches.
     async function getQuizMediaReferences(quizId, onProgress = null) {
         const refs = new Set();
         if (!state.auth.client || !quizId) return refs;
-        const [{ data: quizRow, error: quizError }, { data: questionRows, error }] = await Promise.all([
-            runWithTransientFetchRetry(() => state.auth.client
-                .from('quizzes')
-                .select('description')
-                .eq('id', quizId)
-                .maybeSingle(), 'Loading quiz media references', { attempts: 2 }),
-            runWithTransientFetchRetry(() => state.auth.client
-                .from('questions')
-                .select('id, question_type, image_url, learning_resources_image_url')
-                .eq('quiz_id', quizId), 'Loading question media references', { attempts: 2 })
-        ]);
-        if (quizError) {
-            console.error('Could not load quiz shared media before delete:', quizError);
-        } else {
-            collectQuizDescriptionMediaReferences(quizRow?.description, refs);
-        }
-        if (error) {
-            console.error('Could not load quiz media before delete:', error);
-            return refs;
-        }
 
-        const questions = questionRows || [];
+        const readRows = async (buildQuery, label) => {
+            // PostgREST normally reports errors on the response instead of
+            // throwing; throw inside the retry wrapper to retain its safeguards.
+            const result = await runWithTransientFetchRetry(async () => {
+                const response = await buildQuery();
+                if (response.error) throw response.error;
+                return response;
+            }, label, { attempts: 2 });
+            return result.data || [];
+        };
+
+        // Reading the quiz and its question list once also ensures a failed
+        // media scan stops the deletion (rather than silently orphaning assets).
+        const [quizRows, questions] = await Promise.all([
+            readRows(() => state.auth.client.from('quizzes')
+                .select('description').eq('id', quizId).maybeSingle(), 'Loading quiz media references'),
+            readRows(() => state.auth.client.from('questions')
+                .select('id, question_type, image_url, learning_resources_image_url')
+                .eq('quiz_id', quizId), 'Loading question media references')
+        ]);
+        collectQuizDescriptionMediaReferences(quizRows?.description, refs);
         questions.forEach(question => {
             collectSupabaseMediaReferences(question?.image_url, refs);
             collectSupabaseMediaReferences(question?.learning_resources_image_url, refs);
         });
 
-        const flashcardIds = questions
-            .filter(question => question?.question_type === 'flashcard')
-            .map(question => question.id)
-            .filter(Boolean);
-        if (flashcardIds.length) {
-            const { data: flashcardRows, error: flashcardError } = await runWithTransientFetchRetry(() => state.auth.client
-                .from('flashcard_questions')
-                .select('question_id, term_image_url, definition_image_url')
-                .in('question_id', flashcardIds), 'Loading flashcard media references', { attempts: 2 });
-            if (flashcardError) {
-                console.error('Could not load flashcard media before delete:', flashcardError);
-            } else {
-                (flashcardRows || []).forEach(detail => {
-                    collectSupabaseMediaReferences(detail?.term_image_url, refs);
-                    collectSupabaseMediaReferences(detail?.definition_image_url, refs);
-                });
-            }
-        }
+        const byType = type => questions.filter(question => type(question?.question_type))
+            .map(question => question.id).filter(Boolean);
+        const flashcardIds = byType(type => type === 'flashcard');
+        const classifyIds = byType(type => type === 'classify');
+        const optionIds = byType(type => type === 'multiple_choice' || type === 'diagrams' || type === 'typed_answer');
+        const detailCount = flashcardIds.length + classifyIds.length + optionIds.length;
+        let checked = 0;
+        const reportProgress = count => {
+            checked += count;
+            if (typeof onProgress === 'function') onProgress({ current: checked, total: detailCount });
+        };
+        if (typeof onProgress === 'function') onProgress({ current: 0, total: detailCount });
 
-        const fallbackQuestions = questions.filter(question => question?.question_type && question.question_type !== 'flashcard');
-        if (typeof onProgress === 'function') {
-            onProgress({ current: 0, total: fallbackQuestions.length });
-        }
-        for (let index = 0; index < fallbackQuestions.length; index += 1) {
-            const questionRefs = await getQuestionMediaReferences(fallbackQuestions[index].id);
-            questionRefs.forEach(ref => refs.add(ref));
-            if (typeof onProgress === 'function') {
-                onProgress({ current: index + 1, total: fallbackQuestions.length });
+        // Bound .in(...) lists to avoid URL size and response row-limit problems
+        // when deleting much larger quizzes. Types can load concurrently.
+        const loadDetailMedia = async (table, columns, ids, fields, label, options = {}) => {
+            for (let start = 0; start < ids.length; start += 100) {
+                const chunk = ids.slice(start, start + 100);
+                let rows;
+                try {
+                    rows = await readRows(() => state.auth.client.from(table)
+                        .select(columns).in('question_id', chunk), label);
+                } catch (error) {
+                    const missingOptionsJson = options.optionalOptionsJson &&
+                        /options_json/i.test([error?.message, error?.details].filter(Boolean).join(' '));
+                    if (!missingOptionsJson) throw error;
+                    // Older schema without options_json could not contain these
+                    // nested media refs. Verify that detail rows are accessible.
+                    await readRows(() => state.auth.client.from(table)
+                        .select('question_id').in('question_id', chunk), label + ' (legacy schema)');
+                    rows = [];
+                }
+                rows.forEach(row => fields.forEach(field => collectSupabaseMediaReferences(row?.[field], refs)));
+                reportProgress(chunk.length);
             }
-        }
+        };
+        await Promise.all([
+            loadDetailMedia('flashcard_questions', 'question_id, term_image_url, definition_image_url',
+                flashcardIds, ['term_image_url', 'definition_image_url'], 'Loading flashcard media for quiz delete'),
+            loadDetailMedia('classify_questions', 'question_id, items_json, classifications_json',
+                classifyIds, ['items_json', 'classifications_json'], 'Loading classification media for quiz delete'),
+            loadDetailMedia('multiple_choice_questions', 'question_id, options_json',
+                optionIds, ['options_json'], 'Loading question option media for quiz delete', { optionalOptionsJson: true })
+        ]);
         return refs;
     }
 
@@ -36867,12 +36886,16 @@ if (elements.openQuizStudioBtn) {
         }
 
         try {
+            // Phase .77: local timing only (no telemetry or media content), so
+            // a future slow deletion can be attributed to its actual stage.
+            const deleteStartedAt = performance.now();
             setCreatorProgressStatus('Deleting quiz', 'checking linked media');
             const mediaRefsToDelete = await getQuizMediaReferences(quizId, ({ current, total }) => {
                 if (total) {
                     setCreatorProgressStatus('Deleting quiz', `checking media ${current} of ${total}`);
                 }
             });
+            const scanCompletedAt = performance.now();
             const mediaCount = mediaRefsToDelete.size;
 
             setCreatorProgressStatus('Deleting quiz', 'removing quiz data');
@@ -36882,8 +36905,10 @@ if (elements.openQuizStudioBtn) {
                 .eq('id', quizId);
 
             if (error) throw error;
+            const quizDeletedAt = performance.now();
             setCreatorProgressStatus('Deleting quiz', mediaCount ? `cleaning ${mediaCount} linked ${mediaCount === 1 ? 'media file' : 'media files'}` : 'no linked media to clean');
             await deleteSupabaseMediaReferences(mediaRefsToDelete);
+            const mediaCleanedAt = performance.now();
 
             if (state.auth.editingQuizId === quizId) {
                 clearCreatorInputs();
@@ -36895,6 +36920,12 @@ if (elements.openQuizStudioBtn) {
             const currentSelectedWasDeleted = elements.quizSelector?.value === `sb:${quizId}`;
             await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ clearIfMissing: currentSelectedWasDeleted });
+            console.info('Quiz Studio delete timings (ms)', {
+                mediaScan: Math.round(scanCompletedAt - deleteStartedAt),
+                quizDelete: Math.round(quizDeletedAt - scanCompletedAt),
+                mediaCleanup: Math.round(mediaCleanedAt - quizDeletedAt),
+                catalogRefresh: Math.round(performance.now() - mediaCleanedAt)
+            });
             setCreatorStatus('Quiz deleted.', 'success');
         } catch (error) {
             console.error(error);
