@@ -17327,3 +17327,12 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
     font-size: 1.05rem;
   }
 }
+
+/* Phase 23F.41.76 — compact per-card alignment actions and persistent settings. */
+.studio-handwritten-settings-popover .studio-handwritten-align-option {display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:32px;font-size:.84rem;white-space:nowrap;color:#f4f1ff;}
+.studio-handwritten-settings-popover .studio-handwritten-align-option select {min-width:110px;padding:6px 8px;border:1px solid rgba(167,139,250,.4);border-radius:7px;background:#27243e;color:#fff;font:inherit;}
+.studio-handwritten-settings-popover .studio-handwritten-align-option input {accent-color:#9673ff;width:19px;height:19px;}
+.studio-handwritten-focus-navigation .studio-handwritten-focus-side,
+.studio-handwritten-focus-navigation #flashcardHandwrittenFocusAlignBtn,
+.studio-handwritten-focus-navigation #flashcardHandwrittenFocusSaveBtn {width:auto;min-width:52px;padding:0 10px;font-size:.84rem;}
+@media(max-width:520px){.studio-handwritten-workspace.is-focus-mode .studio-handwritten-focus-navigation {gap:4px;padding:4px 6px;} .studio-handwritten-focus-navigation .studio-handwritten-focus-control {min-width:34px;height:38px;} .studio-handwritten-focus-navigation .studio-handwritten-focus-side,.studio-handwritten-focus-navigation #flashcardHandwrittenFocusAlignBtn,.studio-handwritten-focus-navigation #flashcardHandwrittenFocusSaveBtn {min-width:43px;padding:0 5px;font-size:.73rem;}}

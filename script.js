@@ -319,6 +319,9 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardToolIndicatorPointer: null,
             handwrittenFlashcardUndo: new Map(),
             handwrittenFlashcardRedo: new Map(),
+            handwrittenFlashcardAutoAlign: false,
+            handwrittenFlashcardAlignTarget: 'center',
+            handwrittenTouchedCardIds: new Set(),
             handwrittenPendingImageLayout: null,
             flashcardHandwritingDetailCache: new Map(),
             flashcardHandwritingDetailPromiseCache: new Map(),
@@ -1024,6 +1027,12 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenSideMode: document.getElementById('flashcardHandwrittenSideMode'),
         flashcardHandwrittenSettingsBtn: document.getElementById('flashcardHandwrittenSettingsBtn'),
         flashcardHandwrittenSettingsPopover: document.getElementById('flashcardHandwrittenSettingsPopover'),
+        flashcardHandwrittenAutoAlign: document.getElementById('flashcardHandwrittenAutoAlign'),
+        flashcardHandwrittenAlignTarget: document.getElementById('flashcardHandwrittenAlignTarget'),
+        flashcardHandwrittenAlignBtn: document.getElementById('flashcardHandwrittenAlignBtn'),
+        flashcardHandwrittenSaveBtn: document.getElementById('flashcardHandwrittenSaveBtn'),
+        flashcardHandwrittenFocusAlignBtn: document.getElementById('flashcardHandwrittenFocusAlignBtn'),
+        flashcardHandwrittenFocusSaveBtn: document.getElementById('flashcardHandwrittenFocusSaveBtn'),
         flashcardHandwrittenClearBtn: document.getElementById('flashcardHandwrittenClearBtn'),
         flashcardHandwrittenUndoBtn: document.getElementById('flashcardHandwrittenUndoBtn'),
         flashcardHandwrittenRedoBtn: document.getElementById('flashcardHandwrittenRedoBtn'),
@@ -28912,6 +28921,12 @@ The deletion becomes permanent when you save the diagram.`);
     function cacheCurrentStudioQuestionDraft() {
         if (!state.auth.studioHasUnsavedChanges) return;
         syncStudioFlashcardInlineRowsToState();
+        // In handwritten mode global dirty state can belong to ANOTHER card.
+        // Do not draft this card unless it was edited (or already has a draft).
+        if (state.auth.handwrittenFlashcardEnabled && isStudioFlashcardMode()
+            && state.auth.editingQuestionId && !isStudioLocalFlashcardId(state.auth.editingQuestionId)
+            && !state.auth.handwrittenTouchedCardIds?.has(state.auth.editingQuestionId)
+            && !state.auth.studioQuestionDrafts.has(state.auth.editingQuestionId)) return;
         if (cacheCurrentFlashcardDraftForNavigation()) {
             renderStudioQuestionList();
             updateStudioUnsavedChangesIndicator();
@@ -29425,7 +29440,11 @@ The deletion becomes permanent when you save the diagram.`);
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const folderId = normalizeSheetText(elements.createQuizFolderSelect?.value) || null;
         if (!quizName) throw new Error('Enter a quiz name first.');
-        await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
+        const currentMetadataSignature = JSON.stringify([quizName, folderId, normalizeSheetText(elements.createQuizDescription?.value), getStudioQuizMode(), !!state.auth.handwrittenFlashcardEnabled, normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {})]);
+        if (currentMetadataSignature !== state.auth.studioLastSavedMetadataSignature) {
+            await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
+            state.auth.studioLastSavedMetadataSignature = currentMetadataSignature;
+        }
         const managedQuiz = state.auth.managedQuizzes.find(quiz => normalizeSheetText(quiz.id) === quizId);
         if (managedQuiz) {
             managedQuiz.name = quizName;
@@ -29706,6 +29725,11 @@ The deletion becomes permanent when you save the diagram.`);
         const reusableSnapshotTargets = [];
 
         if (!totalSaveCount) {
+            // Saving quiz name, folder, description or handwriting setup must still
+            // work even when no card content changed.
+            if (state.auth.editingQuizId && state.auth.client && state.auth.user?.id) {
+                await saveStudioQuizMetadataFromEditorDirect();
+            }
             setStudioDirtyState(false);
             if (!options.quiet) setCreatorStatus('All changes saved.', 'success');
             return;
@@ -29763,9 +29787,14 @@ The deletion becomes permanent when you save the diagram.`);
             await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
             await loadQuizIntoEditor(state.auth.editingQuizId, savedLocalIds[savedLocalIds.length - 1], { force: true });
         } else if (flashcardDraftEntries.length || directMultipleChoiceDraftEntries.length) {
+            // Existing-card detail saves have already updated their in-memory rows and
+            // verified handwriting revisions. A global catalog reload here re-fetches
+            // unrelated quizzes and may trigger seconds of latency/metadata egress.
             renderStudioQuestionList();
-            await refreshStudioManagementData({ force: true });
-            await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}` });
+            updateStudioUnsavedChangesIndicator();
+        }
+        if (state.auth.handwrittenTouchedCardIds) {
+            for (const [id] of flashcardDraftEntries) state.auth.handwrittenTouchedCardIds.delete(id);
         }
         setStudioDirtyState(false);
         if (!options.quiet) {
@@ -30596,12 +30625,28 @@ The deletion becomes permanent when you save the diagram.`);
             ? normalizeSheetText(row.definition_image_url || state.auth.studioFlashcardDefinitionImageDataUrl)
             : normalizeSheetText(row.term_image_url || state.auth.studioFlashcardTermImageDataUrl);
         const pendingImageForSide = state.auth.handwrittenPendingImageLayout?.side === key;
-        if (patch.mode !== undefined) row[`${key}_content_mode`] = normalizeFlashcardContentMode(patch.mode);
-        if (patch.imageLayout !== undefined) row[`${key}_image_layout`] = normalizeFlashcardImageLayout(patch.imageLayout, !!activeImageValue || pendingImageForSide);
-        if (patch.strokes !== undefined) row[`${key}_handwriting`] = normalizeHandwritingStrokes(patch.strokes);
+        const nextMode = patch.mode === undefined ? row[`${key}_content_mode`] : normalizeFlashcardContentMode(patch.mode);
+        const nextLayout = patch.imageLayout === undefined ? row[`${key}_image_layout`] : normalizeFlashcardImageLayout(patch.imageLayout, !!activeImageValue || pendingImageForSide);
+        const nextStrokes = patch.strokes === undefined ? row[`${key}_handwriting`] : normalizeHandwritingStrokes(patch.strokes);
+        const changed = (patch.mode !== undefined && nextMode !== row[`${key}_content_mode`])
+            || (patch.imageLayout !== undefined && nextLayout !== row[`${key}_image_layout`])
+            || (patch.strokes !== undefined);
+        if (!changed) return;
+        if (patch.mode !== undefined) row[`${key}_content_mode`] = nextMode;
+        if (patch.imageLayout !== undefined) row[`${key}_image_layout`] = nextLayout;
+        if (patch.strokes !== undefined) row[`${key}_handwriting`] = nextStrokes;
+        if (row.id) state.auth.handwrittenTouchedCardIds.add(row.id);
         if (!isStudioLocalFlashcardId(row.id) && row.id !== STUDIO_PENDING_NEW_FLASHCARD_ID) {
             const draft = getStudioFlashcardListDraft(row);
-            if (draft) state.auth.studioQuestionDrafts.set(row.id, draft);
+            if (draft) {
+                // Prefer current row ink over older cached snapshots; every subsequent
+                // stroke (or automatic alignment) must reach the final save.
+                draft.termHandwriting = normalizeHandwritingStrokes(row.term_handwriting || []);
+                draft.definitionHandwriting = normalizeHandwritingStrokes(row.definition_handwriting || []);
+                draft.termContentMode = normalizeFlashcardContentMode(row.term_content_mode || 'typed');
+                draft.definitionContentMode = normalizeFlashcardContentMode(row.definition_content_mode || 'typed');
+                state.auth.studioQuestionDrafts.set(row.id, draft);
+            }
         }
         setStudioDirtyState(true);
         if (state.auth.handwrittenFlashcardEnabled) syncHandwrittenFlashcardToggleLock();
@@ -30639,6 +30684,8 @@ The deletion becomes permanent when you save the diagram.`);
             state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(stored.penSizeMm, 1.1);
             state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(stored.eraserSizeMm, 5, 1, 12);
             state.auth.handwrittenFlashcardSelectionType = stored.selectionType === 'lasso' ? 'lasso' : 'rectangle';
+            state.auth.handwrittenFlashcardAutoAlign = stored.autoAlign === true;
+            state.auth.handwrittenFlashcardAlignTarget = normalizeHandwrittenAlignTarget(stored.alignTarget);
             if (/^#[0-9a-f]{6}$/i.test(String(stored.penColor || ''))) {
                 state.auth.handwrittenFlashcardPenColor = normalizeEditorHexColor(stored.penColor, '#111827');
             }
@@ -30654,7 +30701,9 @@ The deletion becomes permanent when you save the diagram.`);
                 penSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardPenSizeMm, 1.1),
                 eraserSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12),
                 penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827'),
-                selectionType: state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle'
+                selectionType: state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle',
+                autoAlign: !!state.auth.handwrittenFlashcardAutoAlign,
+                alignTarget: normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget)
             }));
         } catch (error) {
             console.warn('Could not save handwritten Flashcard tool preferences:', error);
@@ -30804,6 +30853,9 @@ The deletion becomes permanent when you save the diagram.`);
             handwrittenSettingsDismissTimer = null;
             const btn = elements.flashcardHandwrittenSettingsBtn;
             const popover = elements.flashcardHandwrittenSettingsPopover;
+        ensureHandwrittenToolPrefsLoaded();
+        if (elements.flashcardHandwrittenAutoAlign) elements.flashcardHandwrittenAutoAlign.checked = !!state.auth.handwrittenFlashcardAutoAlign;
+        if (elements.flashcardHandwrittenAlignTarget) elements.flashcardHandwrittenAlignTarget.value = normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget);
             if (btn?.matches(':hover') || popover?.matches(':hover')) return;
             closeHandwrittenSettingsPopover();
         }, 160);
@@ -31119,8 +31171,52 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    // Phase 23F.41.76 — stroke geometry is normalized to each side's canvas (0..1).
+    // Align translates the existing ink group; never scales, replaces, or changes strokes on the other side.
+    function normalizeHandwrittenAlignTarget(value = 'center') {
+        return ['center', 'top', 'bottom', 'left', 'right'].includes(String(value).toLowerCase()) ? String(value).toLowerCase() : 'center';
+    }
+    function alignHandwrittenSide(side = getHandwrittenSideKey(), options = {}) {
+        const key = getHandwrittenSideKey(side);
+        if (getHandwrittenSideModeFromEditorState(key) !== 'handwritten') return false;
+        const strokes = getHandwrittenSideStrokesFromEditorState(key);
+        const points = strokes.flatMap(stroke => stroke.points || []);
+        if (!points.length) return false;
+        let minX = 1, maxX = 0, minY = 1, maxY = 0;
+        points.forEach(point => { minX=Math.min(minX,point.x); maxX=Math.max(maxX,point.x); minY=Math.min(minY,point.y); maxY=Math.max(maxY,point.y); });
+        const position = normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget);
+        const margin = .055;
+        const dx = position === 'left' ? margin-minX : position === 'right' ? 1-margin-maxX : .5-(minX+maxX)/2;
+        const dy = position === 'top' ? margin-minY : position === 'bottom' ? 1-margin-maxY : .5-(minY+maxY)/2;
+        const shiftX = Math.max(-minX, Math.min(1-maxX, dx));
+        const shiftY = Math.max(-minY, Math.min(1-maxY, dy));
+        if (Math.abs(shiftX) < .00001 && Math.abs(shiftY) < .00001) return false;
+        // One Undo restores this side to its exact pre-alignment coordinates.
+        clearHandwrittenSelection({redraw:false});
+        pushHandwrittenUndo(key);
+        setHandwrittenSideState(key, {strokes: strokes.map(stroke => ({...stroke, points: stroke.points.map(point => ({...point, x: point.x+shiftX, y: point.y+shiftY}))}))});
+        if (!options.skipRender) renderHandwrittenFlashcardWorkspace();
+        return true;
+    }
+    function autoAlignCurrentHandwrittenFlashcard(options = {}) {
+        if (!state.auth.handwrittenFlashcardAutoAlign) return false;
+        const frontChanged = alignHandwrittenSide('term', {skipRender:true});
+        const backChanged = alignHandwrittenSide('definition', {skipRender:true});
+        if ((frontChanged || backChanged) && !options.skipRender) renderHandwrittenFlashcardWorkspace();
+        return frontChanged || backChanged;
+    }
+    function saveHandwrittenFlashcardFromToolbar() {
+        autoAlignCurrentHandwrittenFlashcard();
+        return handleSaveStudioEditorChanges().catch(error => {
+            console.error('Could not save handwritten flashcards:', error);
+            setCreatorStatus(getStudioExplicitSaveErrorMessage(error), 'error');
+            throw error;
+        });
+    }
+
     function switchHandwrittenFlashcardSide(nextSide = 'term') {
         syncHandwrittenTypedEditorToBase();
+        autoAlignCurrentHandwrittenFlashcard({skipRender:true});
         state.auth.handwrittenFlashcardPointer = null;
         clearHandwrittenSelection({ redraw: false });
         // A newly shown side should always be immediately ready to write. This also
@@ -31213,14 +31309,22 @@ The deletion becomes permanent when you save the diagram.`);
         if (!editor || !state.auth.handwrittenFlashcardEnabled) return;
         const side = getHandwrittenSideKey();
         if (getHandwrittenSideModeFromEditorState(side) !== 'typed') return;
+        const row = getCurrentHandwrittenFlashcardRow();
+        const oldHtml = row ? String(side === 'definition' ? row.definition_html || '' : row.term_html || '') : '';
         if (side === 'definition') setFlashcardDefinitionEditorHtml(editor.innerHTML, editor.innerText || '');
         else setFlashcardTermEditorHtml(editor.innerHTML, editor.innerText || '');
-        const row = getCurrentHandwrittenFlashcardRow();
         if (row) {
             if (side === 'definition') { row.definition_html = editor.innerHTML; row.definition_plain = editor.innerText || ''; }
             else { row.term_html = editor.innerHTML; row.term_plain = editor.innerText || ''; row.prompt_plain = editor.innerText || ''; }
         }
-        setStudioDirtyState(true);
+        if (row && oldHtml !== editor.innerHTML) {
+            if (row.id) state.auth.handwrittenTouchedCardIds.add(row.id);
+            if (!isStudioLocalFlashcardId(row.id) && row.id !== STUDIO_PENDING_NEW_FLASHCARD_ID) {
+                const draft = getStudioFlashcardListDraft(row);
+                if (draft) state.auth.studioQuestionDrafts.set(row.id, draft);
+            }
+            setStudioDirtyState(true);
+        }
     }
 
     function getHandwrittenCanvasPoint(event) {
@@ -31405,6 +31509,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     async function persistCurrentHandwrittenCardBeforeNavigation() {
         syncHandwrittenTypedEditorToBase();
+        autoAlignCurrentHandwrittenFlashcard({skipRender:true});
         const row = getCurrentHandwrittenFlashcardRow();
         const isPending = normalizeSheetText(row?.id) === STUDIO_PENDING_NEW_FLASHCARD_ID;
         const hasContent = !!row && (hasHandwrittenFlashcardSideContent(row,'term') || hasHandwrittenFlashcardSideContent(row,'definition'));
@@ -31418,10 +31523,13 @@ The deletion becomes permanent when you save the diagram.`);
             syncLocalFlashcardDraftFromEditor();
         } else if (!state.auth.editingQuestionId && getStudioPendingFlashcardRow()) {
             promotePendingFlashcardToLocalDraft();
-        } else if (state.auth.editingQuestionId) {
+        } else if (state.auth.editingQuestionId && (state.auth.handwrittenTouchedCardIds?.has(state.auth.editingQuestionId) || state.auth.studioQuestionDrafts.has(state.auth.editingQuestionId))) {
             cacheCurrentStudioQuestionDraft();
         }
-        setStudioDirtyState(true);
+        // Mere Previous/Next browsing isn't an edit. Don't mark untouched cards dirty.
+        if (isPending || isStudioLocalFlashcardId(state.auth.editingQuestionId) || state.auth.studioQuestionDrafts.has(state.auth.editingQuestionId)) {
+            setStudioDirtyState(true);
+        }
         updateStudioUnsavedChangesIndicator();
         return true;
     }
@@ -35707,6 +35815,9 @@ if (elements.openQuizStudioBtn) {
     }
 
     async function handleSaveStudioEditorChanges() {
+        if (state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied) {
+            autoAlignCurrentHandwrittenFlashcard();
+        }
         if (state.auth.editingQuizId && isPristineHandwrittenPendingPlaceholder()) {
             state.auth.studioPendingNewQuestionRow = null;
             state.auth.editingQuestionId = null;
@@ -35761,6 +35872,13 @@ if (elements.openQuizStudioBtn) {
             return;
         }
 
+        if (state.auth.handwrittenFlashcardEnabled && state.auth.editingQuizId) {
+            // The user can press either original Save Changes or new Save on an
+            // untouched existing card. Never upsert its unchanged handwriting.
+            await saveStudioQuizMetadataFromEditorDirect();
+            setCreatorStatus('All changes saved.', 'success');
+            return;
+        }
         await handleSaveStudioQuiz();
     }
 
@@ -36054,6 +36172,8 @@ if (elements.openQuizStudioBtn) {
             });
             if (elements.createQuizName) elements.createQuizName.value = normalizeSheetText(quizRow.name);
             if (elements.createQuizDescription) elements.createQuizDescription.value = getQuizUserDescriptionFromDescription(quizRow.description || '');
+            state.auth.studioLastSavedMetadataSignature = JSON.stringify([normalizeSheetText(quizRow.name), normalizeSheetText(quizRow.folder_id) || null, normalizeSheetText(elements.createQuizDescription?.value), getStudioQuizMode(), !!state.auth.handwrittenFlashcardEnabled, normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {})]);
+            state.auth.handwrittenTouchedCardIds = new Set();
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizMode;
 
             let questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
@@ -49344,6 +49464,7 @@ function getStudioExplicitSaveErrorMessage(error) {
 
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
+        if (state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied) autoAlignCurrentHandwrittenFlashcard();
         handleSaveStudioEditorChanges().catch(err => {
             console.error(err);
             setCreatorStatus(getStudioExplicitSaveErrorMessage(err), 'error');
@@ -49353,6 +49474,7 @@ if (elements.createQuizBtn) {
 
 if (elements.studioEditorActionSaveBtn) {
     elements.studioEditorActionSaveBtn.addEventListener('click', () => {
+        if (state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied) autoAlignCurrentHandwrittenFlashcard();
         handleSaveStudioEditorChanges().catch(err => {
             console.error(err);
             setCreatorStatus(getStudioExplicitSaveErrorMessage(err), 'error');
@@ -52281,6 +52403,20 @@ elements.questionImage.onclick = function () {
         control?.addEventListener('pointerenter',cancelHandwrittenSettingsDismiss);
         control?.addEventListener('pointerleave',scheduleHandwrittenSettingsDismiss);
     });
+    elements.flashcardHandwrittenAutoAlign?.addEventListener('change', () => {
+        state.auth.handwrittenFlashcardAutoAlign = !!elements.flashcardHandwrittenAutoAlign.checked;
+        persistHandwrittenToolPrefs();
+    });
+    elements.flashcardHandwrittenAlignTarget?.addEventListener('change', () => {
+        state.auth.handwrittenFlashcardAlignTarget = normalizeHandwrittenAlignTarget(elements.flashcardHandwrittenAlignTarget.value);
+        persistHandwrittenToolPrefs();
+    });
+    [elements.flashcardHandwrittenAlignBtn, elements.flashcardHandwrittenFocusAlignBtn].forEach(button => button?.addEventListener('click', () => {
+        alignHandwrittenSide(getHandwrittenSideKey());
+    }));
+    [elements.flashcardHandwrittenSaveBtn, elements.flashcardHandwrittenFocusSaveBtn].forEach(button => button?.addEventListener('click', () => {
+        saveHandwrittenFlashcardFromToolbar().catch(() => {});
+    }));
     elements.flashcardHandwrittenUndoBtn?.addEventListener('click',undoHandwrittenStroke);
     elements.flashcardHandwrittenRedoBtn?.addEventListener('click',redoHandwrittenStroke);
     // Capture Pencil input as early as possible on iPad. passive:false is required
@@ -52453,8 +52589,6 @@ elements.questionImage.onclick = function () {
 
     elements.flashcardHandwrittenPrevBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not open the previous card.','error');}));
     elements.flashcardHandwrittenNextBtn?.addEventListener('click',()=>navigateHandwrittenFlashcard(1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not save/open the next card.','error');}));
-    elements.flashcardHandwrittenMoveLeftBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not move this card.','error');}));
-    elements.flashcardHandwrittenMoveRightBtn?.addEventListener('click',()=>moveCurrentHandwrittenFlashcard(1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not move this card.','error');}));
     elements.flashcardHandwrittenDeleteBtn?.addEventListener('click',()=>deleteCurrentHandwrittenFlashcard().catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not delete this card.','error');}));
     elements.flashcardHandwrittenGoBtn?.addEventListener('click',()=>{const n=Math.max(1,Number(elements.flashcardHandwrittenGoInput?.value)||1);navigateHandwrittenFlashcard(0,n-1).catch(err=>{console.error(err);setCreatorStatus(err.message||'Could not open that card.','error');});});
     elements.flashcardHandwrittenGoInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();elements.flashcardHandwrittenGoBtn?.click();}});

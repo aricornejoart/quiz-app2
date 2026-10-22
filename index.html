@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f41_75" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f41_76" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23f41_75-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=23f41_76-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1742,6 +1742,8 @@ MODIFICATION RULES FOR THIS APP
                             </label>
                             <span>Typed</span>
                           </div>
+                          <label class="studio-handwritten-align-option"><span>Auto Align</span><input id="flashcardHandwrittenAutoAlign" type="checkbox" role="switch" aria-label="Automatically align front and back handwriting on flip, save, or navigation"></label>
+                          <label class="studio-handwritten-align-option"><span>Alignment</span><select id="flashcardHandwrittenAlignTarget" aria-label="Handwriting alignment"><option value="center" selected>Center</option><option value="top">Top</option><option value="left">Left</option><option value="right">Right</option><option value="bottom">Bottom</option></select></label>
                         </div>
                         <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Stroke thickness">
                           <div class="studio-handwritten-popover-title"><strong id="flashcardHandwrittenSizeLabel">Pen thickness</strong><span id="flashcardHandwrittenSizeValue">1.1 mm</span></div>
@@ -1776,9 +1778,7 @@ MODIFICATION RULES FOR THIS APP
                         <button id="flashcardHandwrittenPrevBtn" type="button" class="auth-action-btn auth-secondary-btn">Previous</button>
                         <button id="flashcardHandwrittenNextBtn" type="button" class="auth-action-btn auth-secondary-btn">Next</button>
                         <span class="studio-handwritten-nav-divider"></span>
-                        <button id="flashcardHandwrittenMoveLeftBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Left</button>
-                        <button id="flashcardHandwrittenMoveRightBtn" type="button" class="auth-action-btn auth-secondary-btn">Move Right</button>
-                        <button id="flashcardHandwrittenDeleteBtn" type="button" class="auth-action-btn auth-secondary-btn">Delete Card</button>
+                        <button id="flashcardHandwrittenDeleteBtn" type="button" class="auth-action-btn auth-secondary-btn">Delete</button>
                         <label class="studio-handwritten-go"><span>Go to</span><input id="flashcardHandwrittenGoInput" type="number" min="1" step="1"><button id="flashcardHandwrittenGoBtn" type="button" class="auth-action-btn auth-secondary-btn">Go</button></label>
                         <div class="studio-handwritten-toggle-pair studio-handwritten-side-toggle" aria-label="Flashcard side">
                           <span>Front</span>
@@ -1789,16 +1789,20 @@ MODIFICATION RULES FOR THIS APP
                           <span>Back</span>
                         </div>
                         <button id="flashcardHandwrittenFlipBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Flip card (Space)">Flip</button>
+                        <button id="flashcardHandwrittenAlignBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Align handwriting on this side">Align</button>
+                        <button id="flashcardHandwrittenSaveBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Save changed or new cards">Save</button>
                       </div>
                       <div id="flashcardHandwrittenFocusNavigation" class="studio-handwritten-focus-navigation" aria-label="Fullscreen flashcard navigation">
                         <strong id="flashcardHandwrittenFocusCardNumber">1 / 1</strong>
                         <button id="flashcardHandwrittenFocusPrevBtn" type="button" class="studio-handwritten-focus-control" aria-label="Previous card" title="Previous card">←</button>
                         <button id="flashcardHandwrittenFocusNextBtn" type="button" class="studio-handwritten-focus-control" aria-label="Next card" title="Next card">→</button>
-                        <button id="flashcardHandwrittenFocusFrontBtn" type="button" class="studio-handwritten-focus-control studio-handwritten-focus-side" aria-label="Front" title="Front">F</button>
-                        <button id="flashcardHandwrittenFocusBackBtn" type="button" class="studio-handwritten-focus-control studio-handwritten-focus-side" aria-label="Back" title="Back">B</button>
                         <button id="flashcardHandwrittenFocusDeleteBtn" type="button" class="studio-handwritten-focus-control studio-handwritten-focus-delete" aria-label="Delete card" title="Delete card">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>
                         </button>
+                        <button id="flashcardHandwrittenFocusFrontBtn" type="button" class="studio-handwritten-focus-control studio-handwritten-focus-side" aria-label="Front" title="Front">Front</button>
+                        <button id="flashcardHandwrittenFocusBackBtn" type="button" class="studio-handwritten-focus-control studio-handwritten-focus-side" aria-label="Back" title="Back">Back</button>
+                        <button id="flashcardHandwrittenFocusAlignBtn" type="button" class="studio-handwritten-focus-control" title="Align handwriting on this side">Align</button>
+                        <button id="flashcardHandwrittenFocusSaveBtn" type="button" class="studio-handwritten-focus-control" title="Save changed or new cards">Save</button>
                       </div>
                       <div class="creator-note">Space flips the card when you are not typing. Half images always stay on the right; handwriting remains on the left.</div>
                     </div>
@@ -2523,6 +2527,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=23f41_75"></script>
+  <script src="script.js?v=23f41_76"></script>
 </body>
 </html>
