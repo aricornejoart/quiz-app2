@@ -17336,3 +17336,287 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-handwritten-focus-navigation #flashcardHandwrittenFocusAlignBtn,
 .studio-handwritten-focus-navigation #flashcardHandwrittenFocusSaveBtn {width:auto;min-width:52px;padding:0 10px;font-size:.84rem;}
 @media(max-width:520px){.studio-handwritten-workspace.is-focus-mode .studio-handwritten-focus-navigation {gap:4px;padding:4px 6px;} .studio-handwritten-focus-navigation .studio-handwritten-focus-control {min-width:34px;height:38px;} .studio-handwritten-focus-navigation .studio-handwritten-focus-side,.studio-handwritten-focus-navigation #flashcardHandwrittenFocusAlignBtn,.studio-handwritten-focus-navigation #flashcardHandwrittenFocusSaveBtn {min-width:43px;padding:0 5px;font-size:.73rem;}}
+
+/* Phase 24A.1: equal quiz metadata widths and Progress action.
+   Phase 24A.2: yellow matches Saved Images/Review Mode, and upper-right ribbons
+   reserve a dedicated card corner rather than overlapping quiz labels/actions. */
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-inline-input,
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-inline-select {
+  flex: 1 1 180px;
+  width: 0;
+  min-width: min(100%, 150px);
+  max-width: none;
+}
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-controls > .studio-quiz-progress-button {
+  margin: 0;
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-color: rgba(250,204,21,.48);
+  background: rgba(250,204,21,.08);
+  color: #facc15;
+  font-weight: 800;
+}
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-controls > .studio-quiz-progress-button:is(:hover,:focus-visible) {
+  background: rgba(250,204,21,.18);
+}
+.quiz-studio-page .studio-list-item[data-quiz-id] {
+  position: relative;
+}
+.quiz-studio-page .studio-list-item[data-quiz-id].studio-list-item-has-ribbon > .studio-list-meta {
+  min-height: 90px;
+  box-sizing: border-box;
+  padding-right: 105px;
+}
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-title {
+  overflow-wrap: anywhere;
+}
+/* Only this corner wrapper clips the diagonal; the card itself must NOT clip
+   the More menu, the Challenges panel, or the fixed Progress popover. */
+.studio-quiz-ribbon-corner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 102px;
+  height: 102px;
+  overflow: hidden;
+  border-top-right-radius: 11px;
+  z-index: 1;
+  pointer-events: none;
+}
+.studio-quiz-ribbon-corner > .studio-quiz-spaced-ribbon {
+  left: auto;
+  right: -32px;
+  top: 23px;
+  width: 145px;
+  transform: rotate(45deg);
+}
+.studio-quiz-ribbon-corner > .studio-quiz-spaced-ribbon.is-learning { background: #2dd4bf; color: #073534; }
+.studio-quiz-ribbon-corner > .studio-quiz-spaced-ribbon.is-mastered { background: #facc15; color: #362606; }
+/* Preserve the existing trophy badges exactly, but center their one-row group
+   between Challenges (left) and Grand Trophy (right). At narrow widths the
+   middle region scrolls horizontally rather than covering either heading. */
+.quiz-challenge-panel > .quiz-challenge-panel-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+}
+.quiz-challenge-panel-heading > .quiz-challenge-badges {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  justify-self: center;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.3) transparent;
+}
+.quiz-challenge-panel-heading > .quiz-challenge-badges > .quiz-challenge-badge {
+  flex-shrink: 0;
+}
+.quiz-challenge-panel-heading > .quiz-challenge-grand {
+  justify-self: end;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .quiz-challenge-panel > .quiz-challenge-panel-heading {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+  }
+}
+.quiz-spaced-review-completion {
+  margin: 12px auto;
+  max-width: 700px;
+  padding: 12px 15px;
+  color: #c7fff5;
+  background: rgba(12,74,72,.45);
+  border: 1px solid rgba(45,212,191,.6);
+  border-radius: 10px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+}
+@media screen and (min-width: 700px) and (max-width: 1024px) and (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-controls { flex-wrap: wrap; }
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-inline-input,
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-inline-select {
+    flex: 1 1 42%; width: 0; min-width: 0; max-width: none;
+  }
+}
+
+/* Phase 24A.1 SQL reminder is removed automatically after migration and reload. */
+.quiz-spaced-migration-alert {
+  position: fixed;
+  z-index: 2147482500;
+  inset: auto 12px 12px 12px;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 10px 14px;
+  color: #fff0c2;
+  background: #503314;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px #0008;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+/* Phase 24A.4 — lightweight Manage Quizzes page navigation. */
+.quiz-studio-page .studio-quiz-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding: 12px 0 4px;
+}
+.quiz-studio-page .studio-quiz-pagination-label {
+  flex: 1;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.quiz-studio-page .studio-quiz-pagination button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 380px) {
+  .quiz-studio-page .studio-quiz-pagination { gap: 6px; }
+  .quiz-studio-page .studio-quiz-pagination button { padding: 8px; font-size: 12px; }
+}
+
+/* Phase 24A.5a: temporary read-only WebP savings preview; never implies a conversion happened. */
+
+
+/* Phase 24A.5b: temporary owner-scoped KEEP & CLEANUP controls */
+.studio-keep-cleanup-panel {margin-top: 20px; padding: 16px; border: 1px solid var(--border-color, #7776); border-radius: 12px;}
+.studio-keep-cleanup-toolbar {display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0;}
+.studio-cleanup-delete-btn {background: #ad2636; color: white; border-color: #ad2636;}
+.studio-cleanup-keep-btn {white-space: nowrap; border: 1px solid #a98518; background: transparent; color: inherit; padding: 7px 12px; border-radius: 8px; font-weight: 700; cursor: pointer;}
+.studio-cleanup-keep-btn[aria-pressed="true"] {background: #f6d84a; color: #2e2919; border-color: #af8b00;}
+.studio-cleanup-keep-btn:disabled {opacity: .55; cursor: not-allowed;}
+.studio-cleanup-report {white-space: pre-wrap; max-height: 320px; overflow: auto; padding: 12px; border: 1px solid #8885; border-radius: 8px; font-size: 12px; overflow-wrap: anywhere;}
+@media (max-width: 640px) {.studio-keep-cleanup-toolbar > button {flex: 1 1 100%;}}
+
+/* Phase 24A.5m — Saved diagram conversion gate; all geometry remains locked. */
+
+
+/* PHASE 24A.5p: regular uploaded images only. Shared Saved Image Half/Full remains untouched. */
+.studio-handwritten-card.has-free-image .studio-handwritten-canvas,
+.studio-handwritten-card.has-free-image .studio-handwritten-typed-editor {left:0;right:0;width:100%;}
+.studio-handwritten-card.has-free-image .studio-handwritten-canvas {z-index:3;}
+.studio-handwritten-card.has-free-image .studio-handwritten-image-wrap {position:absolute;right:auto;bottom:auto;z-index:1;background:transparent;padding:0;border:0;border-radius:0;overflow:visible;box-sizing:border-box;}
+.studio-handwritten-card.has-free-image .studio-handwritten-image-wrap img {width:100%;height:100%;object-fit:fill;border-radius:0;pointer-events:none;}
+.studio-handwritten-card.has-free-image.is-image-transform-active .studio-handwritten-image-wrap {z-index:5;cursor:move;touch-action:none;outline:2px solid #3b82f6;outline-offset:-2px;}
+.studio-handwritten-card.has-free-image.is-image-transform-active .studio-handwritten-canvas {pointer-events:none;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle] {display:none;}
+.studio-handwritten-card.has-free-image.is-image-transform-active [data-handwritten-image-handle] {display:block;position:absolute;width:14px;height:14px;background:#3b82f6;border:2px solid #fff;box-sizing:border-box;z-index:6;touch-action:none;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="tl"] {left:-7px;top:-7px;cursor:nwse-resize;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="tr"] {right:-7px;top:-7px;cursor:nesw-resize;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="bl"] {left:-7px;bottom:-7px;cursor:nesw-resize;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="br"] {right:-7px;bottom:-7px;cursor:nwse-resize;}
+.studio-handwritten-image-zoom {display:none;position:absolute;right:3px;top:3px;z-index:8;border:0;border-radius:6px;background:rgba(10,10,20,.78);color:white;padding:3px 7px;font-size:16px;cursor:pointer;pointer-events:auto;}
+.studio-handwritten-card.has-free-image .studio-handwritten-image-zoom {display:block;}
+.studio-handwritten-card.has-free-image:not(.is-image-transform-active) .studio-handwritten-image-wrap {pointer-events:none;}
+.studio-handwritten-card.has-free-image:not(.is-image-transform-active) .studio-handwritten-image-zoom {pointer-events:auto;}
+.flashcard-side-content.handwriting-free-image {position:relative;display:block;padding:0;gap:0;}
+.flashcard-side-content.handwriting-free-image .flashcard-handwriting-area {position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;}
+.flashcard-side-content.handwriting-free-image .flashcard-free-image-wrap {position:absolute;right:auto;bottom:auto;min-height:0;min-width:0;padding:0;margin:0;border:0;border-radius:0;overflow:visible;display:block;background:transparent;z-index:1;}
+.flashcard-side-content.handwriting-free-image .flashcard-free-image-wrap .flashcard-side-image-frame {width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;background:transparent;}
+.flashcard-side-content.handwriting-free-image .flashcard-free-image-wrap .flashcard-side-image {width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;}
+
+/* Phase 24A.5p: keep the ink visibly on top even during image dragging. */
+.studio-handwritten-card.has-free-image.is-image-transform-active .studio-handwritten-canvas {z-index:7;pointer-events:none;}
+.studio-handwritten-card.has-free-image > .studio-handwritten-image-zoom {position:absolute;right:12px;top:12px;z-index:8;pointer-events:auto;}
+
+/* Accessible touch-size corner targets; the image itself stays flush with its box. */
+.studio-handwritten-card.has-free-image.is-image-transform-active [data-handwritten-image-handle] {width:24px;height:24px;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="tl"] {left:-12px;top:-12px;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="tr"] {right:-12px;top:-12px;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="bl"] {left:-12px;bottom:-12px;}
+.studio-handwritten-image-wrap [data-handwritten-image-handle="br"] {right:-12px;bottom:-12px;}
+
+
+/* Phase 24A.5s — Saved Image handwritten preview: one image-fitting rule in
+   Edit and Study; transparent allocated region, snug inset around true image
+   rectangle. Study overlay stage keeps the original image coordinate basis. */
+.studio-handwritten-card.has-saved-image .studio-handwritten-image-wrap {
+  position:absolute;
+  left:75%; top:50%; right:auto; bottom:auto;
+  transform:translate(-50%,-50%);
+  width:auto; height:auto;
+  background:#2d2750;
+  border:1px solid var(--color-border-soft);
+  box-sizing:border-box;
+  padding:8px;
+  display:flex; justify-content:center; align-items:center;
+  overflow:hidden;
+}
+.studio-handwritten-card.has-saved-image.has-full-image .studio-handwritten-image-wrap {left:50%;width:auto;}
+.studio-handwritten-card.has-saved-image .studio-handwritten-image-wrap img {
+  display:block;
+  width:100%;height:100%;
+  min-width:0;min-height:0;
+  object-fit:contain;
+}
+/* This guide is not an inset edge: it always divides the EDITOR card at 50%. */
+.studio-handwritten-card.has-saved-image.has-half-image::after {
+  content:''; position:absolute; z-index:6;
+  left:50%;top:0;bottom:0;
+  border-left:2px dashed rgba(100,116,139,.5);
+  pointer-events:none;
+}
+.studio-handwritten-card.has-saved-image .studio-handwritten-image-zoom {display:block;}
+/* Study has no dashed guide; only the fitted inset gets the purple background. */
+.flashcard-side-content.handwriting-saved-image .flashcard-side-image-wrap {
+  background:transparent;border:0;padding:0;box-shadow:none;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+.flashcard-side-content.handwriting-saved-image .flashcard-saved-image-inset {
+  display:inline-flex;align-items:center;justify-content:center;
+  flex:0 0 auto;
+  padding:8px;box-sizing:border-box;
+  background:#2d2750;
+  border:1px solid var(--color-border-soft);
+  border-radius:4px;
+  max-width:100%;max-height:100%;
+}
+.flashcard-side-content.handwriting-saved-image .flashcard-side-image-frame {flex:0 0 auto;}
+
+
+/* Phase 24A.5t — Session-only Full Mode ink-loss confirmation. */
+.studio-handwritten-full-confirm-overlay { position:fixed; inset:0; z-index:2147482000; background:rgba(0,0,0,.68); display:flex; align-items:center; justify-content:center; padding:20px; }
+.studio-handwritten-full-confirm { width:min(440px,100%); padding:22px; border:1px solid #7561c9; border-radius:15px; color:#f7f3ff; background:#242038; box-shadow:0 24px 72px rgba(0,0,0,.45); }
+.studio-handwritten-full-confirm h3 { margin:0 0 12px; font-size:1.12rem; }
+.studio-handwritten-full-confirm p { margin:0 0 12px; line-height:1.5; font-size:.92rem; }
+.studio-handwritten-full-confirm-count { font-weight:600; color:#f7c6c6; }
+.studio-handwritten-full-confirm-remember { display:flex; align-items:center; gap:10px; padding:10px 0 18px; font-size:.91rem; cursor:pointer; }
+.studio-handwritten-full-confirm-remember input { width:18px; height:18px; accent-color:#a78bfa; }
+.studio-handwritten-full-confirm-actions { display:flex; gap:10px; justify-content:flex-end; }
+.studio-handwritten-full-confirm-actions button { border:1px solid #7f71b3; border-radius:9px; padding:10px 13px; color:#fff; background:#342f51; cursor:pointer; }
+.studio-handwritten-full-confirm-actions [data-full-confirm] { background:#ac3e51; border-color:#cd6678; }
+.studio-handwritten-full-confirm-actions button:focus-visible { outline:3px solid #c4b5fd; outline-offset:2px; }
+
+/* 24A.5u — Flashcard Settings switches, no checkbox-looking controls. */
+.studio-handwritten-settings-switch { position:relative; display:inline-flex; align-items:center; width:44px; height:25px; flex:0 0 44px; }
+.studio-handwritten-settings-popover .studio-handwritten-settings-switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; z-index:2; cursor:pointer; }
+.studio-handwritten-settings-track { width:44px; height:25px; border-radius:999px; background:#625c73; border:1px solid rgba(255,255,255,.22); transition:background .12s ease; pointer-events:none; }
+.studio-handwritten-settings-track::after { content:''; position:absolute; top:3px; left:3px; width:19px; height:19px; border-radius:50%; background:#fff; box-shadow:0 1px 3px #0006; transition:transform .12s ease; }
+.studio-handwritten-settings-switch input:checked + .studio-handwritten-settings-track { background:#8257eb; }
+.studio-handwritten-settings-switch input:checked + .studio-handwritten-settings-track::after { transform:translateX(19px); }
+.studio-handwritten-settings-switch input:focus-visible + .studio-handwritten-settings-track { outline:2px solid #c4b5fd; outline-offset:3px; }
+/* Text controls belong only to Diagram Creator. No textbox chrome in Review/Mini Quiz. */
+.studio-visual-aid-text-section { border-top:1px solid #8b5cf644; margin-top:12px; padding:12px 4px; color:#f7f3ff; }
+.studio-visual-aid-text-section button { cursor:pointer; }
+.studio-visual-aid-text-tabs { display:flex; flex-wrap:wrap; gap:5px; margin:8px 0; }
+.studio-visual-aid-text-tabs button { padding:5px 9px; border:1px solid #8b5cf655; border-radius:6px; background:#27243e; color:#eee9ff; }
+.studio-visual-aid-text-tabs button.active { background:#7656bd; border-color:#b9a5ec; }
+.studio-visual-aid-text-controls { display:grid; gap:9px; }
+.studio-visual-aid-text-controls label { display:grid; gap:4px; font-size:.82rem; }
+.studio-visual-aid-text-controls textarea, .studio-visual-aid-text-controls input[type=number] { background:#1e1b31; color:#fff; border:1px solid #8b5cf66a; padding:6px; border-radius:5px; width:100%; min-width:0; }
+.studio-visual-aid-text-controls textarea { resize:vertical; }
+.studio-visual-aid-text-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.studio-visual-aid-text-controls .studio-visual-aid-text-bold { display:flex; gap:8px; align-items:center; }
+.studio-visual-aid-text-note { margin:0; font-size:.73rem; color:#c2b7da; }
+.studio-image-editor-visual-aid-layer .studio-visual-aid-text-hit { pointer-events:all; cursor:move; touch-action:none; }
+.studio-image-editor-visual-aid-layer .studio-visual-aid-text-handle { pointer-events:all; cursor:ew-resize; touch-action:none; }
+.review-mode-visual-aid-layer .diagram-visual-aid-text-layer { pointer-events:none !important; user-select:none; }

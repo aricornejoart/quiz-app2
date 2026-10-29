@@ -1,3 +1,4 @@
+
 /*
 MODIFICATION RULES FOR THIS APP
 - Preserve existing behavior and visuals unless the request explicitly says otherwise.
@@ -254,6 +255,7 @@ MODIFICATION RULES FOR THIS APP
             rafId: 0,
             timeoutIds: []
         },
+        quizSpacedAttempt: null,
         completionChallengePrompt: {
             open: false,
             shownForSessionKey: ''
@@ -271,6 +273,9 @@ MODIFICATION RULES FOR THIS APP
             supabaseFolders: [],
             managedQuizzes: [],
             quizChallengeAchievements: new Map(),
+            quizSpacedReviews: new Map(),
+            quizSpacedContentRevisions: new Map(),
+            quizSpacedMigrationMissing: false,
             quizChallengeUnavailable: false,
             studioActivity: { quizzes: new Map(), folders: new Map(), unavailable: false },
             expandedQuizChallengeIds: new Set(),
@@ -279,7 +284,9 @@ MODIFICATION RULES FOR THIS APP
             studioQuizSearchQuery: '',
             studioQuizFolderFilterId: '',
             studioQuizClassFilterId: '',
-            studioQuizManageView: 'all',
+            studioQuizManageView: 'recent',
+            studioQuizProgressFilter: 'all',
+            studioQuizPage: 1,
             studioClassQuickAddOpenId: '',
             studioFolderSearchQuery: '',
             quizStudioOpen: false,
@@ -319,10 +326,15 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardToolIndicatorPointer: null,
             handwrittenFlashcardUndo: new Map(),
             handwrittenFlashcardRedo: new Map(),
+            handwrittenFlashcardDiagramBothSides: true,
             handwrittenFlashcardAutoAlign: false,
             handwrittenFlashcardAlignTarget: 'center',
             handwrittenTouchedCardIds: new Set(),
             handwrittenPendingImageLayout: null,
+            handwrittenImageTransformMode: false,
+            handwrittenImageTransformGesture: null,
+            handwrittenImageUndo: new Map(),
+            handwrittenImageRedo: new Map(),
             flashcardHandwritingDetailCache: new Map(),
             flashcardHandwritingDetailPromiseCache: new Map(),
             flashcardHandwritingCacheUserId: '',
@@ -703,6 +715,9 @@ MODIFICATION RULES FOR THIS APP
         multiAngleAutoExpandBtn: document.getElementById('multiAngleAutoExpandBtn'),
         multiAngleResetCanvasBtn: document.getElementById('multiAngleResetCanvasBtn'),
         multiAngleFinalBoundaryText: document.getElementById('multiAngleFinalBoundaryText'),
+        multiAngleApplyFormatAllBtn: document.getElementById('multiAngleApplyFormatAllBtn'),
+        multiAngleQualityChoice: document.getElementById('multiAngleQualityChoice'),
+        multiAngleTargetSizeInput: document.getElementById('multiAngleTargetSizeInput'),
         multiAngleFormatSelect: document.getElementById('multiAngleFormatSelect'),
         multiAngleTransparentToggle: document.getElementById('multiAngleTransparentToggle'),
         multiAngleQualityInput: document.getElementById('multiAngleQualityInput'),
@@ -894,6 +909,7 @@ MODIFICATION RULES FOR THIS APP
         studioQuizManageTabs: Array.from(document.querySelectorAll('[data-studio-manage-view]')),
         studioQuizSearchInput: document.getElementById('studioQuizSearchInput'),
         studioQuizClassFilterSelect: document.getElementById('studioQuizClassFilterSelect'),
+        studioQuizProgressFilterSelect: document.getElementById('studioQuizProgressFilterSelect'),
         studioQuizFolderFilterSelect: document.getElementById('studioQuizFolderFilterSelect'),
         studioQuizClearFiltersBtn: document.getElementById('studioQuizClearFiltersBtn'),
         studioQuizFilterStatus: document.getElementById('studioQuizFilterStatus'),
@@ -902,6 +918,12 @@ MODIFICATION RULES FOR THIS APP
         exportQuizBtn: document.getElementById('exportQuizBtn'),
         exportFolderBtn: document.getElementById('exportFolderBtn'),
         exportAllBtn: document.getElementById('exportAllBtn'),
+        exportSavedImagesBackupBtn: document.getElementById('exportSavedImagesBackupBtn'),
+        exportSavedImagesBackupStatus: document.getElementById('exportSavedImagesBackupStatus'),
+        restoreSavedImagesTarInput: document.getElementById('restoreSavedImagesTarInput'),
+        previewSavedImagesRestoreBtn: document.getElementById('previewSavedImagesRestoreBtn'),
+        restoreSavedImagesTarBtn: document.getElementById('restoreSavedImagesTarBtn'),
+        restoreSavedImagesTarStatus: document.getElementById('restoreSavedImagesTarStatus'),
         importBackupFile: document.getElementById('importBackupFile'),
         previewBackupImportBtn: document.getElementById('previewBackupImportBtn'),
         importBackupBtn: document.getElementById('importBackupBtn'),
@@ -1028,6 +1050,7 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenSettingsBtn: document.getElementById('flashcardHandwrittenSettingsBtn'),
         flashcardHandwrittenSettingsPopover: document.getElementById('flashcardHandwrittenSettingsPopover'),
         flashcardHandwrittenAutoAlign: document.getElementById('flashcardHandwrittenAutoAlign'),
+        flashcardHandwrittenDiagramBothSides: document.getElementById('flashcardHandwrittenDiagramBothSides'),
         flashcardHandwrittenAlignTarget: document.getElementById('flashcardHandwrittenAlignTarget'),
         flashcardHandwrittenAlignBtn: document.getElementById('flashcardHandwrittenAlignBtn'),
         flashcardHandwrittenSaveBtn: document.getElementById('flashcardHandwrittenSaveBtn'),
@@ -1065,6 +1088,8 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenSelectionBox: document.getElementById('flashcardHandwrittenSelectionBox'),
         flashcardHandwrittenSelectionClearBtn: document.getElementById('flashcardHandwrittenSelectionClearBtn'),
         flashcardHandwrittenImageWrap: document.getElementById('flashcardHandwrittenImageWrap'),
+        flashcardHandwrittenTransformBtn: document.getElementById('flashcardHandwrittenTransformBtn'),
+        flashcardHandwrittenImageZoomBtn: document.getElementById('flashcardHandwrittenImageZoomBtn'),
         flashcardHandwrittenImage: document.getElementById('flashcardHandwrittenImage'),
         flashcardHandwrittenFullImageNote: document.getElementById('flashcardHandwrittenFullImageNote'),
         flashcardHandwrittenPrevBtn: document.getElementById('flashcardHandwrittenPrevBtn'),
@@ -2384,6 +2409,11 @@ MODIFICATION RULES FOR THIS APP
     function collectSupabaseMediaReferences(value, refs = new Set()) {
         if (!value) return refs;
         if (typeof value === 'string') {
+            // A media reference can occur inside legacy HTML, JSON-encoded text,
+            // or an image metadata string, not only as a whole string value.
+            // Capture only UUID-shaped references; never print signed URLs.
+            const embedded = value.match(/sb-media:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi);
+            (embedded || []).forEach(ref => refs.add(ref));
             if (isSupabaseMediaReference(value)) refs.add(value);
             return refs;
         }
@@ -3784,6 +3814,65 @@ MODIFICATION RULES FOR THIS APP
         return !!(ball && typeof ball === 'object' && ball.legacyAuto === true);
     }
 
+    // 24A.5u: text is lightweight metadata on its Visual Aid, never an image or connector.
+    // Coordinates/width are percentages of the source diagram; font size is scaled from
+    // a 400px-wide reference image for consistent zoom-independent appearance.
+    function normalizeDiagramVisualAidTextBox(raw = {}, index = 0) {
+        const source = raw && typeof raw === 'object' ? raw : {};
+        const clamp = (value, fallback, min, max) => Number.isFinite(Number(value)) ? Math.max(min, Math.min(max, Number(value))) : fallback;
+        const width = clamp(source.width, 35, 8, 95);
+        return {
+            id: normalizeSheetText(source.id) || createDiagramVisualAidId('text'),
+            text: String(source.text ?? '').slice(0, 2000),
+            x: clamp(source.x, 52, 0, 100 - width),
+            y: clamp(source.y, 32 + index * 5, 0, 98),
+            width,
+            size: clamp(source.size, 20, 8, 48),
+            color: normalizeEditorHexColor(source.color || '#ffffff', '#ffffff'),
+            bold: source.bold === true,
+            opacity: clamp(source.opacity, 100, 0, 100)
+        };
+    }
+
+    function getDiagramVisualAidTextLayout(box, width, height) {
+        const x = box.x * width / 100;
+        const y = box.y * height / 100;
+        const fontSize = Math.max(1, box.size * width / 400);
+        const lineHeight = fontSize * 1.28;
+        const maxWidth = Math.max(1, box.width * width / 100);
+        const charsPerLine = Math.max(1, Math.floor(maxWidth / (fontSize * (box.bold ? 0.61 : 0.55))));
+        const lines = [];
+        for (const paragraph of box.text.split(/\r?\n/)) {
+            if (!paragraph) { lines.push(''); continue; }
+            let line = '';
+            for (const word of paragraph.split(/(\s+)/).filter(Boolean)) {
+                if (line.length + word.length > charsPerLine && line.trim()) { lines.push(line.trimEnd()); line = ''; }
+                if (word.length > charsPerLine) {
+                    for (const ch of word) { if (line.length >= charsPerLine) { lines.push(line.trimEnd()); line = ''; } line += ch; }
+                } else line += line ? word : word.trimStart();
+            }
+            lines.push(line.trimEnd());
+        }
+        return { x, y, fontSize, lineHeight, maxWidth, lines: lines.slice(0, 70), height: Math.max(lineHeight, Math.min(70, lines.length) * lineHeight) };
+    }
+
+    // SVG text is mounted only when the Visual Aid surface is mounted. Playback frames
+    // update animated geometry only; they never rebuild, measure, or query these nodes.
+    function renderDiagramVisualAidTextMarkup(aid, width, height, options = {}) {
+        if (!aid.textBoxes?.length) return '';
+        const editor = options.visualAidTextEditor === true;
+        const selected = normalizeSheetText(options.selectedVisualAidTextId || '');
+        return `<g class="diagram-visual-aid-text-layer">${aid.textBoxes.map(box => {
+            if (!box.text.trim()) return '';
+            const l = getDiagramVisualAidTextLayout(box, width, height);
+            const lines = l.lines.map((line, i) => `<tspan x="${l.x}" dy="${i === 0 ? 0 : l.lineHeight}">${escapeHtml(line || ' ')}</tspan>`).join('');
+            const active = editor && selected === box.id;
+            const outline = active ? `<rect x="${l.x - 3}" y="${l.y - l.fontSize - 4}" width="${l.maxWidth + 6}" height="${l.height + 9}" rx="2" fill="none" stroke="#60a5fa" stroke-width="1.5" pointer-events="none"/><rect data-visual-aid-text-resize="${escapeHtml(box.id)}" x="${l.x + l.maxWidth - 7}" y="${l.y + l.height - l.fontSize - 3}" width="12" height="12" rx="2" fill="#60a5fa" stroke="#ffffff" stroke-width="1" class="studio-visual-aid-text-handle"/>` : '';
+            const hit = editor ? `<rect data-visual-aid-text-hit="${escapeHtml(box.id)}" x="${l.x - 3}" y="${l.y - l.fontSize - 4}" width="${l.maxWidth + 6}" height="${l.height + 9}" fill="transparent" class="studio-visual-aid-text-hit"/>` : '';
+            return `<g data-visual-aid-text-box="${escapeHtml(box.id)}" data-visual-aid-text-owner="${escapeHtml(aid.id)}" pointer-events="none"><text x="${l.x}" y="${l.y}" fill="${box.color}" fill-opacity="${box.opacity / 100}" font-size="${l.fontSize}" font-weight="${box.bold ? 700 : 400}" font-family="Arial, sans-serif" xml:space="preserve" pointer-events="none">${lines}</text>${hit}${outline}</g>`;
+        }).join('')}</g>`;
+    }
+
     function normalizeDiagramVisualAid(aid = {}, index = 0) {
         const source = aid && typeof aid === 'object' ? aid : {};
         const path = (Array.isArray(source.path) ? source.path : []).slice(0, DIAGRAM_VISUAL_AID_MAX_PATH_POINTS).map(normalizeDiagramVisualAidPathPoint);
@@ -3820,6 +3909,7 @@ MODIFICATION RULES FOR THIS APP
             curveFinished: source.curveFinished === true,
             divisions,
             points,
+            textBoxes: (Array.isArray(source.textBoxes) ? source.textBoxes : []).slice(0, 16).map(normalizeDiagramVisualAidTextBox),
             defaultColor,
             thickness: Math.min(48, Math.max(2, Number(source.thickness) || 7)),
             speed: normalizeDiagramVisualAidSpeed(source.speed),
@@ -4728,7 +4818,7 @@ MODIFICATION RULES FOR THIS APP
                 const actionRegion=activeAction && (activeAction.regionId||activeAction.toId);
                 const activeRegion=regions.find(item=>item.id===actionRegion);
                 const highlight=activeRegion?`<polygon points="${activeRegion.path.map(pt=>`${pt.x*safeWidth/100},${pt.y*safeHeight/100}`).join(' ')}" fill="none" stroke="#fbbf24" stroke-width="4" opacity="0.95"/>`:'';
-                return `<g data-visual-aid-id="${escapeHtml(aid.id)}" data-flow-fill-aid="true"><defs>${clipDefs}</defs>${regionMarkup}${routeMarkup}${highlight}</g>`;
+                return `<g data-visual-aid-id="${escapeHtml(aid.id)}" data-flow-fill-aid="true"><defs>${clipDefs}</defs>${regionMarkup}${routeMarkup}${highlight}${renderDiagramVisualAidTextMarkup(aid, safeWidth, safeHeight, options)}</g>`;
             }
             if (aid.path.length < 2) return '';
             const masterMetrics = getDiagramVisualAidPathMetrics(aid);
@@ -4847,7 +4937,7 @@ MODIFICATION RULES FOR THIS APP
                     }
                 }
             }
-            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}</g>`;
+            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}${renderDiagramVisualAidTextMarkup(aid, safeWidth, safeHeight, options)}</g>`;
         }).join('');
         const behaviorBalls = normalizedAids.flatMap(aid => {
             const balls = aid.multipleBalls ? aid.balls : aid.balls.slice(0, 1);
@@ -5347,6 +5437,17 @@ MODIFICATION RULES FOR THIS APP
         return buildQuizDescriptionFromMetadata(metadata);
     }
 
+    // PHASE 24A.5p — regular-upload positioning metadata only.  Keep the media URL
+    // and bytes unchanged; legacy and shared Saved Images retain Half/Full layout.
+    function normalizeFlashcardImagePlacement(input) {
+        if (!input || typeof input !== 'object') return null;
+        const fields = ['x', 'y', 'w', 'h'].map(key => Number(input[key]));
+        if (fields.some(value => !Number.isFinite(value))) return null;
+        const [x, y, w, h] = fields;
+        if (w < .001 || h < .001 || w > 1 || h > 1 || x < 0 || y < 0 || x + w > 1.0001 || y + h > 1.0001) return null;
+        return {x: +x.toFixed(6), y: +y.toFixed(6), w: +w.toFixed(6), h: +h.toFixed(6)};
+    }
+
     const FLASHCARD_SIDE_META_COMMENT_PREFIX = 'STUDY_BUNNY_FLASHCARD_META:';
 
     function parseStoredFlashcardSideContent(rawHtml = '') {
@@ -5371,7 +5472,8 @@ MODIFICATION RULES FOR THIS APP
             reuseSignature: normalizeSheetText(meta.reuseSignature || ''),
             savedImageSignature: normalizeSheetText(meta.savedImageSignature || ''),
             contentMode: normalizeFlashcardContentMode(meta.contentMode || 'typed'),
-            imageLayout: normalizeFlashcardImageLayout(meta.imageLayout || '', imagePresent !== false && !!meta.imageLayout)
+            imageLayout: normalizeFlashcardImageLayout(meta.imageLayout || '', imagePresent !== false && !!meta.imageLayout),
+            imagePlacement: normalizeFlashcardImagePlacement(meta.imagePlacement)
         };
     }
 
@@ -5394,6 +5496,8 @@ MODIFICATION RULES FOR THIS APP
         if (savedImageSignature) meta.savedImageSignature = savedImageSignature;
         if (contentMode === 'handwritten') meta.contentMode = 'handwritten';
         if (imageLayout === 'half' || imageLayout === 'full') meta.imageLayout = imageLayout;
+        const imagePlacement = normalizeFlashcardImagePlacement(options.imagePlacement);
+        if (imagePresent !== false && !savedImageSignature && imagePlacement && contentMode === 'handwritten') meta.imagePlacement = imagePlacement;
         if (!Object.keys(meta).length) return parsed.html;
         return `${parsed.html}<!--${FLASHCARD_SIDE_META_COMMENT_PREFIX}${encodeURIComponent(JSON.stringify(meta))}-->`;
     }
@@ -6438,57 +6542,178 @@ MODIFICATION RULES FOR THIS APP
         return replacedRefs.size;
     }
 
+    // Phase 24A.5a: Conservative reference protection for the existing cleanup
+    // paths. A cleanup may never remove an active Saved Image's physical media.
+    // All pagination/errors fail closed; a live remote lookup is required.
+    async function collectActiveSavedImageRefsForMediaCleanup() {
+        if (!state.auth.client || !state.auth.user?.id) throw new Error('Signed-in media ownership cannot be verified.');
+        const protectedRefs = new Set();
+        for (const entry of getStudioSavedImageLibraryForPicker()) collectSupabaseMediaReferences(entry, protectedRefs);
+        const pageSize = 100;
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await state.auth.client.from(STUDIO_SAVED_IMAGE_REMOTE_TABLE)
+                .select('payload')
+                .eq('user_id', state.auth.user.id)
+                .is('deleted_at', null)
+                .range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            (data || []).forEach(row => collectSupabaseMediaReferences(row.payload, protectedRefs));
+            if ((data || []).length < pageSize) break;
+        }
+        return protectedRefs;
+    }
+
+    // Do NOT discard a media_assets row when the physical storage delete fails.
+    // This is not an orphan sweep: it retains ambiguous files for the separate
+    // read-only ownership audit and deliberately does not cascade Saved Image deletes.
+    // Phase 24A.5j — durable, fail-closed cleanup for quiz/flashcard media.
+    // Capture candidate refs BEFORE a persisted edit/delete can make them vanish.
+    // Queues are per-account and intentionally do not contain credentials or media bytes.
+    const QUIZ_MEDIA_CLEANUP_QUEUE_PREFIX = 'study_bunny_pending_quiz_media_v1:';
+    let quizMediaCleanupFlight = null;
+
+    function readPendingQuizMediaCleanup(userId) {
+        const raw = localStorage.getItem(QUIZ_MEDIA_CLEANUP_QUEUE_PREFIX + userId);
+        if (!raw) return [];
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch (_) {
+            throw new Error('Quiz media cleanup checkpoint cannot be read; refusing to overwrite it.');
+        }
+        if (!Array.isArray(parsed) || parsed.length > 10000 || parsed.some(ref => !isSupabaseMediaReference(ref))) {
+            throw new Error('Quiz media cleanup checkpoint is invalid; refusing to overwrite it.');
+        }
+        return [...new Set(parsed)];
+    }
+
+    function writePendingQuizMediaCleanup(userId, refs) {
+        const valid = [...new Set([...refs].filter(isSupabaseMediaReference))];
+        localStorage.setItem(QUIZ_MEDIA_CLEANUP_QUEUE_PREFIX + userId, JSON.stringify(valid));
+        return valid;
+    }
+
+    function stageQuizMediaCleanup(refs) {
+        const candidateRefs = [...new Set([...refs || []].filter(isSupabaseMediaReference))];
+        if (!candidateRefs.length) return [];
+        const userId = state.auth.user?.id;
+        if (!userId || !state.auth.client) throw new Error('Sign in before changing quiz media.');
+        const pending = readPendingQuizMediaCleanup(userId);
+        return writePendingQuizMediaCleanup(userId, [...pending, ...candidateRefs]);
+    }
+
+    async function flushPendingQuizMediaCleanup(userId = state.auth.user?.id) {
+        if (!userId || !state.auth.client || state.auth.user?.id !== userId) return {removed:0,retained:0};
+        if (quizMediaCleanupFlight) return quizMediaCleanupFlight;
+        const task = (async () => {
+            let pending = readPendingQuizMediaCleanup(userId);
+            if (!pending.length) return {removed:0,retained:0};
+            if (getStudioSavedImagePendingUpsertKeys(userId).size || getStudioSavedImagePendingDeletes(userId).length) {
+                throw new Error('Saved Images have unsynced changes; quiz media cleanup is queued for retry.');
+            }
+            // Never infer orphan status from media_assets.quiz_id/question_id alone:
+            // those ownership columns deliberately retain old links after edits.
+            // Read ALL active content, including nested flashcard/option/diagram JSON.
+            const [images, quizzes, questions, allAssets] = await Promise.all([
+                cleanupReadAll('saved_images','id,payload',q=>q.eq('user_id',userId).is('deleted_at',null)),
+                cleanupReadAll('quizzes','*',q=>q.eq('user_id',userId)),
+                cleanupReadAll('questions','*'),
+                cleanupReadAll('media_assets','id,user_id,bucket_name,object_path,quiz_id,question_id',q=>q.eq('user_id',userId))
+            ]);
+            const protectedRecords = [...images, ...quizzes, ...questions];
+            const activeQuestionIds = [...new Set(questions.map(q=>normalizeSheetText(q.id)).filter(Boolean))];
+            for (const table of ['flashcard_questions','multiple_choice_questions','classify_questions','hierarchy_questions']) {
+                for (let i=0; i<activeQuestionIds.length; i+=75) {
+                    const {data,error}=await state.auth.client.from(table).select('*').in('question_id',activeQuestionIds.slice(i,i+75));
+                    if (error) throw new Error(`Cannot verify ${table} before quiz media deletion: ${error.message}`);
+                    protectedRecords.push(...(data||[]));
+                }
+            }
+            getStudioSavedImageLibraryForPicker().forEach(entry=>protectedRecords.push(entry));
+            const {raw:protectedText,ids:protectedIds}=cleanupReferencedIdsFromText(protectedRecords);
+            const localRefs = collectStudioFlashcardEditorMediaReferences();
+            collectSupabaseMediaReferences(state.auth.studioQuestionImageDataUrl,localRefs);
+            collectSupabaseMediaReferences(state.auth.studioLearningResourcesImageDataUrl,localRefs);
+            const inventory = await cleanupPhysicalInventory(userId, allAssets);
+            let removed=0,protectedCount=0;
+            for (const ref of [...pending]) {
+                if (state.auth.user?.id!==userId) throw new Error('Account changed during media cleanup.');
+                const id = getSupabaseMediaAssetId(ref);
+                const asset = allAssets.find(row=>normalizeSheetText(row.id)===id);
+                if (!asset) {
+                    pending=pending.filter(value=>value!==ref);
+                    writePendingQuizMediaCleanup(userId,pending);
+                    continue;
+                }
+                const path=normalizeSheetText(asset.object_path);
+                const bucket=normalizeSheetText(asset.bucket_name);
+                const key=`${bucket}|${path}`;
+                // Check all live references by ID and by direct Storage path.
+                // Do NOT delete an asset merely because an owning quiz still exists;
+                // only live content references and shared paths protect that asset.
+                const remotelyUsed = protectedIds.has(id.toLowerCase()) || protectedText.includes(`sb-media:${id}`)
+                    || (path && (protectedText.includes(path) || protectedText.includes(encodeURIComponent(path))
+                        || protectedText.includes(path.replaceAll('/','%2F'))));
+                if (remotelyUsed) {
+                    protectedCount++;
+                    pending=pending.filter(value=>value!==ref);
+                    writePendingQuizMediaCleanup(userId,pending);
+                    continue;
+                }
+                if (localRefs.has(ref)) {
+                    protectedCount++;
+                    continue; // Unsaved local draft may still need the file; RETRY later.
+                }
+                if (!path.startsWith(`${userId}/${id}/`) ||
+                    ![CONFIG.mediaAssets.bucketName,CONFIG.cloudflareR2.providerBucketName].includes(bucket)) {
+                    throw new Error(`Cannot safely resolve media ${id}; checkpoint retained.`);
+                }
+                if (allAssets.some(other=>other.id!==asset.id && other.object_path===path && other.bucket_name===bucket)) {
+                    throw new Error(`Shared physical object ${id} has another tracking row; checkpoint retained.`);
+                }
+                if (inventory.has(key)) {
+                    if (isCloudflareR2Asset(asset)) {
+                        if (!isCloudflareR2Configured()) throw new Error('R2 provider unavailable.');
+                        await deleteCloudflareR2Objects([path]);
+                    } else {
+                        const response=await state.auth.client.storage.from(bucket).remove([path]);
+                        if (response.error) throw new Error(`Media ${id} removal failed: ${response.error.message}`);
+                    }
+                }
+                // Verify against fresh provider inventory BEFORE touching tracking row.
+                const after=await cleanupPhysicalInventory(userId,allAssets);
+                if (after.has(key)) throw new Error(`Media ${id} is still physically present; checkpoint retained.`);
+                const {data:deleted,error}=await state.auth.client.from('media_assets').delete()
+                    .eq('user_id',userId).eq('id',id).eq('object_path',path).select('id');
+                if (error || !Array.isArray(deleted) || deleted.length!==1) {
+                    throw new Error(`Media ${id} bytes are absent, but tracking reconciliation is pending: ${error?.message||'no confirmed row deletion'}`);
+                }
+                deleteCachedMediaSignedUrl(id);
+                removed++;
+                pending=pending.filter(value=>value!==ref);
+                writePendingQuizMediaCleanup(userId,pending);
+            }
+            return {removed,retained:pending.length,protected:protectedCount,deferred:pending.length>0};
+        })();
+        quizMediaCleanupFlight=task;
+        try { return await task; } finally { quizMediaCleanupFlight=null; }
+    }
+
     async function deleteSupabaseMediaReferences(refs, options = {}) {
-        const protectedRefs = collectSupabaseMediaReferences(options.protectedValue, new Set(options.protectedRefs || []));
-        const assetIds = Array.from(new Set(Array.from(refs || [])
-            .filter(ref => !protectedRefs.has(ref))
-            .map(getSupabaseMediaAssetId)
-            .filter(Boolean)));
-        if (!state.auth.client || !assetIds.length) return;
-
-        const { data: assets, error } = await runWithTransientFetchRetry(() => state.auth.client
-            .from('media_assets')
-            .select('id, bucket_name, object_path')
-            .in('id', assetIds), 'Loading media assets for deletion', { attempts: 2 });
-
-        if (error) {
-            console.error('Could not load media assets for deletion:', error);
-            return;
+        const protectedRefs=collectSupabaseMediaReferences(options.protectedValue,new Set(options.protectedRefs||[]));
+        const candidates=[...new Set([...refs||[]].filter(isSupabaseMediaReference))]
+            .filter(ref=>!protectedRefs.has(ref));
+        if (!candidates.length) return {removed:0,retained:0};
+        stageQuizMediaCleanup(candidates);
+        try {
+            const result=await flushPendingQuizMediaCleanup();
+            if (result.deferred) console.warn('Quiz media cleanup retained a retry checkpoint.',result);
+            return result;
+        } catch (error) {
+            const message=`Quiz image saved/removed, but physical media cleanup is pending: ${error.message||error}`;
+            console.warn(message);
+            setCreatorStatus(message,'error');
+            cleanupKeepStatus(message);
+            return {removed:0,retained:candidates.length,deferred:true};
         }
-
-        const r2Paths = [];
-        const supabaseAssetsByBucket = new Map();
-        (assets || []).forEach(asset => {
-            if (isCloudflareR2Asset(asset)) {
-                if (asset.object_path) r2Paths.push(asset.object_path);
-            } else {
-                const bucketName = asset.bucket_name || CONFIG.mediaAssets.bucketName;
-                if (!supabaseAssetsByBucket.has(bucketName)) supabaseAssetsByBucket.set(bucketName, []);
-                supabaseAssetsByBucket.get(bucketName).push(asset.object_path);
-            }
-            deleteCachedMediaSignedUrl(asset.id);
-        });
-
-        if (r2Paths.length) {
-            try {
-                await runWithTransientFetchRetry(() => deleteCloudflareR2Objects(r2Paths), 'Removing Cloudflare R2 media files', { attempts: 2 });
-            } catch (error) {
-                console.error('Could not delete Cloudflare R2 media files:', error);
-            }
-        }
-
-        for (const [bucketName, paths] of supabaseAssetsByBucket.entries()) {
-            const safePaths = paths.filter(Boolean);
-            if (!safePaths.length) continue;
-            const { error: removeError } = await runWithTransientFetchRetry(() => state.auth.client.storage.from(bucketName).remove(safePaths), 'Removing old media files', { attempts: 2 });
-            if (removeError) console.error('Could not delete media files:', removeError);
-        }
-
-        const { error: deleteError } = await runWithTransientFetchRetry(() => state.auth.client
-            .from('media_assets')
-            .delete()
-            .in('id', assetIds), 'Deleting old media asset rows', { attempts: 2 });
-        if (deleteError) console.error('Could not delete media asset rows:', deleteError);
     }
 
     async function deleteMediaForQuestion(questionId) {
@@ -6501,7 +6726,7 @@ MODIFICATION RULES FOR THIS APP
     // resulting in 2+ network round trips per non-flashcard question (60+ for
     // a 30-question quiz), before the actual delete could begin.
     // Keep the media safety scan, but fetch each detail type in bounded batches.
-    async function getQuizMediaReferences(quizId, onProgress = null) {
+    async function getQuizMediaReferences(quizId, onProgress = null, options = {}) {
         const refs = new Set();
         if (!state.auth.client || !quizId) return refs;
 
@@ -6575,6 +6800,11 @@ MODIFICATION RULES FOR THIS APP
             loadDetailMedia('multiple_choice_questions', 'question_id, options_json',
                 optionIds, ['options_json'], 'Loading question option media for quiz delete', { optionalOptionsJson: true })
         ]);
+        // Phase 24A.5l: the predelete scan has already confirmed these IDs.
+        // Reuse them to purge local handwritten-card caches AFTER remote deletion.
+        if (options.handwritingQuestionIds instanceof Set) {
+            flashcardIds.forEach(id => options.handwritingQuestionIds.add(normalizeSheetText(id)));
+        }
         return refs;
     }
 
@@ -6675,6 +6905,7 @@ MODIFICATION RULES FOR THIS APP
 
 
     function setStudioFlashcardTermImageState(dataUrl = '', label = 'No term image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
+        const newHandwrittenAttachment = state.auth.handwrittenPendingImageLayout?.side === 'term';
         if (state.auth.handwrittenFlashcardEnabled && normalizeSheetText(dataUrl) && state.auth.handwrittenPendingImageLayout?.side === 'term') {
             const pending = state.auth.handwrittenPendingImageLayout;
             // Phase 23F.32.3: image attachment/layout never destroys vector ink.
@@ -6687,7 +6918,21 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioFlashcardTermImageLabel = label;
         if (state.auth.handwrittenFlashcardEnabled) {
             const row = getCurrentHandwrittenFlashcardRow();
-            if (row) row.term_image_url = state.auth.studioFlashcardTermImageDataUrl;
+            if (row) {
+                row.term_image_url = state.auth.studioFlashcardTermImageDataUrl;
+                if (newHandwrittenAttachment || !state.auth.studioFlashcardTermImageDataUrl) {
+                    row.term_image_placement = null;
+                    row.term_free_image_pending = !!(newHandwrittenAttachment && state.auth.studioFlashcardTermImageDataUrl);
+                }
+                // Phase 24A.5q: a newly attached REGULAR upload starts with its
+                // bounding box active; Saved Image diagrams never enter this path.
+                if (newHandwrittenAttachment && row.term_free_image_pending
+                    && !getHandwrittenSideSavedImageSignature(row, 'term')
+                    && getHandwrittenSideKey() === 'term') {
+                    state.auth.handwrittenImageTransformMode = true;
+                    state.auth.handwrittenFlashcardPointer = null;
+                }
+            }
         }
         if (labels !== undefined) {
             state.auth.studioFlashcardTermImageLabels = normalizeDiagramLabels(labels || []);
@@ -6716,6 +6961,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function setStudioFlashcardDefinitionImageState(dataUrl = '', label = 'No definition image selected.', labels = undefined, drawStrokes = undefined, metadata = undefined) {
+        const newHandwrittenAttachment = state.auth.handwrittenPendingImageLayout?.side === 'definition';
         if (state.auth.handwrittenFlashcardEnabled && normalizeSheetText(dataUrl) && state.auth.handwrittenPendingImageLayout?.side === 'definition') {
             const pending = state.auth.handwrittenPendingImageLayout;
             // Phase 23F.32.3: image attachment/layout never destroys vector ink.
@@ -6728,7 +6974,20 @@ MODIFICATION RULES FOR THIS APP
         state.auth.studioFlashcardDefinitionImageLabel = label;
         if (state.auth.handwrittenFlashcardEnabled) {
             const row = getCurrentHandwrittenFlashcardRow();
-            if (row) row.definition_image_url = state.auth.studioFlashcardDefinitionImageDataUrl;
+            if (row) {
+                row.definition_image_url = state.auth.studioFlashcardDefinitionImageDataUrl;
+                if (newHandwrittenAttachment || !state.auth.studioFlashcardDefinitionImageDataUrl) {
+                    row.definition_image_placement = null;
+                    row.definition_free_image_pending = !!(newHandwrittenAttachment && state.auth.studioFlashcardDefinitionImageDataUrl);
+                }
+                // Only activate image transformation for newly uploaded regular media.
+                if (newHandwrittenAttachment && row.definition_free_image_pending
+                    && !getHandwrittenSideSavedImageSignature(row, 'definition')
+                    && getHandwrittenSideKey() === 'definition') {
+                    state.auth.handwrittenImageTransformMode = true;
+                    state.auth.handwrittenFlashcardPointer = null;
+                }
+            }
         }
         if (labels !== undefined) {
             state.auth.studioFlashcardDefinitionImageLabels = normalizeDiagramLabels(labels || []);
@@ -6924,6 +7183,9 @@ MODIFICATION RULES FOR THIS APP
             timeZone: normalizeSheetText(raw.timeZone || '').slice(0, 80),
             reminderEnabled: raw.reminderEnabled === true,
             stages, everMastered: raw.everMastered === true,
+            // Phase .79: missed required windows revoke BOTH ribbons until the
+            // restarted cycle completes its Day 1 two-pass milestone.
+            ribbonResetPending: raw.ribbonResetPending === true,
             firstAt: iso(raw.firstAt),
             cycleDay: day(raw.cycleDay),
             cycleKeys: [...new Set((Array.isArray(raw.cycleKeys) ? raw.cycleKeys : [])
@@ -7032,7 +7294,17 @@ MODIFICATION RULES FOR THIS APP
     }
     function getSavedImageRibbonKind(entry) {
         if (!getSavedImageMasteryStatus(entry)) return '';
-        return getSavedImageSpacedReviewStatus(entry).mastered ? 'mastered' : 'learning';
+        const progress = getSavedImageSpacedReviewStatus(entry);
+        // Phase .80 legacy compatibility: older completed-label certificates
+        // are NOT evidence of a completed spaced-review cycle. Day 1 must
+        // have two verified passes before EITHER stripe is eligible. This is
+        // read-only: keep every saved image, pin and study record untouched.
+        if (!progress.data.stages.d1) return '';
+        // A missed required review invalidates the entire schedule. Suppress
+        // BOTH ribbons immediately, and keep them off during the restarted
+        // Day 1 until both six-hour-separated passes are complete.
+        if (progress.overdue || progress.data.ribbonResetPending) return '';
+        return progress.mastered ? 'mastered' : 'learning';
     }
     function renderSavedImageStudyRibbon(entry) {
         const kind = getSavedImageRibbonKind(entry);
@@ -7045,7 +7317,9 @@ MODIFICATION RULES FOR THIS APP
     // Phase 23F.41.65: compact progress content; the grid retains only a hidden
     // template. A single fixed-position popup is mounted at document.body on click.
     function renderSavedImageStudyProgress(entry) {
-        const progress = getSavedImageSpacedReviewStatus(entry);
+        return renderSpacedProgressStatus(getSavedImageSpacedReviewStatus(entry), entry.id);
+    }
+    function renderSpacedProgressStatus(progress, panelId) {
         const { data, current, today } = progress;
         const status = progress.mastered ? 'MASTERED' : 'LEARNING';
         const pending = progress.stages.filter(stage => !data.stages[stage.id]);
@@ -7092,7 +7366,7 @@ MODIFICATION RULES FOR THIS APP
             <div class="studio-spaced-review-bar-heading"><span class="studio-spaced-review-heading-text">${escapeHtml(heading)} — ${escapeHtml(name)}</span>${notice ? `<span class="studio-spaced-review-next-at">${escapeHtml(notice)}</span>` : ''}${isRest ? '' : `<span class="studio-spaced-review-count">${completed}/2</span>`}</div>
             ${isRest ? '' : `<div class="studio-spaced-review-track" role="progressbar" aria-label="${escapeHtml(heading)} ${escapeHtml(name)}" aria-valuemin="0" aria-valuemax="2" aria-valuenow="${completed}"><span class="studio-spaced-review-fill" style="width:${completed * 50}%"></span></div>`}
         </div>`;
-        return `<div class="studio-spaced-review-progress" hidden data-study-progress-panel="${escapeHtml(entry.id)}">
+        return `<div class="studio-spaced-review-progress" hidden data-study-progress-panel="${escapeHtml(panelId)}">
             <div class="studio-spaced-review-status ${progress.mastered ? 'is-mastered' : ''}">${status}</div>
             ${buildBar('Current', currentName, count, rest, takeAgainNotice)}
             ${nextStage ? buildBar('Next', nextStage.label.replace(/ · Mastery milestone$/, ''), 0, nextStage.rest === true) : ''}
@@ -7127,6 +7401,14 @@ MODIFICATION RULES FOR THIS APP
         activeSavedImageProgressPopup = null;
         activeSavedImageProgressButton = null;
     }
+    function getSpacedProgressPopupSource(panelId) {
+        if (panelId.startsWith('quiz:')) {
+            const quiz = state.auth.managedQuizzes.find(item => item.id === panelId.slice(5));
+            return quiz ? { markup: renderQuizSpacedStudyProgress(quiz), nextAt: getQuizSpacedStatus(quiz).nextAt } : null;
+        }
+        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
+        return entry ? { markup: renderSavedImageStudyProgress(entry), nextAt: getSavedImageSpacedReviewStatus(entry).nextAt } : null;
+    }
     function toggleSavedImageStudyProgress(panelId, grid) {
         const button = Array.from(grid?.querySelectorAll('[data-study-progress]') || [])
             .find(el => el.dataset.studyProgress === panelId);
@@ -7143,8 +7425,7 @@ MODIFICATION RULES FOR THIS APP
         popup.setAttribute('aria-label', 'Study progress');
         // Refresh the snapshot at click time so a long-open Saved Images page
         // never shows an old 6-hour eligibility message.
-        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
-        const freshMarkup = entry ? renderSavedImageStudyProgress(entry) : '';
+        const freshMarkup = getSpacedProgressPopupSource(panelId)?.markup || '';
         if (freshMarkup) {
             const template = document.createElement('template');
             template.innerHTML = freshMarkup;
@@ -7176,8 +7457,7 @@ MODIFICATION RULES FOR THIS APP
         if (!activeSavedImageProgressPopup) return;
         const now = new Date();
         const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-        const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
-        const nextAt = entry ? getSavedImageSpacedReviewStatus(entry, now).nextAt : null;
+        const nextAt = getSpacedProgressPopupSource(panelId)?.nextAt || null;
         let refreshAt = midnight.getTime();
         if (nextAt && nextAt.getTime() > now.getTime()) refreshAt = Math.min(refreshAt, nextAt.getTime());
         savedImageProgressRefreshTimer = setTimeout(() => {
@@ -7185,10 +7465,10 @@ MODIFICATION RULES FOR THIS APP
                 closeSavedImageStudyProgressPopup();
                 return;
             }
-            const freshEntry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
-            if (!freshEntry) { closeSavedImageStudyProgressPopup(); return; }
+            const freshMarkup = getSpacedProgressPopupSource(panelId)?.markup;
+            if (!freshMarkup) { closeSavedImageStudyProgressPopup(); return; }
             const template = document.createElement('template');
-            template.innerHTML = renderSavedImageStudyProgress(freshEntry);
+            template.innerHTML = freshMarkup;
             activeSavedImageProgressPopup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || '';
             const rect = activeSavedImageProgressButton.getBoundingClientRect();
             const popup = activeSavedImageProgressPopup;
@@ -7236,7 +7516,10 @@ MODIFICATION RULES FOR THIS APP
         const today = status.today;
         if (!data.startedOn || status.initialMiss) {
             const reminderEnabled = data.reminderEnabled;
-            data = { ...normalizeSavedImageSpacedReview(), reminderEnabled, startedOn: today,
+            // Only an overdue *existing* cycle is penalized; a brand-new
+            // image/first-ever cycle keeps the familiar learning eligibility.
+            const ribbonResetPending = status.initialMiss || data.ribbonResetPending;
+            data = { ...normalizeSavedImageSpacedReview(), reminderEnabled, ribbonResetPending, startedOn: today,
                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
                 signature: getSavedImageUniqueMasterySignature(entry) };
         }
@@ -7258,6 +7541,9 @@ MODIFICATION RULES FOR THIS APP
             data.stages[stage.id] = { firstAt: data.firstAt, secondAt: stamp };
             data.firstAt = '';
             if (stage.id === 'd4') data.everMastered = true;
+            // Re-earn the LEARNING ribbon only after restarting Day 1 with
+            // both required passes; progress and saved label credit are kept.
+            if (stage.id === 'd1') data.ribbonResetPending = false;
         }
         return data;
     }
@@ -8149,14 +8435,18 @@ MODIFICATION RULES FOR THIS APP
         const parsed = readStudioSavedImageJsonStorage(key, []);
         return (Array.isArray(parsed) ? parsed : []).map(item => ({
             syncKey: normalizeSheetText(item?.syncKey || item?.key || ''),
-            deletedAt: normalizeSheetText(item?.deletedAt || '') || new Date().toISOString()
+            deletedAt: normalizeSheetText(item?.deletedAt || '') || new Date().toISOString(),
+            // Phase 24A.5i: durable media reference snapshot, captured BEFORE
+            // the tombstone discards the Saved Image payload.
+            mediaRefs: Array.isArray(item?.mediaRefs)
+                ? [...new Set(item.mediaRefs.filter(isSupabaseMediaReference))] : [],
+            tombstoneSynced: item?.tombstoneSynced === true
         })).filter(item => item.syncKey);
     }
 
     function saveStudioSavedImagePendingDeletes(items = [], userId = getStudioSavedImageSyncUserId()) {
         const key = getStudioSavedImageUserStorageKey(STUDIO_SAVED_IMAGE_PENDING_DELETE_KEY_PREFIX, userId);
-        if (!key) return;
-        writeStudioSavedImageJsonStorage(key, items);
+        return !!key && writeStudioSavedImageJsonStorage(key, items);
     }
 
     function markStudioSavedImagePendingUpsert(entry = {}) {
@@ -8173,13 +8463,28 @@ MODIFICATION RULES FOR THIS APP
     function markStudioSavedImagePendingDelete(entry = {}) {
         const userId = getStudioSavedImageSyncUserId();
         const syncKey = getStudioSavedImageSyncKey(entry);
-        if (!userId || !syncKey || state.auth.studioSavedImageSync?.applyingRemote) return;
+        if (!userId || !syncKey) {
+            if (collectSupabaseMediaReferences(entry).size) {
+                throw new Error('Sign in before deleting this Saved Image: media cleanup cannot be tracked while offline.');
+            }
+            return;
+        }
+        if (state.auth.studioSavedImageSync?.applyingRemote) return;
         const keys = getStudioSavedImagePendingUpsertKeys(userId);
         keys.delete(syncKey);
         saveStudioSavedImagePendingUpsertKeys(keys, userId);
+        const previous = getStudioSavedImagePendingDeletes(userId).find(item => item.syncKey === syncKey);
+        const mediaRefs = [...new Set([
+            ...(previous?.mediaRefs || []), ...collectSupabaseMediaReferences(entry)
+        ])];
         const deletes = getStudioSavedImagePendingDeletes(userId).filter(item => item.syncKey !== syncKey);
-        deletes.push({ syncKey, deletedAt: new Date().toISOString() });
-        saveStudioSavedImagePendingDeletes(deletes, userId);
+        deletes.push({ syncKey, deletedAt: previous?.deletedAt || new Date().toISOString(),
+            mediaRefs, tombstoneSynced: previous?.tombstoneSynced === true });
+        // Do not hide the diagram locally if the media cleanup checkpoint
+        // cannot be saved. Otherwise the orphan cannot be reconciled later.
+        if (!saveStudioSavedImagePendingDeletes(deletes, userId)) {
+            throw new Error('Could not save the deletion checkpoint. Saved Image was not deleted; check browser storage.');
+        }
     }
 
     function isStudioSavedImageRemoteSchemaError(error) {
@@ -8439,19 +8744,250 @@ MODIFICATION RULES FOR THIS APP
         return { entries, ok: true };
     }
 
+    // Phase 24A.5k — GLOBAL Saved Image removal detaches matching flashcard
+    // image slots BEFORE the source is tombstoned. This operation is deliberately
+    // conservative: any unhandled reference or failed read/write halts the
+    // deletion and leaves physical media untouched. A partially completed
+    // detach can be retried; no quiz, question, or flashcard row is deleted.
+    async function detachFlashcardsFromDeletedSavedImage(item, userId) {
+        const refs = new Set((item.mediaRefs || []).filter(isSupabaseMediaReference).map(ref => ref.toLowerCase()));
+        if (!refs.size) return { detached: 0 };
+        if (!state.auth.client || state.auth.user?.id !== userId) throw new Error('Account changed during global Saved Image deletion.');
+        if (state.auth.studioHasUnsavedChanges || (state.auth.studioQuestionDrafts?.size || 0)) {
+            throw new Error('Finish saving quiz or flashcard edits before globally deleting a shared image.');
+        }
+        if (getStudioSavedImagePendingUpsertKeys(userId).size) {
+            throw new Error('Other Saved Images have unsynced changes; global deletion will retry later.');
+        }
+        const [saved, quizzes] = await Promise.all([
+            cleanupReadAll('saved_images','id,payload',q=>q.eq('user_id',userId).is('deleted_at',null)),
+            cleanupReadAll('quizzes','id,user_id,description',q=>q.eq('user_id',userId))
+        ]);
+        const containsTarget = value => {
+            const found = collectSupabaseMediaReferences(value);
+            return [...found].some(ref => refs.has(ref.toLowerCase()));
+        };
+        for (const source of saved) {
+            if (normalizeSheetText(source.id) === item.syncKey) continue;
+            if (containsTarget(source.payload)) {
+                throw new Error('Another active Saved Image uses this media. Global detach is blocked to protect its attachments.');
+            }
+        }
+        if (quizzes.some(quiz => containsTarget(quiz.description))) {
+            throw new Error('A quiz description contains this shared media; it cannot be safely detached automatically.');
+        }
+        const questions = [];
+        for (let i = 0; i < quizzes.length; i += 60) {
+            const ids = quizzes.slice(i,i+60).map(row => row.id);
+            if (!ids.length) continue;
+            const batch = await cleanupReadAll('questions','*',q=>q.in('quiz_id',ids));
+            questions.push(...batch);
+        }
+        for (const question of questions) {
+            if (containsTarget(question)) {
+                throw new Error('A quiz question directly references this media; automatic global deletion is blocked to protect its content.');
+            }
+        }
+        const questionIds = questions.map(row => row.id);
+        const detailTables = ['flashcard_questions','multiple_choice_questions','classify_questions','hierarchy_questions'];
+        const flashes = [];
+        for (const table of detailTables) {
+            for (let i = 0; i < questionIds.length; i += 75) {
+                const ids = questionIds.slice(i,i+75);
+                const batch = await cleanupReadAll(table,'*',q=>q.in('question_id',ids));
+                for (const row of batch) {
+                    if (table === 'flashcard_questions') flashes.push(row);
+                    else if (containsTarget(row)) {
+                        throw new Error(`${table} references the shared image; global deletion is blocked until that format can be safely detached.`);
+                    }
+                }
+            }
+        }
+        const updates = [];
+        for (const row of flashes) {
+            const term = refs.has(normalizeSheetText(row.term_image_url).toLowerCase());
+            const definition = refs.has(normalizeSheetText(row.definition_image_url).toLowerCase());
+            if (!term && !definition) {
+                if (containsTarget(row)) throw new Error('A flashcard contains the shared image in an unsupported field; source deletion blocked.');
+                continue;
+            }
+            const patch = {};
+            for (const side of ['term','definition']) {
+                if (!(side === 'term' ? term : definition)) continue;
+                const parsed = parseStoredFlashcardSideContent(row[`${side}_html`] || '');
+                // Keep actual typed/handwritten card text, content mode, and
+                // other side untouched. Discard only this side's image metadata.
+                patch[`${side}_image_url`] = '';
+                patch[`${side}_html`] = buildStoredFlashcardSideContent(parsed.html, {
+                    imagePresent: false, contentMode: parsed.contentMode
+                });
+            }
+            if (containsTarget({...row,...patch})) {
+                throw new Error('Flashcard has additional shared-media references outside the image slot; source deletion blocked.');
+            }
+            updates.push({ questionId: row.question_id, patch, term, definition });
+        }
+        // All reads and ambiguity checks finish before the first write.
+        for (const update of updates) {
+            if (state.auth.user?.id !== userId) throw new Error('Account changed before flashcard detach.');
+            const result = await state.auth.client.from('flashcard_questions')
+                .update(update.patch).eq('question_id',update.questionId).select('question_id,term_image_url,definition_image_url,term_html,definition_html');
+            if (result.error || !Array.isArray(result.data) || result.data.length !== 1) {
+                throw new Error(`Failed to detach flashcard ${update.questionId}: ${result.error?.message || 'update not confirmed'}`);
+            }
+            if (containsTarget(result.data[0])) throw new Error(`Flashcard ${update.questionId} still references deleted-source media.`);
+            // Synchronize this tab's in-memory editing cache to prevent a later
+            // ordinary save from silently re-attaching the globally deleted file.
+            const localRow = (state.auth.studioQuizQuestions || []).find(row => normalizeSheetText(row.id) === normalizeSheetText(update.questionId));
+            if (localRow) {
+                for (const side of ['term','definition']) {
+                    if (!update[side]) continue;
+                    localRow[`${side}_image_url`] = '';
+                    localRow[`${side}_image_present`] = false;
+                    localRow[`${side}_image_labels`] = [];
+                    localRow[`${side}_image_draw_strokes`] = [];
+                    localRow[`${side}_image_saved_signature`] = '';
+                    localRow[`${side}_image_reuse_signature`] = '';
+                    localRow[`${side}_html`] = update.patch[`${side}_html`];
+                }
+            }
+            if (normalizeSheetText(state.auth.editingQuestionId) === normalizeSheetText(update.questionId)) {
+                if (update.term) setStudioFlashcardTermImageState('', 'No term image selected.', [], []);
+                if (update.definition) setStudioFlashcardDefinitionImageState('', 'No definition image selected.', [], []);
+            }
+        }
+        // Re-read all modified rows; a stale/failed update is not authorization
+        // to tombstone the Saved Image or remove any physical media.
+        for (const update of updates) {
+            const result = await state.auth.client.from('flashcard_questions')
+                .select('question_id,term_image_url,definition_image_url,term_html,definition_html')
+                .eq('question_id',update.questionId).maybeSingle();
+            if (result.error || !result.data || containsTarget(result.data) ||
+                (update.term && normalizeSheetText(result.data.term_image_url)) ||
+                (update.definition && normalizeSheetText(result.data.definition_image_url))) {
+                throw new Error(`Flashcard ${update.questionId} detach could not be verified; source deletion blocked.`);
+            }
+        }
+        return {detached:updates.length};
+    }
+
+    // Phase 24A.5i — permanent Saved Image physical cleanup.
+    // Fail closed: ALL remaining live Saved Images, quizzes, questions, and
+    // question-type detail rows must be readable before deleting even one byte.
+    // Never remove a shared media asset still used by any of those records.
+    async function cleanupTombstonedSavedImageMedia(item, userId) {
+        const refs = [...new Set((item.mediaRefs || []).filter(isSupabaseMediaReference))];
+        if (!refs.length) return { removed: 0, protected: 0 };
+        if (!state.auth.client || state.auth.user?.id !== userId) throw new Error('Account changed during media cleanup.');
+        if (getStudioSavedImagePendingUpsertKeys(userId).size) throw new Error('Other Saved Images have unsynced changes.');
+        const { data: tombstone, error: tombstoneError } = await state.auth.client
+            .from(STUDIO_SAVED_IMAGE_REMOTE_TABLE).select('id,deleted_at')
+            .eq('user_id', userId).eq('id', item.syncKey).maybeSingle();
+        if (tombstoneError || !tombstone?.deleted_at) throw new Error('Saved Image deletion not confirmed in Supabase.');
+
+        const [images, quizzes, questions, allAssets] = await Promise.all([
+            cleanupReadAll('saved_images','id,payload',q=>q.eq('user_id',userId).is('deleted_at',null)),
+            cleanupReadAll('quizzes','*',q=>q.eq('user_id',userId)),
+            cleanupReadAll('questions','*'),
+            cleanupReadAll('media_assets','id,user_id,bucket_name,object_path,quiz_id,question_id',q=>q.eq('user_id',userId))
+        ]);
+        const protectedRecords = [...images, ...quizzes, ...questions];
+        const activeQuestionIds = new Set(questions.map(row=>normalizeSheetText(row.id)));
+        for (const table of ['flashcard_questions','multiple_choice_questions','classify_questions','hierarchy_questions']) {
+            const ids = [...activeQuestionIds];
+            for (let i=0;i<ids.length;i+=75) {
+                const { data, error } = await state.auth.client.from(table).select('*').in('question_id',ids.slice(i,i+75));
+                if (error) throw new Error(`Cannot verify ${table} before media deletion: ${error.message}`);
+                protectedRecords.push(...(data || []));
+            }
+        }
+        // Include local/unsynced views as extra protection, never as evidence
+        // that a remotely referenced image is unused.
+        getStudioSavedImageLibraryForPicker().forEach(entry => protectedRecords.push(entry));
+        const {raw:protectedText,ids:protectedIds}=cleanupReferencedIdsFromText(protectedRecords);
+        const quizIds=new Set(quizzes.map(row=>normalizeSheetText(row.id)));
+        const assetIds=new Set(refs.map(getSupabaseMediaAssetId).filter(Boolean));
+        const candidates=allAssets.filter(asset=>assetIds.has(normalizeSheetText(asset.id)));
+        const inventory=await cleanupPhysicalInventory(userId,allAssets);
+        let removed=0, protectedCount=0;
+        for (const asset of candidates) {
+            const path=normalizeSheetText(asset.object_path);
+            const bucket=normalizeSheetText(asset.bucket_name);
+            const key=`${bucket}|${path}`;
+            if (!path.startsWith(`${userId}/${asset.id}/`) ||
+                ![CONFIG.mediaAssets.bucketName,CONFIG.cloudflareR2.providerBucketName].includes(bucket)) {
+                // Path/provider ambiguity is NOT an authorization to delete.
+                protectedCount++;continue;
+            }
+            if (cleanupProtectedMedia(asset,protectedText,protectedIds,activeQuestionIds,quizIds) ||
+                allAssets.some(other=>other.id!==asset.id && other.object_path===path && other.bucket_name===bucket)) {
+                protectedCount++;continue;
+            }
+            // An object that is already physically absent only needs its stale
+            // tracking record reconciled; never directly delete storage.objects.
+            if (inventory.has(key)) {
+                if (isCloudflareR2Asset(asset)) {
+                    if (!isCloudflareR2Configured()) throw new Error('R2 provider unavailable.');
+                    await deleteCloudflareR2Objects([path]);
+                } else {
+                    const response=await state.auth.client.storage.from(bucket).remove([path]);
+                    if (response.error) throw new Error(`Storage removal failed: ${response.error.message}`);
+                }
+            }
+            const after=await cleanupPhysicalInventory(userId,allAssets);
+            if (after.has(key)) throw new Error(`Storage file ${asset.id} still exists after removal.`);
+            const { data: cleared, error }=await state.auth.client.from('media_assets').delete()
+                .eq('user_id',userId).eq('id',asset.id).eq('object_path',path).select('id');
+            if (error || !Array.isArray(cleared) || cleared.length!==1) {
+                throw new Error(`Physical file ${asset.id} is absent but its tracking row needs reconciliation: ${error?.message||'no confirmed deletion'}`);
+            }
+            deleteCachedMediaSignedUrl(asset.id);
+            removed++;
+        }
+        return {removed,protected:protectedCount};
+    }
+
     async function flushStudioSavedImagePendingDeletes(userId = getStudioSavedImageSyncUserId()) {
         const pending = getStudioSavedImagePendingDeletes(userId);
         if (!pending.length) return true;
         const remaining = [];
         for (const item of pending) {
-            const result = await upsertStudioSavedImageRemoteEntry({ id: item.syncKey, imageValue: 'deleted-placeholder' }, {
-                syncKey: item.syncKey,
-                deletedAt: item.deletedAt
-            });
-            if (!result.ok) remaining.push(item);
+            if (!item.tombstoneSynced) {
+                try {
+                    const detachResult = await detachFlashcardsFromDeletedSavedImage(item,userId);
+                    if (detachResult.detached) console.info(`[Saved Images] Detached shared media from ${detachResult.detached} flashcard(s) before global deletion.`);
+                } catch (error) {
+                    const message=`Global Saved Image deletion deferred: ${error.message||error}`;
+                    cleanupKeepStatus(message);
+                    console.warn(message);
+                    remaining.push(item);
+                    continue;
+                }
+                const result = await upsertStudioSavedImageRemoteEntry({ id: item.syncKey, imageValue: 'deleted-placeholder' }, {
+                    syncKey: item.syncKey, deletedAt: item.deletedAt
+                });
+                if (!result.ok) {remaining.push(item);continue;}
+                item.tombstoneSynced = true;
+            }
+            // Persist successful tombstone acknowledgment BEFORE attempting
+            // Storage deletion, so a restart can safely resume this work.
+            if (!saveStudioSavedImagePendingDeletes([...remaining,item,...pending.slice(pending.indexOf(item)+1)],userId)) {
+                throw new Error('Cannot persist physical-media cleanup checkpoint; no Storage files were deleted.');
+            }
+            try {
+                const result=await cleanupTombstonedSavedImageMedia(item,userId);
+                if (item.mediaRefs.length) {
+                    console.info(`[Saved Images] Physical cleanup: ${result.removed} verified file(s) removed, ${result.protected} shared file(s) protected.`);
+                }
+            } catch (error) {
+                remaining.push(item);
+                const message=`Saved Image was deleted, but physical media cleanup is pending: ${error.message||error}`;
+                console.warn(message);
+                cleanupKeepStatus(message);
+            }
         }
-        saveStudioSavedImagePendingDeletes(remaining, userId);
-        return remaining.length === 0;
+        saveStudioSavedImagePendingDeletes(remaining,userId);
+        return remaining.length===0;
     }
 
     async function flushStudioSavedImagePendingUpserts(userId = getStudioSavedImageSyncUserId()) {
@@ -8517,6 +9053,16 @@ MODIFICATION RULES FOR THIS APP
             await flushStudioSavedImagePendingDeletes(userId);
             await migrateLegacyStudioSavedImagesToRemote(firstIndexLoad.rows, userId);
             await flushStudioSavedImagePendingUpserts(userId);
+            try {
+                if (readPendingQuizMediaCleanup(userId).length) {
+                    flushPendingQuizMediaCleanup(userId).catch(error => {
+                        console.warn('Queued quiz media cleanup could not resume; checkpoint retained:', error);
+                    });
+                }
+            } catch (error) {
+                // A damaged device-local checkpoint must not block Saved Images synchronization.
+                console.warn('Quiz media checkpoint needs attention; Saved Images sync continues:', error);
+            }
 
             let remoteIndexRows = firstIndexLoad.rows;
             if (hadPendingDeletes || hadPendingUpserts || migrationWasPending) {
@@ -8804,6 +9350,8 @@ MODIFICATION RULES FOR THIS APP
         return true;
     }
 
+    // Phase 24A.5i: media refs are captured before this irreversible local
+    // removal and reconciled only after remote tombstone acknowledgment.
     // Phase 23F.41.38: all Saved Images delete entry points share the same
     // explicit confirmation. Cancellation must not touch local/remote records.
     function confirmAndRemoveStudioSavedImageEntryById(entryId = '') {
@@ -8812,7 +9360,7 @@ MODIFICATION RULES FOR THIS APP
         if (!entry) return 'missing';
         const metadata = normalizeDiagramMetadata(entry.metadata || {});
         const name = normalizeSheetText(metadata.diagramName || metadata.subjectName || entry.fileName) || 'this diagram';
-        const approved = window.confirm(`Delete saved image “${name}”?\n\nThis removes its saved angles, labels, and drawings from Saved Images. Existing flashcards will not be changed.\n\nThis cannot be undone.`);
+        const approved = window.confirm(`Delete saved image “${name}”?\n\nThis removes its saved angles, labels, and drawings from Saved Images. Any linked flashcard images will be cleared, but the cards and quizzes will remain. Unshared physical files will be deleted after Supabase confirms the changes.\n\nThis cannot be undone.`);
         if (!approved) return 'cancelled';
         return removeStudioSavedImageEntryById(safeId) ? 'deleted' : 'missing';
     }
@@ -9125,8 +9673,7 @@ MODIFICATION RULES FOR THIS APP
                     return;
                 }
                 if (event.target.closest('[data-saved-image-picker-clear]')) {
-                    clearStudioSavedImageLibrary();
-                    setCreatorStatus('Saved Images collection emptied. Existing flashcard images were not removed.', 'success');
+                    setCreatorStatus('Bulk Saved Images deletion is temporarily disabled until quiz and flashcard image unlinking is verified.', 'error');
                     renderStudioSavedImagePicker();
                     return;
                 }
@@ -9164,7 +9711,7 @@ MODIFICATION RULES FOR THIS APP
                     const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
                     if (result === 'cancelled') return;
                     if (result === 'deleted') {
-                        setCreatorStatus('Saved image removed from Saved Images. Existing flashcards were not changed.', 'success');
+                        setCreatorStatus('Saved Image deletion queued. Linked flashcard images will be detached before physical cleanup; the cards and quizzes remain.', 'success');
                     } else {
                         setCreatorStatus('That saved image could not be found.', 'error');
                     }
@@ -9382,6 +9929,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function renderDiagramCreatorSavedImages() {
+        autoLoadCleanupKeepSelections();
         closeSavedImageStudyProgressPopup();
         if (!elements.diagramCreatorImageGrid) return;
         refreshSavedImageOrganizationFilterSelects();
@@ -9454,6 +10002,7 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-diagram-library-main-actions">
                       <button type="button" class="auth-action-btn auth-primary-btn studio-diagram-library-edit" data-diagram-creator-edit="${escapeHtml(entry.id)}">Edit</button>
                       <button type="button" class="auth-action-btn auth-secondary-btn studio-diagram-library-review" data-diagram-creator-review="${escapeHtml(entry.id)}" aria-label="Review ${escapeHtml(title)}">Review</button>
+                      ${renderCleanupKeepButton('saved_image', getStudioSavedImageSyncKey(entry))}
                     </div>
                     <span class="studio-study-icon-column"><button type="button" class="studio-diagram-library-delete" data-diagram-creator-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>${renderSavedImageReminderToggle(entry,'diagram-creator')}</span>
                   </div>
@@ -9466,6 +10015,7 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    // Restored Phase 24A.5l saved-image filter reset function (startup-critical).
     function clearDiagramCreatorSavedImageFilters() {
         document.querySelectorAll('[data-study-quick-filters="diagram"] [data-study-quick-filter]').forEach(button => button.setAttribute('aria-pressed', 'false'));
         [
@@ -9493,7 +10043,6 @@ MODIFICATION RULES FOR THIS APP
     }
 
 
-    // ================= PHASE 22MZ MULTI-ANGLE CREATOR =================
     function getMultiAngleCreatorState() {
         if (!state.auth.multiAngleCreator || typeof state.auth.multiAngleCreator !== 'object') state.auth.multiAngleCreator = {};
         const draft = state.auth.multiAngleCreator;
@@ -9514,6 +10063,7 @@ MODIFICATION RULES FOR THIS APP
         draft.editorSwitching = draft.editorSwitching === true;
         draft.flattenWorkflowPending = draft.flattenWorkflowPending === true;
         draft.singleImageWorkflow = draft.singleImageWorkflow === true;
+        draft.savedSingleEntry = draft.savedSingleEntry === true;
         return draft;
     }
 
@@ -9551,7 +10101,8 @@ MODIFICATION RULES FOR THIS APP
             saving: false,
             editorSwitching: false,
             flattenWorkflowPending: false,
-            singleImageWorkflow: false
+            singleImageWorkflow: false,
+            savedSingleEntry: false
         };
         elements.multiAngleCreatorPanel?.classList.add('hidden');
         elements.multiAngleCreatorPanel?.setAttribute('aria-hidden', 'true');
@@ -9610,6 +10161,9 @@ MODIFICATION RULES FOR THIS APP
                     canvasWidth: angle.canvasWidth,
                     canvasHeight: angle.canvasHeight,
                     exportFormat: angle.exportFormat,
+                    exportQuality: angle.exportQuality,
+                    exportTargetKB: angle.exportTargetKB,
+                    conversionDirty: angle.conversionDirty === true,
                     setupLocked: angle.setupLocked === true,
                     labels: normalizeDiagramLabels(isActive ? editor.labels : angle.labels || []),
                     labelSize: normalizeDiagramLabelSize(isActive ? editor.labelSize : angle.labelSize),
@@ -9783,8 +10337,14 @@ MODIFICATION RULES FOR THIS APP
             canvasHeight: 0,
             canvasDirty: false,
             setupLocked: existing.setupLocked === true,
+            // Previously stored lossless WebP images remain intact; only the removed
+            // output choice is normalized. Loading must not trigger a conversion.
             exportFormat: ['webp', 'jpeg', 'png'].includes(existing.exportFormat) ? existing.exportFormat : 'webp',
             exportQuality: Math.max(0.6, Math.min(1, Number(existing.exportQuality) || 0.88)),
+            exportTargetKB: Math.max(0, Math.min(3072, Math.round(Number(existing.exportTargetKB) || 0))),
+            conversionDirty: false,
+            pendingConvertedValue: '',
+            pendingConversionBlob: null,
             background: normalizeMultiAngleBackgroundColor(existing.background || getMultiAngleCreatorState().canvas.background),
             transparentBackground: existing.transparentBackground === true,
             currentBytes: 0,
@@ -9920,7 +10480,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function getMultiAngleEstimateKey(angle) {
         return JSON.stringify([angle.id, angle.sourceValue?.length, angle.editedValue?.length, angle.canvasWidth, angle.canvasHeight, angle.background, angle.transparentBackground,
-            angle.exportFormat, angle.exportQuality, normalizeMultiAngleFraming(angle.framing || {})]);
+            angle.exportFormat, angle.exportQuality, angle.exportTargetKB, normalizeMultiAngleFraming(angle.framing || {})]);
     }
 
     function getMultiAngleExportSettings(angle) {
@@ -9928,17 +10488,54 @@ The deletion becomes permanent when you save the diagram.`);
         return {
             format,
             mime: format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp',
-            quality: Math.max(0.6, Math.min(1, Number(angle?.exportQuality) || 0.88))
+            quality: Math.max(0.6, Math.min(1, Number(angle?.exportQuality) || 0.88)),
+            targetBytes: Math.max(0, Math.min(3072, Math.round(Number(angle?.exportTargetKB) || 0))) * 1024
         };
     }
 
     async function encodeMultiAngleSelectedFormat(canvas, angle) {
         const settings = getMultiAngleExportSettings(angle);
-        const blob = await studioSavedImageCanvasToBlob(canvas, settings.mime, settings.quality);
+        let blob;
+        if (settings.targetBytes && ['webp','jpeg'].includes(settings.format)) {
+            // Target KB is a ceiling, never a promise of exact bytes; do not go below quality 60.
+            let low = 60, high = Math.round(settings.quality * 100), selected = null;
+            while (low <= high) {
+                const mid = Math.floor((low + high) / 2);
+                const candidate = await studioSavedImageCanvasToBlob(canvas, settings.mime, mid / 100);
+                if (candidate.type !== settings.mime) throw new Error('Requested image encoder is unsupported.');
+                if (candidate.size <= settings.targetBytes) { selected = candidate; low = mid + 1; }
+                else high = mid - 1;
+            }
+            if (!selected) throw new Error(`This image cannot reach the ${Math.round(settings.targetBytes / 1024)} KB target at quality 60% or higher without resizing. Nothing was changed.`);
+            blob = selected;
+        } else blob = await studioSavedImageCanvasToBlob(canvas, settings.mime, settings.quality);
         if (normalizeSheetText(blob?.type).toLowerCase() !== settings.mime) {
             throw new Error(`This browser could not create ${settings.format.toUpperCase()} files. Select another format.`);
         }
         return blob;
+    }
+
+    function paintExistingAngleForConversion(angle) {
+        if (!angle?.setupLocked || !angle.runtimeImage) throw new Error('Saved image pixels are unavailable. No file was changed.');
+        const width = Number(angle.naturalWidth), height = Number(angle.naturalHeight);
+        if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || width > 16384 || height > 16384)
+            throw new Error('Invalid or unsupported saved image dimensions. Conversion blocked.');
+        if (width !== angle.runtimeImage.naturalWidth || height !== angle.runtimeImage.naturalHeight ||
+            angle.canvasWidth !== width || angle.canvasHeight !== height || angle.editedValue || angle.canvasDirty || !isMultiAngleFramingNeutral(angle))
+            throw new Error('Saved image geometry has changed. Conversion blocked to protect annotations.');
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d', { alpha: true });
+        if (!ctx) throw new Error('Image conversion canvas is unavailable.');
+        // Never use paintMultiAngleAngleToCanvas(): it intentionally reframes new images.
+        if (angle.exportFormat === 'jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,width,height); }
+        ctx.drawImage(angle.runtimeImage, 0, 0, width, height);
+        return canvas;
+    }
+
+    function mayConvertSavedAngle(angle, draft = getMultiAngleCreatorState()) {
+        // All Saved Image angles may be converted; their geometry stays permanently locked.
+        return !!(angle?.setupLocked && draft.originalEntry && !draft.saving);
     }
 
     // The output preview is transient: never persist a second full-size image.
@@ -9953,17 +10550,21 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function scheduleMultiAngleExportEstimate(angle) {
-        if (!angle || angle.setupLocked) return;
+        if (!angle || (angle.setupLocked && !mayConvertSavedAngle(angle))) return;
         clearTimeout(multiAngleEstimateTimer);
         const requestedKey = getMultiAngleEstimateKey(angle);
         // Keep the already encoded preview until a setting changes.
         if (requestedKey === angle.estimateKey && angle.estimatedBytes > 0) return;
         clearMultiAngleConvertedPreview();
         multiAngleEstimateTimer = setTimeout(async () => {
-            if (!getMultiAngleCreatorState().open || angle.setupLocked || requestedKey !== getMultiAngleEstimateKey(angle)) return;
+            if (!getMultiAngleCreatorState().open || (angle.setupLocked && !mayConvertSavedAngle(angle)) || requestedKey !== getMultiAngleEstimateKey(angle)) return;
             try {
                 const canvas = document.createElement('canvas');
-                paintMultiAngleAngleToCanvas(angle, canvas, { guides: false });
+                if (angle.setupLocked) {
+                    const preserved = paintExistingAngleForConversion(angle);
+                    canvas.width = preserved.width; canvas.height = preserved.height;
+                    canvas.getContext('2d').drawImage(preserved,0,0);
+                } else paintMultiAngleAngleToCanvas(angle, canvas, { guides: false });
                 const blob = await encodeMultiAngleSelectedFormat(canvas, angle);
                 if (requestedKey !== getMultiAngleEstimateKey(angle) || getActiveMultiAngleDraftAngle() !== angle) return;
                 if (elements.multiAngleConvertedPreview) {
@@ -10007,6 +10608,28 @@ The deletion becomes permanent when you save the diagram.`);
         }
         draft.backgroundDirty = false;
         syncMultiAngleCreatorControls();
+        return true;
+    }
+
+    async function stageSavedAngleFormatConversions(draft) {
+        const changed = draft.angles.filter(a => a.setupLocked && a.conversionDirty);
+        if (!changed.length) return true;
+        const summary = changed.map(a => `${a.name}: ${a.naturalWidth} × ${a.naturalHeight}px → ${getMultiAngleExportSettings(a).format}`).join('\n');
+        if (!window.confirm(`Convert ${changed.length} saved angle${changed.length === 1 ? '' : 's'}?\n\n${summary}\n\nResolution and positioning are permanent and cannot be changed. Previous image files will be protected until Supabase acknowledges the replacement. Lossy compression can reduce visual detail.`)) return false;
+        const pending = [];
+        for (const angle of changed) {
+            const canvas = paintExistingAngleForConversion(angle);
+            const blob = await encodeMultiAngleSelectedFormat(canvas, angle);
+            if (blob.size > STUDY_BUNNY_IMAGE_MAX_BYTES)
+                throw new Error(`${angle.name}: ${formatMultiAngleBytes(blob.size)} exceeds the 3 MiB canonical limit. Change settings; nothing was uploaded.`);
+            const bitmap = await createImageBitmap(blob);
+            const matches = bitmap.width === canvas.width && bitmap.height === canvas.height;
+            bitmap.close?.();
+            if (!matches) throw new Error(`${angle.name}: converted image dimensions did not match. Nothing was uploaded.`);
+            pending.push({ angle, value: await studioSavedImageBlobToDataUrl(blob) });
+        }
+        // Stage only after ALL requested angles pass local encoding/geometry checks.
+        for (const item of pending) item.angle.pendingConvertedValue = item.value;
         return true;
     }
 
@@ -10081,19 +10704,29 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.textContent = draft.singleImageWorkflow ? 'Flatten & Edit Labels + Drawings' : 'Flatten, Save & Edit Labels + Drawings';
         const framing = normalizeMultiAngleFraming(angle.framing || {});
         const locked = angle.setupLocked === true;
-        if (locked || !setupVisible) clearMultiAngleConvertedPreview();
+        const canChangeFormat = !locked || !!draft.originalEntry;
+        if (!canChangeFormat || !setupVisible) clearMultiAngleConvertedPreview();
+        if (elements.multiAngleApplyFormatAllBtn) {
+            elements.multiAngleApplyFormatAllBtn.classList.toggle('hidden', !draft.originalEntry);
+            elements.multiAngleApplyFormatAllBtn.disabled = draft.saving || draft.angles.length < 2;
+        }
         if (elements.multiAngleSameDimensionsToggle) {
             elements.multiAngleSameDimensionsToggle.checked = draft.matchCanvasDimensions;
             elements.multiAngleSameDimensionsToggle.disabled = draft.saving || draft.editorSwitching || draft.flattenWorkflowPending;
         }
         if (elements.multiAngleWidthInput) { elements.multiAngleWidthInput.value = String(angle.canvasWidth || angle.naturalWidth); elements.multiAngleWidthInput.disabled = locked || draft.saving; }
         if (elements.multiAngleHeightInput) { elements.multiAngleHeightInput.value = String(angle.canvasHeight || angle.naturalHeight); elements.multiAngleHeightInput.disabled = locked || draft.saving; }
-        if (elements.multiAngleFormatSelect) { elements.multiAngleFormatSelect.value = getMultiAngleExportSettings(angle).format; elements.multiAngleFormatSelect.disabled = locked || draft.saving; }
+        if (elements.multiAngleFormatSelect) { elements.multiAngleFormatSelect.value = getMultiAngleExportSettings(angle).format; elements.multiAngleFormatSelect.disabled = !canChangeFormat || draft.saving; }
         if (elements.multiAngleQualityInput) {
             elements.multiAngleQualityInput.value = String(Math.round(getMultiAngleExportSettings(angle).quality * 100));
-            elements.multiAngleQualityInput.disabled = locked || draft.saving || angle.exportFormat === 'png';
+            elements.multiAngleQualityInput.disabled = !canChangeFormat || draft.saving || angle.exportFormat === 'png';
         }
         if (elements.multiAngleQualityValue) elements.multiAngleQualityValue.textContent = angle.exportFormat === 'png' ? 'Lossless' : `${Math.round(getMultiAngleExportSettings(angle).quality * 100)}%`;
+        if (elements.multiAngleQualityChoice) elements.multiAngleQualityChoice.classList.toggle('hidden', angle.exportFormat === 'png');
+        if (elements.multiAngleTargetSizeInput) {
+            elements.multiAngleTargetSizeInput.value = angle.exportTargetKB > 0 ? String(angle.exportTargetKB) : '';
+            elements.multiAngleTargetSizeInput.disabled = !canChangeFormat || draft.saving || !['webp','jpeg'].includes(angle.exportFormat);
+        }
         if (elements.multiAngleAutoExpandBtn) elements.multiAngleAutoExpandBtn.disabled = locked || draft.saving;
         if (elements.multiAngleResetCanvasBtn) elements.multiAngleResetCanvasBtn.disabled = locked || draft.saving;
         [elements.multiAngleScaleInput, elements.multiAngleXInput, elements.multiAngleYInput, elements.multiAngleFitBtn, elements.multiAngleCenterBtn, elements.multiAngleMatchSizeBtn, elements.multiAngleAnchorToggle, elements.multiAngleSetAnchorBtn].forEach(input => { if (input) input.disabled = locked || draft.saving; });
@@ -10103,11 +10736,11 @@ The deletion becomes permanent when you save the diagram.`);
             elements.multiAngleTransparentToggle.disabled = locked || draft.saving || angle.exportFormat === 'jpeg';
         }
         if (elements.multiAngleFlattenNotice) elements.multiAngleFlattenNotice.classList.toggle('hidden', !locked);
-        if (elements.multiAngleReplaceBtn) elements.multiAngleReplaceBtn.classList.toggle('hidden', !locked);
+        if (elements.multiAngleReplaceBtn) elements.multiAngleReplaceBtn.classList.add('hidden'); // Never replace geometry of existing saved angles.
         if (elements.multiAngleFinalBoundaryText) elements.multiAngleFinalBoundaryText.textContent = `Final canvas boundary: ${angle.canvasWidth} × ${angle.canvasHeight} px`;
         if (elements.multiAngleCurrentBytes) elements.multiAngleCurrentBytes.textContent = angle.currentBytes > 0 ? formatMultiAngleBytes(angle.currentBytes) : 'Checking…';
-        if (elements.multiAngleEstimateBytes) elements.multiAngleEstimateBytes.textContent = locked ? formatMultiAngleBytes(angle.currentBytes) : (angle.estimateKey === getMultiAngleEstimateKey(angle) && angle.estimatedBytes > 0 ? formatMultiAngleBytes(angle.estimatedBytes) : 'Calculating…');
-        if (!locked) scheduleMultiAngleExportEstimate(angle);
+        if (elements.multiAngleEstimateBytes) elements.multiAngleEstimateBytes.textContent = !canChangeFormat ? formatMultiAngleBytes(angle.currentBytes) : (angle.estimateKey === getMultiAngleEstimateKey(angle) && angle.estimatedBytes > 0 ? formatMultiAngleBytes(angle.estimatedBytes) : 'Calculating…');
+        if (canChangeFormat && setupVisible) scheduleMultiAngleExportEstimate(angle);
         if (elements.multiAngleIndicator) elements.multiAngleIndicator.textContent = `${angle.name || `Angle ${draft.activeIndex + 1}`} · ${draft.activeIndex + 1} of ${draft.angles.length}`;
         if (elements.multiAnglePositionActiveName) elements.multiAnglePositionActiveName.textContent = draft.singleImageWorkflow
             ? `${angle.name || 'Single Image'} (Single Image)`
@@ -10129,7 +10762,15 @@ The deletion becomes permanent when you save the diagram.`);
         }
         if (elements.multiAngleCanvas) {
             elements.multiAngleCanvas.classList.toggle('is-setting-anchor', draft.settingAnchor);
-            paintMultiAngleAngleToCanvas(angle, elements.multiAngleCanvas);
+            if (locked && angle.runtimeImage) {
+                // Display the exact current saved frame; never apply editable framing.
+                elements.multiAngleCanvas.width = angle.naturalWidth;
+                elements.multiAngleCanvas.height = angle.naturalHeight;
+                const ctx = elements.multiAngleCanvas.getContext('2d');
+                ctx.clearRect(0,0,angle.naturalWidth,angle.naturalHeight);
+                ctx.drawImage(angle.runtimeImage,0,0);
+                if (draft.guidesVisible) drawMultiAngleGuides(ctx,elements.multiAngleCanvas,angle);
+            } else paintMultiAngleAngleToCanvas(angle, elements.multiAngleCanvas);
         }
         if (elements.multiAnglePrevBtn) elements.multiAnglePrevBtn.disabled = draft.angles.length < 2;
         if (elements.multiAngleNextBtn) elements.multiAngleNextBtn.disabled = draft.angles.length < 2;
@@ -10139,7 +10780,12 @@ The deletion becomes permanent when you save the diagram.`);
                 ? 'A multi-angle diagram must contain at least one image.'
                 : `Delete ${angle.name || `Angle ${draft.activeIndex + 1}`}`;
         }
-        if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.disabled = draft.saving || draft.flattenWorkflowPending || !draft.angles.length;
+        if (elements.multiAngleSaveSetBtn) {
+            elements.multiAngleSaveSetBtn.textContent = draft.originalEntry ? 'Convert, Save & Edit Labels + Drawings' : (draft.singleImageWorkflow ? 'Flatten & Edit Labels + Drawings' : 'Flatten, Save & Edit Labels + Drawings');
+            elements.multiAngleSaveSetBtn.disabled = draft.saving || draft.flattenWorkflowPending || !draft.angles.length || (draft.originalEntry && !draft.angles.some(a => a.conversionDirty));
+        }
+        if (elements.multiAngleAddImagesBtn) elements.multiAngleAddImagesBtn.disabled = !!draft.originalEntry || draft.saving;
+        if (elements.multiAngleDeleteAngleBtn && draft.originalEntry) elements.multiAngleDeleteAngleBtn.disabled = true;
         if (elements.multiAngleEditAngleBtn) elements.multiAngleEditAngleBtn.disabled = draft.saving || draft.flattenWorkflowPending;
         if (elements.multiAngleToggleListBtn) {
             elements.multiAngleToggleListBtn.textContent = draft.listOpen ? 'Hide Angles' : 'Show Angles';
@@ -10265,7 +10911,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     async function loadMultiAngleSavedDiagramDraft(entry = {}) {
         const normalized = normalizeStudioSavedImageEntry(entry);
-        if (!normalized || !isMultiAngleSavedImageEntry(normalized)) return null;
+        if (!normalized) return null;
         resetMultiAngleCreatorState({ keepFileInput: true });
         const draft = getMultiAngleCreatorState();
         draft.open = true;
@@ -10277,6 +10923,7 @@ The deletion becomes permanent when you save the diagram.`);
         draft.folderId = normalizeSheetText(normalized.folderId || '');
         draft.editingEntryId = normalized.id;
         draft.originalEntry = normalized;
+        draft.savedSingleEntry = !isMultiAngleSavedImageEntry(normalized);
         setDiagramCreatorLibraryView('new');
         setCreatorStatus('Loading multi-angle diagram...', 'success');
         for (const [index, savedAngle] of getStudioSavedImageAngles(normalized).entries()) {
@@ -10569,15 +11216,70 @@ The deletion becomes permanent when you save the diagram.`);
         await openMultiAngleAngleInImageEditor(draft.activeIndex, { saveCurrent: false });
     }
 
+    // Phase 24A.5n — A Saved Image with one angle can enter the SAME Canvas
+    // Setup used by multi-angle diagrams. Capture the active editor before
+    // switching so labels, connectors, Visual Aids, drawings and metadata survive.
+    async function openSingleSavedAngleCanvasSetupFromEditor(editor) {
+        const id = normalizeSheetText(editor?.target?.savedImageEntryId || '');
+        if (!editor?.open || !id || editor.target?.multiAngleDraft === true) return false;
+        const entry = getStudioSavedImageLibraryForPicker()
+            .find(item => normalizeSheetText(item.id) === id);
+        if (!entry || isMultiAngleSavedImageEntry(entry))
+            throw new Error('The saved single-angle diagram is unavailable. Nothing was changed.');
+        await flushImageEditorDrawingCommit({ silent: true });
+        synchronizeImageEditorSharedDescriptionsFromDiagram();
+        const metadata = captureImageEditorMetadata();
+        const organization = captureImageEditorOrganization();
+        const labels = normalizeDiagramLabels(editor.labels || []);
+        const visualAids = normalizeDiagramVisualAids(editor.visualAids || []);
+        const strokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []);
+        let modifiedRaster = '';
+        if (editor.imageDirty) {
+            const oldWidth = editor.sourceImage?.naturalWidth || editor.baseCanvas?.width;
+            const oldHeight = editor.sourceImage?.naturalHeight || editor.baseCanvas?.height;
+            if (!editor.baseCanvas || editor.baseCanvas.width !== oldWidth || editor.baseCanvas.height !== oldHeight)
+                throw new Error('Saved resolution cannot be changed. Save has been blocked.');
+            modifiedRaster = await encodeCanvasAsCanonicalImage(
+                editor.baseCanvas,
+                editor.sourceMime || getCanonicalImagePreferredMime(editor.sourceValue, editor.sourceLabel),
+                STUDY_BUNNY_IMAGE_MAX_BYTES
+            );
+        }
+        const draft = await loadMultiAngleSavedDiagramDraft(entry);
+        if (!draft?.angles?.length) throw new Error('Could not prepare the saved angle. The editor was not closed.');
+        const angle = draft.angles[0];
+        if (modifiedRaster) {
+            const oldWidth = angle.naturalWidth, oldHeight = angle.naturalHeight;
+            await commitMultiAngleDraftCanonicalImage(angle, modifiedRaster);
+            if (angle.naturalWidth !== oldWidth || angle.naturalHeight !== oldHeight)
+                throw new Error('Image dimensions changed unexpectedly. Conversion stopped.');
+        }
+        angle.labels = labels;
+        angle.visualAids = visualAids;
+        angle.drawStrokes = strokes;
+        angle.labelSize = normalizeDiagramLabelSize(editor.labelSize);
+        draft.metadata = metadata;
+        draft.classId = organization.classId;
+        draft.folderId = organization.folderId;
+        closeStudioImageEditor();
+        showMultiAngleCanvasSetup({message:'Saved angle opened in Canvas Setup. Resolution and positioning remain permanently locked.'});
+        return true;
+    }
+
     async function openMultiAngleCanvasSetupFromEditor(options = {}) {
         const editor = state.auth.imageEditor;
+        if (editor?.open && editor.target?.multiAngleDraft !== true &&
+            isImageEditorStandaloneDiagramTarget(editor) && editor.target?.savedImageEntryId) {
+            return openSingleSavedAngleCanvasSetupFromEditor(editor);
+        }
         const draft = getMultiAngleCreatorState();
         if (!draft.open || !draft.angles.length || draft.editorSwitching) return false;
         draft.editorSwitching = true;
         refreshImageEditorMultiAngleUi();
         try {
             if (editor?.open && editor?.target?.multiAngleDraft === true && options.alreadyPersisted !== true) {
-                await persistCurrentMultiAngleEditorState({ includeImage: true });
+                const persisted = await persistCurrentMultiAngleEditorState({ includeImage: true });
+                if (!persisted) throw new Error('Could not preserve current edits. Editor remains open.');
             }
             closeStudioImageEditor();
             showMultiAngleCanvasSetup({
@@ -10620,13 +11322,12 @@ The deletion becomes permanent when you save the diagram.`);
 
     async function handleStudioImageEditorSendSavedRequest() {
         const editor = state.auth.imageEditor;
-        if (!editor?.open) return;
+        if (!editor?.open) return false;
         if (editor.target?.multiAngleDraft === true) {
-            try { await saveMultiAngleDiagramFromEditor({ exitAfterSave: false }); }
-            catch (error) { console.error(error); setImageEditorStatus('Could not save the diagram.'); }
-            return;
+            try { return await saveMultiAngleDiagramFromEditor({ exitAfterSave: false }); }
+            catch (error) { console.error(error); setImageEditorStatus('Could not save the diagram.'); return false; }
         }
-        if (editor.savingSingleDiagram) return;
+        if (editor.savingSingleDiagram) return false;
         const isSingleDiagram = isImageEditorStandaloneDiagramTarget(editor);
         if (isSingleDiagram) {
             editor.savingSingleDiagram = true;
@@ -10635,7 +11336,7 @@ The deletion becomes permanent when you save the diagram.`);
             setImageEditorStatus('Saving diagram…');
         }
         try {
-            await saveStudioImageEditorImage({ sendToSavedImages: true });
+            return await saveStudioImageEditorImage({ sendToSavedImages: true });
         } finally {
             if (isSingleDiagram && state.auth.imageEditor === editor && editor.open) {
                 editor.savingSingleDiagram = false;
@@ -10727,7 +11428,8 @@ The deletion becomes permanent when you save the diagram.`);
         angle.estimateKey = '';
         angle.estimatedBytes = 0;
         angle.setupLocked = true;
-        angle.bounds = detectMultiAngleVisibleBounds(angle.runtimeImage);
+        // For a re-encode of saved pixels, bounds are authoritative geometry too.
+        if (!getMultiAngleCreatorState().originalEntry) angle.bounds = detectMultiAngleVisibleBounds(angle.runtimeImage);
         return true;
     }
 
@@ -10756,8 +11458,10 @@ The deletion becomes permanent when you save the diagram.`);
     async function saveMultiAngleDraftToSavedImages(options = {}) {
         const draft = getMultiAngleCreatorState();
         if (draft.saving || !draft.angles.length) return;
-        try { if (!(await finalizeMultiAngleCanvasSetup())) return null; }
-        catch (error) { setCreatorStatus(error.message || 'Could not flatten canvas.', 'error'); return null; }
+        try {
+            if (!(await finalizeMultiAngleCanvasSetup())) return null;
+            if (!(await stageSavedAngleFormatConversions(draft))) return null;
+        } catch (error) { setCreatorStatus(error.message || 'Could not prepare canvas conversion.', 'error'); return null; }
         draft.saving = true;
         // Track only brand-new uploads, never a pre-existing canonical reference.
         // On an interrupted save, remove staged objects without touching the live image.
@@ -10772,7 +11476,7 @@ The deletion becomes permanent when you save the diagram.`);
             const savedAngles = [];
             for (const [index, angle] of draft.angles.entries()) {
                 setCreatorStatus(`Saving angle ${index + 1} of ${draft.angles.length}...`, 'success');
-                const canonicalInput = await createCanonicalMultiAngleImageValue(angle);
+                const canonicalInput = angle.pendingConvertedValue || await createCanonicalMultiAngleImageValue(angle);
                 let savedImage = canonicalInput;
                 let thumbnail = null;
                 let thumbnailValue = normalizeSheetText(angle.thumbnailValue || angle.thumbnailMediaValue || '');
@@ -10826,7 +11530,7 @@ The deletion becomes permanent when you save the diagram.`);
             const fileName = getMultiAngleSaveFileName(draft);
             const nextEntry = {
                 id: originalEntry ? getStudioSavedImageSyncKey(originalEntry) : createStableSavedImageId(`multi-angle::${Date.now()}::${first.imageValue}::${savedAngles.length}`),
-                fileName,
+                fileName: draft.savedSingleEntry ? first.fileName : fileName,
                 imageValue: first.imageValue,
                 imageOnlyValue: first.imageValue,
                 mediaValue: first.mediaValue,
@@ -10850,9 +11554,9 @@ The deletion becomes permanent when you save the diagram.`);
                 metadata: normalizeDiagramMetadata(draft.metadata || {}),
                 classId: normalizeSheetText(draft.classId || ''),
                 folderId: normalizeSheetText(draft.folderId || ''),
-                isMultiAngle: true,
+                isMultiAngle: !draft.savedSingleEntry,
                 canvas: normalizeMultiAngleCanvasConfig(draft.canvas || {}),
-                angles: savedAngles,
+                angles: draft.savedSingleEntry ? [] : savedAngles,
                 createdAt: originalEntry?.createdAt
             };
             // F.37 confirmed replacement: update the remote Saved Image record
@@ -10871,6 +11575,15 @@ The deletion becomes permanent when you save the diagram.`);
                 : upsertStudioSavedImageLibraryEntry(nextEntry);
             if (!savedEntry) throw new Error('Could not finalize the Saved Image record.');
             savedEntryCommitted = true;
+            for (let i = 0; i < draft.angles.length; i++) {
+                const angle = draft.angles[i];
+                if (angle.pendingConvertedValue) {
+                    await commitMultiAngleDraftCanonicalImage(angle, angle.pendingConvertedValue);
+                    angle.sourceValue = savedAngles[i].imageValue; // canonical remote ref, not transient data URL
+                    angle.pendingConvertedValue = '';
+                    angle.conversionDirty = false;
+                }
+            }
             savedEntry = synchronizeStudioSavedImageGlobalLabelInformationFromEntry(savedEntry) || savedEntry;
             if (remoteResult?.ok) {
                 const pendingKeys = getStudioSavedImagePendingUpsertKeys();
@@ -11164,6 +11877,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function renderReviewModeLibrary() {
+        autoLoadCleanupKeepSelections();
         closeSavedImageStudyProgressPopup();
         if (!elements.reviewModeImageGrid) return;
         refreshSavedImageOrganizationFilterSelects();
@@ -11233,6 +11947,7 @@ The deletion becomes permanent when you save the diagram.`);
                   <button type="button" class="studio-study-progress-button" data-study-progress="${escapeHtml(entry.id)}" aria-expanded="false">Progress</button>
                                     </div>
                   ${renderSavedImageStudyProgress(entry)}
+                  ${renderCleanupKeepButton('saved_image', getStudioSavedImageSyncKey(entry))}
                   <span class="studio-study-review-icon-column"><button type="button" class="studio-review-image-delete" data-review-image-delete="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(title)} from Saved Images" title="Delete saved image">🗑</button>${renderSavedImageReminderToggle(entry,'review-image')}</span>
                 </article>
             `;
@@ -15359,18 +16074,35 @@ The deletion becomes permanent when you save the diagram.`);
             if (state.auth.handwrittenFlashcardEnabled) {
                 const row = getCurrentHandwrittenFlashcardRow();
                 const rowId = normalizeSheetText(row?.id || STUDIO_PENDING_NEW_FLASHCARD_ID) || STUDIO_PENDING_NEW_FLASHCARD_ID;
-                applyStudioFlashcardListImageChange(rowId, side, value, label, labels, {
-                    savedImageSignature: savedSignature,
-                    fromSavedImage: true,
-                    drawStrokes,
-                    metadata,
-                    suppressSync: true,
-                    suppressRender: true
-                });
                 const requestedLayout = state.auth.handwrittenPendingImageLayout?.side === side
                     ? state.auth.handwrittenPendingImageLayout.layout
                     : getHandwrittenSideImageLayoutFromEditorState(side);
-                setHandwrittenSideState(side, { imageLayout: requestedLayout === 'full' ? 'full' : 'half' });
+                // Only front-side Saved Image insertion mirrors. Back is independent when the setting is OFF.
+                let mirrorBack = side === 'term' && shouldMirrorSavedDiagramFrontToBack(row, value, savedSignature);
+                const existingBack = normalizeSheetText(row?.definition_image_url);
+                if (mirrorBack && existingBack && !backHasSameHandwrittenSavedDiagram(row, value, savedSignature)) {
+                    mirrorBack = window.confirm('The Back already has a different image. Replace that image with this Front Saved Image?\n\nCancel keeps the existing Back image; the Front will still receive your selected image.');
+                }
+                const affectedSides = mirrorBack ? ['term','definition'] : [side];
+                const clearSides = requestedLayout === 'full' ? getSavedHandwrittenFullInkAffectedSides(affectedSides) : [];
+                if (clearSides.length && !await confirmSavedHandwrittenFullInkClear(clearSides)) {
+                    state.auth.handwrittenPendingImageLayout = null;
+                    return; // Do not replace either side or clear any ink on Cancel.
+                }
+                clearSides.forEach(key => {
+                    if (key === getHandwrittenSideKey()) clearHandwrittenSelection({redraw:false});
+                    pushHandwrittenUndo(key, {includeLayout:true});
+                });
+                const applySide = key => {
+                    applyStudioFlashcardListImageChange(rowId, key, value, label, labels, {
+                        savedImageSignature: savedSignature, fromSavedImage: true,
+                        drawStrokes, metadata, suppressSync: true, suppressRender: true
+                    });
+                    setHandwrittenSideState(key, { imageLayout: requestedLayout === 'full' ? 'full' : 'half',
+                        ...(clearSides.includes(key) ? {strokes:[]} : {}) });
+                };
+                applySide(side);
+                if (mirrorBack) applySide('definition');
                 state.auth.handwrittenPendingImageLayout = null;
                 renderHandwrittenFlashcardWorkspace();
                 renderStudioQuestionList();
@@ -20901,6 +21633,7 @@ The deletion becomes permanent when you save the diagram.`);
         const editor = state.auth.imageEditor;
         const svg = elements.studioImageEditorVisualAidLayer;
         const canvas = elements.studioImageEditorCanvas;
+        bindImageEditorVisualAidTextDragging();
         if (!svg || !canvas || !editor?.visualAidsEnabled || editor.visualAidsLayerVisible === false) {
             if (svg) svg.classList.add('hidden');
             updateImageEditorVisualAidClosePathSnap();
@@ -20924,6 +21657,8 @@ The deletion becomes permanent when you save the diagram.`);
         const previewOptions = editor.visualAidPreviewActive && activeAid
             ? { progress: editor.visualAidPreviewProgress, activeOnlyId: visibleGroup.length > 1 ? '' : activeAid.id }
             : {};
+        previewOptions.visualAidTextEditor = editor.showVisualAidPanel && editor.visualAidTextEditing === true;
+        previewOptions.selectedVisualAidTextId = editor.activeVisualAidTextId || '';
         renderDiagramVisualAidPlaybackSurface(svg, aids, width, height, previewOptions, { animationFrame });
         const penAid = aids.find(aid => aid.id === editor.activeVisualAidId) || null;
         if (!animationFrame && penAid) renderImageEditorVisualAidPenOverlay(svg, penAid);
@@ -20932,6 +21667,74 @@ The deletion becomes permanent when you save the diagram.`);
         svg.classList.toggle('hidden', !aids.some(aid => aid.visible && (aid.path.length > 1 || hasFlowFillGeometry(aid))) && !hasCurveEditorGeometry);
         renderImageEditorVisualAidPreviewSequence({ animationFrame });
         updateImageEditorVisualAidClosePathSnap();
+    }
+
+    function bindImageEditorVisualAidTextDragging() {
+        const svg = elements.studioImageEditorVisualAidLayer;
+        if (!svg || svg.dataset.visualAidTextBound === 'true') return;
+        svg.dataset.visualAidTextBound = 'true';
+        let drag = null;
+        const coords = event => {
+            const point = svg.createSVGPoint();
+            point.x = event.clientX; point.y = event.clientY;
+            const inverse = svg.getScreenCTM()?.inverse();
+            return inverse ? point.matrixTransform(inverse) : null;
+        };
+        svg.addEventListener('pointerdown', event => {
+            const hit = event.target.closest('[data-visual-aid-text-hit], [data-visual-aid-text-resize]');
+            const editor = state.auth.imageEditor;
+            if (!hit || !editor?.visualAidsEnabled || !editor.showVisualAidPanel) return;
+            const container = hit.closest('[data-visual-aid-text-box]');
+            const aidId = container?.dataset.visualAidTextOwner;
+            const boxId = container?.dataset.visualAidTextBox;
+            const aids = normalizeDiagramVisualAids(editor.visualAids || []);
+            const aid = aids.find(item => item.id === aidId);
+            const box = aid?.textBoxes.find(item => item.id === boxId);
+            const point = coords(event);
+            if (!box || !point) return;
+            event.stopPropagation(); event.preventDefault();
+            pushImageEditorLabelHistory();
+            const resizing = !!event.target.closest('[data-visual-aid-text-resize]');
+            editor.activeVisualAidId = aidId;
+            editor.activeVisualAidTextId = boxId;
+            editor.visualAidTextEditing = true;
+            drag = { pointerId: event.pointerId, aidId, boxId, x: box.x, y: box.y, width: box.width, start: point, resizing };
+            svg.setPointerCapture?.(event.pointerId);
+            renderImageEditorVisualAidPanel();
+        });
+        svg.addEventListener('pointermove', event => {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            const point = coords(event);
+            const editor = state.auth.imageEditor;
+            if (!point || !editor) return;
+            const width = Math.max(1, Number(svg.viewBox.baseVal.width) || 1);
+            const height = Math.max(1, Number(svg.viewBox.baseVal.height) || 1);
+            const aids = editor.visualAids || [];
+            const aid = aids.find(item => item.id === drag.aidId);
+            const box = aid?.textBoxes.find(item => item.id === drag.boxId);
+            if (!box) return;
+            if (drag.resizing) box.width = Math.max(8, Math.min(95, 100 - box.x, drag.width + (point.x - drag.start.x) / width * 100));
+            else {
+                box.x = Math.max(0, Math.min(100 - box.width, drag.x + (point.x - drag.start.x) / width * 100));
+                box.y = Math.max(0, Math.min(98, drag.y + (point.y - drag.start.y) / height * 100));
+            }
+            // While dragging, modify just one SVG group; no animation or quiz redraw.
+            const node = Array.from(svg.querySelectorAll('[data-visual-aid-text-box]')).find(n => n.dataset.visualAidTextBox === drag.boxId);
+            if (node) {
+                if (drag.resizing) { /* live rewrap on release; cheap even for long text */ }
+                else node.setAttribute('transform', `translate(${(box.x - drag.x) * width / 100} ${(box.y - drag.y) * height / 100})`);
+            }
+        });
+        const finish = event => {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            drag = null;
+            const editor = state.auth.imageEditor;
+            if (editor) editor.visualAids = normalizeDiagramVisualAids(editor.visualAids || []);
+            renderImageEditorVisualAidPanel();
+            renderImageEditorVisualAidLayer();
+        };
+        svg.addEventListener('pointerup', finish);
+        svg.addEventListener('pointercancel', finish);
     }
 
     function stopImageEditorVisualAidPreview({ reset = false, deactivate = false } = {}) {
@@ -21042,6 +21845,22 @@ The deletion becomes permanent when you save the diagram.`);
         return `<div class="studio-flow-editor" aria-label="Flow Fill editor"><div class="studio-flow-tools"><button type="button" data-flow-add-item="region">+ Fill Region</button><button type="button" data-flow-add-item="connection">+ Flow Path</button></div><div class="studio-flow-item-list">${items.map(item=>`<button type="button" data-flow-select-item="${escapeHtml(item.id)}" class="${item.id===selected?.id?'active':''}" title="Select ${escapeHtml(item.name)}">${item.type==='region'?'◉':'↝'} ${escapeHtml(item.name)} ${item.path.length?'✓':''}</button>`).join('')}</div><div class="studio-flow-drawing">${pathAuthoringUi}<button type="button" data-flow-delete-item="${escapeHtml(selected?.id||'')}" ${items.length<=1?'disabled':''}>Delete Selected Shape</button></div>${selectedUi}<div class="studio-flow-timeline"><div class="studio-visual-aid-section-title">Animation &amp; Actions</div><label>Total animation duration <input type="range" min="2" max="60" step="1" data-flow-duration value="${aid.flowDurationSec}"><span>${aid.flowDurationSec}s</span></label><div class="studio-flow-new-action"><label>Action<select data-flow-new-type><option value="transfer" ${regions.length>=2?'selected':''}>Transfer</option><option value="fill" ${regions.length<2?'selected':''}>Fill</option><option value="empty">Empty</option><option value="hold">Hold</option></select></label><label>Region (Fill, Empty, Hold)<select data-flow-new-region>${options(regions,initialRegion)}</select></label><label>From (Transfer)<select data-flow-new-from>${options(regions,nextFrom)}</select></label><label>To (Transfer)<select data-flow-new-to>${options(regions,nextTo)}</select></label><label>Connecting flow path<select data-flow-new-path>${options(paths,availablePath?.id||'')}</select></label><div class="studio-visual-aid-section-title">New Action Timing</div><div class="studio-flow-times"><label>Start (sec)<input type="number" min="0" max="60" step="0.1" data-flow-new-start value="${nextStart}"></label><label>End (sec)<input type="number" min="0.1" max="60" step="0.1" data-flow-new-end value="${nextEnd}"></label></div><div class="studio-flow-times"><label>Target fill %<input type="number" min="0" max="100" step="5" data-flow-new-target value="100"></label><label>Transfer % of source <input type="number" min="0" max="100" step="5" data-flow-new-amount value="100"></label></div><button type="button" data-flow-add-action ${!regions.length?'disabled':''}>+ Add Timed Action</button><span data-flow-action-feedback class="studio-flow-action-feedback" role="status" aria-live="polite">${aid.flowActions.length ? `${aid.flowActions.length} action${aid.flowActions.length===1?'':'s'} saved. Suggested start: ${nextStart}s.` : 'Set the time range and click Add Timed Action.'}</span><span class="studio-flow-hint">Actions run at your chosen times. Regions hold their last fill when no action changes them. Use a connection with Transfer for visible movement.</span></div><div class="studio-flow-action-list">${actionRows||'<span class="studio-flow-hint">No actions yet. Set starting fill, then add Fill, Empty, Hold, or Transfer.</span>'}</div></div><div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Flow Fill playback controls"><button type="button" data-visual-aid-preview-action="play" ${editorReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" ${editorReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" ${editorReady?'':'disabled'}>↺</button>${visualAidToggle('Loop','data-visual-aid-preview-loop',editor.visualAidPreviewLoop,!editorReady)}</div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence></div></div></div>`;
     }
 
+    function renderImageEditorVisualAidTextControls(aid, editor) {
+        if (!aid) return '';
+        const selected = aid.textBoxes.find(box => box.id === editor.activeVisualAidTextId) || aid.textBoxes[0] || null;
+        const boxUi = selected ? `<div class="studio-visual-aid-text-controls" data-visual-aid-text-edit="${escapeHtml(selected.id)}">
+            <label>Text<textarea data-visual-aid-text-field="text" rows="3" maxlength="2000" aria-label="Visual Aid text">${escapeHtml(selected.text)}</textarea></label>
+            <div class="studio-visual-aid-text-grid"><label>Size <input data-visual-aid-text-field="size" type="number" min="8" max="48" step="1" value="${selected.size}"></label><label>Color <input data-visual-aid-text-field="color" type="color" value="${selected.color}"></label></div>
+            <label class="studio-visual-aid-text-bold"><input data-visual-aid-text-field="bold" type="checkbox" ${selected.bold ? 'checked' : ''}> Bold</label>
+            <label>Text opacity <input data-visual-aid-text-field="opacity" type="range" min="0" max="100" step="5" value="${selected.opacity}"><span data-visual-aid-text-opacity-value>${selected.opacity}%</span></label>
+            <label>Box width <input data-visual-aid-text-field="width" type="range" min="8" max="95" step="1" value="${selected.width}"><span data-visual-aid-text-width-value>${selected.width}%</span></label>
+            <div class="studio-visual-aid-text-grid"><label>Left % <input data-visual-aid-text-field="x" type="number" min="0" max="98" step="1" value="${selected.x}"></label><label>Top % <input data-visual-aid-text-field="y" type="number" min="0" max="98" step="1" value="${selected.y}"></label></div>
+            <button type="button" data-visual-aid-text-delete="${escapeHtml(selected.id)}">Delete Text</button>
+            <p class="studio-visual-aid-text-note">Drag text on the diagram to move it; drag its corner to resize. Only the text appears in Review and Mini Quiz.</p>
+        </div>` : '';
+        return `<div class="studio-visual-aid-text-section"><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Text Boxes</span><button type="button" data-visual-aid-text-add ${aid.textBoxes.length >= 16 || (aid.path.length < 2 && !hasFlowFillGeometry(aid)) ? 'disabled' : ''}>+ Add Text</button></div><div class="studio-visual-aid-text-tabs">${aid.textBoxes.map((box, i) => `<button type="button" data-visual-aid-text-select="${escapeHtml(box.id)}" class="${box.id === selected?.id ? 'active' : ''}">Text ${i + 1}</button>`).join('')}</div>${boxUi}</div>`;
+    }
+
     function renderImageEditorVisualAidPanel() {
         const editor = state.auth.imageEditor;
         const panel = elements.studioImageEditorVisualAidPanel;
@@ -21080,10 +21899,10 @@ The deletion becomes permanent when you save the diagram.`);
             const brushLazyUi = brushMode ? `<div class="studio-visual-aid-lazy-controls${lazyEnabled ? ' is-enabled' : ''}" aria-label="Brush Lazy Drag controls">${visualAidToggle('Lazy Drag', 'data-visual-aid-lazy-enabled', lazyEnabled)}${lazyEnabled ? `<label>Lazy Distance <input data-visual-aid-lazy-distance type="range" min="4" max="120" step="1" value="${lazyDistance}"><span data-visual-aid-lazy-distance-value>${lazyDistance}</span></label><label>Lazy Step <input data-visual-aid-lazy-step type="range" min="1" max="20" step="1" value="${lazyStep}"><span data-visual-aid-lazy-step-value>${lazyStep}</span></label>` : ''}</div>` : '';
             const pathAuthoringUi = `<div class="studio-visual-aid-path-tool-wrap"><button type="button" data-visual-aid-path-menu-toggle class="${editor.activeVisualAidTool==='path'?'active':''}" aria-expanded="${pathMenuOpen?'true':'false'}">Draw Path <span aria-hidden="true">▾</span></button>${pathMenuOpen ? `<div class="studio-visual-aid-path-menu" role="menu"><button type="button" data-visual-aid-path-method="brush" class="${pathMethod==='brush'?'active':''}" role="menuitem">Brush</button><button type="button" data-visual-aid-path-method="curves" class="${pathMethod==='curves'?'active':''}" role="menuitem">Curves</button></div>` : ''}</div>${curveMode ? `<div class="studio-visual-aid-curve-controls" aria-label="Curves path controls"><button type="button" data-visual-aid-curve-action="add">Add</button><button type="button" data-visual-aid-curve-action="reset">Reset</button><button type="button" data-visual-aid-curve-action="finish" ${(aid.curveAnchors||[]).length<2?'disabled':''}>Finish</button></div>` : ''}${brushLazyUi}`;
             if (aid.flowFillType === 'flow-fill') {
-                return `<section class="studio-visual-aid-item ${active?'is-active':''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index+1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Flow Fill Visual Aid name"><button type="button" class="studio-visual-aid-eye" data-visual-aid-visibility="${escapeHtml(aid.id)}">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}">🗑</button></div>${active?getFlowFillEditorPanelMarkup(aid,editor,pathAuthoringUi,visualAidToggle,previewReady):''}</section>`;
+                return `<section class="studio-visual-aid-item ${active?'is-active':''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index+1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Flow Fill Visual Aid name"><button type="button" class="studio-visual-aid-eye" data-visual-aid-visibility="${escapeHtml(aid.id)}">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}">🗑</button></div>${active?getFlowFillEditorPanelMarkup(aid,editor,pathAuthoringUi,visualAidToggle,previewReady):''}${active?renderImageEditorVisualAidTextControls(aid,editor):''}</section>`;
             }
             const behaviorUi = `<div class="studio-visual-aid-behavior"><div class="studio-visual-aid-section-title">Behavior</div>${visualAidToggle('Display Full Path', 'data-visual-aid-complete-path', aid.completePath)}${visualAidToggle('Trailing Path', 'data-visual-aid-trailing-enabled', aid.trailingEnabled)}${aid.trailingEnabled ? `<label class="studio-visual-aid-trailing-control">Trail Length <input data-visual-aid-trailing-length type="range" min="5" max="100" step="1" value="${aid.trailingLength}" aria-label="Trailing path length"><span data-visual-aid-trailing-length-value>${aid.trailingLength}%</span></label>` : ''}${visualAidToggle('Multiple Balls', 'data-visual-aid-multiple-balls', aid.multipleBalls)}${visualAidToggle('Division Color Sync', 'data-visual-aid-division-color-sync', aid.divisionColorSync)}${visualAidToggle('Ball Follows Division Order', 'data-visual-aid-ball-follows-divisions', aid.ballFollowsDivisionOrder)}${visualAidToggle('Multiple Paths', 'data-visual-aid-multiple-paths', aid.multiplePaths)}${visualAidToggle('Continue to Next Path', 'data-visual-aid-continue-next-path', aid.continueToNextPath, !aid.multiplePaths)}</div>`;
-            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Path name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid path">🗑</button></div>${active ? `<div class="studio-visual-aid-tools">${pathAuthoringUi}<button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><button type="button" data-visual-aid-tool="ball" class="${editor.activeVisualAidTool==='ball'?'active':''}" ${aid.path.length>1?'':'disabled'}>Add Ball</button>${aid.multiplePaths ? `<button type="button" data-visual-aid-add-path>Add Path</button>` : ''}<label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="48" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls">${visualAidToggle('Arrow', 'data-visual-aid-arrows', aid.arrows)}</div></div>${behaviorUi}<div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button>${visualAidToggle('Loop', 'data-visual-aid-preview-loop', editor.visualAidPreviewLoop, !previewReady)}</div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Balls</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='ball'?'active':''}" data-visual-aid-tool="ball" ${aid.path.length>1?'':'disabled'}>+ Add Ball</button></div>${balls || '<div class="studio-visual-aid-empty">Click Add Ball, then click anywhere on the path to set its start position.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Divisions</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='division'?'active':''}" data-visual-aid-tool="division">+ Add Division</button></div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Points</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='point'?'active':''}" data-visual-aid-tool="point">+ Add Point</button></div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}` : ''}</section>`;
+            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Path name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid path">🗑</button></div>${active ? `<div class="studio-visual-aid-tools">${pathAuthoringUi}<button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><button type="button" data-visual-aid-tool="ball" class="${editor.activeVisualAidTool==='ball'?'active':''}" ${aid.path.length>1?'':'disabled'}>Add Ball</button>${aid.multiplePaths ? `<button type="button" data-visual-aid-add-path>Add Path</button>` : ''}<label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="48" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls">${visualAidToggle('Arrow', 'data-visual-aid-arrows', aid.arrows)}</div></div>${behaviorUi}<div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button>${visualAidToggle('Loop', 'data-visual-aid-preview-loop', editor.visualAidPreviewLoop, !previewReady)}</div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Balls</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='ball'?'active':''}" data-visual-aid-tool="ball" ${aid.path.length>1?'':'disabled'}>+ Add Ball</button></div>${balls || '<div class="studio-visual-aid-empty">Click Add Ball, then click anywhere on the path to set its start position.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Divisions</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='division'?'active':''}" data-visual-aid-tool="division">+ Add Division</button></div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Points</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='point'?'active':''}" data-visual-aid-tool="point">+ Add Point</button></div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}${renderImageEditorVisualAidTextControls(aid,editor)}` : ''}</section>`;
         }).join('') || '<div class="studio-visual-aid-empty">Add a Visual Aid, draw its path, then add divisions, points, and balls.</div>';
         list.innerHTML = `${presetBar}${itemMarkup}`;
         renderImageEditorVisualAidPreviewSequence();
@@ -21856,6 +22675,13 @@ The deletion becomes permanent when you save the diagram.`);
     function refreshImageEditorMultiAngleUi() {
         const editor = state.auth.imageEditor;
         const draft = getMultiAngleCreatorState();
+        // Crop is exclusive to Canvas Setup for Diagram Creator. Leave quiz/card crop unaffected.
+        const standalone = !!(editor?.open && isImageEditorStandaloneDiagramTarget(editor));
+        elements.studioImageEditorOverlay?.querySelectorAll('[data-image-editor-tool="crop"], #studioImageEditorApplyCropBtn').forEach(button => {
+            button.classList.toggle('hidden', standalone);
+            button.disabled = standalone;
+        });
+        if (standalone && editor?.mode === 'crop') editor.mode = 'blur-rect';
         const isMultiAngleDraftTarget = !!(editor?.open && isImageEditorStandaloneDiagramTarget(editor) && editor?.target?.multiAngleDraft === true && draft.angles.length);
         const navigator = elements.studioImageEditorMultiAngleNavigator;
         if (navigator) {
@@ -21864,8 +22690,10 @@ The deletion becomes permanent when you save the diagram.`);
         }
         if (elements.studioImageEditorMultiAngleBackground) elements.studioImageEditorMultiAngleBackground.classList.toggle('hidden', !isMultiAngleDraftTarget);
         if (elements.studioImageEditorCanvasSetupBtn) {
-            elements.studioImageEditorCanvasSetupBtn.classList.toggle('hidden', !isMultiAngleDraftTarget);
-            elements.studioImageEditorCanvasSetupBtn.disabled = !isMultiAngleDraftTarget || draft.editorSwitching || draft.saving;
+            const isSavedSingle = standalone && !isMultiAngleDraftTarget && !!normalizeSheetText(editor?.target?.savedImageEntryId || '');
+            const hasCanvasSetup = isMultiAngleDraftTarget || isSavedSingle;
+            elements.studioImageEditorCanvasSetupBtn.classList.toggle('hidden', !hasCanvasSetup);
+            elements.studioImageEditorCanvasSetupBtn.disabled = !hasCanvasSetup || draft.editorSwitching || draft.saving || !!editor?.savingSingleDiagram;
         }
         if (elements.studioImageEditorSaveDiagramBtn) {
             elements.studioImageEditorSaveDiagramBtn.classList.toggle('hidden', !isMultiAngleDraftTarget);
@@ -22352,6 +23180,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function applyImageEditorCrop() {
+        if (isImageEditorStandaloneDiagramTarget(state.auth.imageEditor)) { setImageEditorStatus('Diagram cropping is only available in Canvas Setup before the first save.'); return; }
         const editor = state.auth.imageEditor;
         const baseCanvas = editor?.baseCanvas;
         const crop = editor?.draftShape;
@@ -22468,6 +23297,10 @@ The deletion becomes permanent when you save the diagram.`);
     function setImageEditorMode(mode) {
         const editor = state.auth.imageEditor;
         if (!editor) return;
+        if (mode === 'crop' && isImageEditorStandaloneDiagramTarget(editor)) {
+            setImageEditorStatus('Diagram cropping belongs in Canvas Setup before the first save.');
+            return;
+        }
         finishImageEditorActiveStroke(null, { silent: true });
         const requestedMode = mode || 'crop';
         setImageEditorPanMode(false);
@@ -22643,10 +23476,7 @@ The deletion becomes permanent when you save the diagram.`);
             elements.studioImageEditorSaveDiagramBtn?.addEventListener('click', event => {
                 event.preventDefault();
                 event.stopPropagation();
-                saveMultiAngleDiagramFromEditor({ exitAfterSave: true }).catch(error => {
-                    console.error(error);
-                    setImageEditorStatus('Could not save the diagram.');
-                });
+                runAuxiliarySaveAction(elements.studioImageEditorSaveDiagramBtn, () => saveMultiAngleDiagramFromEditor({ exitAfterSave: true }), {group:'image-editor'});
             });
         };
         bindMultiAngleEditorEvents();
@@ -22762,6 +23592,28 @@ The deletion becomes permanent when you save the diagram.`);
                     }
                     return;
                 }
+                const textAdd = event.target.closest('[data-visual-aid-text-add]');
+                const textSelect = event.target.closest('[data-visual-aid-text-select]');
+                const textDelete = event.target.closest('[data-visual-aid-text-delete]');
+                if (textAdd || textSelect || textDelete) {
+                    const aid = aids.find(item => item.id === editor.activeVisualAidId);
+                    if (!aid) return;
+                    if (textAdd && aid.textBoxes.length < 16) {
+                        pushImageEditorLabelHistory();
+                        const box = normalizeDiagramVisualAidTextBox({ text: 'New text', x: 40, y: 30 + (aid.textBoxes.length * 6) % 40 }, aid.textBoxes.length);
+                        aid.textBoxes.push(box);
+                        editor.activeVisualAidTextId = box.id;
+                        editor.visualAidTextEditing = true;
+                    } else if (textSelect) { editor.activeVisualAidTextId = textSelect.dataset.visualAidTextSelect; editor.visualAidTextEditing = true; }
+                    else if (textDelete) {
+                        pushImageEditorLabelHistory();
+                        aid.textBoxes = aid.textBoxes.filter(box => box.id !== textDelete.dataset.visualAidTextDelete);
+                        editor.activeVisualAidTextId = aid.textBoxes[0]?.id || '';
+                    }
+                    editor.visualAids = normalizeDiagramVisualAids(aids);
+                    refreshImageEditorVisualAidUi();
+                    return;
+                }
                 const select = event.target.closest('[data-visual-aid-select]');
                 const visibility = event.target.closest('[data-visual-aid-visibility]');
                 const remove = event.target.closest('[data-visual-aid-delete]');
@@ -22829,6 +23681,8 @@ The deletion becomes permanent when you save the diagram.`);
                 if (select) {
                     stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
                     editor.activeVisualAidId = normalizeSheetText(select.dataset.visualAidSelect || '');
+                    editor.visualAidTextEditing = false;
+                    editor.activeVisualAidTextId = '';
                     editor.sessionVisibleVisualAidId = editor.activeVisualAidId;
                     const selectedAid = aids.find(item => item.id === editor.activeVisualAidId);
                     const currentPreset = normalizeVisualAidPresetList(state.auth.visualAidPresets).find(item => item.id === editor.visualAidPresetLibraryId);
@@ -22846,7 +23700,7 @@ The deletion becomes permanent when you save the diagram.`);
                         stopImageEditorVisualAidPreview({ reset: true, deactivate: true });
                         const turnOn = !isImageEditorVisualAidSessionVisible(editor, id);
                         editor.sessionVisibleVisualAidId = turnOn ? id : '';
-                        if (turnOn) editor.activeVisualAidId = id;
+                        if (turnOn) { editor.activeVisualAidId = id; editor.visualAidTextEditing = false; editor.activeVisualAidTextId = ''; }
                         handled = true;
                     }
                 }
@@ -22861,6 +23715,7 @@ The deletion becomes permanent when you save the diagram.`);
                 }
                 if (pathMenuToggle) {
                     editor.visualAidPathMenuOpen = !editor.visualAidPathMenuOpen;
+                    editor.visualAidTextEditing = false;
                     editor.activeVisualAidTool = 'path';
                     setImageEditorMode('visual-aid');
                     renderImageEditorVisualAidPanel();
@@ -22871,6 +23726,7 @@ The deletion becomes permanent when you save the diagram.`);
                     const method = normalizeDiagramVisualAidPathAuthoring(pathMethodButton.dataset.visualAidPathMethod || 'brush');
                     const aid = aids.find(item => item.id === editor.activeVisualAidId);
                     editor.activeVisualAidTool = 'path';
+                    editor.visualAidTextEditing = false;
                     editor.activeVisualAidPathMethod = method;
                     editor.visualAidPathMenuOpen = false;
                     editor.visualAidCurveHover = null;
@@ -22905,6 +23761,7 @@ The deletion becomes permanent when you save the diagram.`);
                     if (action === 'finish') { finishImageEditorVisualAidCurvePath(); return; }
                 }
                 if (tool) {
+                    editor.visualAidTextEditing = false;
                     editor.activeVisualAidTool = normalizeSheetText(tool.dataset.visualAidTool || 'path');
                     editor.visualAidPathMenuOpen = false;
                     setImageEditorMode('visual-aid');
@@ -22992,7 +23849,7 @@ The deletion becomes permanent when you save the diagram.`);
                 let aids = normalizeDiagramVisualAids(editor.visualAids || []);
                 const aid = aids.find(item => item.id === editor.activeVisualAidId);
                 if (!aid) return;
-                if(aid.flowFillType==='flow-fill') {
+                if(aid.flowFillType==='flow-fill' && !event.target.matches('[data-visual-aid-text-field]')) {
                     let changed=false;
                     const el=event.target;
                     const props={flowItemArrowSync:'arrowColorSync',flowItemName:'name',flowItemColor:'color',flowItemInitial:'initialFill',flowItemContents:'fillContents',flowItemFillAngle:'fillAngle',flowItemEmptyAngle:'emptyAngle',flowItemFrom:'fromId',flowItemTo:'toId',flowItemQuestion:'question',flowItemAnswer:'answer',flowItemThickness:'thickness',flowItemArrowCount:'continuousArrowCount',flowItemEndArrow:'endArrow',flowItemContinuousArrows:'continuousArrows',flowItemRevealOnTransfer:'revealOnTransfer',flowItemArrowColor:'arrowColor'};
@@ -23053,6 +23910,29 @@ The deletion becomes permanent when you save the diagram.`);
                         if(action){action[actionQuestion?'question':'answer']=el.value.slice(0,actionQuestion?400:300);changed=true;}
                     }
                     if(changed){editor.visualAids=normalizeDiagramVisualAids(aids);renderImageEditorVisualAidLayer();}
+                    return;
+                }
+                const textField = event.target.closest('[data-visual-aid-text-field]');
+                if (textField) {
+                    const active = aids.find(item => item.id === editor.activeVisualAidId);
+                    const box = active?.textBoxes.find(item => item.id === editor.activeVisualAidTextId) || active?.textBoxes[0];
+                    if (!box) return;
+                    editor.activeVisualAidTextId = box.id;
+                    editor.visualAidTextEditing = true;
+                    const key = textField.dataset.visualAidTextField;
+                    if (key === 'text') box.text = textField.value.slice(0, 2000);
+                    else if (key === 'bold') box.bold = !!textField.checked;
+                    else if (key === 'color') box.color = normalizeEditorHexColor(textField.value, box.color);
+                    else if (['size','opacity','width','x','y'].includes(key)) {
+                        const limits = { size:[8,48], opacity:[0,100], width:[8,95], x:[0,98], y:[0,98] }[key];
+                        box[key] = Math.max(limits[0], Math.min(limits[1], Number(textField.value) || 0));
+                        if (key === 'opacity' || key === 'width') {
+                            const label = textField.parentElement?.querySelector(`[data-visual-aid-text-${key}-value]`);
+                            if (label) label.textContent = `${box[key]}%`;
+                        }
+                    } else return;
+                    editor.visualAids = normalizeDiagramVisualAids(aids);
+                    renderImageEditorVisualAidLayer();
                     return;
                 }
                 const row = event.target.closest('[data-visual-aid-id]');
@@ -23172,6 +24052,9 @@ The deletion becomes permanent when you save the diagram.`);
                 renderImageEditorVisualAidLayer();
                 if (restartPreview) playImageEditorVisualAidPreview();
             };
+            elements.studioImageEditorVisualAidList?.addEventListener('focusin', event => {
+                if (event.target.matches('[data-visual-aid-text-field]')) pushImageEditorLabelHistory();
+            });
             elements.studioImageEditorVisualAidList?.addEventListener('input', handleVisualAidControlInput);
             elements.studioImageEditorVisualAidList?.addEventListener('change', handleVisualAidControlInput);
         }
@@ -23410,9 +24293,9 @@ The deletion becomes permanent when you save the diagram.`);
                 setImageEditorStatus('Could not reset the image.');
             });
         });
-        elements.studioImageEditorSaveBtn?.addEventListener('click', () => saveStudioImageEditorImage());
-        elements.studioImageEditorSendSavedBtn?.addEventListener('click', handleStudioImageEditorSendSavedRequest);
-        elements.studioImageEditorAttachAllFrontBtn?.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }));
+        elements.studioImageEditorSaveBtn?.addEventListener('click', () => runAuxiliarySaveAction(elements.studioImageEditorSaveBtn, () => saveStudioImageEditorImage(), {group:'image-editor'}));
+        elements.studioImageEditorSendSavedBtn?.addEventListener('click', () => runAuxiliarySaveAction(elements.studioImageEditorSendSavedBtn, handleStudioImageEditorSendSavedRequest, {group:'image-editor'}));
+        elements.studioImageEditorAttachAllFrontBtn?.addEventListener('click', () => runAuxiliarySaveAction(elements.studioImageEditorAttachAllFrontBtn, () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }), {group:'image-editor'}));
     }
 
     async function openStudioImageEditor(target = {}) {
@@ -24900,7 +25783,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function syncStudioManageTabs() {
-        const activeView = normalizeSheetText(state.auth.studioQuizManageView || 'all') || 'all';
+        const activeView = normalizeSheetText(state.auth.studioQuizManageView || 'recent') || 'all';
         elements.studioQuizManageTabs.forEach(button => {
             const isActive = button.dataset.studioManageView === activeView;
             button.classList.toggle('active', isActive);
@@ -24928,8 +25811,8 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function getStudioQuizManageView() {
-        const view = normalizeSheetText(state.auth.studioQuizManageView || 'all') || 'all';
-        return ['all', 'classes', 'folders', 'recent'].includes(view) ? view : 'all';
+        const view = normalizeSheetText(state.auth.studioQuizManageView || 'recent') || 'all';
+        return ['all', 'classes', 'folders', 'recent'].includes(view) ? view : 'recent';
     }
 
     function getFolderQuizStats(folderId = '') {
@@ -24990,12 +25873,44 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    const STUDIO_QUIZZES_PER_PAGE = 10;
+    const STUDIO_RECENT_DAYS = 30;
+
+    function getStudioQuizProgressFilter() {
+        const value = normalizeSheetText(state.auth.studioQuizProgressFilter || 'all');
+        return ['all', 'in-progress', 'learning', 'mastered'].includes(value) ? value : 'all';
+    }
+
+    function matchesStudioQuizProgressFilter(quiz, filter = getStudioQuizProgressFilter()) {
+        if (filter === 'all') return true;
+        // Use the same current ribbon eligibility as the quiz card itself.
+        // A missed review deadline must never leave a stale status match.
+        const ribbon = getQuizSpacedRibbonKind(quiz);
+        if (filter === 'learning' || filter === 'mastered') return ribbon === filter;
+        if (ribbon === 'learning') return true;
+        if (ribbon === 'mastered') return false;
+        const progress = getQuizSpacedStatus(quiz);
+        return !!(progress.valid && progress.data.startedOn && !progress.data.stages.d1 &&
+            progress.firstAt && progress.inWindow && !progress.overdue);
+    }
+
     function getFilteredManagedQuizzes() {
         const searchQuery = getStudioQuizSearchQuery();
         const folderFilterId = getStudioQuizFolderFilterId();
         const classFilterId = getStudioQuizClassFilterId();
         const manageView = getStudioQuizManageView();
+        const progressFilter = getStudioQuizProgressFilter();
+        // An actual view/open/study/edit activity, or the quiz's persisted
+        // creation/update timestamp, can place a quiz in Recent for 30 days.
+        // Rendering its card never writes a new activity timestamp.
+        const now = Date.now();
+        const recentCutoff = now - STUDIO_RECENT_DAYS * 86400000;
         return [...state.auth.managedQuizzes].filter(quiz => {
+            if (manageView === 'recent') {
+                const activeAt = getStudioActivityTime('quiz', quiz.id, quiz.updatedAt);
+                if (!(activeAt >= recentCutoff && activeAt <= now)) return false;
+            }
+            if (!matchesStudioQuizProgressFilter(quiz, progressFilter)) return false;
             if (manageView === 'classes' && classFilterId === '__none__' && getQuizClassId(quiz)) return false;
             if (manageView === 'classes' && classFilterId && classFilterId !== '__none__' && getQuizClassId(quiz) !== classFilterId) return false;
             if (folderFilterId === '__none__' && normalizeSheetText(quiz.folderId)) return false;
@@ -25018,12 +25933,13 @@ The deletion becomes permanent when you save the diagram.`);
         const className = classFilterId === '__none__'
             ? 'No class / General'
             : getSupabaseClassById(classFilterId)?.name || '';
-        const viewLabelMap = { all: 'All quizzes', classes: 'Classes', folders: 'Folders', recent: 'Recent' };
+        const viewLabelMap = { all: 'All Quizzes', classes: 'Classes', folders: 'Folders', recent: 'Recent Quizzes' };
         const parts = [`View: ${viewLabelMap[manageView] || 'All quizzes'}`];
         if (manageView === 'classes' && classFilterId) parts.push(`Class: ${className || 'Unknown class'}`);
         if (folderFilterId) parts.push(`Folder: ${folderName || 'Unknown folder'}`);
         if (searchQuery) parts.push(`Search: ${searchQuery}`);
-        const onlyDefaultView = parts.length === 1 && manageView === 'all' && !searchQuery && !folderFilterId;
+        if (getStudioQuizProgressFilter() !== 'all') parts.push(`Study Progress: ${getStudioQuizProgressFilter()}`);
+        const onlyDefaultView = parts.length === 1 && manageView === 'recent' && !searchQuery && !folderFilterId;
         if (onlyDefaultView) {
             elements.studioQuizFilterStatus.classList.add('hidden');
             elements.studioQuizFilterStatus.textContent = '';
@@ -25038,6 +25954,7 @@ The deletion becomes permanent when you save the diagram.`);
     async function openManageQuizzesForFolder(folderId = '') {
         const normalizedFolderId = normalizeSheetText(folderId);
         state.auth.studioQuizManageView = 'folders';
+        state.auth.studioQuizPage = 1;
         state.auth.studioQuizFolderFilterId = normalizedFolderId;
         state.auth.studioQuizClassFilterId = '';
         state.auth.studioQuizSearchQuery = '';
@@ -25054,6 +25971,7 @@ The deletion becomes permanent when you save the diagram.`);
         const normalizedClassId = normalizeSheetText(classId);
         const normalizedFolderId = normalizeSheetText(options.folderId || '');
         state.auth.studioQuizManageView = 'classes';
+        state.auth.studioQuizPage = 1;
         state.auth.studioQuizClassFilterId = normalizedClassId || '';
         state.auth.studioQuizFolderFilterId = normalizedFolderId;
         state.auth.studioQuizSearchQuery = '';
@@ -25172,6 +26090,258 @@ The deletion becomes permanent when you save the diagram.`);
         return options.join('');
     }
 
+    // ================= PHASE 24A.1 — SHARED QUIZ/FLASHCARD SPACED REVIEWS =================
+    // ONE schedule per saved quiz (not per challenge/mode). All writes are
+    // explicitly qualified full-deck completions; no per-question database I/O.
+    // The migration owns an atomic compare/version + unique-attempt guard.
+    const QUIZ_SPACED_REVIEW_TABLE = 'user_quiz_spaced_reviews';
+
+    function syncQuizSpacedMigrationBanner() {
+        if (typeof document === 'undefined' || !document.body) return;
+        let banner = document.getElementById('study-bunny-quiz-spaced-migration-alert');
+        if (!state.auth.quizSpacedMigrationMissing || !state.auth.user?.id) {
+            banner?.remove();
+            return;
+        }
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'study-bunny-quiz-spaced-migration-alert';
+            banner.setAttribute('role', 'alert');
+            banner.className = 'quiz-spaced-migration-alert';
+            banner.textContent = '⚠️ ALERT: SUPABASE SQL MIGRATION NEEDS TO BE UPDATED — Phase 24A.1 quiz spaced reviews are disabled until the migration is applied.';
+            document.body.appendChild(banner);
+        }
+    }
+    async function loadQuizSpacedReviewsFromSupabase() {
+        if (!state.auth.client || !state.auth.user?.id) return {
+            records: new Map(), revisions: new Map(), migrationMissing: false
+        };
+        const [reviews, contentVersions] = await Promise.all([
+            state.auth.client.from(QUIZ_SPACED_REVIEW_TABLE)
+                .select('quiz_id, progress, version').eq('user_id', state.auth.user.id),
+            state.auth.client.from('quiz_spaced_content_versions').select('quiz_id, revision')
+        ]);
+        if (reviews.error || contentVersions.error) {
+            console.warn('Quiz spaced-review metadata unavailable; no progress will be assumed:',
+                reviews.error || contentVersions.error);
+            return { records: new Map(), revisions: new Map(), migrationMissing: true };
+        }
+        return {
+            records: new Map((reviews.data || []).map(row => [normalizeSheetText(row.quiz_id), {
+                progress: row.progress || {}, version: Number(row.version || 0)
+            }])),
+            revisions: new Map((contentVersions.data || []).map(row =>
+                [normalizeSheetText(row.quiz_id), Number(row.revision || 0)])),
+            migrationMissing: false
+        };
+    }
+
+    function getQuizSpacedIdsSignature(questionIds = []) {
+        const ids = [...new Set((questionIds || []).map(id => normalizeSheetText(id)).filter(Boolean))].sort();
+        if (!ids.length) return '';
+        const raw = JSON.stringify(ids);
+        let hash = 2166136261;
+        for (let i = 0; i < raw.length; i++) { hash ^= raw.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+        return `${(hash >>> 0).toString(16).padStart(8, '0')}:${raw.length}`;
+    }
+    function getQuizSpacedContentSignature(questions = []) {
+        // Do not hash signed CDN URLs, loaded star-state, or local rendering fields.
+        // SQL study-content triggers additionally revoke saved progress on edits.
+        const text = JSON.stringify([...questions].map(q => ({
+            id: normalizeSheetText(q.sourceQuestionId || q.id), type: q.type,
+            question: q.question, correctAnswer: q.correctAnswer,
+            correctAnswers: q.correctAnswers, answer: q.answer, answers: q.answers,
+            term: q.term, definition: q.definition,
+            // Authored text only: signed image URLs and lazy media hydration
+            // can change independently of content; SQL triggers cover edits.
+            options: (q.options || []).map(o => typeof o === 'string' ? o :
+                [o?.text, o?.label, o?.value, o?.correct]),
+            buildUp: q.buildUp,
+            classifications: (q.classifications || []).map(c => c?.name || c?.label || ''),
+            items: (q.items || []).map(i => [i?.text, i?.correctClassificationId])
+        })).sort((a,b) => a.id.localeCompare(b.id)));
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i++) { hash ^= text.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+        return `${(hash >>> 0).toString(16).padStart(8, '0')}:${text.length}`;
+    }
+    function getQuizSpacedStatus(quiz, now = new Date(), contentSignature = '') {
+        const row = state.auth.quizSpacedReviews?.get(normalizeSheetText(quiz?.id));
+        const raw = row?.progress || {};
+        const idsSignature = getQuizSpacedIdsSignature(quiz?.questionIds);
+        const signatureValid = !!raw.signature && (!contentSignature || raw.signature === contentSignature)
+            && !!raw.idsSignature && raw.idsSignature === idsSignature;
+        const data = signatureValid ? normalizeSavedImageSpacedReview(raw) : normalizeSavedImageSpacedReview();
+        const today = getSpacedReviewLocalDay(now);
+        const stages = getSavedImageSpacedReviewStages(data.startedOn, today, data.stages);
+        const current = stages.find(stage => !data.stages[stage.id]) || null;
+        const overdue = !!(current && today >= current.end);
+        const inWindow = !!(current && today >= current.start && today < current.end);
+        const firstAt = data.firstAt && getSpacedReviewLocalDay(data.firstAt) === today ? data.firstAt : '';
+        const nextAt = firstAt ? new Date(Date.parse(firstAt) + 6 * 3600000) : null;
+        return { data, today, stages, current, overdue, inWindow, firstAt, nextAt,
+            eligible: !!(overdue || inWindow), initialMiss: overdue,
+            mastered: !!(data.stages.d4 && data.everMastered && !overdue && !data.ribbonResetPending),
+            valid: signatureValid, rowVersion: Number(row?.version || 0), idsSignature };
+    }
+    function getQuizSpacedRibbonKind(quiz) {
+        const progress = getQuizSpacedStatus(quiz);
+        if (!progress.valid || !progress.data.stages.d1 || progress.overdue || progress.data.ribbonResetPending) return '';
+        return progress.mastered ? 'mastered' : 'learning';
+    }
+    function renderQuizSpacedRibbon(quiz) {
+        const kind = getQuizSpacedRibbonKind(quiz);
+        if (!kind) return '';
+        return `<span class="studio-mastered-ribbon studio-quiz-spaced-ribbon ${kind === 'mastered' ? 'is-mastered' : 'is-learning studio-learning-ribbon'}" role="img" aria-label="Spaced repetition ${kind}">${kind.toUpperCase()}</span>`;
+    }
+    function renderQuizSpacedStudyProgress(quiz) {
+        const panelId = `quiz:${quiz.id}`;
+        if (state.auth.quizSpacedMigrationMissing) {
+            return `<div hidden data-study-progress-panel="${escapeHtml(panelId)}"><p>⚠️ Quiz study progress is not available. Run the Phase 24A.1 Supabase SQL migration before using this feature.</p></div>`;
+        }
+        return renderSpacedProgressStatus(getQuizSpacedStatus(quiz), panelId);
+    }
+    function beginQuizSpacedAttempt(visibleQuestions = []) {
+        const quizId = getActiveStudySupabaseQuizIdForShortcut();
+        const all = state.sourceQuestions || [];
+        if (!quizId || !all.length || !visibleQuestions.length) return;
+        const ids = all.map(q => normalizeSheetText(q.sourceQuestionId || q.id));
+        const expectedIds = getQuizSpacedIdsSignature(ids);
+        const visibleIds = getQuizSpacedIdsSignature(visibleQuestions.map(q => q.sourceQuestionId || q.id));
+        const managedQuiz = state.auth.managedQuizzes.find(q => q.id === quizId);
+        const completeDeck = !!expectedIds && expectedIds === visibleIds
+            && !isOnlyStarredEnabled() && !isExcludeStarredEnabled()
+            && (!managedQuiz || (managedQuiz.questionCount === all.length &&
+                getQuizSpacedIdsSignature(managedQuiz.questionIds) === expectedIds));
+        const shuffleRequired = all.some(q => ['multiple choice','diagrams','hierarchy','classify'].includes(q.type));
+        state.quizSpacedAttempt = {
+            quizId, sessionId: (typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() :
+                'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c =>
+                    (c === 'x' ? Math.random()*16|0 : (Math.random()*4|0)+8).toString(16))),
+            ids: new Set(ids), idsSignature: expectedIds,
+            contentRevision: Number(state.auth.quizSpacedContentRevisions?.get(quizId) || 0),
+            signature: getQuizSpacedContentSignature(all),
+            completeDeck, shuffleRequired, shuffleDisqualified: !!(shuffleRequired && !document.getElementById('shuffleAnswers')?.checked),
+            correct: new Set(), inFlight: false, finalized: false, feedback: ''
+        };
+    }
+    function trackQuizSpacedOutcome(question, correct) {
+        const attempt = state.quizSpacedAttempt;
+        if (!attempt || attempt.finalized) return;
+        if (attempt.shuffleRequired && !document.getElementById('shuffleAnswers')?.checked) attempt.shuffleDisqualified = true;
+        const key = normalizeSheetText(question?.sourceQuestionId || question?.id);
+        if (correct && attempt.ids.has(key)) attempt.correct.add(key);
+    }
+    function advanceQuizSpacedProgress(progress, now, signature, idsSignature) {
+        let data = { ...progress.data, stages: { ...progress.data.stages } };
+        if (!data.startedOn || progress.initialMiss) {
+            data = { ...normalizeSavedImageSpacedReview(), startedOn: progress.today,
+                ribbonResetPending: progress.initialMiss || data.ribbonResetPending,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || '', signature };
+        }
+        data.signature = signature;
+        data.idsSignature = idsSignature;
+        const stageState = getSavedImageSpacedReviewStages(data.startedOn, progress.today, data.stages)
+            .find(stage => !data.stages[stage.id]);
+        if (!stageState || progress.today < stageState.start || progress.today >= stageState.end) return null;
+        const stamp = now.toISOString();
+        if (!data.firstAt || getSpacedReviewLocalDay(data.firstAt) !== progress.today) data.firstAt = stamp;
+        else if (now.getTime() - Date.parse(data.firstAt) >= 6 * 3600000) {
+            data.stages[stageState.id] = { firstAt: data.firstAt, secondAt: stamp };
+            data.firstAt = '';
+            if (stageState.id === 'd1') data.ribbonResetPending = false;
+            if (stageState.id === 'd4') data.everMastered = true;
+        } else return null; // Too soon to earn a second pass; no duplicate write.
+        return data;
+    }
+    function renderQuizSpacedCompletionFeedback() {
+        const attempt = state.quizSpacedAttempt;
+        if (!elements.questionContainer) return;
+        let node = elements.questionContainer.querySelector('[data-quiz-spaced-completion]');
+        if (!attempt?.feedback || !isQuizFinished()) {
+            node?.remove(); // Silent when no new scheduled credit was earned; studying is always allowed.
+            return;
+        }
+        if (!node) {
+            node = document.createElement('div');
+            node.className = 'quiz-spaced-review-completion';
+            node.dataset.quizSpacedCompletion = 'true';
+            node.setAttribute('role', 'status');
+            elements.questionContainer.appendChild(node);
+        }
+        node.textContent = attempt.feedback;
+    }
+    async function persistQuizSpacedPass(attempt) {
+        const quiz = state.auth.managedQuizzes.find(q => q.id === attempt.quizId);
+        if (!quiz || state.auth.quizSpacedMigrationMissing || !state.auth.client || !state.auth.user?.id) {
+            throw new Error('Run the Phase 24A.1 Supabase SQL migration to enable quiz spaced repetition.');
+        }
+        // Re-read only this quiz at actual completion, never one read per library card.
+        // Optimistic version check closes multi-device and multi-tab update races.
+        for (let trial = 0; trial < 3; trial++) {
+            const { data: rows, error: readError } = await state.auth.client.from(QUIZ_SPACED_REVIEW_TABLE)
+                .select('quiz_id, progress, version').eq('user_id', state.auth.user.id)
+                .eq('quiz_id', attempt.quizId).maybeSingle();
+            if (readError) throw readError;
+            if (rows) state.auth.quizSpacedReviews.set(attempt.quizId, {
+                progress: rows.progress || {}, version: Number(rows.version || 0)
+            });
+            else state.auth.quizSpacedReviews.delete(attempt.quizId);
+            const now = new Date();
+            const before = getQuizSpacedStatus(quiz, now, attempt.signature);
+            const next = advanceQuizSpacedProgress(before, now, attempt.signature, attempt.idsSignature);
+            if (!next) return { counted: false, data: before.data, progress: before };
+            const { data: stored, error } = await state.auth.client.rpc('record_user_quiz_spaced_review', {
+                p_quiz_id: attempt.quizId, p_session_id: attempt.sessionId,
+                p_expected_version: before.rowVersion,
+                p_content_revision: attempt.contentRevision, p_progress: next
+            });
+            if (error && /stale quiz spaced review/i.test(error.message || '')) continue;
+            if (error) throw error;
+            const row = stored?.[0] || stored;
+            if (!row?.progress) throw new Error('Study pass could not be verified on Supabase.');
+            state.auth.quizSpacedReviews.set(attempt.quizId, {
+                progress: row.progress, version: Number(row.version || 0)
+            });
+            const managedCache = getSupabaseManagementCacheEntry('managedQuizzes');
+            if (managedCache) setSupabaseManagementCacheEntry('managedQuizzes', {
+                ...managedCache, quizSpacedReviews: [...state.auth.quizSpacedReviews]
+            });
+            const after = getQuizSpacedStatus(quiz, new Date(), attempt.signature);
+            return { counted: !!row.did_record, data: after.data, progress: after };
+        }
+        throw new Error('Study progress changed on another device. Restart the quiz to retry safely.');
+    }
+    function maybeRecordQuizSpacedCompletion() {
+        const attempt = state.quizSpacedAttempt;
+        if (!attempt || attempt.finalized || attempt.inFlight) return;
+        if (!attempt.completeDeck || attempt.shuffleDisqualified || !attempt.ids.size ||
+            attempt.correct.size !== attempt.ids.size || isOnlyStarredEnabled() ||
+            isExcludeStarredEnabled() ||
+            getQuizSpacedIdsSignature(getFilteredSourceQuestions().map(q => q.sourceQuestionId || q.id)) !== attempt.idsSignature ||
+            (isProgressMode() && getProgressMissedQuestions().length)) return;
+        attempt.inFlight = true;
+        // Reserve this specific attempt now, even if showQuestion is invoked again.
+        persistQuizSpacedPass(attempt).then(result => {
+            attempt.finalized = true;
+            const progress = result.progress;
+            const completedToday = Object.entries(progress.data.stages).some(([, rec]) =>
+                rec?.secondAt && getSpacedReviewLocalDay(rec.secondAt) === progress.today);
+            const master = result.data.stages.d4 && progress.mastered;
+            attempt.feedback = !result.counted ? '' :
+                completedToday && master && !progress.data.ribbonResetPending ? '🏆 MASTERED — spaced-repetition milestone earned or maintained!' :
+                completedToday && result.data.stages.d1 && !progress.data.ribbonResetPending
+                    ? '✓ LEARNING — scheduled study milestone completed (2/2)!' :
+                '✓ Successful spaced-repetition pass recorded (1/2). Next pass after six hours on the same day.';
+            if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
+            renderQuizManagementList();
+        }).catch(error => {
+            console.error('Quiz spaced-review pass was not saved:', error);
+            attempt.finalized = true;
+            attempt.feedback = `Spaced-repetition progress was NOT saved: ${error.message || 'database unavailable'}`;
+            if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
+        }).finally(() => { attempt.inFlight = false; });
+    }
+
     // ================= QUIZ CHALLENGE TROPHIES =================
     function getQuizChallengeDefinition(challengeKey = '') {
         const normalizedKey = normalizeSheetText(challengeKey);
@@ -25230,9 +26400,9 @@ The deletion becomes permanent when you save the diagram.`);
             const label = `${challenge.title}: ${unlocked ? 'unlocked' : 'locked'}`;
             return `<span class="quiz-challenge-badge${unlocked ? ' unlocked' : ''}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="quiz-challenge-badge-icon">${unlocked ? '🏆' : '○'}</span><span>${escapeHtml(challenge.shortLabel)}</span></span>`;
         }).join('');
-        const grandUnlocked = isQuizChallengeGrandUnlocked(quizId);
-        const grandLabel = `Grand Trophy: ${grandUnlocked ? 'unlocked' : 'locked'}`;
-        return `<div class="quiz-challenge-badges" aria-label="Quiz challenge trophies">${badgeHtml}<span class="quiz-challenge-badge grand${grandUnlocked ? ' unlocked' : ''}" title="${escapeHtml(grandLabel)}" aria-label="${escapeHtml(grandLabel)}"><span class="quiz-challenge-badge-icon">${grandUnlocked ? '🌟' : '☆'}</span><span>All</span></span></div>`;
+        // Phase 24A.2: keep the existing eight trophy pills, unchanged, centered
+        // in the already-existing Challenges header. Grand Trophy remains at right.
+        return `<div class="quiz-challenge-badges" aria-label="Quiz challenge trophies">${badgeHtml}</div>`;
     }
 
     function renderQuizChallengePanel(quiz) {
@@ -25254,6 +26424,7 @@ The deletion becomes permanent when you save the diagram.`);
             <div class="quiz-challenge-panel">
               <div class="quiz-challenge-panel-heading">
                 <span>Challenges</span>
+                ${renderQuizChallengeBadges(quiz)}
                 <span class="quiz-challenge-grand${grandUnlocked ? ' unlocked' : ''}">${grandUnlocked ? '🌟 Grand Trophy unlocked' : '☆ Grand Trophy locked'}</span>
               </div>
               <div class="quiz-challenge-list">${challengeRows}</div>
@@ -25462,7 +26633,7 @@ The deletion becomes permanent when you save the diagram.`);
         const id = normalizeSheetText(entityId);
         const bucket = type === 'folder' ? state.auth.studioActivity.folders : state.auth.studioActivity.quizzes;
         const activityTime = getStudioUpdatedTime(bucket.get(id)?.lastActiveAt);
-        return activityTime || getStudioUpdatedTime(fallback);
+        return Math.max(activityTime, getStudioUpdatedTime(fallback));
     }
 
     async function loadStudioActivityFromSupabase() {
@@ -25587,7 +26758,7 @@ The deletion becomes permanent when you save the diagram.`);
             settings_snapshot: {
                 phase: '22DM',
                 mode: getQuizChallengeDefinition(normalizedKey)?.mode || '',
-                shuffleQuestions: true,
+                shuffleQuestions: !!document.getElementById('shuffleQuestions')?.checked,
                 shuffleAnswers: true,
                 allowBuildUp: !!getQuizChallengeDefinition(normalizedKey)?.requiresBuildUp
             },
@@ -25625,7 +26796,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (masteryMode) masteryMode.checked = challenge.mode === 'mastery';
         if (masteryCheckMode) masteryCheckMode.checked = challenge.mode === 'mastery_check';
         if (progressMode) progressMode.checked = challenge.mode === 'progress';
-        if (shuffleQuestions) shuffleQuestions.checked = true;
+        if (shuffleQuestions) shuffleQuestions.checked = true; // Both challenge families default to shuffled questions.
         if (shuffleAnswers) shuffleAnswers.checked = true;
         if (allowBuildUp) allowBuildUp.checked = !!challenge.requiresBuildUp;
         if (tetherBuildUp && !challenge.requiresBuildUp) tetherBuildUp.checked = false;
@@ -25652,8 +26823,7 @@ The deletion becomes permanent when you save the diagram.`);
         }
 
         setChallengeModeSettings(challenge);
-        const targetQuiz = await refreshQuizCatalog({ selectQuizId: `sb:${normalizedQuizId}`, loadSelectedQuiz: false });
-        if (!targetQuiz) throw new Error('Quiz not found');
+        const targetQuiz = await resolveManagedQuizForStudy(normalizedQuizId);
 
         state.activeQuizChallenge = {
             quizId: normalizedQuizId,
@@ -26025,12 +27195,19 @@ The deletion becomes permanent when you save the diagram.`);
                 refs.forEach(ref => mediaRefsToDelete.add(ref));
             }
 
+            if (mediaRefsToDelete.size) stageQuizMediaCleanup(mediaRefsToDelete);
             const { error } = await state.auth.client
                 .from('questions')
                 .delete()
                 .in('id', starredQuestionIds);
             if (error) throw error;
 
+            // This route also deletes flashcards: clear their local stroke caches
+            // only after Supabase confirms the bulk question deletion.
+            const handwritingCacheCleared = await invalidateDeletedFlashcardHandwritingCaches(starredQuestionIds);
+            if (!handwritingCacheCleared) {
+                console.warn('Starred questions deleted, but local handwriting-cache cleanup was not confirmed.');
+            }
             await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
             const deletedIdSet = new Set(starredQuestionIds.map(id => normalizeSheetText(id)).filter(Boolean));
@@ -26056,10 +27233,577 @@ The deletion becomes permanent when you save the diagram.`);
             const selectedWasTargetQuiz = selectedQuizValue === `sb:${normalizedQuizId}`;
             await refreshQuizCatalog({ selectQuizId: selectedWasTargetQuiz ? `sb:${normalizedQuizId}` : selectedQuizValue, loadSelectedQuiz: selectedWasTargetQuiz, clearIfMissing: false });
 
-            setCreatorStatus(`${countLabel} deleted.`, 'success');
+            setCreatorStatus(handwritingCacheCleared
+                ? `${countLabel} deleted.`
+                : `${countLabel} deleted in Supabase, but browser handwriting-cache cleanup could not be verified.`,
+                handwritingCacheCleared ? 'success' : 'error');
         } catch (error) {
             console.error('Could not delete starred questions:', error);
             setCreatorStatus(error.message || 'Could not delete starred questions.', 'error');
+        }
+    }
+
+    // Phase 24A.5b TEMPORARY KEEP & CLEANUP. A selection authorizes protection,
+    // not deletion. All destructive actions require a fresh, account-scoped scan,
+    // separately verified full media backup, and an explicit typed confirmation.
+    const cleanupKeepState = {
+        userId: '', loaded: false, loading: null, busy: false, keep: new Set(),
+        plan: null, errors: []
+    };
+    const cleanupKeepKey = (kind, id) => `${kind}:${normalizeSheetText(id)}`;
+    function cleanupKeepStatus(message) {
+        const el = document.getElementById('studioCleanupStatus');
+        if (el) el.textContent = message;
+        console.info('[KEEP & CLEANUP]', message);
+    }
+    function renderCleanupKeepButton(kind, id) {
+        const safeId = normalizeSheetText(id);
+        if (!safeId) return '';
+        const user = normalizeSheetText(state.auth.user?.id);
+        const active = cleanupKeepState.loaded && cleanupKeepState.userId === user;
+        const checked = active && cleanupKeepState.keep.has(cleanupKeepKey(kind, safeId));
+        return `<button type="button" class="studio-cleanup-keep-btn" data-cleanup-keep-kind="${escapeHtml(kind)}" data-cleanup-keep-id="${escapeHtml(safeId)}" aria-pressed="${checked}" ${active && !cleanupKeepState.busy ? '' : 'disabled'} title="Temporary: protect this item during full cleanup">${checked ? '✓ KEEP' : 'KEEP'}</button>`;
+    }
+    function refreshCleanupKeepCards() {
+        if (elements.studioQuizList) renderQuizManagementList();
+        if (elements.diagramCreatorImageGrid) renderDiagramCreatorSavedImages();
+        if (elements.reviewModeImageGrid) renderReviewModeLibrary();
+    }
+    function assertCleanupAuth() {
+        if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in to Supabase before using KEEP & CLEANUP.');
+        return state.auth.user.id;
+    }
+    async function loadCleanupKeepSelections(options = {}) {
+        const userId = assertCleanupAuth();
+        if (cleanupKeepState.userId !== userId) {
+            cleanupKeepState.loaded = false;
+            cleanupKeepState.keep.clear();
+            cleanupKeepState.plan = null;
+        }
+        cleanupKeepState.userId = userId;
+        if (cleanupKeepState.loading) return cleanupKeepState.loading;
+        if (cleanupKeepState.loaded && !options.force) return cleanupKeepState.keep;
+        const task = (async () => {
+            const rows = await fetchAllSupabaseRows(() => state.auth.client.from('study_cleanup_keep')
+                .select('kind, item_id').eq('user_id', userId), {label:'KEEP selections'});
+            cleanupKeepState.keep = new Set(rows.map(x => cleanupKeepKey(x.kind, x.item_id)));
+            cleanupKeepState.loaded = true;
+            cleanupKeepStatus(`${rows.length} protected items selected. KEEP every desired quiz and Saved Image, then Review full cleanup.`);
+            refreshCleanupKeepCards();
+            return cleanupKeepState.keep;
+        })().finally(() => { if (cleanupKeepState.loading === task) cleanupKeepState.loading = null; });
+        cleanupKeepState.loading = task;
+        return task;
+    }
+    async function setCleanupKeepSelection(kind, id, selected) {
+        const userId = assertCleanupAuth();
+        if (!['quiz', 'saved_image'].includes(kind) || !id) throw new Error('Invalid KEEP selection.');
+        await loadCleanupKeepSelections();
+        if (cleanupKeepState.busy) throw new Error('Cleanup is currently running.');
+        const key = cleanupKeepKey(kind, id);
+        const response = selected
+            ? await state.auth.client.from('study_cleanup_keep').upsert({user_id:userId, kind, item_id:id}, {onConflict:'user_id,kind,item_id'})
+            : await state.auth.client.from('study_cleanup_keep').delete().eq('user_id',userId).eq('kind',kind).eq('item_id',id);
+        if (response.error) throw response.error;
+        if (selected) cleanupKeepState.keep.add(key); else cleanupKeepState.keep.delete(key);
+        cleanupKeepState.plan = null; // Any change invalidates the deletion preview.
+        refreshCleanupKeepCards();
+        cleanupKeepStatus(`${cleanupKeepState.keep.size} items marked KEEP. Full cleanup preview must be refreshed after changing selections.`);
+    }
+    async function keepAllCleanupSavedImages() {
+        await loadCleanupKeepSelections();
+        if (cleanupKeepState.busy) throw new Error('Cleanup is currently running.');
+        // Load authoritative remotely synchronized IDs instead of trusting a paged UI.
+        const userId = assertCleanupAuth();
+        const entries = await fetchAllSupabaseRows(() => state.auth.client.from('saved_images')
+            .select('id').eq('user_id',userId).is('deleted_at',null), {label:'active Saved Images'});
+        for (let i = 0; i < entries.length; i += 100) {
+            const values = entries.slice(i,i+100).map(row => ({user_id:userId,kind:'saved_image',item_id:row.id}));
+            if (!values.length) continue;
+            const {error} = await state.auth.client.from('study_cleanup_keep').upsert(values,{onConflict:'user_id,kind,item_id'});
+            if (error) throw error;
+        }
+        cleanupKeepState.plan = null;
+        await loadCleanupKeepSelections({force:true});
+        cleanupKeepStatus(`All ${entries.length} active Saved Images are now marked KEEP. Review all quiz types, including flashcards.`);
+    }
+    async function cleanupReadAll(table, columns = '*', filterFn = null) {
+        return fetchAllSupabaseRows(() => {
+            let query = state.auth.client.from(table).select(columns);
+            if (filterFn) query = filterFn(query);
+            return query;
+        }, {label:`cleanup ${table}`,pageSize:200,maxRows:50000});
+    }
+    function cleanupReferencedIdsFromText(value) {
+        const raw = typeof value === 'string' ? value : JSON.stringify(value || {});
+        const ids = new Set();
+        for (const match of raw.matchAll(/(?:sb-media:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi)) ids.add(match[1].toLowerCase());
+        return {raw,ids};
+    }
+    function cleanupProtectedMedia(asset, protectedText, protectedIds, keepQuestionIds, keepQuizIds) {
+        const id = normalizeSheetText(asset.id).toLowerCase();
+        const path = normalizeSheetText(asset.object_path);
+        const assetQuiz = normalizeSheetText(asset.quiz_id);
+        const assetQuestion = normalizeSheetText(asset.question_id);
+        if (protectedIds.has(id) || protectedText.includes(`sb-media:${id}`)) return true;
+        if (assetQuiz && keepQuizIds.has(assetQuiz)) return true;
+        if (assetQuestion && keepQuestionIds.has(assetQuestion)) return true;
+        if (path && (protectedText.includes(path) || protectedText.includes(encodeURIComponent(path)) || protectedText.includes(path.replaceAll('/', '%2F')))) return true;
+        return false;
+    }
+    // Storage API inventory also finds objects missing from media_assets. Supabase
+    // Storage folders are virtual directories, so recurse inside the user prefix.
+    // A listing failure aborts preflight; no assumption that an object is absent.
+    async function cleanupListSupabaseObjects() {
+        const userId=assertCleanupAuth();
+        const bucket=state.auth.client.storage.from(CONFIG.mediaAssets.bucketName);
+        const found=[];
+        const pending=[userId];
+        let visited=0;
+        while(pending.length) {
+            const prefix=pending.pop();
+            if(++visited>25000) throw new Error('Storage folder count exceeded safety limit.');
+            for(let offset=0;;offset+=1000) {
+                const {data,error}=await bucket.list(prefix,{limit:1000,offset});
+                if(error) throw new Error(`Cannot inventory Supabase Storage at ${prefix}: ${error.message}`);
+                for(const item of data||[]) {
+                    if(!item?.name) continue;
+                    const path=`${prefix}/${item.name}`;
+                    if(item.id || item.metadata) found.push(path);
+                    else pending.push(path);
+                }
+                if((data||[]).length<1000) break;
+            }
+        }
+        return found;
+    }
+
+    async function cleanupPhysicalInventory(userId, trackedAssets) {
+        // Phase 24A.5d: Supabase-only projects do not need a Cloudflare R2 Worker.
+        // Fail closed if the current user has any media record in a provider that
+        // cannot be physically inventoried.  This covers formerly configured R2
+        // projects, for which silently skipping the Worker would be dangerous.
+        if (!Array.isArray(trackedAssets)) {
+            throw new Error('Cannot verify tracked storage providers; cleanup stopped.');
+        }
+        const availableBuckets = new Set([CONFIG.mediaAssets.bucketName]);
+        if (isCloudflareR2Configured()) availableBuckets.add(CONFIG.cloudflareR2.providerBucketName);
+        const inaccessible = trackedAssets.filter(asset =>
+            !availableBuckets.has(normalizeSheetText(asset?.bucket_name)));
+        if (inaccessible.length) {
+            throw new Error(`${inaccessible.length} tracked files use an unconfigured or unknown storage provider. Configure that provider and verify its physical inventory before cleanup.`);
+        }
+        const supabase = await state.auth.client.rpc('study_cleanup_storage_inventory');
+        if (supabase.error) throw new Error(`Physical Supabase inventory unavailable. Run the KEEP SQL migration: ${supabase.error.message}`);
+        const objects = (supabase.data||[]).map(row => ({
+            bucket_name: 'study-bunny-media', object_path: normalizeSheetText(row.object_path),
+            size_bytes: Number(row.size_bytes||0)
+        }));
+        if (isCloudflareR2Configured()) {
+            let cursor = '';
+            let pages = 0;
+            const visited = new Set();
+            do {
+                const page = await cloudflareR2Request('/v1/inventory',{cursor});
+                (page.items||[]).forEach(item => objects.push({bucket_name:CONFIG.cloudflareR2.providerBucketName,
+                    object_path:normalizeSheetText(item.object_path),size_bytes:Number(item.size_bytes||0)}));
+                if (!page.truncated) {cursor='';break;}
+                if (!page.cursor || visited.has(page.cursor)) throw new Error('R2 physical inventory is incomplete; cleanup stopped.');
+                cursor=page.cursor;visited.add(cursor);
+                if (++pages>100) throw new Error('R2 inventory exceeded the verified scan limit.');
+            } while(cursor);
+        } else {
+            // Supabase-only mode: this app uploads to Supabase when the Worker
+            // is unset.  The trackedAssets guard above ensures no R2/unknown
+            // media records are silently excluded.  If R2 was ever used and its
+            // tracking rows are missing, the user must not claim full coverage.
+        }
+        const unique = new Map();
+        for (const row of objects) {
+            if (!row.object_path.startsWith(`${userId}/`)) throw new Error('Physical media path fell outside the signed-in account; cleanup stopped.');
+            const key=`${row.bucket_name}|${row.object_path}`;
+            if(unique.has(key)) throw new Error('Duplicate physical inventory entry; cleanup stopped.');
+            unique.set(key,row);
+        }
+        return unique;
+    }
+    async function buildCleanupKeepPlan() {
+        if (cleanupKeepState.busy) throw new Error('Cleanup is in progress.');
+        await loadCleanupKeepSelections({force:true});
+        const userId = assertCleanupAuth();
+        // Reject unsynced local Saved Images to prevent a partial cross-device snapshot.
+        if (getStudioSavedImagePendingDeletes(userId).length || getStudioSavedImagePendingUpsertKeys(userId).size) {
+            throw new Error('Saved Images are still syncing. Refresh after sync finishes before preparing a cleanup.');
+        }
+        cleanupKeepStatus('Checking live quizzes, cards, Saved Images, and storage references...');
+        const [quizzes, savedImages, assets, folders, classes] = await Promise.all([
+            cleanupReadAll('quizzes','*',q=>q.eq('user_id',userId)),
+            cleanupReadAll('saved_images','id, payload, updated_at, deleted_at',q=>q.eq('user_id',userId).is('deleted_at',null)),
+            cleanupReadAll('media_assets','id, user_id, quiz_id, question_id, bucket_name, object_path, size_bytes, usage_context',q=>q.eq('user_id',userId)),
+            cleanupReadAll('folders','*',q=>q.eq('user_id',userId)),
+            cleanupReadAll('classes','*',q=>q.eq('user_id',userId))
+        ]);
+        const keptQuizzes = quizzes.filter(q=>cleanupKeepState.keep.has(cleanupKeepKey('quiz',q.id)));
+        const unkeptQuizzes = quizzes.filter(q=>!cleanupKeepState.keep.has(cleanupKeepKey('quiz',q.id)));
+        let keptImages = savedImages.filter(s=>cleanupKeepState.keep.has(cleanupKeepKey('saved_image',s.id)));
+        let unkeptImages = savedImages.filter(s=>!cleanupKeepState.keep.has(cleanupKeepKey('saved_image',s.id)));
+        const quizIds = new Set(quizzes.map(q=>normalizeSheetText(q.id)));
+        const imageIds = new Set(savedImages.map(s=>normalizeSheetText(s.id)));
+        const staleKeeps = Array.from(cleanupKeepState.keep).filter(key => {
+            const pos = key.indexOf(':');
+            return pos < 0 || !(key.slice(0,pos)==='quiz'?quizIds:imageIds).has(key.slice(pos+1));
+        });
+        if (staleKeeps.length) throw new Error(`${staleKeeps.length} KEEP selections refer to content not currently available. Review selections first; nothing has been deleted.`);
+        if (!keptQuizzes.length && !keptImages.length) throw new Error('No content marked KEEP. Select at least one quiz or Saved Image before cleanup.');
+        const questions = await cleanupReadAll('questions','*'); // RLS scopes quiz questions; questions has no user_id column.
+        const keptQuizIds = new Set(keptQuizzes.map(q=>normalizeSheetText(q.id)));
+        const keptQuestions = questions.filter(q=>keptQuizIds.has(normalizeSheetText(q.quiz_id)));
+        const keptQuestionIds = new Set(keptQuestions.map(q=>normalizeSheetText(q.id)));
+        const unkeptQuizIdSet = new Set(unkeptQuizzes.map(q=>normalizeSheetText(q.id)));
+        const unkeptFlashcardIdsByQuiz = new Map();
+        questions.filter(q=>unkeptQuizIdSet.has(normalizeSheetText(q.quiz_id)) && normalizeSheetText(q.question_type)==='flashcard')
+            .forEach(q=>{
+                const quizId = normalizeSheetText(q.quiz_id);
+                if (!unkeptFlashcardIdsByQuiz.has(quizId)) unkeptFlashcardIdsByQuiz.set(quizId, []);
+                unkeptFlashcardIdsByQuiz.get(quizId).push(normalizeSheetText(q.id));
+            });
+        const protectedRecords = [...keptQuizzes, ...keptQuestions];
+        // Details may store image URLs, metadata and flashcard side images.
+        // Any failed detail read aborts cleanup: unknown is NEVER treated as unused.
+        const detailRowsByTable = new Map();
+        for (const table of ['flashcard_questions','multiple_choice_questions','classify_questions','hierarchy_questions']) {
+            const detailRows = [];
+            for (let i=0;i<keptQuestions.length;i+=75) {
+                const ids = keptQuestions.slice(i,i+75).map(q=>q.id);
+                const result = await state.auth.client.from(table).select('*').in('question_id',ids);
+                if (result.error) throw new Error(`Cannot verify kept content in ${table}: ${result.error.message}`);
+                protectedRecords.push(...(result.data||[]));
+                detailRows.push(...(result.data||[]));
+            }
+            detailRowsByTable.set(table, detailRows.sort((a,b)=>String(a.question_id).localeCompare(String(b.question_id))));
+        }
+        // A kept quiz may use a shared Saved Image even when the Saved Image
+        // wasn't selected explicitly. Protect the whole Saved Image (all angles,
+        // labels, connectors and visual aids) if its ID, signature, or any media
+        // reference occurs in the quiz or its retained question detail.
+        const quizText = JSON.stringify(protectedRecords);
+        const quizRefs = cleanupReferencedIdsFromText(protectedRecords).ids;
+        const autoKeepIds = new Set();
+        for (const image of savedImages) {
+            if (cleanupKeepState.keep.has(cleanupKeepKey('saved_image',image.id))) continue;
+            const payload = image.payload || {};
+            const stableId = normalizeSheetText(image.id);
+            const legacyId = normalizeSheetText(payload.id);
+            const mediaRefs = cleanupReferencedIdsFromText(payload).ids;
+            const sharedSignature = getStudioSavedImageSignature(payload);
+            if ((stableId && quizText.includes(stableId)) ||
+                (legacyId && quizText.includes(legacyId)) ||
+                (sharedSignature && (quizText.includes(sharedSignature) || quizText.includes(encodeURIComponent(sharedSignature)))) ||
+                [...mediaRefs].some(ref=>quizRefs.has(ref))) autoKeepIds.add(stableId);
+        }
+        keptImages = savedImages.filter(s => cleanupKeepState.keep.has(cleanupKeepKey('saved_image',s.id)) || autoKeepIds.has(s.id));
+        unkeptImages = savedImages.filter(s => !keptImages.includes(s));
+        // The entire payload of a Saved Image is protected when a kept quiz uses it.
+        // Never infer a protected file by filename or its last-used date.
+        protectedRecords.push(...keptImages);
+        const {raw:protectedText, ids:protectedIds} = cleanupReferencedIdsFromText(protectedRecords);
+        const protectedAssets = assets.filter(a=>cleanupProtectedMedia(a,protectedText,protectedIds,keptQuestionIds,keptQuizIds));
+        const candidateAssets = assets.filter(a=>!cleanupProtectedMedia(a,protectedText,protectedIds,keptQuestionIds,keptQuizIds));
+        // Cross-check BOTH physical providers. Orphan objects with no media_assets
+        // row must appear in the report and need separate reference verification.
+        const physicalObjects = await cleanupPhysicalInventory(userId, assets);
+        const tracked = new Map(assets.map(a => [`${a.bucket_name}|${a.object_path}`,a]));
+        const untrackedPhysical = [...physicalObjects.values()].filter(x => !tracked.has(`${x.bucket_name}|${x.object_path}`));
+        const missingPhysical = assets.filter(a => !physicalObjects.has(`${a.bucket_name}|${a.object_path}`));
+        const protectedUntracked = untrackedPhysical.filter(a => protectedText.includes(a.object_path) ||
+            protectedText.includes(encodeURIComponent(a.object_path)));
+        const unreferencedUntracked = untrackedPhysical.filter(a => !protectedUntracked.includes(a));
+        const protectedMissing = missingPhysical.filter(row=>protectedAssets.includes(row));
+        if (untrackedPhysical.length || protectedMissing.length) {
+            // An untracked object or missing KEEP file is NEVER a deletion candidate.
+            throw new Error(`${untrackedPhysical.length} untracked physical objects and ${protectedMissing.length} protected image files missing from Storage. Resolve these before cleanup; no deletion has occurred.`);
+        }
+        // A physically absent UNPROTECTED media_assets row can result when
+        // Storage deletion succeeded but metadata cleanup failed. Keep it in
+        // the plan for an explicitly approved metadata-only retry.
+        const missingCandidateIds = new Set(missingPhysical.map(row=>row.id));
+        const foldersKeep = new Set([
+            ...keptQuizzes.map(q=>normalizeSheetText(q.folder_id)),
+            ...keptImages.map(s=>normalizeSheetText(s.payload?.folderId || s.payload?.folder_id))
+        ].filter(Boolean));
+        const keptFolders = folders.filter(f=>foldersKeep.has(normalizeSheetText(f.id)));
+        const classKeep = new Set([
+            ...keptFolders.map(f=>normalizeSheetText(f.class_id)),
+            ...keptQuizzes.map(q=>normalizeSheetText(q.class_id)),
+            ...keptImages.map(s=>normalizeSheetText(s.payload?.classId || s.payload?.class_id))
+        ].filter(Boolean));
+        const staleClasses = classes.filter(c=>!classKeep.has(normalizeSheetText(c.id)));
+        const staleFolders = folders.filter(f=>!foldersKeep.has(normalizeSheetText(f.id)));
+        const snapshot = JSON.stringify({keep:[...cleanupKeepState.keep].sort(),quizzes:quizzes.map(x=>[x.id,x.updated_at]).sort(),
+            images:savedImages.map(x=>[x.id,x.updated_at]).sort(),assets:assets.map(a=>[a.id,a.object_path,a.size_bytes]).sort(),
+            physical:[...physicalObjects.values()].map(x=>[x.bucket_name,x.object_path,x.size_bytes]).sort(),
+            protectedRecordData:JSON.stringify(protectedRecords)});
+        const plan = {userId, snapshot, keptQuizzes, keptImages, unkeptQuizzes, unkeptImages,
+            unkeptFlashcardIdsByQuiz, // cache keys only; never change KEEP eligibility or physical-media selection
+            protectedAssets,candidateAssets, physicalObjects, autoKeepIds,missingCandidateIds,
+            staleClasses,staleFolders,keepQuizIds:keptQuizIds,
+            keepQuestionIds:keptQuestionIds,protectedIds,protectedText,assetCount:assets.length,
+            keepSelectionSnapshot:[...cleanupKeepState.keep].sort().join('|'),
+            keptImageIds:new Set(keptImages.map(row=>normalizeSheetText(row.id))),
+            keptQuizSnapshot:JSON.stringify(keptQuizzes.slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)))),
+            keptImageSnapshot:JSON.stringify(keptImages.slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)))),
+            keptQuestionSnapshot:JSON.stringify(keptQuestions.slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)))),
+            keptDetailSnapshot:JSON.stringify(['flashcard_questions','multiple_choice_questions','classify_questions','hierarchy_questions'].map(table => [table, detailRowsByTable.get(table) || []])),
+            bytesToRemove:candidateAssets.reduce((n,a)=>n+Number(a.size_bytes||0),0)};
+        cleanupKeepState.plan=plan;
+        return plan;
+    }
+    function describeCleanupKeepPlan(plan) {
+        return [
+            `KEEP: ${plan.keptQuizzes.length} quizzes (all types) and ${plan.keptImages.length} Saved Images`,
+            `Automatic dependencies: ${plan.autoKeepIds.size} Saved Images protected by kept quizzes`,
+            `Physical files inventoried: ${plan.physicalObjects.size} (${isCloudflareR2Configured() ? 'Supabase + Cloudflare R2' : 'Supabase Storage only; R2 not configured'})`,
+            ...(!isCloudflareR2Configured() ? ['R2 NOTE: This mode is valid only if Cloudflare R2 has NEVER been used. Unknown-provider tracking records block cleanup, but historical untracked R2 objects cannot be verified without configuring R2.'] : []),
+            `DELETE: ${plan.unkeptQuizzes.length} quizzes, ${plan.unkeptImages.length} Saved Images`,
+            `CLEAN: ${plan.staleFolders.length} unused folders, ${plan.staleClasses.length} unused classes`,
+            `MEDIA INVENTORY: ${plan.assetCount} tracked objects`,
+            `Missing (already absent) unprotected objects: ${plan.missingCandidateIds.size} tracking rows to reconcile; KEEP media is never eligible for this reconciliation`,
+            `PROTECT: ${plan.protectedAssets.length} tracked objects associated with retained content`,
+            `CANDIDATE FOR PHYSICAL DELETION: ${plan.candidateAssets.length} tracked objects / ~${(plan.bytesToRemove/1048576).toFixed(2)} MiB`,
+            `Checks tracked historical media, including files left behind by previous deletions.`,
+            `IMPORTANT: not-yet-inventoried storage objects or ambiguous legacy references cannot be automatically declared safe.`,
+            `This preview is NOT a backup. Export and verify a full database + Supabase Storage + R2 backup separately.`,
+            `Any failure will be reported; repeated attempts need another live preview.`
+        ].join('\n');
+    }
+    function showCleanupKeepPlan(plan) {
+        const el=document.getElementById('studioCleanupReport');
+        if (el) {el.hidden=false;el.textContent=describeCleanupKeepPlan(plan);}
+        cleanupKeepStatus('Preview created. Make a verified full backup of Supabase database AND actual images before running cleanup.');
+    }
+    // Phase 24A.5e: preflight and media-first, fail-stop bulk cleanup.
+    // KEEP records are never modified here.  Historical unkept records are
+    // removed only AFTER their physical media has been verified absent.
+    async function cleanupConfirmKeptContentUnchanged(plan) {
+        const userId = assertCleanupAuth();
+        const selections = await cleanupReadAll('study_cleanup_keep','kind,item_id',q=>q.eq('user_id',userId));
+        const currentSelections = selections.map(row=>cleanupKeepKey(row.kind,row.item_id)).sort().join('|');
+        if (currentSelections !== plan.keepSelectionSnapshot) throw new Error('KEEP selections changed on another device. Cleanup stopped; review again.');
+        const [quizzes, images] = await Promise.all([
+            cleanupReadAll('quizzes','*',q=>q.eq('user_id',userId)),
+            cleanupReadAll('saved_images','id,payload,updated_at,deleted_at',q=>q.eq('user_id',userId).is('deleted_at',null))
+        ]);
+        const keptQuizzes = quizzes.filter(q=>plan.keepQuizIds.has(normalizeSheetText(q.id)));
+        const keptImages = images.filter(row=>plan.keptImageIds.has(normalizeSheetText(row.id)));
+        const ids = keptQuizzes.map(row=>normalizeSheetText(row.id)).sort().join('|');
+        if (ids!==[...plan.keepQuizIds].sort().join('|') || keptImages.length!==plan.keptImages.length) {
+            throw new Error('A kept quiz or Saved Image is missing; cleanup stopped.');
+        }
+        if (JSON.stringify(keptQuizzes.sort((a,b)=>String(a.id).localeCompare(String(b.id))))!==plan.keptQuizSnapshot ||
+            JSON.stringify(keptImages.sort((a,b)=>String(a.id).localeCompare(String(b.id))))!==plan.keptImageSnapshot) {
+            throw new Error('Protected quiz or Saved Image changed since preview. Cleanup stopped; review again.');
+        }
+        const questions = await cleanupReadAll('questions','*');
+        const keptQuestions = questions.filter(q=>plan.keepQuizIds.has(normalizeSheetText(q.quiz_id)));
+        if (JSON.stringify(keptQuestions.sort((a,b)=>String(a.id).localeCompare(String(b.id))))!==plan.keptQuestionSnapshot) {
+            throw new Error('A protected quiz question changed since preview. Cleanup stopped; review again.');
+        }
+        const detailRows=[];
+        for(const table of ['flashcard_questions','multiple_choice_questions','classify_questions','hierarchy_questions']) {
+            const rows=[];
+            for(let start=0;start<keptQuestions.length;start+=75) {
+                const ids=keptQuestions.slice(start,start+75).map(q=>q.id);
+                const result=await state.auth.client.from(table).select('*').in('question_id',ids);
+                if(result.error) throw new Error(`Protected media verification failed in ${table}: ${result.error.message}`);
+                rows.push(...(result.data||[]));
+            }
+            detailRows.push([table,rows.sort((a,b)=>String(a.question_id).localeCompare(String(b.question_id)))]);
+        }
+        if(JSON.stringify(detailRows)!==plan.keptDetailSnapshot) {
+            throw new Error('A protected question image or flashcard changed during cleanup; stopped.');
+        }
+    }
+
+    async function cleanupRemoveCandidateMedia(plan) {
+        const userId=assertCleanupAuth();
+        const protectedPaths=new Set(plan.protectedAssets.map(a=>`${a.bucket_name}|${a.object_path}`));
+        const candidates=plan.candidateAssets;
+        let removed=0;
+        for(let start=0;start<candidates.length;start+=15) {
+            // A fresh check BEFORE each batch guards against concurrent editing
+            // or someone changing KEEP from a second device.
+            await cleanupConfirmKeptContentUnchanged(plan);
+            const batch=candidates.slice(start,start+15);
+            const liveRows=await cleanupReadAll('media_assets','id,user_id,bucket_name,object_path,size_bytes',q=>q.eq('user_id',userId));
+            const liveById=new Map(liveRows.map(row=>[row.id,row]));
+            const inventory=await cleanupPhysicalInventory(userId,liveRows);
+            for(const asset of batch) {
+                const key=`${asset.bucket_name}|${asset.object_path}`;
+                const current=liveById.get(asset.id);
+                if(protectedPaths.has(key) || !current || current.object_path!==asset.object_path ||
+                    current.bucket_name!==asset.bucket_name ||
+                    (!inventory.has(key) && !plan.missingCandidateIds.has(asset.id))) {
+                    throw new Error(`Candidate ${asset.id} changed or is not physically verified; cleanup stopped.`);
+                }
+            }
+            const deleteAttempts=[];
+            let firstError=null;
+            for(const asset of batch) {
+                if(firstError) break;
+                if(plan.missingCandidateIds.has(asset.id)) {deleteAttempts.push(asset);continue;}
+                try {
+                    if(isCloudflareR2Asset(asset)) {
+                        await deleteCloudflareR2Objects([asset.object_path]);
+                    } else if(asset.bucket_name===CONFIG.mediaAssets.bucketName) {
+                        const result=await state.auth.client.storage.from(asset.bucket_name).remove([asset.object_path]);
+                        if(result.error) throw result.error;
+                    } else throw new Error('Unknown storage provider');
+                    deleteAttempts.push(asset);
+                } catch(error) {
+                    firstError=new Error(`Physical deletion failed for ${asset.id}: ${error.message||error}`);
+                }
+            }
+            // Reinventory BEFORE deleting any tracking rows. Keep the rows for
+            // objects that remain, so the next review can safely retry them.
+            const after=await cleanupPhysicalInventory(userId,liveRows);
+            for(const asset of deleteAttempts) {
+                const key=`${asset.bucket_name}|${asset.object_path}`;
+                if(after.has(key)) {
+                    firstError=firstError||new Error(`File ${asset.id} still exists after Storage removal response; cleanup stopped.`);
+                    continue;
+                }
+                const {data:cleared,error}=await state.auth.client.from('media_assets').delete()
+                    .eq('user_id',userId).eq('id',asset.id).eq('object_path',asset.object_path).select('id');
+                if(error || !Array.isArray(cleared) || cleared.length!==1) throw new Error(`File ${asset.id} is absent from Storage, but its tracking row was not verified deleted: ${error?.message||'No confirmed deleted row'}. Stop and review again.`);
+                deleteCachedMediaSignedUrl(asset.id);
+                removed++;
+                plan.mediaRemovedDuringPass=removed;
+            }
+            cleanupKeepStatus(`Verified physical cleanup: ${removed}/${candidates.length} files. Unkept database records remain intact until media cleanup finishes.`);
+            if(firstError) throw firstError;
+        }
+        const remaining=await cleanupReadAll('media_assets','id,user_id,bucket_name,object_path,size_bytes',q=>q.eq('user_id',userId));
+        const finalInventory=await cleanupPhysicalInventory(userId,remaining);
+        const unexpected=[...finalInventory.keys()].filter(key=>!protectedPaths.has(key));
+        if(unexpected.length) throw new Error(`${unexpected.length} unprotected physical files still remain. Database deletion has NOT started.`);
+        if(remaining.length!==plan.protectedAssets.length) throw new Error('Tracking count does not match protected media. Database deletion blocked.');
+        return removed;
+    }
+
+    async function deleteCleanupKeepPlan() {
+        let plan=cleanupKeepState.plan;
+        if(!plan||cleanupKeepState.busy) throw new Error('Run Review full cleanup before deleting.');
+        const userId=assertCleanupAuth();
+        const fresh=await buildCleanupKeepPlan();
+        if(fresh.snapshot!==plan.snapshot) {cleanupKeepState.plan=null;throw new Error('Data changed since preview. Run Review full cleanup again; nothing was deleted.');}
+        plan=fresh;
+        await cleanupConfirmKeptContentUnchanged(plan);
+        showCleanupKeepPlan(plan);
+        if(!window.confirm(`PERMANENT CLEANUP: Remove ${plan.candidateAssets.length} unkept physical media files FIRST, verify their deletion, THEN delete ${plan.unkeptQuizzes.length} unkept quizzes and ${plan.unkeptImages.length} Saved Images.\n\nKEEP: ${plan.keptQuizzes.length} quizzes and ${plan.keptImages.length} Saved Images.\n\nA failure can still leave some unkept media missing; verified KEEP content is protected. Ensure you have downloaded and VERIFIED backups of the actual images and database before continuing.`))return;
+        if(window.prompt('Type DELETE UNKEPT to confirm permanent physical deletion. This cannot be undone.')!=='DELETE UNKEPT') {cleanupKeepStatus('Cleanup cancelled.');return;}
+        if(!window.confirm('FINAL CONFIRMATION: The full backup was verified. Delete all unkept physical files FIRST and only then remove unkept quiz/image records?'))return;
+        cleanupKeepState.busy=true;
+        cleanupKeepState.errors=[];
+        plan.mediaRemovedDuringPass=0;
+        let removedMedia=0,deletedQuizzes=0,deletedImages=0,deletedFolders=0,deletedClasses=0;
+        try {
+            cleanupKeepStatus('Step 1/3: Removing verified unprotected physical files. Unkept quiz records have NOT been deleted.');
+            removedMedia=await cleanupRemoveCandidateMedia(plan);
+            // Even if physical deletion succeeds, reverify KEEP content before
+            // irreversible relational deletions.
+            await cleanupConfirmKeptContentUnchanged(plan);
+            cleanupKeepStatus('Step 2/3: Media cleanup verified. Removing unkept quiz and Saved Image records...');
+            const client=state.auth.client;
+            for(const quiz of plan.unkeptQuizzes) {
+                const {error}=await client.from('quizzes').delete().eq('id',quiz.id).eq('user_id',userId);
+                if(error) throw new Error(`Quiz ${quiz.id}: ${error.message}`);
+                deletedQuizzes++;
+                // Cleanup operates on confirmed-unkept quizzes only; never clear KEEP caches.
+                if (!await invalidateDeletedFlashcardHandwritingCaches(plan.unkeptFlashcardIdsByQuiz.get(normalizeSheetText(quiz.id)) || [])) {
+                    const warning = `Unkept quiz ${quiz.id} deleted; local handwriting cache could not be verified cleared.`;
+                    cleanupKeepState.errors.push(warning);
+                    console.warn(warning);
+                }
+            }
+            for(const entry of plan.unkeptImages) {
+                const {error}=await client.from('saved_images').update({payload:{},deleted_at:new Date().toISOString()})
+                    .eq('id',entry.id).eq('user_id',userId).is('deleted_at',null);
+                if(error) throw new Error(`Saved Image ${entry.id}: ${error.message}`);
+                const local=getStudioSavedImageLibraryForPicker().find(x=>getStudioSavedImageSyncKey(x)===entry.id);
+                if(local)removeStudioSavedImageSnapshot(local);
+                deletedImages++;
+            }
+            if(deletedImages) {
+                const synced=await syncStudioSavedImagesFromSupabase({force:true});
+                if(!synced||getStudioSavedImagePendingDeletes(userId).length) throw new Error('Saved Image synchronization could not be verified.');
+            }
+            cleanupKeepStatus('Step 3/3: Checking retained data and cleaning unused organization...');
+            const liveQuizzes=await cleanupReadAll('quizzes','id',q=>q.eq('user_id',userId));
+            const liveSaved=await cleanupReadAll('saved_images','id',q=>q.eq('user_id',userId).is('deleted_at',null));
+            if(liveQuizzes.length!==plan.keptQuizzes.length||liveSaved.length!==plan.keptImages.length||
+                liveQuizzes.some(q=>!plan.keepQuizIds.has(normalizeSheetText(q.id)))||
+                liveSaved.some(q=>!plan.keptImageIds.has(normalizeSheetText(q.id)))) {
+                throw new Error('Post-deletion KEEP verification failed. Folder/class cleanup stopped.');
+            }
+            const currentQuestions=await cleanupReadAll('questions','id,quiz_id');
+            if(currentQuestions.length!==plan.keepQuestionIds.size ||
+                currentQuestions.some(q=>!plan.keepQuestionIds.has(normalizeSheetText(q.id)))) {
+                throw new Error('KEEP question verification failed. Folder/class cleanup stopped.');
+            }
+            for(const folder of plan.staleFolders) {
+                const {error}=await client.from('folders').delete().eq('id',folder.id).eq('user_id',userId);
+                if(error) {cleanupKeepState.errors.push(`Folder ${folder.id}: ${error.message}`);continue;}
+                deletedFolders++;
+            }
+            for(const cls of plan.staleClasses) {
+                const {error}=await client.from('classes').delete().eq('id',cls.id).eq('user_id',userId);
+                if(error) {cleanupKeepState.errors.push(`Class ${cls.id}: ${error.message}`);continue;}
+                deletedClasses++;
+            }
+            await refreshStudioManagementData({force:true});
+            invalidateSupabaseManagementCache();
+            await loadCleanupKeepSelections({force:true});
+            const remaining=await cleanupReadAll('media_assets','id,user_id,bucket_name,object_path,size_bytes',q=>q.eq('user_id',userId));
+            const afterPhysical=await cleanupPhysicalInventory(userId,remaining);
+            const expectedPaths=new Set(plan.protectedAssets.map(a=>`${a.bucket_name}|${a.object_path}`));
+            const unexpected=[...afterPhysical.keys()].filter(k=>!expectedPaths.has(k));
+            if(unexpected.length) cleanupKeepState.errors.push(`${unexpected.length} unprotected physical files remain.`);
+            const message=`Cleanup completed with ${cleanupKeepState.errors.length} warnings. Removed ${removedMedia} verified physical files, ${deletedQuizzes} quizzes, ${deletedImages} Saved Images, ${deletedFolders} folders, ${deletedClasses} classes. Kept ${liveQuizzes.length} quizzes and ${liveSaved.length} Saved Images. Remaining physical files: ${afterPhysical.size}.`;
+            cleanupKeepStatus(message);
+            const report=document.getElementById('studioCleanupReport');
+            if(report){report.hidden=false;report.textContent=message+'\n'+cleanupKeepState.errors.join('\n');}
+        }catch(error) {
+            cleanupKeepStatus(`CLEANUP INCOMPLETE: ${error.message}. Verified physical media removed: ${plan.mediaRemovedDuringPass||removedMedia}. Unkept database rows deleted: ${deletedQuizzes} quizzes, ${deletedImages} Saved Images. KEEP content was not intentionally deleted. Run a fresh review after diagnosing the error; there is no automatic rollback.`);
+            throw error;
+        }finally{cleanupKeepState.busy=false;cleanupKeepState.plan=null;refreshCleanupKeepCards();}
+    }
+    document.addEventListener('click',event=>{
+        const mark=event.target.closest('[data-cleanup-keep-kind]');
+        if(mark) {
+            event.preventDefault();event.stopPropagation();
+            const kind=mark.dataset.cleanupKeepKind,id=mark.dataset.cleanupKeepId;
+            setCleanupKeepSelection(kind,id,mark.getAttribute('aria-pressed')!=='true')
+                .catch(err=>{cleanupKeepStatus(`KEEP selection failed: ${err.message}`);console.error(err);});
+            return;
+        }
+        const button=event.target.closest('[data-cleanup-action]');
+        if(!button)return;
+        event.preventDefault();event.stopPropagation();
+        if(cleanupKeepState.busy)return;
+        const action=button.dataset.cleanupAction;
+        const task=action==='load'?loadCleanupKeepSelections({force:true}):
+            action==='keep-all-images'?keepAllCleanupSavedImages():
+            action==='preview'?buildCleanupKeepPlan().then(showCleanupKeepPlan):
+            action==='delete'?deleteCleanupKeepPlan():Promise.resolve();
+        task.catch(err=>{cleanupKeepStatus(`STOPPED: ${err.message}`);console.error(err);});
+    },true);
+    // Refresh account-scoped selections when Manage Quizzes is opened.
+    // Render remains nonblocking and never treats a failed fetch as an empty KEEP list.
+    function autoLoadCleanupKeepSelections() {
+        const userId=normalizeSheetText(state.auth.user?.id);
+        if(userId && !cleanupKeepState.busy && !cleanupKeepState.loading &&
+            (!cleanupKeepState.loaded || cleanupKeepState.userId!==userId)) {
+            loadCleanupKeepSelections().catch(error=>cleanupKeepStatus(`KEEP controls unavailable until migration is installed: ${error.message}`));
         }
     }
 
@@ -26070,7 +27814,7 @@ The deletion becomes permanent when you save the diagram.`);
         const questionLabel = quiz.questionCount === 1 ? '1 question' : `${quiz.questionCount} questions`;
         const typeLabel = quiz.typeLabel || 'Mixed types';
         const folderOptions = buildStudioFolderSelectOptions(quiz.folderId);
-        const challengeBadges = renderQuizChallengeBadges(quiz);
+        const spacedRibbon = renderQuizSpacedRibbon(quiz);
         const challengesExpanded = state.auth.expandedQuizChallengeIds.has(quiz.id);
         const unlockedChallengeCount = QUIZ_CHALLENGES.filter(challenge => hasQuizChallengeAchievement(quiz.id, challenge.key)).length;
         const challengePanel = challengesExpanded ? renderQuizChallengePanel(quiz) : '';
@@ -26081,11 +27825,11 @@ The deletion becomes permanent when you save the diagram.`);
         const starOptionsOpen = actionMenuOpen && state.auth.openQuizActionSubmenu === `${quiz.id}:star`;
         const canCreateFlashcards = quiz.quizType === 'multiple_choice';
         return `
-            <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
+            <div class="studio-list-item${spacedRibbon ? ' studio-list-item-has-ribbon' : ''}" data-quiz-id="${escapeHtml(quiz.id)}">
+              ${spacedRibbon ? `<div class="studio-quiz-ribbon-corner">${spacedRibbon}</div>` : ''}
               <div class="studio-list-meta">
                 <div class="studio-list-title-row">
                   <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
-                  ${challengeBadges}
                 </div>
                 <div class="studio-list-subtitle">${escapeHtml(classLabel)} · ${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)}</div>
               </div>
@@ -26095,7 +27839,9 @@ The deletion becomes permanent when you save the diagram.`);
                 <button type="button" class="auth-action-btn" data-action="save-quiz">Save</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn quiz-challenge-toggle-btn" data-action="toggle-challenges" aria-expanded="${challengesExpanded ? 'true' : 'false'}">${escapeHtml(challengeButtonLabel)}</button>
                 <button type="button" class="auth-action-btn" data-action="load-quiz">Study</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn studio-quiz-progress-button" data-study-progress="quiz:${escapeHtml(quiz.id)}" aria-expanded="false">Progress</button>
                 <button type="button" class="auth-action-btn" data-action="edit-quiz">Edit</button>
+                ${renderCleanupKeepButton('quiz', quiz.id)}
                 <div class="studio-quiz-actions-menu-wrap">
                   <button type="button" class="auth-action-btn auth-secondary-btn studio-quiz-actions-toggle" data-action="toggle-quiz-actions" aria-haspopup="menu" aria-expanded="${actionMenuOpen ? 'true' : 'false'}" aria-label="More actions for ${escapeHtml(quiz.name)}">...</button>
                   <div class="studio-quiz-actions-menu${actionMenuOpen ? ' open' : ''}" role="menu">
@@ -26121,6 +27867,7 @@ The deletion becomes permanent when you save the diagram.`);
                   </div>
                 </div>
               </div>
+              ${renderQuizSpacedStudyProgress(quiz)}
               ${challengePanel}
             </div>
         `;
@@ -26202,7 +27949,17 @@ The deletion becomes permanent when you save the diagram.`);
         }).join('');
     }
 
+    function renderStudioQuizPageControls(page, totalPages, totalItems) {
+        if (totalItems <= STUDIO_QUIZZES_PER_PAGE) return '';
+        return `<nav class="studio-quiz-pagination" aria-label="Quiz pages">
+          <button type="button" class="auth-action-btn auth-secondary-btn" data-action="quiz-previous-page" ${page <= 1 ? 'disabled' : ''}>‹ Previous</button>
+          <span class="studio-quiz-pagination-label">Page ${page} of ${totalPages}</span>
+          <button type="button" class="auth-action-btn auth-secondary-btn" data-action="quiz-next-page" ${page >= totalPages ? 'disabled' : ''}>Next ›</button>
+        </nav>`;
+    }
+
     function renderQuizManagementList() {
+        autoLoadCleanupKeepSelections();
         if (!elements.studioQuizList) return;
         syncStudioManageTabs();
 
@@ -26221,24 +27978,32 @@ The deletion becomes permanent when you save the diagram.`);
         syncStudioManageTabs();
 
         const manageView = getStudioQuizManageView();
-        const sortFn = manageView === 'recent' ? sortStudioActiveItems('quiz') : sortStudioRecentItems;
-        const quizzesToRender = getFilteredManagedQuizzes().sort(sortFn);
+        const quizzesToRender = getFilteredManagedQuizzes().sort(sortStudioActiveItems('quiz'));
         updateStudioQuizFilterStatus(quizzesToRender.length);
-
-        if (manageView === 'classes') {
-            const classGroupedHtml = renderClassGroupedQuizManagementList(quizzesToRender);
-            if (classGroupedHtml.trim()) {
-                elements.studioQuizList.innerHTML = classGroupedHtml;
-                return;
-            }
-        }
-
         if (!quizzesToRender.length) {
-            elements.studioQuizList.innerHTML = createStudioEmptyState('No matching quizzes', 'Clear or change your quiz search/class/folder filter to see more quizzes.', [{ label: 'Clear Filters', action: 'clear-quiz-filters' }]);
+            state.auth.studioQuizPage = 1;
+            if (manageView === 'classes' && getStudioQuizClassFilterId() && getStudioQuizProgressFilter() === 'all' && !getStudioQuizSearchQuery() && !getStudioQuizFolderFilterId()) {
+                const emptyClass = renderClassGroupedQuizManagementList([]);
+                if (emptyClass.trim()) { elements.studioQuizList.innerHTML = emptyClass; return; }
+            }
+            elements.studioQuizList.innerHTML = createStudioEmptyState('No matching quizzes',
+                manageView === 'recent' ? 'No quizzes used or changed in the last 30 days match these filters. Older quizzes are available under All Quizzes.' : 'Clear or change your quiz search/class/folder/progress filters to see more quizzes.',
+                manageView === 'recent'
+                    ? [{ label: 'View All Quizzes', action: 'open-all-quizzes' }]
+                    : [{ label: 'Clear Filters', action: 'clear-quiz-filters' }]);
             return;
         }
 
-        elements.studioQuizList.innerHTML = quizzesToRender.map(renderStudioQuizManagementItem).join('');
+        const totalPages = Math.ceil(quizzesToRender.length / STUDIO_QUIZZES_PER_PAGE);
+        const page = Math.max(1, Math.min(totalPages, Number(state.auth.studioQuizPage) || 1));
+        state.auth.studioQuizPage = page;
+        const pageRows = quizzesToRender.slice((page - 1) * STUDIO_QUIZZES_PER_PAGE, page * STUDIO_QUIZZES_PER_PAGE);
+        // Slice BEFORE grouping: class/folder headings remain intact, but
+        // their child cards never exceed ten on any page.
+        const pageMarkup = manageView === 'classes'
+            ? renderClassGroupedQuizManagementList(pageRows)
+            : pageRows.map(renderStudioQuizManagementItem).join('');
+        elements.studioQuizList.innerHTML = pageMarkup + renderStudioQuizPageControls(page, totalPages, quizzesToRender.length);
     }
 
     function getStudioUpdatedTime(value) {
@@ -26330,7 +28095,28 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.exportAllBtn) {
             elements.exportAllBtn.disabled = !creatorEnabled || (!state.auth.supabaseFolders.length && !state.auth.managedQuizzes.length);
         }
-        if (elements.importBackupFile) {
+        if (elements.restoreSavedImagesTarInput) {
+    elements.restoreSavedImagesTarInput.addEventListener('change', () => {
+        savedImagesTarRestoreState.verified=false;
+        if(elements.restoreSavedImagesTarBtn)elements.restoreSavedImagesTarBtn.disabled=true;
+        savedImagesTarRestoreStatus('Select Preview & Verify TAR before any restore.');
+    });
+}
+if (elements.previewSavedImagesRestoreBtn) {
+    elements.previewSavedImagesRestoreBtn.addEventListener('click', () => {
+        previewSavedImagesTarRestore().catch(error => {
+            console.error('Saved Images TAR verification failed:',error);
+            savedImagesTarRestoreStatus(error.message||'Could not verify Saved Images TAR.',true);
+        });
+    });
+}
+if (elements.restoreSavedImagesTarBtn) {
+    elements.restoreSavedImagesTarBtn.addEventListener('click', () => {
+        restoreSavedImagesTar().catch(error => console.error('Saved Images TAR restore stopped:',error));
+    });
+}
+
+if (elements.importBackupFile) {
             elements.importBackupFile.disabled = !creatorEnabled;
         }
         if (elements.previewBackupImportBtn) {
@@ -26563,6 +28349,10 @@ The deletion becomes permanent when you save the diagram.`);
     function applyCachedManagedSupabaseQuizzes(entry = null) {
         state.auth.managedQuizzes = clonePlainArrayRows(entry?.managedQuizzes || []);
         state.auth.quizChallengeAchievements = cloneQuizChallengeAchievementMap(entry?.quizChallengeAchievements);
+        state.auth.quizSpacedReviews = new Map(entry?.quizSpacedReviews || []);
+        state.auth.quizSpacedContentRevisions = new Map(entry?.quizSpacedContentRevisions || []);
+        state.auth.quizSpacedMigrationMissing = !!entry?.quizSpacedMigrationMissing;
+        syncQuizSpacedMigrationBanner();
         state.auth.quizChallengeUnavailable = !!entry?.quizChallengeUnavailable;
         state.auth.studioActivity = cloneStudioActivityCache(entry?.studioActivity);
         renderQuizManagementList();
@@ -26713,6 +28503,10 @@ The deletion becomes permanent when you save the diagram.`);
             invalidateSupabaseManagementCache(['managedQuizzes', 'quizList']);
             state.auth.managedQuizzes = [];
             state.auth.quizChallengeAchievements = new Map();
+            state.auth.quizSpacedReviews = new Map();
+            state.auth.quizSpacedContentRevisions = new Map();
+            state.auth.quizSpacedMigrationMissing = false;
+            syncQuizSpacedMigrationBanner();
             state.auth.quizChallengeUnavailable = false;
             state.auth.studioActivity = { quizzes: new Map(), folders: new Map(), unavailable: false };
             renderQuizManagementList();
@@ -26817,11 +28611,14 @@ The deletion becomes permanent when you save the diagram.`);
                     };
                 });
 
-                await loadQuizChallengeAchievementsFromSupabase();
-                await loadStudioActivityFromSupabase();
+                await Promise.all([loadQuizChallengeAchievementsFromSupabase(), loadStudioActivityFromSupabase()]);
+                const quizSpacedSnapshot = await loadQuizSpacedReviewsFromSupabase();
                 return {
                     managedQuizzes,
                     quizChallengeAchievements: cloneQuizChallengeAchievementMap(state.auth.quizChallengeAchievements),
+                    quizSpacedReviews: [...quizSpacedSnapshot.records],
+                    quizSpacedContentRevisions: [...quizSpacedSnapshot.revisions],
+                    quizSpacedMigrationMissing: quizSpacedSnapshot.migrationMissing,
                     quizChallengeUnavailable: !!state.auth.quizChallengeUnavailable,
                     studioActivity: cloneStudioActivityCache(state.auth.studioActivity)
                 };
@@ -27039,39 +28836,139 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
+    // Phase .78: the primary action creates once, then updates that same quiz.
     function updateCreateQuizModeUI() {
         const isEditingQuiz = !!state.auth.editingQuizId;
         const quizName = normalizeSheetText(elements.createQuizName?.value);
         const creatorEnabled = !!state.auth.configured && !!state.auth.user?.id;
-
-        const canSaveChanges = creatorEnabled && !!quizName;
+        const busy = state.auth.studioSaveFeedback === 'saving';
+        const canSaveChanges = creatorEnabled && !!quizName && !busy;
         [elements.createQuizBtn, elements.studioEditorActionSaveBtn].forEach(button => {
             if (!button) return;
-            button.textContent = 'Save Changes';
+            const base = isEditingQuiz ? 'Save Changes' : 'Create Quiz';
+            button.textContent = busy ? (state.auth.studioSavingCreatesNew ? 'Creating...' : 'Saving...')
+                : state.auth.studioSaveFeedback === 'saved' ? 'Saved ✓'
+                : state.auth.studioSaveFeedback === 'error' ? 'Retry Save' : base;
             button.disabled = !canSaveChanges;
-            button.title = canSaveChanges
-                ? 'Save all pending quiz changes.'
+            button.setAttribute('aria-busy', busy ? 'true' : 'false');
+            button.title = busy ? 'Wait for the current save to finish.' : canSaveChanges
+                ? (isEditingQuiz ? 'Save changed quiz content.' : 'Create this quiz in Supabase.')
                 : 'Enter a quiz name before saving.';
         });
-
         if (elements.createQuizCancelEditBtn) {
-            elements.createQuizCancelEditBtn.textContent = 'Create Quiz';
-            elements.createQuizCancelEditBtn.disabled = !creatorEnabled || !isEditingQuiz;
-            elements.createQuizCancelEditBtn.title = isEditingQuiz
-                ? 'Start a new quiz in the editor.'
-                : 'Save this quiz before starting another one.';
+            elements.createQuizCancelEditBtn.textContent = 'New Quiz';
+            elements.createQuizCancelEditBtn.disabled = !creatorEnabled || busy;
+            elements.createQuizCancelEditBtn.title = 'Start a fresh quiz. Your previously saved quiz is kept.';
         }
-
         if (elements.studioStudyQuizBtn) {
-            const canStudyOpenQuiz = isEditingQuiz && creatorEnabled;
+            const canStudyOpenQuiz = isEditingQuiz && creatorEnabled && !busy;
             elements.studioStudyQuizBtn.disabled = !canStudyOpenQuiz;
             elements.studioStudyQuizBtn.title = canStudyOpenQuiz
                 ? 'Study the quiz currently open in the editor.'
-                : 'Save this quiz before studying it.';
+                : 'Create and save this quiz before studying it.';
         }
-
+        [elements.flashcardHandwrittenSaveBtn, elements.flashcardHandwrittenFocusSaveBtn].forEach(button => {
+            if (!button) return;
+            button.textContent = busy ? 'Saving...' : state.auth.studioSaveFeedback === 'saved' ? 'Saved ✓'
+                : state.auth.studioSaveFeedback === 'error' ? 'Retry Save' : 'Save';
+            button.disabled = busy;
+            button.setAttribute('aria-busy', busy ? 'true' : 'false');
+        });
         updateStudioEditorTypeUI();
         updateStudioQuestionNavigationUI();
+    }
+
+    function setStudioSaveFeedback(status = '') {
+        if (state.auth.studioSaveFeedbackTimer) {
+            clearTimeout(state.auth.studioSaveFeedbackTimer);
+            state.auth.studioSaveFeedbackTimer = null;
+        }
+        state.auth.studioSaveFeedback = status;
+        updateCreateQuizModeUI();
+        if (status === 'saved') {
+            state.auth.studioSaveFeedbackTimer = window.setTimeout(() => {
+                state.auth.studioSaveFeedbackTimer = null;
+                if (state.auth.studioSaveFeedback === 'saved') {
+                    state.auth.studioSaveFeedback = '';
+                    updateCreateQuizModeUI();
+                }
+            }, 1800);
+        }
+    }
+
+    // All explicit Quiz Studio save controls share one request and one completion state.
+    // The status never causes extra Supabase requests by itself.
+    async function runStudioExplicitSave() {
+        if (state.auth.studioExplicitSavePromise) return state.auth.studioExplicitSavePromise;
+        state.auth.studioSavingCreatesNew = !state.auth.editingQuizId;
+        const task = (async () => {
+            setStudioSaveFeedback('saving');
+            clearStudioAutosaveTimer();
+            try {
+                await handleSaveStudioEditorChanges();
+                if (!state.auth.editingQuizId || state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts()
+                    || elements.creatorStatus?.classList.contains('is-error')) {
+                    throw new Error(elements.creatorStatus?.textContent || 'Could not confirm all quiz changes were saved.');
+                }
+                setStudioSaveFeedback('saved');
+                return true;
+            } catch (error) {
+                console.error('Quiz Studio save failed:', error);
+                setStudioSaveFeedback('error');
+                setCreatorStatus(getStudioExplicitSaveErrorMessage(error), 'error');
+                return false;
+            }
+        })();
+        state.auth.studioExplicitSavePromise = task;
+        try { return await task; }
+        finally {
+            if (state.auth.studioExplicitSavePromise === task) state.auth.studioExplicitSavePromise = null;
+            state.auth.studioSavingCreatesNew = false;
+        }
+    }
+
+    // Phase .78: shared progress labels for the primary diagram / Canvas Setup
+    // saves. These observe existing promises; they make no additional cloud calls.
+    const auxiliarySaveTasks = new Map();
+    async function runAuxiliarySaveAction(button, action, options = {}) {
+        if (!button) return false;
+        const group = options.group || button.id;
+        if (auxiliarySaveTasks.has(group)) return auxiliarySaveTasks.get(group);
+        const buttons = options.buttons || [button];
+        const baselines = buttons.filter(Boolean).map(control => ({ control, label: control.textContent, wasDisabled: control.disabled }));
+        const show = (label, busy) => baselines.forEach(({control}) => {
+            control.textContent = label;
+            control.disabled = busy;
+            control.setAttribute('aria-busy', busy ? 'true' : 'false');
+        });
+        const job = (async () => {
+            show('Saving...', true);
+            try {
+                const confirmed = await action();
+                if (confirmed !== true) {
+                    show('Retry Save', false);
+                    return false;
+                }
+                const syncPending = normalizeSheetText(elements.creatorStatus?.textContent).includes('cloud synchronization is pending');
+                show(syncPending ? 'Pending Sync' : 'Saved ✓', false);
+                return true;
+            } catch (error) {
+                console.error('Could not save:', error);
+                show('Retry Save', false);
+                return false;
+            } finally {
+                window.setTimeout(() => {
+                    baselines.forEach(({control,label,wasDisabled}) => {
+                        control.textContent = label;
+                        control.disabled = wasDisabled;
+                        control.setAttribute('aria-busy', 'false');
+                    });
+                }, 1800);
+            }
+        })();
+        auxiliarySaveTasks.set(group, job);
+        try { return await job; }
+        finally { if (auxiliarySaveTasks.get(group) === job) auxiliarySaveTasks.delete(group); }
     }
 
     function getStudioQuestionNavigationInfo() {
@@ -28221,6 +30118,8 @@ The deletion becomes permanent when you save the diagram.`);
             definitionImageSavedSignature: normalizeSheetText(row.definition_image_saved_signature || ''),
             termContentMode: normalizeFlashcardContentMode(existingDraft.termContentMode ?? row.term_content_mode ?? 'typed'),
             definitionContentMode: normalizeFlashcardContentMode(existingDraft.definitionContentMode ?? row.definition_content_mode ?? 'typed'),
+            termImagePlacement: normalizeFlashcardImagePlacement(existingDraft.termImagePlacement ?? row.term_image_placement ?? parseStoredFlashcardSideContent(row.term_html || '').imagePlacement),
+            definitionImagePlacement: normalizeFlashcardImagePlacement(existingDraft.definitionImagePlacement ?? row.definition_image_placement ?? parseStoredFlashcardSideContent(row.definition_html || '').imagePlacement),
             termImageLayout: normalizeFlashcardImageLayout(existingDraft.termImageLayout ?? row.term_image_layout, !!normalizeSheetText(termImage.value || row.term_image_url)),
             definitionImageLayout: normalizeFlashcardImageLayout(existingDraft.definitionImageLayout ?? row.definition_image_layout, !!normalizeSheetText(definitionImage.value || row.definition_image_url)),
             termHandwriting: normalizeHandwritingStrokes(existingDraft.termHandwriting ?? row.term_handwriting ?? []),
@@ -28598,6 +30497,7 @@ The deletion becomes permanent when you save the diagram.`);
 
     function setStudioDirtyState(isDirty) {
         state.auth.studioHasUnsavedChanges = !!isDirty;
+        if (isDirty && state.auth.studioSaveFeedback === 'saved') setStudioSaveFeedback('');
         updateStudioUnsavedChangesIndicator();
 
         if (state.auth.studioHasUnsavedChanges) {
@@ -28616,7 +30516,10 @@ The deletion becomes permanent when you save the diagram.`);
         if (!state.auth.studioHasUnsavedChanges) return true;
         if (state.auth.studioAutosaveInFlight) return false;
 
+        // Never allow background autosave/navigation to create a quiz shell.
+        // The first persistent quiz must come from the explicit Create Quiz action.
         const allowCreate = options.allowCreate !== false;
+        if (!state.auth.editingQuizId) return false;
         if (!allowCreate && (!state.auth.editingQuizId || !state.auth.editingQuestionId)) {
             scheduleStudioAutosave();
             return false;
@@ -28629,6 +30532,7 @@ The deletion becomes permanent when you save the diagram.`);
 
         state.auth.studioAutosaveInFlight = true;
         state.auth.studioAutosaveQuiet = !!options.quiet;
+        if (!state.auth.studioExplicitSavePromise) setStudioSaveFeedback('saving');
         clearStudioAutosaveTimer();
 
         try {
@@ -28647,8 +30551,10 @@ The deletion becomes permanent when you save the diagram.`);
                 setCreatorStatus('Fix the editor fields before leaving this quiz.', 'error');
             }
 
+            if (!state.auth.studioExplicitSavePromise) setStudioSaveFeedback(saved ? 'saved' : 'error');
             return saved;
         } catch (error) {
+            if (!state.auth.studioExplicitSavePromise) setStudioSaveFeedback('error');
             console.error('Quiz Studio autosave failed:', error);
             if (!options.quiet) {
                 setCreatorStatus(error.message || 'Could not autosave Quiz Studio changes.', 'error');
@@ -28707,6 +30613,8 @@ The deletion becomes permanent when you save the diagram.`);
             normalizeSheetText(pendingRow.term_plain || pendingRow.prompt_plain || pendingRow.definition_plain)
             || normalizeSheetText(pendingRow.term_html || pendingRow.definition_html)
             || normalizeSheetText(pendingRow.term_image_url || pendingRow.definition_image_url)
+            || normalizeHandwritingStrokes(pendingRow.term_handwriting || []).length
+            || normalizeHandwritingStrokes(pendingRow.definition_handwriting || []).length
         );
     }
 
@@ -28802,6 +30710,8 @@ The deletion becomes permanent when you save the diagram.`);
             definition_image_metadata: normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {}),
             term_content_mode: getHandwrittenSideModeFromEditorState('term'),
             definition_content_mode: getHandwrittenSideModeFromEditorState('definition'),
+            term_image_placement: getHandwrittenSideImagePlacementFromEditorState('term'),
+            definition_image_placement: getHandwrittenSideImagePlacementFromEditorState('definition'),
             term_image_layout: getHandwrittenSideImageLayoutFromEditorState('term'),
             definition_image_layout: getHandwrittenSideImageLayoutFromEditorState('definition'),
             term_handwriting: getHandwrittenSideStrokesFromEditorState('term'),
@@ -28902,6 +30812,8 @@ The deletion becomes permanent when you save the diagram.`);
             if (state.auth.handwrittenFlashcardEnabled) {
                 draft.termContentMode = getHandwrittenSideModeFromEditorState('term');
                 draft.definitionContentMode = getHandwrittenSideModeFromEditorState('definition');
+                draft.termImagePlacement = getHandwrittenSideImagePlacementFromEditorState('term');
+                draft.definitionImagePlacement = getHandwrittenSideImagePlacementFromEditorState('definition');
                 draft.termImageLayout = getHandwrittenSideImageLayoutFromEditorState('term');
                 draft.definitionImageLayout = getHandwrittenSideImageLayoutFromEditorState('definition');
                 draft.termHandwriting = getHandwrittenSideStrokesFromEditorState('term');
@@ -28984,6 +30896,8 @@ The deletion becomes permanent when you save the diagram.`);
                 if (row) {
                     row.term_content_mode = normalizeFlashcardContentMode(draft.termContentMode ?? row.term_content_mode ?? 'handwritten');
                     row.definition_content_mode = normalizeFlashcardContentMode(draft.definitionContentMode ?? row.definition_content_mode ?? 'handwritten');
+                    row.term_image_placement = normalizeFlashcardImagePlacement(draft.termImagePlacement ?? row.term_image_placement);
+                    row.definition_image_placement = normalizeFlashcardImagePlacement(draft.definitionImagePlacement ?? row.definition_image_placement);
                     row.term_image_layout = normalizeFlashcardImageLayout(draft.termImageLayout ?? row.term_image_layout, !!normalizeSheetText(draft.termImage || row.term_image_url));
                     row.definition_image_layout = normalizeFlashcardImageLayout(draft.definitionImageLayout ?? row.definition_image_layout, !!normalizeSheetText(draft.definitionImage || row.definition_image_url));
                     row.term_handwriting = normalizeHandwritingStrokes(draft.termHandwriting ?? row.term_handwriting ?? []);
@@ -29121,10 +31035,12 @@ The deletion becomes permanent when you save the diagram.`);
             const definitionContentMode = normalizeFlashcardContentMode(row.definition_content_mode || row.definitionContentMode || (state.auth.handwrittenFlashcardEnabled ? 'handwritten' : 'typed'));
             const termHandwriting = normalizeHandwritingStrokes(row.term_handwriting || row.termHandwriting || []);
             const definitionHandwriting = normalizeHandwritingStrokes(row.definition_handwriting || row.definitionHandwriting || []);
+            const termImagePlacement = normalizeFlashcardImagePlacement(row.term_image_placement || row.termImagePlacement);
+            const definitionImagePlacement = normalizeFlashcardImagePlacement(row.definition_image_placement || row.definitionImagePlacement);
             const termImageLayout = normalizeFlashcardImageLayout(row.term_image_layout || row.termImageLayout, !!termImage);
             const definitionImageLayout = normalizeFlashcardImageLayout(row.definition_image_layout || row.definitionImageLayout, !!definitionImage);
-            const storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!termImage, savedImageSignature: termSavedImageSignature, contentMode: termContentMode, imageLayout: termImageLayout });
-            const storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!definitionImage, savedImageSignature: definitionSavedImageSignature, contentMode: definitionContentMode, imageLayout: definitionImageLayout });
+            const storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!termImage, savedImageSignature: termSavedImageSignature, contentMode: termContentMode, imageLayout: termImageLayout, imagePlacement: termImagePlacement });
+            const storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!definitionImage, savedImageSignature: definitionSavedImageSignature, contentMode: definitionContentMode, imageLayout: definitionImageLayout, imagePlacement: definitionImagePlacement });
             const termReusableEntry = termImage ? normalizeStudioSavedImageEntry({
                 imageValue: termImage,
                 imageOnlyValue: termImage,
@@ -29303,8 +31219,8 @@ The deletion becomes permanent when you save the diagram.`);
                 : '';
             return {
                 question_id: item.questionId,
-                term_html: buildStoredFlashcardSideContent(item.row.termHtml, { labels: termLabels, drawStrokes: item.row.termImageDrawStrokes || [], metadata: item.row.termImageMetadata || {}, imagePresent: !!item.savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: item.row.termSavedImageSignature, contentMode: item.row.termContentMode, imageLayout: item.row.termImageLayout }),
-                definition_html: buildStoredFlashcardSideContent(item.row.definitionHtml, { labels: definitionLabels, drawStrokes: item.row.definitionImageDrawStrokes || [], metadata: item.row.definitionImageMetadata || {}, imagePresent: !!item.savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: item.row.definitionSavedImageSignature, contentMode: item.row.definitionContentMode, imageLayout: item.row.definitionImageLayout }),
+                term_html: buildStoredFlashcardSideContent(item.row.termHtml, { labels: termLabels, drawStrokes: item.row.termImageDrawStrokes || [], metadata: item.row.termImageMetadata || {}, imagePresent: !!item.savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: item.row.termSavedImageSignature, contentMode: item.row.termContentMode, imageLayout: item.row.termImageLayout, imagePlacement: item.row.termImagePlacement }),
+                definition_html: buildStoredFlashcardSideContent(item.row.definitionHtml, { labels: definitionLabels, drawStrokes: item.row.definitionImageDrawStrokes || [], metadata: item.row.definitionImageMetadata || {}, imagePresent: !!item.savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: item.row.definitionSavedImageSignature, contentMode: item.row.definitionContentMode, imageLayout: item.row.definitionImageLayout, imagePlacement: item.row.definitionImagePlacement }),
                 term_plain: item.row.term,
                 definition_plain: item.row.definition,
                 ...(normalizeBuildUpValue(item.row.buildUp || item.row.build_up) ? { build_up: normalizeBuildUpValue(item.row.buildUp || item.row.build_up) } : {}),
@@ -29314,10 +31230,15 @@ The deletion becomes permanent when you save the diagram.`);
             };
         });
 
-        const questionUpdateResult = await runWithTransientFetchRetry(() => state.auth.client
-            .from('questions')
-            .upsert(questionUpdatePayload, { onConflict: 'id' }), 'Saving new flashcard question records', { attempts: 2 });
-        if (questionUpdateResult.error) throw questionUpdateResult.error;
+        // The initial questions INSERT above already persisted these same fields.
+        // Only update again if a learning-resources media reference was generated
+        // during this save (the only field which differs from the original insert).
+        if (mediaRows.some(item => !!normalizeSheetText(item.savedLearningResourcesImage))) {
+            const questionUpdateResult = await runWithTransientFetchRetry(() => state.auth.client
+                .from('questions')
+                .upsert(questionUpdatePayload, { onConflict: 'id' }), 'Saving new flashcard question media', { attempts: 2 });
+            if (questionUpdateResult.error) throw questionUpdateResult.error;
+        }
 
         const detailResult = await runWithTransientFetchRetry(() => state.auth.client
             .from('flashcard_questions')
@@ -29341,7 +31262,14 @@ The deletion becomes permanent when you save the diagram.`);
         const orderedQuestionIds = (orderRows || state.auth.studioQuizQuestions)
             .map(row => localIdToSavedId.get(row.id) || row.id)
             .filter(questionId => questionId && !isStudioLocalFlashcardId(questionId));
-        if (orderedQuestionIds.length) {
+        // Appending brand-new cards already assigns increasing sort_order above.
+        // Avoid rewriting every existing card just to reassert the same order.
+        // Inserting between existing cards still runs the established reordering.
+        const orderSource = orderRows || state.auth.studioQuizQuestions;
+        const firstNewIndex = orderSource.findIndex(row => isStudioLocalFlashcardId(row.id));
+        const appendOnly = firstNewIndex >= 0 && orderSource.slice(firstNewIndex)
+            .every(row => isStudioLocalFlashcardId(row.id));
+        if (orderedQuestionIds.length && !appendOnly) {
             await reorderStudioQuizQuestionIds(orderedQuestionIds);
         }
 
@@ -29504,8 +31432,8 @@ The deletion becomes permanent when you save the diagram.`);
         const definitionHandwriting = normalizeHandwritingStrokes(draft.definitionHandwriting || row?.definition_handwriting || []);
         const termImageLayout = normalizeFlashcardImageLayout(draft.termImageLayout || row?.term_image_layout, !!normalizeSheetText(draft.termImage));
         const definitionImageLayout = normalizeFlashcardImageLayout(draft.definitionImageLayout || row?.definition_image_layout, !!normalizeSheetText(draft.definitionImage));
-        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: draft.termImageLabels || [], drawStrokes: draft.termImageDrawStrokes || [], metadata: draft.termImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.termImage), contentMode: termContentMode, imageLayout: termImageLayout });
-        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: draft.definitionImageLabels || [], drawStrokes: draft.definitionImageDrawStrokes || [], metadata: draft.definitionImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.definitionImage), contentMode: definitionContentMode, imageLayout: definitionImageLayout });
+        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: draft.termImageLabels || [], drawStrokes: draft.termImageDrawStrokes || [], metadata: draft.termImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.termImage), contentMode: termContentMode, imageLayout: termImageLayout, imagePlacement: normalizeFlashcardImagePlacement(draft.termImagePlacement ?? row?.term_image_placement) });
+        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: draft.definitionImageLabels || [], drawStrokes: draft.definitionImageDrawStrokes || [], metadata: draft.definitionImageMetadata || {}, imagePresent: !!normalizeSheetText(draft.definitionImage), contentMode: definitionContentMode, imageLayout: definitionImageLayout, imagePlacement: normalizeFlashcardImagePlacement(draft.definitionImagePlacement ?? row?.definition_image_placement) });
         const learningResourcesHtml = sanitizeLearningResourcesHtml(draft.learningResourcesHtml || '');
 
         if (!quizId) throw new Error('Save or open a flashcard quiz before updating cards.');
@@ -29525,6 +31453,13 @@ The deletion becomes permanent when you save the diagram.`);
         const learningResourcesImageChanged = nextLearningResourcesImageInput !== previousLearningResourcesImage;
         const termImageChanged = nextTermImageInput !== previousTermImage;
         const definitionImageChanged = nextDefinitionImageInput !== previousDefinitionImage;
+        // Stage replaced flashcard media before remote writes so a browser crash
+        // cannot erase the only durable candidate ID. Live references block deletion.
+        const priorFlashcardMedia = new Set();
+        if (learningResourcesImageChanged) collectSupabaseMediaReferences(previousLearningResourcesImage, priorFlashcardMedia);
+        if (termImageChanged) collectSupabaseMediaReferences(previousTermImage, priorFlashcardMedia);
+        if (definitionImageChanged) collectSupabaseMediaReferences(previousDefinitionImage, priorFlashcardMedia);
+        if (priorFlashcardMedia.size) stageQuizMediaCleanup(priorFlashcardMedia);
         const termImageLabels = normalizeDiagramLabels(draft.termImageLabels || []);
         const definitionImageLabels = normalizeDiagramLabels(draft.definitionImageLabels || []);
         const termImageDrawStrokes = cloneImageEditorDrawStrokes(draft.termImageDrawStrokes || []);
@@ -29600,8 +31535,8 @@ The deletion becomes permanent when you save the diagram.`);
         }) : null;
         const termReuseSignature = termReuseEnabled && savedTermReuseEntry ? getStudioSavedImageSignature(savedTermReuseEntry) : '';
         const definitionReuseSignature = definitionReuseEnabled && savedDefinitionReuseEntry ? getStudioSavedImageSignature(savedDefinitionReuseEntry) : '';
-        storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: termSavedImageSignature, contentMode: termContentMode, imageLayout: termImageLayout });
-        storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: definitionSavedImageSignature, contentMode: definitionContentMode, imageLayout: definitionImageLayout });
+        storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedTermImage, reuseSignature: termReuseSignature, savedImageSignature: termSavedImageSignature, contentMode: termContentMode, imageLayout: termImageLayout, imagePlacement: normalizeFlashcardImagePlacement(draft.termImagePlacement ?? row?.term_image_placement) });
+        storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedDefinitionImage, reuseSignature: definitionReuseSignature, savedImageSignature: definitionSavedImageSignature, contentMode: definitionContentMode, imageLayout: definitionImageLayout, imagePlacement: normalizeFlashcardImagePlacement(draft.definitionImagePlacement ?? row?.definition_image_placement) });
 
         const questionPayload = {
             prompt_html: termHtml,
@@ -29703,6 +31638,8 @@ The deletion becomes permanent when you save the diagram.`);
             row.definition_image_saved_signature = definitionSavedImageSignature;
             row.term_content_mode = termContentMode;
             row.definition_content_mode = definitionContentMode;
+            row.term_image_placement = normalizeFlashcardImagePlacement(draft.termImagePlacement ?? row.term_image_placement);
+            row.definition_image_placement = normalizeFlashcardImagePlacement(draft.definitionImagePlacement ?? row.definition_image_placement);
             row.term_image_layout = termImageLayout;
             row.definition_image_layout = definitionImageLayout;
             row.term_handwriting = termHandwriting;
@@ -29740,6 +31677,7 @@ The deletion becomes permanent when you save the diagram.`);
         const directMultipleChoiceDraftIds = new Set(directMultipleChoiceDraftEntries.map(([questionId]) => questionId));
         const otherDraftEntries = draftEntries.filter(([questionId, draft]) => draft?.questionType !== 'flashcard' && !directMultipleChoiceDraftIds.has(questionId));
         const totalSaveCount = draftEntries.length + localFlashcardRows.length;
+        const startedAt = performance.now();
         const flashcardMediaSaveCache = new Map();
         const reusableSnapshotTargets = [];
 
@@ -29802,9 +31740,13 @@ The deletion becomes permanent when you save the diagram.`);
         }
         const savedLocalIds = await saveStudioLocalFlashcardDraftRows(localFlashcardRows, flashcardOrderSnapshot, { mediaSaveCache: flashcardMediaSaveCache, skipQuizShellUpdate: true });
         if (savedLocalIds.length && state.auth.editingQuizId) {
-            await refreshStudioManagementData({ force: true });
-            await refreshQuizCatalog({ selectQuizId: `sb:${state.auth.editingQuizId}`, loadSelectedQuiz: true });
-            await loadQuizIntoEditor(state.auth.editingQuizId, savedLocalIds[savedLocalIds.length - 1], { force: true });
+            // Refresh only the quiz that actually gained cards, not every quiz in the
+            // account. Existing revision checks above already verified the new ink.
+            setStudioDirtyState(false);
+            state.auth.editingQuestionId = null;
+            await loadStudioQuestionListForQuiz(state.auth.editingQuizId);
+            await loadStudioQuestionIntoEditor(savedLocalIds[savedLocalIds.length - 1], { force: true, suppressStatus: true });
+            renderStudioQuestionList();
         } else if (flashcardDraftEntries.length || directMultipleChoiceDraftEntries.length) {
             // Existing-card detail saves have already updated their in-memory rows and
             // verified handwriting revisions. A global catalog reload here re-fetches
@@ -29816,6 +31758,8 @@ The deletion becomes permanent when you save the diagram.`);
             for (const [id] of flashcardDraftEntries) state.auth.handwrittenTouchedCardIds.delete(id);
         }
         setStudioDirtyState(false);
+        const elapsedMs = Math.round(performance.now() - startedAt);
+        if (elapsedMs > 1500) console.info('Quiz Studio save completed (ms)', { total: elapsedMs, cardsChanged: flashcardDraftEntries.length + localFlashcardRows.length, newCards: localFlashcardRows.length, quizReload: savedLocalIds.length > 0 });
         if (!options.quiet) {
             const changeLabel = totalSaveCount === 1 ? 'change' : 'changes';
             setCreatorStatus(`All ${totalSaveCount} ${changeLabel} saved.`, 'success');
@@ -30631,6 +32575,167 @@ The deletion becomes permanent when you save the diagram.`);
         const key = getHandwrittenSideKey(side);
         return normalizeFlashcardImageLayout(row?.[`${key}_image_layout`], !!normalizeSheetText(row?.[`${key}_image_url`]));
     }
+    function getHandwrittenSideSavedImageSignature(row, side) {
+        const key = getHandwrittenSideKey(side);
+        return normalizeSheetText(row?.[`${key}_image_saved_signature`] || parseStoredFlashcardSideContent(row?.[`${key}_html`] || '').savedImageSignature);
+    }
+    function getHandwrittenSideImagePlacementFromEditorState(side = 'term') {
+        const row = getCurrentHandwrittenFlashcardRow();
+        const key = getHandwrittenSideKey(side);
+        if (!row || getHandwrittenSideSavedImageSignature(row, key)) return null;
+        return normalizeFlashcardImagePlacement(row[`${key}_image_placement`] ?? parseStoredFlashcardSideContent(row[`${key}_html`] || '').imagePlacement);
+    }
+    function getDefaultHandwrittenImagePlacement(img) {
+        const card = elements.flashcardHandwrittenCard;
+        if (!card || !img?.naturalWidth || !img?.naturalHeight) return null;
+        const rect = card.getBoundingClientRect();
+        const aspect = Math.max(.1, rect.width) / Math.max(.1, rect.height);
+        let w = .44, h = w * aspect * img.naturalHeight / img.naturalWidth;
+        if (h > .86) { w *= .86 / h; h = .86; }
+        return normalizeFlashcardImagePlacement({x:(1-w)/2,y:(1-h)/2,w,h});
+    }
+    function applyHandwrittenImagePlacement(placement) {
+        const wrap = elements.flashcardHandwrittenImageWrap;
+        const safe = normalizeFlashcardImagePlacement(placement);
+        if (!wrap || !safe) return;
+        ['x','y','w','h'].forEach((key,i)=>{ wrap.style[['left','top','width','height'][i]] = `${safe[key]*100}%`; });
+        // Zoom control is a sibling above the ink hit surface, but visually tracks the image.
+        const zoom=elements.flashcardHandwrittenImageZoomBtn;
+        if (zoom) {zoom.style.left=`calc(${Math.min(1,safe.x+safe.w)*100}% - 33px)`;zoom.style.top=`calc(${safe.y*100}% + 4px)`;zoom.style.right='auto';}
+    }
+    function commitHandwrittenImagePlacement(side, placement) {
+        const row = getCurrentHandwrittenFlashcardRow();
+        const key = getHandwrittenSideKey(side);
+        const value = normalizeFlashcardImagePlacement(placement);
+        if (!row || !value || getHandwrittenSideSavedImageSignature(row, key)) return;
+        const old = getHandwrittenSideImagePlacementFromEditorState(key);
+        if (old && ['x','y','w','h'].every(field=>old[field]===value[field])) return;
+        row[`${key}_image_placement`] = value;
+        if (row.id) state.auth.handwrittenTouchedCardIds.add(row.id);
+        if (!isStudioLocalFlashcardId(row.id) && row.id !== STUDIO_PENDING_NEW_FLASHCARD_ID) {
+            const draft = getStudioFlashcardListDraft(row);
+            if (draft) {
+                draft[`${key === 'term' ? 'term' : 'definition'}ImagePlacement`] = value;
+                state.auth.studioQuestionDrafts.set(row.id, draft);
+            }
+        }
+        setStudioDirtyState(true);
+    }
+    function getHandwrittenImageHistoryKey(side = getHandwrittenSideKey()) {
+        return `${normalizeSheetText(state.auth.editingQuestionId || STUDIO_PENDING_NEW_FLASHCARD_ID)}:${getHandwrittenSideKey(side)}`;
+    }
+    function pushHandwrittenImageHistory(side, oldPlacement) {
+        const key=getHandwrittenImageHistoryKey(side);
+        const stack=state.auth.handwrittenImageUndo.get(key) || [];
+        stack.push(normalizeFlashcardImagePlacement(oldPlacement));
+        if (stack.length>60) stack.shift();
+        state.auth.handwrittenImageUndo.set(key,stack);
+        state.auth.handwrittenImageRedo.delete(key);
+    }
+    function navigateHandwrittenImageHistory(direction) {
+        const side=getHandwrittenSideKey(), row=getCurrentHandwrittenFlashcardRow();
+        if (!state.auth.handwrittenImageTransformMode || !row || getHandwrittenSideSavedImageSignature(row,side)) return;
+        const key=getHandwrittenImageHistoryKey(side), origin=direction==='undo'?state.auth.handwrittenImageUndo:state.auth.handwrittenImageRedo;
+        const target=direction==='undo'?state.auth.handwrittenImageRedo:state.auth.handwrittenImageUndo;
+        const entries=origin.get(key) || [];
+        if (!entries.length) return;
+        const previous=entries.pop(), current=getHandwrittenSideImagePlacementFromEditorState(side);
+        origin.set(key,entries);
+        const restore=target.get(key) || [];
+        restore.push(current);
+        target.set(key,restore);
+        if (previous) {commitHandwrittenImagePlacement(side,previous);applyHandwrittenImagePlacement(previous);}
+    }
+    // Phase 24A.5t: One session-only warning for one or BOTH affected sides.
+    // No Supabase/localStorage flag: a reload always resets the warning.
+    let skipHandwrittenFullInkWarningForSession = false;
+    function getSavedHandwrittenFullInkAffectedSides(sides = []) {
+        return [...new Set(sides.map(getHandwrittenSideKey))].filter(side => getHandwrittenSideStrokesFromEditorState(side).length > 0);
+    }
+    function confirmSavedHandwrittenFullInkClear(sides) {
+        const affected = getSavedHandwrittenFullInkAffectedSides(Array.isArray(sides) ? sides : [sides]);
+        if (!affected.length || skipHandwrittenFullInkWarningForSession) return Promise.resolve(true);
+        const description = affected.map(side => `${side === 'term' ? 'Front' : 'Back'}: ${getHandwrittenSideStrokesFromEditorState(side).length} stroke(s)`).join(' • ');
+        return new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.className = 'studio-handwritten-full-confirm-overlay';
+            overlay.innerHTML = `<div class="studio-handwritten-full-confirm" role="dialog" aria-modal="true" aria-labelledby="handwrittenFullConfirmTitle">
+                <h3 id="handwrittenFullConfirmTitle">Switch Saved Image to Full?</h3>
+                <p>Full Mode will erase the existing handwritten strokes on the affected side${affected.length > 1 ? 's' : ''}. The Saved Image, its annotations, and unrelated flashcards remain unchanged.</p>
+                <p class="studio-handwritten-full-confirm-count"></p>
+                <label class="studio-handwritten-full-confirm-remember"><input type="checkbox"> Don't remind me again for this session</label>
+                <div class="studio-handwritten-full-confirm-actions"><button type="button" data-full-cancel>Cancel</button><button type="button" data-full-confirm>Confirm &amp; Erase</button></div>
+            </div>`;
+            overlay.querySelector('.studio-handwritten-full-confirm-count').textContent = description;
+            const previousFocus = document.activeElement;
+            const done = approved => {
+                if (approved && overlay.querySelector('input[type="checkbox"]').checked) skipHandwrittenFullInkWarningForSession = true;
+                overlay.remove();
+                document.removeEventListener('keydown', onKeyDown, true);
+                if (previousFocus?.isConnected && typeof previousFocus.focus === 'function') previousFocus.focus();
+                resolve(approved);
+            };
+            const onKeyDown = event => {
+                if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); done(false); }
+                // Keep keyboard focus within this destructive confirmation.
+                if (event.key === 'Tab') {
+                    const controls = [...overlay.querySelectorAll('input,button')];
+                    const first = controls[0], last = controls[controls.length - 1];
+                    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+                }
+            };
+            overlay.querySelector('[data-full-cancel]').addEventListener('click', () => done(false));
+            overlay.querySelector('[data-full-confirm]').addEventListener('click', () => done(true));
+            document.body.appendChild(overlay);
+            document.addEventListener('keydown', onKeyDown, true);
+            overlay.querySelector('[data-full-cancel]').focus();
+        });
+    }
+    function shouldMirrorSavedDiagramFrontToBack(row, imageValue, signature) {
+        ensureHandwrittenToolPrefsLoaded();
+        return state.auth.handwrittenFlashcardEnabled
+            && state.auth.handwrittenFlashcardDiagramBothSides !== false
+            && !!signature && !!imageValue && !!row;
+    }
+    function backHasSameHandwrittenSavedDiagram(row, imageValue, signature) {
+        return !!(normalizeSheetText(row?.definition_image_url) === normalizeSheetText(imageValue)
+            && getHandwrittenSideSavedImageSignature(row, 'definition') === signature);
+    }
+    // Store each side's old Half layout with its strokes for its existing Undo/Redo action.
+    function setSavedHandwrittenFullLayout(side) {
+        const key = getHandwrittenSideKey(side);
+        const hadInk = getHandwrittenSideStrokesFromEditorState(key).length > 0;
+        if (hadInk) {
+            clearHandwrittenSelection({redraw:false});
+            pushHandwrittenUndo(key, {includeLayout:true});
+        }
+        setHandwrittenSideState(key, hadInk ? {imageLayout:'full', strokes:[]} : {imageLayout:'full'});
+    }
+    function syncSavedHandwrittenPreviewZoom() {
+        const card = elements.flashcardHandwrittenCard;
+        const img = elements.flashcardHandwrittenImage;
+        const zoom = elements.flashcardHandwrittenImageZoomBtn;
+        if (!card || !img || !zoom || !card.classList.contains('has-saved-image') || !img.complete || !img.naturalWidth) return;
+        const cardRect = card.getBoundingClientRect();
+        if (!cardRect.width || !cardRect.height) return;
+        // Size the purple inset to the actual rectangular image, not the whole
+        // right-hand Half region. The same fit helper is used by Study Mode.
+        const wrap = elements.flashcardHandwrittenImageWrap;
+        if (wrap) {
+            const regionWidth = card.classList.contains('has-full-image') ? card.clientWidth : card.clientWidth / 2;
+            const size = fitHandwrittenSavedImageInset(img.naturalWidth, img.naturalHeight,
+                regionWidth, card.clientHeight);
+            wrap.style.width = `${size.outerWidth}px`;
+            wrap.style.height = `${size.outerHeight}px`;
+        }
+        // Placement and zoom measurement happen AFTER the inset is fitted.
+        const fittedImageRect = img.getBoundingClientRect();
+        zoom.style.left = `${Math.max(0,Math.min(cardRect.width-35,fittedImageRect.right-cardRect.left-35))}px`;
+        zoom.style.top = `${Math.max(0,fittedImageRect.top-cardRect.top+4)}px`;
+        zoom.style.right = 'auto';
+    }
+
     function getHandwrittenSideStrokesFromEditorState(side = 'term') {
         const row = getCurrentHandwrittenFlashcardRow();
         const key = getHandwrittenSideKey(side);
@@ -30674,10 +32779,11 @@ The deletion becomes permanent when you save the diagram.`);
     function getHandwrittenUndoKey(side = state.auth.handwrittenFlashcardSide) {
         return `${normalizeSheetText(state.auth.editingQuestionId || STUDIO_PENDING_NEW_FLASHCARD_ID)}:${getHandwrittenSideKey(side)}`;
     }
-    function pushHandwrittenUndo(side = state.auth.handwrittenFlashcardSide) {
+    function pushHandwrittenUndo(side = state.auth.handwrittenFlashcardSide, options = {}) {
         const key = getHandwrittenUndoKey(side);
         const stack = state.auth.handwrittenFlashcardUndo.get(key) || [];
-        stack.push(getHandwrittenSideStrokesFromEditorState(side));
+        const strokes = getHandwrittenSideStrokesFromEditorState(side);
+        stack.push(options.includeLayout ? {kind:'saved-image-full-transition',strokes,layout:getHandwrittenSideImageLayoutFromEditorState(side)} : strokes);
         if (stack.length > 50) stack.shift();
         state.auth.handwrittenFlashcardUndo.set(key, stack);
         state.auth.handwrittenFlashcardRedo.set(key, []);
@@ -30703,6 +32809,7 @@ The deletion becomes permanent when you save the diagram.`);
             state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(stored.penSizeMm, 1.1);
             state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(stored.eraserSizeMm, 5, 1, 12);
             state.auth.handwrittenFlashcardSelectionType = stored.selectionType === 'lasso' ? 'lasso' : 'rectangle';
+            state.auth.handwrittenFlashcardDiagramBothSides = stored.diagramBothSides !== false;
             state.auth.handwrittenFlashcardAutoAlign = stored.autoAlign === true;
             state.auth.handwrittenFlashcardAlignTarget = normalizeHandwrittenAlignTarget(stored.alignTarget);
             if (/^#[0-9a-f]{6}$/i.test(String(stored.penColor || ''))) {
@@ -30721,6 +32828,7 @@ The deletion becomes permanent when you save the diagram.`);
                 eraserSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12),
                 penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827'),
                 selectionType: state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle',
+                diagramBothSides: state.auth.handwrittenFlashcardDiagramBothSides !== false,
                 autoAlign: !!state.auth.handwrittenFlashcardAutoAlign,
                 alignTarget: normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget)
             }));
@@ -30873,6 +32981,7 @@ The deletion becomes permanent when you save the diagram.`);
             const btn = elements.flashcardHandwrittenSettingsBtn;
             const popover = elements.flashcardHandwrittenSettingsPopover;
         ensureHandwrittenToolPrefsLoaded();
+        if (elements.flashcardHandwrittenDiagramBothSides) elements.flashcardHandwrittenDiagramBothSides.checked = state.auth.handwrittenFlashcardDiagramBothSides !== false;
         if (elements.flashcardHandwrittenAutoAlign) elements.flashcardHandwrittenAutoAlign.checked = !!state.auth.handwrittenFlashcardAutoAlign;
         if (elements.flashcardHandwrittenAlignTarget) elements.flashcardHandwrittenAlignTarget.value = normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget);
             if (btn?.matches(':hover') || popover?.matches(':hover')) return;
@@ -31226,11 +33335,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
     function saveHandwrittenFlashcardFromToolbar() {
         autoAlignCurrentHandwrittenFlashcard();
-        return handleSaveStudioEditorChanges().catch(error => {
-            console.error('Could not save handwritten flashcards:', error);
-            setCreatorStatus(getStudioExplicitSaveErrorMessage(error), 'error');
-            throw error;
-        });
+        return runStudioExplicitSave();
     }
 
     function switchHandwrittenFlashcardSide(nextSide = 'term') {
@@ -31241,6 +33346,7 @@ The deletion becomes permanent when you save the diagram.`);
         // A newly shown side should always be immediately ready to write. This also
         // prevents an eraser/selection gesture from leaking across a Flip action.
         state.auth.handwrittenFlashcardTool = 'pen';
+        state.auth.handwrittenImageTransformMode = false;
         state.auth.handwrittenFlashcardSide = getHandwrittenSideKey(nextSide);
         hideHandwrittenToolSizeIndicator();
         const row = getCurrentHandwrittenFlashcardRow();
@@ -31262,6 +33368,9 @@ The deletion becomes permanent when you save the diagram.`);
         const mode = getHandwrittenSideModeFromEditorState(side);
         const imageValue = normalizeSheetText(row?.[`${side}_image_url`] || (side === 'definition' ? state.auth.studioFlashcardDefinitionImageDataUrl : state.auth.studioFlashcardTermImageDataUrl));
         const layout = normalizeFlashcardImageLayout(row?.[`${side}_image_layout`], !!imageValue);
+        const eligibleRegularImage = !!(mode === 'handwritten' && imageValue && !getHandwrittenSideSavedImageSignature(row, side));
+        const regularImage = !!(eligibleRegularImage && (getHandwrittenSideImagePlacementFromEditorState(side) || row?.[`${side}_free_image_pending`] || state.auth.handwrittenImageTransformMode));
+        const placement = regularImage ? getHandwrittenSideImagePlacementFromEditorState(side) : null;
         const rows = getHandwrittenWorkspaceRows();
         // Phase 23B.13: keep the normal flashcard list above the canvas in sync.
         renderStudioQuestionList();
@@ -31274,7 +33383,10 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.flashcardHandwrittenSideMode) elements.flashcardHandwrittenSideMode.checked = mode === 'typed';
         if (elements.flashcardHandwrittenClearBtn) elements.flashcardHandwrittenClearBtn.disabled = mode !== 'handwritten' || getHandwrittenSideStrokesFromEditorState(side).length === 0;
         if (elements.flashcardHandwrittenBrushColor) elements.flashcardHandwrittenBrushColor.value = normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827');
-        if (elements.flashcardHandwrittenImageLayout) elements.flashcardHandwrittenImageLayout.checked = layout === 'full';
+        if (elements.flashcardHandwrittenImageLayout) {
+            elements.flashcardHandwrittenImageLayout.checked = layout === 'full';
+            elements.flashcardHandwrittenImageLayout.closest('.studio-handwritten-toggle-pair')?.classList.toggle('hidden',regularImage);
+        }
         syncHandwrittenSizeControls();
         syncHandwrittenFocusControls(rows, index, side);
         const card = elements.flashcardHandwrittenCard;
@@ -31284,11 +33396,14 @@ The deletion becomes permanent when you save the diagram.`);
             card.style.setProperty('--hand-card-text', ((r*299+g*587+b*114)/1000)<138 ? '#ffffff' : '#111827');
             card.style.setProperty('--hand-grid-color', style.gridColor);
             card.style.setProperty('--hand-grid-opacity', String(style.gridOpacity));
-            card.classList.remove('grid-lines','grid-graph','grid-dots','has-half-image','has-full-image','is-handwritten-input');
+            card.classList.remove('grid-lines','grid-graph','grid-dots','has-half-image','has-full-image','has-free-image','has-saved-image','is-image-transform-active','is-handwritten-input');
             if (style.gridType !== 'none') card.classList.add(`grid-${style.gridType}`);
-            if (imageValue && layout === 'full') card.classList.add('has-full-image');
-            else if (imageValue) card.classList.add('has-half-image');
+            if (regularImage) card.classList.add('has-free-image');
+            else if (imageValue && getHandwrittenSideSavedImageSignature(row,side)) card.classList.add('has-saved-image');
+            if (!regularImage && imageValue && layout === 'full') card.classList.add('has-full-image');
+            else if (!regularImage && imageValue) card.classList.add('has-half-image');
             if (mode === 'handwritten') card.classList.add('is-handwritten-input');
+            if (regularImage && state.auth.handwrittenImageTransformMode) card.classList.add('is-image-transform-active');
         }
         const typedEditor = elements.flashcardHandwrittenTypedEditor;
         if (typedEditor) {
@@ -31307,9 +33422,25 @@ The deletion becomes permanent when you save the diagram.`);
         if (!handwritingInputActive || !['pen','eraser'].includes(state.auth.handwrittenFlashcardTool)) elements.flashcardHandwrittenToolIndicator?.classList.add('hidden');
         syncHandwrittenDocumentSelectionGuard();
         if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.classList.toggle('hidden', !handwritingInputActive);
-        if (elements.flashcardHandwrittenImageWrap) elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
+        if (elements.flashcardHandwrittenImageWrap) {
+            elements.flashcardHandwrittenImageWrap.classList.toggle('hidden', !imageValue);
+            if (regularImage) {
+                const applied = placement || getDefaultHandwrittenImagePlacement(elements.flashcardHandwrittenImage);
+                if (applied) applyHandwrittenImagePlacement(applied);
+                else ['left','top','width','height'].forEach(key => elements.flashcardHandwrittenImageWrap.style.removeProperty(key));
+            } else {
+                ['left','top','width','height'].forEach(key => elements.flashcardHandwrittenImageWrap.style.removeProperty(key));
+            }
+        }
+        if (elements.flashcardHandwrittenTransformBtn) {
+            elements.flashcardHandwrittenTransformBtn.classList.toggle('hidden', !eligibleRegularImage);
+            elements.flashcardHandwrittenTransformBtn.classList.toggle('active', !!(regularImage && state.auth.handwrittenImageTransformMode));
+            elements.flashcardHandwrittenTransformBtn.setAttribute('aria-pressed', String(!!(regularImage && state.auth.handwrittenImageTransformMode)));
+        }
+        if (!eligibleRegularImage) state.auth.handwrittenImageTransformMode = false;
         if (elements.flashcardHandwrittenFullImageNote) elements.flashcardHandwrittenFullImageNote.classList.add('hidden');
-        if (elements.flashcardHandwrittenImage && imageValue) setImageElementSourceWithMediaResolution(elements.flashcardHandwrittenImage, imageValue);
+        if (elements.flashcardHandwrittenImage && imageValue) setImageElementSourceWithMediaResolution(elements.flashcardHandwrittenImage, imageValue, {onLoad:syncSavedHandwrittenPreviewZoom});
+        if (card?.classList.contains('has-saved-image')) requestAnimationFrame(syncSavedHandwrittenPreviewZoom);
         if (elements.flashcardHandwrittenRemoveImageBtn) elements.flashcardHandwrittenRemoveImageBtn.disabled = !imageValue;
         elements.handwrittenToolButtons?.forEach(btn => btn.classList.toggle('active', btn.dataset.handwrittenTool === state.auth.handwrittenFlashcardTool));
         syncHandwrittenSelectionControls();
@@ -31388,6 +33519,15 @@ The deletion becomes permanent when you save the diagram.`);
 
     function handleHandwrittenPointerDown(event) {
         if (!state.auth.handwrittenFlashcardEnabled || getHandwrittenSideModeFromEditorState() !== 'handwritten') return;
+        const activeSide=getHandwrittenSideKey(), activeRow=getCurrentHandwrittenFlashcardRow();
+        if (getHandwrittenSideSavedImageSignature(activeRow,activeSide) && getHandwrittenSideImageLayoutFromEditorState(activeSide)==='full') return;
+        // Ink edits during an outstanding write could otherwise be cleared by the
+        // save's draft snapshot. Briefly hold Pencil input until the save settles.
+        if (state.auth.studioSaveFeedback === 'saving' || state.auth.studioSaveInFlightPromise) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
         const pointerType = normalizeSheetText(event.pointerType).toLowerCase();
         // Phase 23B.8: the handwriting surface owns all touch gestures. Fingers/palms
         // still never draw/select, but their native Safari gesture must also be cancelled.
@@ -31512,8 +33652,25 @@ The deletion becomes permanent when you save the diagram.`);
         }
     }
 
-    function undoHandwrittenStroke() { clearHandwrittenSelection({ redraw:false }); const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardUndo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const prev=stack.pop(); const redo=state.auth.handwrittenFlashcardRedo.get(key)||[]; redo.push(current); state.auth.handwrittenFlashcardRedo.set(key,redo); state.auth.handwrittenFlashcardUndo.set(key,stack); setHandwrittenSideState(side,{strokes:prev}); renderHandwrittenFlashcardWorkspace(); }
-    function redoHandwrittenStroke() { clearHandwrittenSelection({ redraw:false }); const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side), stack=state.auth.handwrittenFlashcardRedo.get(key)||[]; if(!stack.length)return; const current=getHandwrittenSideStrokesFromEditorState(side); const next=stack.pop(); const undo=state.auth.handwrittenFlashcardUndo.get(key)||[]; undo.push(current); state.auth.handwrittenFlashcardUndo.set(key,undo); state.auth.handwrittenFlashcardRedo.set(key,stack); setHandwrittenSideState(side,{strokes:next}); renderHandwrittenFlashcardWorkspace(); }
+    function moveHandwrittenStrokeHistory(direction) {
+        clearHandwrittenSelection({redraw:false});
+        const side=getHandwrittenSideKey(), key=getHandwrittenUndoKey(side);
+        const source=direction==='undo' ? state.auth.handwrittenFlashcardUndo : state.auth.handwrittenFlashcardRedo;
+        const target=direction==='undo' ? state.auth.handwrittenFlashcardRedo : state.auth.handwrittenFlashcardUndo;
+        const stack=source.get(key)||[];
+        if(!stack.length) return;
+        const next=stack.pop();
+        const hasLayout=!!(next && !Array.isArray(next) && next.kind==='saved-image-full-transition');
+        const currentStrokes=getHandwrittenSideStrokesFromEditorState(side);
+        const currentLayout=getHandwrittenSideImageLayoutFromEditorState(side);
+        const other=target.get(key)||[];
+        other.push(hasLayout ? {kind:'saved-image-full-transition',strokes:currentStrokes,layout:currentLayout} : currentStrokes);
+        source.set(key,stack); target.set(key,other);
+        setHandwrittenSideState(side, hasLayout ? {strokes:next.strokes,imageLayout:next.layout} : {strokes:next});
+        renderHandwrittenFlashcardWorkspace();
+    }
+    function undoHandwrittenStroke() { moveHandwrittenStrokeHistory('undo'); }
+    function redoHandwrittenStroke() { moveHandwrittenStrokeHistory('redo'); }
     function clearCurrentHandwrittenFlashcardSide() {
         const side = getHandwrittenSideKey();
         if (getHandwrittenSideModeFromEditorState(side) !== 'handwritten') return false;
@@ -32036,6 +34193,8 @@ The deletion becomes permanent when you save the diagram.`);
                 definition_image_saved_signature: parsedDefinitionSide.savedImageSignature,
                 term_content_mode: parsedTermSide.contentMode,
                 definition_content_mode: parsedDefinitionSide.contentMode,
+                term_image_placement: parsedTermSide.imagePlacement,
+                definition_image_placement: parsedDefinitionSide.imagePlacement,
                 term_image_layout: normalizeFlashcardImageLayout(parsedTermSide.imageLayout, !!normalizeSheetText(flashcardDetail.term_image_url)),
                 definition_image_layout: normalizeFlashcardImageLayout(parsedDefinitionSide.imageLayout, !!normalizeSheetText(flashcardDetail.definition_image_url)),
                 term_handwriting: null,
@@ -32192,6 +34351,8 @@ The deletion becomes permanent when you save the diagram.`);
                 studioRow.definition_image_saved_signature = parsedDefinitionSide.savedImageSignature;
                 studioRow.term_content_mode = parsedTermSide.contentMode;
                 studioRow.definition_content_mode = parsedDefinitionSide.contentMode;
+                studioRow.term_image_placement = parsedTermSide.imagePlacement;
+                studioRow.definition_image_placement = parsedDefinitionSide.imagePlacement;
                 studioRow.term_image_layout = normalizeFlashcardImageLayout(parsedTermSide.imageLayout, !!normalizeSheetText(detailRow.term_image_url));
                 studioRow.definition_image_layout = normalizeFlashcardImageLayout(parsedDefinitionSide.imageLayout, !!normalizeSheetText(detailRow.definition_image_url));
                 if (state.auth.handwrittenFlashcardEnabled && (parsedTermSide.contentMode === 'handwritten' || parsedDefinitionSide.contentMode === 'handwritten')) {
@@ -32374,7 +34535,7 @@ The deletion becomes permanent when you save the diagram.`);
             cacheCurrentStudioQuestionDraft();
         }
         if (!state.auth.editingQuizId) {
-            setCreatorStatus('Click Save Changes first to create this quiz, then you can add more questions to it.', 'error');
+            setCreatorStatus('Click Create Quiz first, then add more questions.', 'error');
             return;
         }
 
@@ -32629,6 +34790,7 @@ The deletion becomes permanent when you save the diagram.`);
         const currentIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === deletedQuestionId);
 
         const mediaRefsToDelete = await getQuestionMediaReferences(deletedQuestionId);
+        if (mediaRefsToDelete.size) stageQuizMediaCleanup(mediaRefsToDelete);
 
         const { error } = await state.auth.client
             .from('questions')
@@ -32916,9 +35078,19 @@ The deletion becomes permanent when you save the diagram.`);
             ? sectionName
             : 'home';
 
-        if (!options.force && nextSection !== state.auth.currentStudioSection && state.auth.currentStudioSection === 'editor' && state.auth.studioHasUnsavedChanges) {
-            const saved = await autosaveStudioChanges({ reason: `switch to the ${nextSection} section`, allowCreate: true });
-            if (!saved) return false;
+        if (!options.force && nextSection !== state.auth.currentStudioSection && state.auth.currentStudioSection === 'editor') {
+            if (state.auth.studioExplicitSavePromise || state.auth.studioAutosaveInFlight) {
+                setCreatorStatus('Finish saving before switching menus.', 'error');
+                return false;
+            }
+            if (!state.auth.editingQuizId && (state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts())) {
+                // A new quiz must ONLY be created by the user's Create Quiz click.
+                if (!window.confirm('This quiz has not been created. Discard this draft and switch menus?')) return false;
+                clearCreatorInputs();
+            } else if (state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts()) {
+                const saved = await autosaveStudioChanges({ reason: `switch to the ${nextSection} section`, allowCreate: true });
+                if (!saved) return false;
+            }
         }
 
         state.auth.currentStudioSection = nextSection;
@@ -33185,6 +35357,11 @@ if (elements.openQuizStudioBtn) {
         setEditorInlineFolderCreatorOpen(false);
 
         state.auth.editingQuizId = null;
+        state.auth.studioLastSavedMetadataSignature = '';
+        state.auth.studioSaveFeedback = '';
+        state.auth.studioQuestionDrafts?.clear();
+        state.auth.handwrittenTouchedCardIds?.clear();
+        state.auth.studioPendingNewQuestionRow = null;
         state.auth.handwrittenFlashcardPersistedEnabled = false;
         state.auth.editingQuizMode = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
         state.auth.editingQuizType = state.auth.editingQuizMode === 'exam' ? 'multiple_choice' : state.auth.editingQuizMode;
@@ -33443,6 +35620,9 @@ if (elements.openQuizStudioBtn) {
             elements.examQuestionTypeSelect.value = state.auth.editingQuizType;
         }
 
+        // On a new quiz create, retain metadata signature so the first card save
+        // doesn't need to UPDATE the just-inserted quiz shell again.
+        state.auth.studioLastSavedMetadataSignature = JSON.stringify([name, folderId, description, quizType, !!state.auth.handwrittenFlashcardEnabled, normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle || {})]);
         await refreshStudioManagementData({ force: true });
         await refreshQuizCatalog({ selectQuizId: `sb:${data.id}`, loadSelectedQuiz: false });
         updateCreateQuizModeUI();
@@ -33584,9 +35764,18 @@ if (elements.openQuizStudioBtn) {
 
     async function closeQuizStudioPage(force = false) {
         if (!elements.quizStudioPage) return true;
-        if (!force && state.auth.studioHasUnsavedChanges) {
-            const saved = await autosaveStudioChanges({ reason: 'close Quiz Studio', allowCreate: true });
-            if (!saved) return false;
+        if (!force && (state.auth.studioExplicitSavePromise || state.auth.studioAutosaveInFlight)) {
+            setCreatorStatus('Finish saving before closing Quiz Studio.', 'error');
+            return false;
+        }
+        if (!force && (state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts())) {
+            if (!state.auth.editingQuizId) {
+                if (!window.confirm('Discard this uncreated quiz and close Quiz Studio?')) return false;
+                clearCreatorInputs();
+            } else {
+                const saved = await autosaveStudioChanges({ reason: 'close Quiz Studio', allowCreate: true });
+                if (!saved) return false;
+            }
         }
         closeAppPageMenu();
         elements.quizStudioPage.classList.add('hidden');
@@ -33763,6 +35952,47 @@ if (elements.openQuizStudioBtn) {
         return targetQuiz;
     }
 
+    // Phase 24A.5q: Manage Quizzes can show a known quiz that the separate
+    // cached study catalog does not yet contain. Refresh once, then use only
+    // a quiz already present in the signed-in user's managed quiz list.
+    // Do not create, delete, update, or alter any quiz/question records here.
+    async function resolveManagedQuizForStudy(quizId) {
+        const id = normalizeSheetText(quizId);
+        const selectorId = `sb:${id}`;
+        let descriptor = await refreshQuizCatalog({ selectQuizId: selectorId, loadSelectedQuiz: false });
+        if (descriptor) return descriptor;
+        descriptor = await refreshQuizCatalog({ selectQuizId: selectorId, loadSelectedQuiz: false, force: true });
+        if (descriptor) return descriptor;
+
+        const managed = state.auth.managedQuizzes.find(quiz => normalizeSheetText(quiz?.id) === id && !quiz.isArchived);
+        if (!managed) {
+            throw createStudyLoadDiagnosticError('This quiz is not available in your current library. Refresh Manage Quizzes and try again.');
+        }
+        if (Number(managed.questionCount || 0) <= 0) {
+            throw createStudyLoadDiagnosticError(`"${normalizeSheetText(managed.name) || 'This quiz'}" has no saved questions to study. Open Edit to add or save questions first.`);
+        }
+        // Last-resort in-memory descriptor: current managed library confirms
+        // quiz ownership, but the study catalog is stale or unavailable.
+        const folder = state.auth.supabaseFolders.find(item => normalizeSheetText(item.id) === normalizeSheetText(managed.folderId)) || null;
+        descriptor = {
+            id: selectorId,
+            source: DATA_SOURCES.SUPABASE,
+            sourceQuizId: id,
+            quizType: normalizeSheetText(managed.quizType || 'multiple_choice') || 'multiple_choice',
+            folderId: managed.folderId || '',
+            folder: normalizeFolderName(folder?.name || managed.folderName),
+            folderSortOrder: Number(folder?.sort_order ?? 0),
+            name: normalizeSheetText(managed.name),
+            rangeNumber: '',
+            sortOrder: Number(managed.sortOrder ?? 0)
+        };
+        state.quizListCache = [
+            ...(state.quizListCache || []).filter(item => item.id !== selectorId),
+            descriptor
+        ];
+        return descriptor;
+    }
+
     async function studySupabaseQuizFromStudio(quizId) {
         const normalizedQuizId = normalizeSheetText(quizId);
         if (!normalizedQuizId) return null;
@@ -33777,10 +36007,8 @@ if (elements.openQuizStudioBtn) {
             if (!saved) return null;
         }
 
-        const targetQuiz = await refreshQuizCatalog({ selectQuizId: `sb:${normalizedQuizId}`, loadSelectedQuiz: true });
-        if (!targetQuiz) {
-            throw new Error('Quiz not found');
-        }
+        const targetQuiz = await resolveManagedQuizForStudy(normalizedQuizId);
+        await loadSelectedQuiz(targetQuiz.id);
 
         await recordStudioQuizActivity(normalizedQuizId, 'studied');
         await closeQuizStudioPage(true);
@@ -33838,26 +36066,81 @@ if (elements.openQuizStudioBtn) {
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    async function loadQuizRowsForBackup(quizIds) {
-        const safeQuizIds = normalizeBackupIdList(quizIds);
-        if (!state.auth.client || !safeQuizIds.length) return [];
+    // Phase 24A.5c: the original Full Library export built a single PostgREST
+    // URL containing every quiz/question/media ID. Large libraries can exceed
+    // gateway request-size limits (HTTP 400 Bad Request), while individual
+    // result sets can exceed Supabase's default row limit. Batch AND paginate.
+    function backupExportError(label, error) {
+        const message = normalizeSheetText(error?.message) || 'Unknown Supabase request failure';
+        const details = normalizeSheetText(error?.details);
+        const code = normalizeSheetText(error?.code);
+        const status = normalizeSheetText(error?.status);
+        const suffix = [code ? `code ${code}` : '', status ? `HTTP ${status}` : '', details].filter(Boolean).join(' | ');
+        const result = new Error(`Backup export failed while reading ${label}: ${message}${suffix ? ` (${suffix})` : ''}. No data was deleted.`);
+        result.cause = error;
+        return result;
+    }
 
-        let result = await state.auth.client
-            .from('quizzes')
-            .select('id, folder_id, name, description, sort_order, is_archived, updated_at')
-            .in('id', safeQuizIds);
-
-        if (result.error && /updated_at/i.test(result.error.message || '')) {
-            result = await state.auth.client
-                .from('quizzes')
-                .select('id, folder_id, name, description, sort_order, is_archived')
-                .in('id', safeQuizIds);
+    async function fetchBackupRowsInBatches(ids, options) {
+        const safeIds = normalizeBackupIdList(ids);
+        if (!state.auth.client || !safeIds.length) return [];
+        const {
+            table, columns, filter, label, orderColumn = '',
+            batchSize = 12, pageSize = 100, fallbackColumns = '',
+            allowFallback = () => false
+        } = options;
+        const rows = [];
+        const totalBatches = Math.ceil(safeIds.length / batchSize);
+        for (let index = 0; index < safeIds.length; index += batchSize) {
+            const batch = safeIds.slice(index, index + batchSize);
+            const batchNumber = 1 + Math.floor(index / batchSize);
+            const batchLabel = `${label} (batch ${batchNumber}/${totalBatches})`;
+            // Query is rebuilt for each page so that PostgREST ranges don't
+            // accumulate on the same query builder.
+            const request = select => fetchAllSupabaseRows(() => {
+                let query = state.auth.client.from(table).select(select).in(filter, batch);
+                if (orderColumn) query = query.order(orderColumn, { ascending: true });
+                return query;
+            }, { label: batchLabel, pageSize, maxRows: 50000 });
+            try {
+                rows.push(...await request(columns));
+            } catch (error) {
+                if (!fallbackColumns || !allowFallback(error)) throw backupExportError(batchLabel, error);
+                try {
+                    rows.push(...await request(fallbackColumns));
+                } catch (fallbackError) {
+                    throw backupExportError(batchLabel, fallbackError);
+                }
+            }
         }
+        return rows;
+    }
 
-        if (result.error) throw result.error;
+    // Detail loaders are shared with the study interface; only backup callers
+    // are batched here, preserving ordinary quiz and flashcard behavior.
+    async function fetchBackupDetailBatches(ids, label, loader, batchSize = 12) {
+        const safeIds = normalizeBackupIdList(ids);
+        const rows = [];
+        for (let index = 0; index < safeIds.length; index += batchSize) {
+            const batchLabel = `${label} (batch ${1 + Math.floor(index / batchSize)}/${Math.ceil(safeIds.length / batchSize)})`;
+            try {
+                rows.push(...await loader(safeIds.slice(index, index + batchSize)));
+            } catch (error) {
+                throw backupExportError(batchLabel, error);
+            }
+        }
+        return rows;
+    }
 
+    async function loadQuizRowsForBackup(quizIds) {
+        const rows = await fetchBackupRowsInBatches(quizIds, {
+            table: 'quizzes', filter: 'id', orderColumn: 'id', label: 'quiz metadata',
+            columns: 'id, folder_id, name, description, sort_order, is_archived, updated_at',
+            fallbackColumns: 'id, folder_id, name, description, sort_order, is_archived',
+            allowFallback: error => /updated_at/i.test(`${error?.message || ''} ${error?.details || ''}`)
+        });
         const managedOrder = new Map(state.auth.managedQuizzes.map((quiz, index) => [quiz.id, index]));
-        return (result.data || []).sort((a, b) => {
+        return rows.sort((a, b) => {
             const aIndex = managedOrder.has(a.id) ? managedOrder.get(a.id) : Number.MAX_SAFE_INTEGER;
             const bIndex = managedOrder.has(b.id) ? managedOrder.get(b.id) : Number.MAX_SAFE_INTEGER;
             if (aIndex !== bIndex) return aIndex - bIndex;
@@ -33866,59 +36149,37 @@ if (elements.openQuizStudioBtn) {
     }
 
     async function loadQuestionRowsForBackup(quizIds) {
-        const safeQuizIds = normalizeBackupIdList(quizIds);
-        if (!state.auth.client || !safeQuizIds.length) return [];
-
-        const { data, error } = await state.auth.client
-            .from('questions')
-            .select('id, quiz_id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, question_type, sort_order')
-            .in('quiz_id', safeQuizIds)
-            .order('sort_order', { ascending: true });
-
-        if (error) throw error;
-        return data || [];
+        // One folder can contain hundreds of questions; paginate even when
+        // there are few quiz IDs to prevent silently truncated backups.
+        return fetchBackupRowsInBatches(quizIds, {
+            table: 'questions', filter: 'quiz_id', orderColumn: 'id', label: 'quiz questions',
+            columns: 'id, quiz_id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, question_type, sort_order',
+            pageSize: 100
+        });
     }
 
     async function loadQuestionStateRowsForBackup(questionIds) {
-        const safeQuestionIds = normalizeBackupIdList(questionIds);
-        if (!state.auth.client || !state.auth.user?.id || !safeQuestionIds.length) return [];
-
-        const { data, error } = await state.auth.client
-            .from('user_question_state')
-            .select('question_id, is_starred')
-            .eq('user_id', state.auth.user.id)
-            .in('question_id', safeQuestionIds);
-
-        if (error) {
+        if (!state.auth.client || !state.auth.user?.id) return [];
+        try {
+            return await fetchBackupRowsInBatches(questionIds, {
+                table: 'user_question_state', filter: 'question_id', orderColumn: 'question_id', label: 'starred question state',
+                columns: 'question_id, is_starred'
+            });
+        } catch (error) {
+            // Retain prior behavior: starred status is optional for export.
             console.error('Could not include starred-question state in backup:', error);
             return [];
         }
-        return data || [];
     }
 
     async function loadMediaAssetRowsForBackup(refs) {
         const assetIds = Array.from(new Set(Array.from(refs || []).map(getSupabaseMediaAssetId).filter(Boolean)));
-        if (!state.auth.client || !assetIds.length) return [];
-
-        let result = await state.auth.client
-            .from('media_assets')
-            .select('id, bucket_name, object_path, original_name, mime_type, size_bytes, quiz_id, question_id, usage_context, created_at, updated_at')
-            .in('id', assetIds);
-
-        if (result.error && /created_at|updated_at/i.test(result.error.message || '')) {
-            result = await state.auth.client
-                .from('media_assets')
-                .select('id, bucket_name, object_path, original_name, mime_type, size_bytes, quiz_id, question_id, usage_context')
-                .in('id', assetIds);
-        }
-
-        if (result.error) {
-            console.error('Could not include media asset metadata in backup:', result.error);
-            return [];
-        }
-
-        const idOrder = new Map(assetIds.map((id, index) => [id, index]));
-        return (result.data || []).sort((a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0));
+        return fetchBackupRowsInBatches(assetIds, {
+            table: 'media_assets', filter: 'id', orderColumn: 'id', label: 'media reference metadata',
+            columns: 'id, bucket_name, object_path, original_name, mime_type, size_bytes, quiz_id, question_id, usage_context, created_at, updated_at',
+            fallbackColumns: 'id, bucket_name, object_path, original_name, mime_type, size_bytes, quiz_id, question_id, usage_context',
+            allowFallback: error => /created_at|updated_at/i.test(`${error?.message || ''} ${error?.details || ''}`)
+        });
     }
 
     function createBackupFolderRows(folderIds) {
@@ -33967,11 +36228,11 @@ if (elements.openQuizStudioBtn) {
             ...(questionIdsByType.typed_answer || [])
         ];
         const [multipleChoiceDetails, flashcardDetails, flashcardHandwritingDetails, hierarchyDetails, classifyDetails, questionStateRows] = await Promise.all([
-            loadMultipleChoiceDetailsByQuestionIds(multipleChoiceBackupIds),
-            loadFlashcardDetailsByQuestionIds(questionIdsByType.flashcard || []),
-            loadFlashcardHandwritingDetailsByQuestionIdsForBackup(questionIdsByType.flashcard || []),
-            loadHierarchyDetailsByQuestionIds(questionIdsByType.hierarchy || []),
-            loadClassifyDetailsByQuestionIds(questionIdsByType.classify || []),
+            fetchBackupDetailBatches(multipleChoiceBackupIds, 'multiple-choice details', loadMultipleChoiceDetailsByQuestionIds),
+            fetchBackupDetailBatches(questionIdsByType.flashcard || [], 'flashcard details', loadFlashcardDetailsByQuestionIds),
+            fetchBackupDetailBatches(questionIdsByType.flashcard || [], 'flashcard handwriting', loadFlashcardHandwritingDetailsByQuestionIdsForBackup),
+            fetchBackupDetailBatches(questionIdsByType.hierarchy || [], 'hierarchy details', loadHierarchyDetailsByQuestionIds),
+            fetchBackupDetailBatches(questionIdsByType.classify || [], 'classification details', loadClassifyDetailsByQuestionIds),
             loadQuestionStateRowsForBackup(questionIds)
         ]);
         const handwritingBackupMap = new Map((flashcardHandwritingDetails || []).map(row => [row.question_id, row]));
@@ -34061,6 +36322,7 @@ if (elements.openQuizStudioBtn) {
             notes: [
                 'This backup is export-only JSON. It does not change Supabase.',
                 'Private Supabase Storage images are included as sb-media references and media_assets metadata, not copied image files.',
+                'Saved Images payload records are NOT included in this quiz-library JSON backup.',
                 'Restore/import from this backup should be handled by a later migration-safe phase.'
             ],
             summary: {
@@ -34124,6 +36386,523 @@ if (elements.openQuizStudioBtn) {
         setCreatorStatus('Folder backup downloaded.', 'success');
     }
 
+    // Phase 24A.5e: independent, self-contained Saved Images backup.
+    // The archive is standard POSIX TAR (supported by macOS Archive Utility).
+    // All required physical sb-media image bytes are downloaded BEFORE an
+    // archive is offered.  Missing/unauthorized files prevent partial exports.
+    function savedImageBackupStatus(message, error=false) {
+        const field=elements.exportSavedImagesBackupStatus;
+        if(field) {field.textContent=message;field.classList.toggle('is-error',!!error);}
+        setCreatorStatus(message,error?'error':'neutral');
+    }
+    // Phase 24A.5h: network-resilient *read-only* Saved Images backup downloads.
+    // Supabase .download() may return a transient "Failed to fetch" even when
+    // the media object is present. Retry only transient failures; a genuine
+    // 400/401/403/404 still stops the archive rather than hiding missing bytes.
+    function isTransientSavedImageBackupError(error) {
+        const status=Number(error?.statusCode || error?.status || 0);
+        if(status>=400)return status===408||status===429||status>=500;
+        const reason=String(error?.message || error?.error || error || '');
+        return /failed to fetch|fetch failed|network|connection|timeout|timed out|aborted|temporar|rate limit|econnreset|service unavailable|502|503|504|429/i.test(reason);
+    }
+    async function downloadSavedImageSupabaseWithRetry(asset,index,total,userId) {
+        const bucket=state.auth.client.storage.from(asset.bucket_name);
+        const attempts=4;
+        let lastError=null;
+        for(let attempt=1;attempt<=attempts;attempt++) {
+            if(assertCleanupAuth()!==userId)throw new Error('Account changed during backup. Export stopped.');
+            if(attempt>1)savedImageBackupStatus(`Temporary connection failure. Retrying image ${index+1}/${total} (attempt ${attempt}/${attempts})...`);
+            try {
+                const result=await bucket.download(asset.object_path);
+                if(result?.data && !result.error)return result.data;
+                lastError=result?.error || new Error('Storage returned no image bytes');
+            } catch(error) {lastError=error;}
+            if(!isTransientSavedImageBackupError(lastError))break;
+            // A fresh, short-lived URL is a separate authorized retrieval path,
+            // useful if the normal Storage download endpoint briefly fails.
+            // Neither credentials nor URLs are included in error diagnostics.
+            if(attempt>=2 && typeof bucket.createSignedUrl==='function') {
+                try {
+                    const signed=await bucket.createSignedUrl(asset.object_path,120);
+                    if(signed?.error)throw signed.error;
+                    if(!signed?.data?.signedUrl)throw new Error('No signed download URL returned');
+                    const response=await fetch(signed.data.signedUrl,{cache:'no-store'});
+                    if(response.ok)return await response.blob();
+                    const httpError=new Error(`Signed download returned HTTP ${response.status}`);
+                    httpError.status=response.status;
+                    throw httpError;
+                } catch(error) {
+                    // A non-transient auth/missing-object failure is decisive;
+                    // never label a missing or forbidden image as recoverable.
+                    if(!isTransientSavedImageBackupError(error)) {
+                        lastError=error;
+                        break;
+                    }
+                    lastError=error;
+                }
+            }
+            if(attempt<attempts)await new Promise(resolve=>window.setTimeout(resolve,750*attempt));
+        }
+        const explanation=String(lastError?.message || lastError?.error || lastError || 'Unknown failure');
+        throw new Error(`Supabase image download failed (${asset.id}) after retry checks: ${explanation}. Backup was NOT created. This error does not by itself prove that the image is missing. Check your connection and retry the backup; do not run cleanup.`);
+    }
+    function createTarFileHeader(path,bytes) {
+        const encoder=new TextEncoder();
+        if(!/^[\x20-\x7e]+$/.test(path)||encoder.encode(path).length>100) throw new Error(`Backup archive path too long: ${path}`);
+        if(!Number.isSafeInteger(bytes)||bytes<0||bytes>=8**11) throw new Error(`Unsupported backup file size: ${path}`);
+        const header=new Uint8Array(512);
+        function str(text,offset,length) {
+            const payload=encoder.encode(text);
+            if(payload.length>length) throw new Error(`Invalid TAR entry ${path}`);
+            header.set(payload,offset);
+        }
+        function oct(value,offset,length) {
+            const padded=Math.trunc(value).toString(8).padStart(length-1,'0');
+            str(padded+'\0',offset,length);
+        }
+        str(path,0,100);oct(0o644,100,8);oct(0,108,8);oct(0,116,8);
+        oct(bytes,124,12);oct(Math.floor(Date.now()/1000),136,12);
+        header.fill(32,148,156);str('0',156,1);
+        str('ustar\0',257,6);str('00',263,2);
+        let sum=0;for(const value of header)sum+=value;
+        str(sum.toString(8).padStart(6,'0')+'\0 ',148,8);
+        return header;
+    }
+    function addSavedImageTarEntry(parts,path,contents) {
+        const item=typeof contents==='string'?new Blob([contents],{type:'text/plain;charset=utf-8'}):contents;
+        parts.push(createTarFileHeader(path,item.size),item);
+        const pad=(512-(item.size%512))%512;
+        if(pad)parts.push(new Uint8Array(pad));
+    }
+    function downloadSavedImagesTar(parts,name) {
+        parts.push(new Uint8Array(1024));
+        const blob=new Blob(parts,{type:'application/x-tar'});
+        const url=URL.createObjectURL(blob);
+        const anchor=document.createElement('a');anchor.href=url;anchor.download=name;
+        document.body.appendChild(anchor);anchor.click();anchor.remove();
+        window.setTimeout(()=>URL.revokeObjectURL(url),60000);
+        return blob.size;
+    }
+    // Phase 24A.5g: a missing, strictly thumbnail-only cache does not make
+    // the authoritative image absent. Classify only exact references located
+    // in thumbnail fields, and require an available primary image for EACH
+    // affected angle/record. Any ambiguous/other reference remains a blocker.
+    function classifyMissingCachedThumbnail(id, savedImages, availableIds) {
+        const reference=`sb-media:${String(id).toLowerCase()}`;
+        const matches=[];
+        let invalid=false;
+        for(const row of savedImages) {
+            const diagram=row.payload||{};
+            const title=diagram.imageLabel||diagram.fileName||'Unnamed diagram';
+            function visit(value, parent, key, location) {
+                if(typeof value==='string') {
+                    if(!value.toLowerCase().includes(reference))return;
+                    // Includes embedded HTML, aliases, or unrecognized contexts:
+                    // those are NOT safely disposable thumbnails.
+                    if((key!=='thumbnailValue'&&key!=='thumbnailMediaValue') ||
+                       value.trim().toLowerCase()!==reference || !parent || typeof parent!=='object') {
+                        invalid=true;return;
+                    }
+                    const main=normalizeSheetText(parent.imageValue||parent.mediaValue||parent.value||parent.normalizedValue||'');
+                    const mainId=getSupabaseMediaAssetId(main).toLowerCase();
+                    const primaryIsAvailable=(isSupabaseMediaReference(main) && mainId!==id && availableIds.has(mainId)) ||
+                        /^data:image\//i.test(main);
+                    if(!primaryIsAvailable){invalid=true;return;}
+                    matches.push({media_id:id,saved_image_id:row.id,title,location,field:key});
+                } else if(Array.isArray(value)) {
+                    value.forEach((item,index)=>visit(item,value,String(index),
+                        key==='angles'?`Angle ${index+1} (${item?.name||'Unnamed'})`:`${location}.${key}[${index}]`));
+                } else if(value && typeof value==='object') {
+                    Object.entries(value).forEach(([childKey,childValue])=>visit(childValue,value,childKey,location));
+                }
+            }
+            visit(diagram,null,'payload','Main diagram');
+        }
+        return matches.length&&!invalid?matches:null;
+    }
+    function stripArchivedUnavailableThumbnails(payload, missingThumbnails) {
+        if(!missingThumbnails?.length)return payload;
+        const result=JSON.parse(JSON.stringify(payload));
+        const retired=new Set(missingThumbnails.map(entry=>String(entry.media_id).toLowerCase()));
+        function visit(node) {
+            if(!node || typeof node!=='object')return;
+            if(Array.isArray(node)){node.forEach(visit);return;}
+            for(const [key,value] of Object.entries(node)) {
+                if((key==='thumbnailValue'||key==='thumbnailMediaValue') &&
+                   typeof value==='string' &&
+                   retired.has(getSupabaseMediaAssetId(value).toLowerCase())) node[key]='';
+                else visit(value);
+            }
+        }
+        visit(result);
+        return result;
+    }
+    async function exportAllSavedImagesWithLabels() {
+        const userId=assertCleanupAuth();
+        if(getStudioSavedImagePendingDeletes(userId).length || getStudioSavedImagePendingUpsertKeys(userId).size) {
+            throw new Error('Saved Images are still synchronizing. Finish syncing before exporting.');
+        }
+        const button=elements.exportSavedImagesBackupBtn;
+        if(button?.disabled)throw new Error('A diagram backup is already in progress.');
+        if(button)button.disabled=true;
+        try {
+            savedImageBackupStatus('Reading active Saved Images, labels and image ownership...');
+            // Read whole payloads, not the paged UI or cached thumbnails.
+            const [savedImages,labelSets,labelInformation,visualAidPresets,folders,classes,assets]=await Promise.all([
+                cleanupReadAll('saved_images','*',q=>q.eq('user_id',userId).is('deleted_at',null)),
+                cleanupReadAll('user_label_sets','*',q=>q.eq('user_id',userId)),
+                cleanupReadAll('user_shared_label_information','*',q=>q.eq('user_id',userId)),
+                cleanupReadAll('user_visual_aid_presets','*',q=>q.eq('user_id',userId)),
+                cleanupReadAll('folders','*',q=>q.eq('user_id',userId)),
+                cleanupReadAll('classes','*',q=>q.eq('user_id',userId)),
+                cleanupReadAll('media_assets','id,user_id,bucket_name,object_path,size_bytes,usage_context,original_name,mime_type',q=>q.eq('user_id',userId))
+            ]);
+            const body=JSON.stringify(savedImages);
+            const assetIds=new Set();
+            const refs=collectSupabaseMediaReferences(savedImages,new Set());
+            for(const ref of refs)assetIds.add(getSupabaseMediaAssetId(ref).toLowerCase());
+            // Some pre-sb-media Saved Images retained a direct storage URL/path.
+            // Include a media object if its FULL path is embedded in a payload.
+            const included=[];
+            for(const asset of assets) {
+                const id=normalizeSheetText(asset.id).toLowerCase();
+                const path=normalizeSheetText(asset.object_path);
+                if(assetIds.has(id)||(path && (body.includes(path)||body.includes(encodeURIComponent(path))))) included.push(asset);
+            }
+            // Phase 24A.5f: old deletion paths can remove a media_assets row
+            // while leaving the actual private Storage object intact. Recover
+            // those bytes by deterministic <user>/<asset-id>/filename, without
+            // changing the database. Never treat an unverified ref as expendable.
+            const found=new Set(included.map(a=>normalizeSheetText(a.id).toLowerCase()));
+            const missing=[...assetIds].filter(id=>!found.has(id));
+            const unresolved=[];
+            for (const id of missing) {
+                if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) {
+                    unresolved.push({id,reason:'Not a valid media UUID'});continue;
+                }
+                const prefix=`${userId}/${id}`;
+                const {data,error}=await state.auth.client.storage.from(CONFIG.mediaAssets.bucketName).list(prefix,{limit:1000});
+                if(error)throw new Error(`Storage check failed for untracked media ${id}: ${error.message}`);
+                const physical=(data||[]).filter(item=>item?.name&&(item.id||item.metadata));
+                if(physical.length!==1) {
+                    unresolved.push({id,reason:physical.length?'Multiple physical files need manual review':'No physical file found at the expected storage path'});
+                    continue;
+                }
+                const item=physical[0];
+                const path=`${prefix}/${item.name}`;
+                included.push({id,user_id:userId,bucket_name:CONFIG.mediaAssets.bucketName,
+                    object_path:path,original_name:item.name,size_bytes:Number(item.metadata?.size||0),
+                    usage_context:'recovered_missing_tracking_row',tracking_row_missing:true});
+                found.add(id);
+            }
+            // Also capture actual untracked physical files referenced via a
+            // legacy direct object path, even if no sb-media ID is in the JSON.
+            if(/study-bunny-media|storage\/v1\/object|\/storage\//i.test(body)) {
+                const physicalPaths=await cleanupListSupabaseObjects();
+                const trackedPaths=new Set(included.map(a=>a.object_path));
+                for(const path of physicalPaths) {
+                    if(trackedPaths.has(path))continue;
+                    if(!body.includes(path)&&!body.includes(encodeURIComponent(path))&&!body.includes(path.replaceAll('/','%2F')))continue;
+                    const chunks=path.split('/');
+                    const id=chunks[1]||'';
+                    if(chunks[0]!==userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) {
+                        unresolved.push({id:path,reason:'Legacy file path cannot be safely mapped to a media ID'});continue;
+                    }
+                    if(found.has(id)) {
+                        unresolved.push({id,reason:'More than one physical object uses this media ID'});continue;
+                    }
+                    included.push({id,user_id:userId,bucket_name:CONFIG.mediaAssets.bucketName,
+                        object_path:path,original_name:chunks.at(-1),size_bytes:0,
+                        usage_context:'recovered_legacy_storage_path',tracking_row_missing:true});
+                    trackedPaths.add(path);found.add(id);
+                }
+            }
+            const missingThumbnails=[];
+            // Check only after all tracked and untracked Storage paths have
+            // been collected. Full-resolution references must be available.
+            for(let i=unresolved.length-1;i>=0;i--) {
+                const item=unresolved[i];
+                if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item.id))continue;
+                if(item.reason!=='No physical file found at the expected storage path')continue;
+                const uses=classifyMissingCachedThumbnail(item.id,savedImages,found);
+                if(!uses)continue;
+                missingThumbnails.push(...uses);
+                unresolved.splice(i,1);
+            }
+            if(unresolved.length) {
+                // Download a diagnostic, NOT a partial backup. Affected titles
+                // help the owner repair references before any destructive work.
+                const issues=unresolved.map(item=>({media_id:item.id,reason:item.reason,
+                    saved_images:savedImages.filter(row=>JSON.stringify(row.payload||{}).toLowerCase().includes(item.id.toLowerCase()))
+                        .map(row=>({saved_image_id:row.id,title:row.payload?.imageLabel||row.payload?.fileName||'Unnamed diagram'}))}));
+                downloadJsonFile({format:'study-bunny-saved-images-backup-diagnostic',
+                    created_at:new Date().toISOString(),unresolved:issues},
+                    `study-bunny-missing-image-references-${getBackupDateStamp()}.json`);
+                throw new Error(`${issues.length} referenced image(s) could not be recovered from Supabase Storage. Downloaded a diagnostic JSON naming the affected diagrams. Archive NOT created; do not run cleanup.`);
+            }
+            included.sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+            const archiveParts=[];
+            const files=[];
+            for(let index=0;index<included.length;index++) {
+                if(assertCleanupAuth()!==userId)throw new Error('Account changed during backup. Export stopped.');
+                const asset=included[index];
+                savedImageBackupStatus(`Backing up image bytes ${index+1}/${included.length}. Do not navigate away...`);
+                let blob;
+                if(isCloudflareR2Asset(asset)) {
+                    if(!isCloudflareR2Configured()) throw new Error(`R2 file ${asset.id} cannot be backed up without the configured Worker.`);
+                    const signed=await cloudflareR2Request('/v1/sign-read',{objectPaths:[asset.object_path]});
+                    const url=signed?.items?.[0]?.url || signed?.signedUrls?.[0]?.url;
+                    if(!url)throw new Error(`Could not obtain signed R2 URL for ${asset.id}.`);
+                    const res=await fetch(url);
+                    if(!res.ok)throw new Error(`R2 download failed for ${asset.id}: ${res.status}`);
+                    blob=await res.blob();
+                } else if(asset.bucket_name===CONFIG.mediaAssets.bucketName) {
+                    blob=await downloadSavedImageSupabaseWithRetry(asset,index,included.length,userId);
+                } else throw new Error(`Cannot back up unknown provider ${asset.bucket_name} (${asset.id}).`);
+                const expected=Number(asset.size_bytes||0);
+                if(expected>0&&blob.size!==expected)throw new Error(`Image ${asset.id} size mismatch (${blob.size} vs ${expected}). Backup cancelled.`);
+                const extension=(asset.object_path.match(/\.([a-z0-9]{2,5})$/i)||[])[1]?.toLowerCase()||'bin';
+                const name=`media/${normalizeSheetText(asset.id)}.${extension}`;
+                // Hash every physical file so an external restore tool can
+                // verify the bytes after extraction.
+                if(!window.crypto?.subtle)throw new Error('Secure browser context required to checksum backup images.');
+                const bytes=await blob.arrayBuffer();
+                const digest=await window.crypto.subtle.digest('SHA-256',bytes);
+                const sha256=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+                addSavedImageTarEntry(archiveParts,name,blob);
+                files.push({media_id:asset.id,bucket_name:asset.bucket_name,object_path:asset.object_path,
+                    original_name:asset.original_name||'',usage_context:asset.usage_context||'',
+                    tracking_row_missing:!!asset.tracking_row_missing,mime_type:blob.type||asset.mime_type||'',
+                    tar_path:name,size_bytes:blob.size,sha256});
+            }
+            // Each database row is preserved verbatim, including nested angles,
+            // strokes, visual aids, label coordinate metadata and timestamps.
+            const payload={format:'study-bunny-saved-images-complete-tar',version:1,
+                created_at:new Date().toISOString(), user_id:userId,
+                counts:{saved_images:savedImages.length,label_sets:labelSets.length,label_information:labelInformation.length,media_files:files.length},
+                saved_images:savedImages,label_sets:labelSets,shared_label_information:labelInformation,
+                missing_thumbnail_media:missingThumbnails, // source payloads are preserved verbatim in TAR
+                local_label_sets:readLocalStudioLabelLibrary('sets',userId),
+                local_shared_label_information:readLocalStudioLabelLibrary('info',userId),
+                visual_aid_presets:visualAidPresets,folders,classes,media_files:files};
+            addSavedImageTarEntry(archiveParts,'saved_images_and_label_library.json',JSON.stringify(payload,null,2));
+            addSavedImageTarEntry(archiveParts,'READ_ME_FIRST.txt',
+                'STUDY BUNNY SAVED IMAGES + LABEL LIBRARY BACKUP\n\n'+
+                (missingThumbnails.length
+                    ? `WARNING: ${new Set(missingThumbnails.map(x=>x.media_id)).size} unavailable cached thumbnail file(s) were NOT included. Their references are preserved in the original payload JSON and listed under missing_thumbnail_media. Every affected angle had a separate backed-up primary image. On restoration those obsolete thumbnail pointers are cleared so the app can display its primary image instead.\n\n`
+                    : '')+
+                'saved_images_and_label_library.json preserves full active Saved Image payloads (including angles, labels, connectors, drawing strokes, visual aids, metadata), shared label library, label sets, visual aid presets, classes and folders.\\n'+
+                'media/ contains original physical file bytes for all recognized private media assets associated with those Saved Images. Check SHA-256 entries in JSON for integrity.\n'+
+                'Any external HTTP image URL inside Saved Image payloads remains an external link, not a downloaded file. Inline data URLs remain within the JSON.\n'+
+                'This archive does not export quiz questions or unreferenced historical Storage files. Use Backup > Restore Saved Images + Label Library TAR in Phase 24A.5f or later, signed in to the same account.\n'+
+                'Keep this archive safe and do not run destructive cleanup until it is extracted and verified.\n');
+            const bytes=downloadSavedImagesTar(archiveParts,`study-bunny-saved-images-label-library-${getBackupDateStamp()}.tar`);
+            const missingThumbCount=new Set(missingThumbnails.map(x=>x.media_id)).size;
+            savedImageBackupStatus(`Saved Images TAR prepared: ${savedImages.length} diagrams, ${labelSets.length} label sets, ${labelInformation.length} label information records, ${files.length} physical image files (${(bytes/1048576).toFixed(1)} MiB).${missingThumbCount ? ` WARNING: ${missingThumbCount} missing thumbnail cache files were not backed up; see TAR manifest. Main angle images were backed up.` : ''} Verify the download on your Mac before cleanup.`);
+        }finally {if(button)button.disabled=false;}
+    }
+
+    // Phase 24A.5f: same-account non-overwriting restore for Saved Images TAR.
+    // This uses native signed-in Supabase access; no service-role credentials.
+    // A missing file / hash mismatch prevents ALL writes. Restore is idempotent
+    // and never deletes or overwrites active diagrams, label libraries, or media.
+    const savedImagesTarRestoreState={file:null,payload:null,entries:null,verified:false,busy:false};
+    function savedImagesTarRestoreStatus(message,error=false) {
+        const target=elements.restoreSavedImagesTarStatus;
+        if(target){target.textContent=message;target.classList.toggle('is-error',!!error);}
+        setCreatorStatus(message,error?'error':'neutral');
+    }
+    async function readSavedImagesTarEntries(file) {
+        if(!file||!file.name.toLowerCase().endsWith('.tar'))throw new Error('Choose a Study Bunny Saved Images .tar archive.');
+        const decoder=new TextDecoder();
+        const entries=new Map();let offset=0;
+        while(offset+512<=file.size){
+            const header=new Uint8Array(await file.slice(offset,offset+512).arrayBuffer());
+            if(header.every(b=>b===0))break;
+            const name=decoder.decode(header.slice(0,100)).split('\0')[0];
+            const magic=decoder.decode(header.slice(257,263));
+            if(!magic.startsWith('ustar'))throw new Error('Invalid TAR archive format.');
+            const lengthRaw=decoder.decode(header.slice(124,136)).replace(/\0.*$/,'').trim();
+            if(!/^[0-7]+$/.test(lengthRaw))throw new Error('Invalid TAR file length.');
+            const length=parseInt(lengthRaw,8);
+            const beginning=offset+512, ending=beginning+length;
+            if(!Number.isSafeInteger(length)||ending>file.size)throw new Error('The TAR archive is incomplete.');
+            if(!name||name.includes('..')||name.startsWith('/')||entries.has(name))throw new Error('Invalid or duplicate TAR path.');
+            entries.set(name,file.slice(beginning,ending));
+            offset=beginning+Math.ceil(length/512)*512;
+        }
+        return entries;
+    }
+    async function sha256Hex(blob) {
+        if(!window.crypto?.subtle)throw new Error('Use HTTPS to verify archive hashes.');
+        const digest=await window.crypto.subtle.digest('SHA-256',await blob.arrayBuffer());
+        return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+    }
+    async function previewSavedImagesTarRestore() {
+        const userId=assertCleanupAuth();
+        const file=elements.restoreSavedImagesTarInput?.files?.[0];
+        if(!file)throw new Error('Select your Saved Images TAR backup first.');
+        savedImagesTarRestoreState.verified=false;
+        savedImagesTarRestoreStatus('Checking archive, media files and SHA-256 hashes. No data is being changed...');
+        const entries=await readSavedImagesTarEntries(file);
+        const descriptor=entries.get('saved_images_and_label_library.json');
+        if(!descriptor)throw new Error('Archive is missing saved_images_and_label_library.json.');
+        const payload=JSON.parse(await descriptor.text());
+        if(payload.format!=='study-bunny-saved-images-complete-tar'||payload.version!==1)
+            throw new Error('Unsupported Saved Images archive format.');
+        if(payload.user_id!==userId)throw new Error('This archive belongs to a different Study Bunny account. Restore stopped.');
+        for(const table of ['saved_images','label_sets','shared_label_information','visual_aid_presets','folders','classes','media_files']) {
+            if(!Array.isArray(payload[table]))throw new Error(`Archive is missing ${table}.`);
+        }
+        if(payload.counts?.saved_images!==payload.saved_images.length || payload.counts?.media_files!==payload.media_files.length)
+            throw new Error('Archive item counts do not match.');
+        const ids=new Set();
+        for(let index=0;index<payload.media_files.length;index++){
+            const media=payload.media_files[index];
+            const id=String(media.media_id||'').toLowerCase();
+            if(ids.has(id)||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))throw new Error('Invalid or repeated media ID.');
+            ids.add(id);
+            if(media.bucket_name!==CONFIG.mediaAssets.bucketName || !String(media.object_path||'').startsWith(`${userId}/${id}/`))
+                throw new Error(`Unsupported or cross-account storage path for media ${id}.`);
+            if(media.tracking_row_missing && !String(media.usage_context||'').startsWith('recovered_'))
+                throw new Error(`Unexpected recovered media metadata for ${id}.`);
+            const blob=entries.get(media.tar_path);
+            if(!blob||blob.size!==media.size_bytes)throw new Error(`Missing or incomplete image bytes for ${id}.`);
+            if((await sha256Hex(blob))!==media.sha256)throw new Error(`SHA-256 mismatch for image ${id}.`);
+            if(index%25===0) savedImagesTarRestoreStatus(`Verified ${index+1}/${payload.media_files.length} image checksums...`);
+        }
+        // Thumbnail-only missing media are explicitly reported, not counted
+        // as backed-up image files. Reject unsupported archive annotations.
+        if(payload.missing_thumbnail_media!==undefined &&
+           (!Array.isArray(payload.missing_thumbnail_media) ||
+            payload.missing_thumbnail_media.some(item=>
+                !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item.media_id||'') ||
+                !['thumbnailValue','thumbnailMediaValue'].includes(item.field))))
+            throw new Error('Invalid missing-thumbnail annotation in archive.');
+        for(const item of payload.saved_images){
+            if(item.user_id!==userId||!item.id||!item.dedupe_key||!item.payload||item.deleted_at)
+                throw new Error('Invalid or cross-account Saved Image record in archive.');
+        }
+        for(const [field,rows] of [['label_sets',payload.label_sets],['shared_label_information',payload.shared_label_information],
+            ['visual_aid_presets',payload.visual_aid_presets],['folders',payload.folders],['classes',payload.classes]]){
+            if(rows.some(row=>row.user_id!==userId))throw new Error(`Cross-account ${field} record in archive.`);
+        }
+        savedImagesTarRestoreState.file=file;
+        savedImagesTarRestoreState.payload=payload;
+        savedImagesTarRestoreState.entries=entries;
+        savedImagesTarRestoreState.verified=true;
+        if(elements.restoreSavedImagesTarBtn)elements.restoreSavedImagesTarBtn.disabled=false;
+        savedImagesTarRestoreStatus(`Verified ${payload.saved_images.length} Saved Images, ${payload.media_files.length} physical files, ${payload.label_sets.length} label sets and ${payload.shared_label_information.length} label information records. This is a same-account, missing-items-only restore. Existing active items will not be overwritten.`);
+    }
+    async function restoreMissingArchivedTableRows(table,items,key) {
+        const userId=assertCleanupAuth();
+        const existing=await cleanupReadAll(table,key, q=>q.eq('user_id',userId));
+        const keys=new Set(existing.map(row=>String(row[key])));
+        let restored=0;
+        for(const row of items){
+            const id=String(row[key]||'');if(!id||keys.has(id))continue;
+            const {error}=await state.auth.client.from(table).insert(row);
+            if(error)throw new Error(`Could not restore ${table}: ${error.message}`);
+            keys.add(id);restored++;
+        }
+        return restored;
+    }
+    async function restoreSavedImagesTar() {
+        const userId=assertCleanupAuth();
+        const stateBag=savedImagesTarRestoreState;
+        if(stateBag.busy)throw new Error('A Saved Images restore is already running.');
+        if(!stateBag.verified||stateBag.file!==elements.restoreSavedImagesTarInput?.files?.[0])throw new Error('Preview and verify the selected TAR file first.');
+        const payload=stateBag.payload,entries=stateBag.entries;
+        if(!confirm(`Restore missing Saved Images from the verified TAR? This will upload missing physical images and restore missing diagrams, classes and label-library entries in your current account. Existing active items are NEVER overwritten. A failed restore can be safely retried, but partial additions will remain.`))return;
+        stateBag.busy=true;
+        if(elements.restoreSavedImagesTarBtn)elements.restoreSavedImagesTarBtn.disabled=true;
+        try{
+            // Media first: never restore a diagram before its images exist.
+            const bucket=state.auth.client.storage.from(CONFIG.mediaAssets.bucketName);
+            const present=new Set(await cleanupListSupabaseObjects());
+            const existingAssets=await cleanupReadAll('media_assets','id,bucket_name,object_path',q=>q.eq('user_id',userId));
+            const assetPaths=new Map(existingAssets.map(a=>[String(a.id).toLowerCase(),`${a.bucket_name}:${a.object_path}`]));
+            // Fail before any writes if an existing media ID points elsewhere.
+            for(const media of payload.media_files){
+                const existing=assetPaths.get(media.media_id.toLowerCase());
+                if(existing&&existing!==`${media.bucket_name}:${media.object_path}`)
+                    throw new Error(`Media ID ${media.media_id} points to a different existing object. Resolve manually; nothing was overwritten.`);
+            }
+            const assetIds=new Set(assetPaths.keys());
+            let uploads=0,tracked=0;
+            for(let i=0;i<payload.media_files.length;i++){
+                if(assertCleanupAuth()!==userId)throw new Error('Account changed during restore.');
+                const m=payload.media_files[i],id=m.media_id.toLowerCase();
+                savedImagesTarRestoreStatus(`Restoring media ${i+1}/${payload.media_files.length}. Do not close this page...`);
+                const blob=entries.get(m.tar_path);
+                if(!present.has(m.object_path)){
+                    const contentType=m.mime_type||blob.type||'application/octet-stream';
+                    const {error}=await bucket.upload(m.object_path,blob,{contentType,upsert:false,cacheControl:'31536000'});
+                    if(error)throw new Error(`Could not restore Storage file ${id}: ${error.message}`);
+                    const {data:check,error:checkError}=await bucket.list(m.object_path.slice(0,m.object_path.lastIndexOf('/')),{limit:1000});
+                    if(checkError||!(check||[]).some(row=>row.name===m.object_path.split('/').at(-1)))
+                        throw new Error(`Restored file ${id} was not verified in Supabase Storage.`);
+                    present.add(m.object_path);uploads++;
+                }
+                // Never assume that an existing object at the same path has
+                // the archived bytes. A mismatch is a blocker, not consent to
+                // overwrite an actively used file.
+                const {data:actual,error:downloadError}=await bucket.download(m.object_path);
+                if(downloadError||!actual||actual.size!==m.size_bytes||
+                    (await sha256Hex(actual))!==m.sha256)
+                    throw new Error(`Stored image ${id} could not be verified against this TAR. No existing file was overwritten.`);
+                if(!assetIds.has(id)){
+                    const row={id,user_id:userId,bucket_name:m.bucket_name,object_path:m.object_path,
+                        original_name:m.original_name||m.object_path.split('/').at(-1),
+                        mime_type:m.mime_type||blob.type||'application/octet-stream',size_bytes:m.size_bytes,
+                        usage_context:m.usage_context||'saved_image_restored',quiz_id:null,question_id:null};
+                    const {error}=await state.auth.client.from('media_assets').insert(row);
+                    if(error)throw new Error(`Could not restore media tracking ${id}: ${error.message}`);
+                    assetIds.add(id);tracked++;
+                }
+            }
+            const classes=await restoreMissingArchivedTableRows('classes',payload.classes,'id');
+            const folders=await restoreMissingArchivedTableRows('folders',payload.folders,'id');
+            const labelSets=await restoreMissingArchivedTableRows('user_label_sets',payload.label_sets,'set_key');
+            const info=await restoreMissingArchivedTableRows('user_shared_label_information',payload.shared_label_information,'label_key');
+            const presets=await restoreMissingArchivedTableRows('user_visual_aid_presets',payload.visual_aid_presets,'preset_key');
+            // Preserve any label sets/information that existed ONLY on the
+            // original Mac. Never overwrite keys in the current local library.
+            const localSets=readLocalStudioLabelLibrary('sets',userId);
+            const localSetKeys=new Set(localSets.map(row=>row.id));
+            const additionalSets=normalizeStudioLabelSets(payload.local_label_sets||[]).filter(row=>!localSetKeys.has(row.id));
+            const localInfo=readLocalStudioLabelLibrary('info',userId);
+            const localInfoKeys=new Set(localInfo.map(row=>row.key));
+            const additionalInfo=normalizeStudioSharedLabelRecords(payload.local_shared_label_information||[]).filter(row=>!localInfoKeys.has(row.key));
+            if(additionalSets.length)writeLocalStudioLabelLibrary('sets',[...localSets,...additionalSets]);
+            if(additionalInfo.length)writeLocalStudioLabelLibrary('info',[...localInfo,...additionalInfo]);
+            const existingSaved=await cleanupReadAll('saved_images','id,deleted_at',q=>q.eq('user_id',userId));
+            const current=new Map(existingSaved.map(x=>[x.id,x]));
+            let diagrams=0,already=0;
+            for(const row of payload.saved_images){
+                const previous=current.get(row.id);
+                if(previous&&!previous.deleted_at){already++;continue;}
+                if(previous){
+                    const safePayload=stripArchivedUnavailableThumbnails(row.payload,payload.missing_thumbnail_media);
+                    const {error}=await state.auth.client.from('saved_images')
+                        .update({payload:safePayload,dedupe_key:row.dedupe_key,deleted_at:null,updated_at:new Date().toISOString()})
+                        .eq('user_id',userId).eq('id',row.id);
+                    if(error)throw new Error(`Could not revive Saved Image ${row.id}: ${error.message}`);
+                } else {
+                    const safeRow={...row,payload:stripArchivedUnavailableThumbnails(row.payload,payload.missing_thumbnail_media)};
+                    const {error}=await state.auth.client.from('saved_images').insert(safeRow);
+                    if(error)throw new Error(`Could not restore Saved Image ${row.id}: ${error.message}`);
+                }
+                diagrams++;
+            }
+            stateBag.verified=false;
+            savedImagesTarRestoreStatus(`Restore completed: ${diagrams} diagrams restored, ${already} already active and untouched; ${uploads} physical files uploaded, ${tracked} tracking records recreated; ${labelSets} cloud label sets, ${info} shared information entries, ${additionalSets.length} local label sets, ${additionalInfo.length} local info entries and ${presets} Visual Aid presets restored. Refresh Study Bunny and inspect the diagrams.`);
+        }catch(error){
+            savedImagesTarRestoreStatus(`Restore stopped safely: ${error.message}. Existing data was not removed. Some restored files or rows may have been added; preview this archive again before retrying.`,true);
+            throw error;
+        }finally{stateBag.busy=false;}
+    }
+
     async function exportAllBackup() {
         if (state.auth.studioHasUnsavedChanges) {
             const saved = await autosaveStudioChanges({ reason: 'export the full backup', allowCreate: true });
@@ -34136,10 +36915,10 @@ if (elements.openQuizStudioBtn) {
             return;
         }
 
-        setCreatorStatus('Preparing full library backup...', 'neutral');
+        setCreatorStatus('Preparing quiz-library JSON backup in smaller batches. This does not include physical image files or Saved Images payloads...', 'neutral');
         const payload = await buildStudyBunnyBackupPayload({ scope: 'all', folderIds, quizIds });
         downloadJsonFile(payload, `study-bunny-full-backup-${getBackupDateStamp()}.json`);
-        setCreatorStatus('Full library backup downloaded.', 'success');
+        setCreatorStatus('Quiz-library JSON downloaded. Back up Saved Images database records and physical Supabase/R2 image files separately before cleanup.', 'success');
     }
 
     function getBackupImportArrays(payload = {}) {
@@ -34712,6 +37491,10 @@ if (elements.openQuizStudioBtn) {
             state.auth.supabaseFolders = [];
             state.auth.managedQuizzes = [];
             state.auth.quizChallengeAchievements = new Map();
+            state.auth.quizSpacedReviews = new Map();
+            state.auth.quizSpacedContentRevisions = new Map();
+            state.auth.quizSpacedMigrationMissing = false;
+            syncQuizSpacedMigrationBanner();
             state.auth.quizChallengeUnavailable = false;
             state.googleSheetsImportQuizzes = [];
             state.auth.currentStudioSection = 'home';
@@ -35305,6 +38088,7 @@ if (elements.openQuizStudioBtn) {
             let savedQuestionSortOrder = getStudioQuestionRowById(questionId)?.sort_order ?? 0;
             let currentQuizDescription = '';
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
+            if (previousMediaRefs.size) stageQuizMediaCleanup(previousMediaRefs);
             let previousQuizDescriptionMediaRefs = new Set();
             if (quizId) {
                 const { data: existingQuizRow, error: existingQuizError } = await state.auth.client.from('quizzes').select('description').eq('id', quizId).maybeSingle();
@@ -35555,8 +38339,8 @@ if (elements.openQuizStudioBtn) {
         const definitionImageValue = state.auth.studioFlashcardDefinitionImageDataUrl || '';
         const termImageLayout = state.auth.handwrittenFlashcardEnabled ? normalizeFlashcardImageLayout(handwrittenRow?.term_image_layout, !!termImageValue) : 'none';
         const definitionImageLayout = state.auth.handwrittenFlashcardEnabled ? normalizeFlashcardImageLayout(handwrittenRow?.definition_image_layout, !!definitionImageValue) : 'none';
-        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: state.auth.studioFlashcardTermImageLabels || [], drawStrokes: state.auth.studioFlashcardTermImageDrawStrokes || [], metadata: state.auth.studioFlashcardTermImageMetadata || {}, imagePresent: !!termImageValue, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: termContentMode, imageLayout: termImageLayout } : {}) });
-        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: state.auth.studioFlashcardDefinitionImageLabels || [], drawStrokes: state.auth.studioFlashcardDefinitionImageDrawStrokes || [], metadata: state.auth.studioFlashcardDefinitionImageMetadata || {}, imagePresent: !!definitionImageValue, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: definitionContentMode, imageLayout: definitionImageLayout } : {}) });
+        let storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: state.auth.studioFlashcardTermImageLabels || [], drawStrokes: state.auth.studioFlashcardTermImageDrawStrokes || [], metadata: state.auth.studioFlashcardTermImageMetadata || {}, imagePresent: !!termImageValue, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: termContentMode, imageLayout: termImageLayout, imagePlacement: getHandwrittenSideImagePlacementFromEditorState('term') } : {}) });
+        let storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: state.auth.studioFlashcardDefinitionImageLabels || [], drawStrokes: state.auth.studioFlashcardDefinitionImageDrawStrokes || [], metadata: state.auth.studioFlashcardDefinitionImageMetadata || {}, imagePresent: !!definitionImageValue, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: definitionContentMode, imageLayout: definitionImageLayout, imagePlacement: getHandwrittenSideImagePlacementFromEditorState('definition') } : {}) });
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         const termHasHandwriting = termContentMode === 'handwritten' && termHandwriting.length > 0;
         const definitionHasHandwriting = definitionContentMode === 'handwritten' && definitionHandwriting.length > 0;
@@ -35569,6 +38353,7 @@ if (elements.openQuizStudioBtn) {
             let quizId = state.auth.editingQuizId;
             let questionId = isEditingQuestion ? state.auth.editingQuestionId : '';
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
+            if (previousMediaRefs.size) stageQuizMediaCleanup(previousMediaRefs);
             if (quizId) {
                 await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
             } else {
@@ -35605,8 +38390,8 @@ if (elements.openQuizStudioBtn) {
             const definitionImageDrawStrokes = cloneImageEditorDrawStrokes(state.auth.studioFlashcardDefinitionImageDrawStrokes || []);
             const termImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardTermImageMetadata || {});
             const definitionImageMetadata = normalizeDiagramMetadata(state.auth.studioFlashcardDefinitionImageMetadata || {});
-            storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedFlashcardMedia.term_image_url, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: termContentMode, imageLayout: normalizeFlashcardImageLayout(termImageLayout, !!savedFlashcardMedia.term_image_url) } : {}) });
-            storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedFlashcardMedia.definition_image_url, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: definitionContentMode, imageLayout: normalizeFlashcardImageLayout(definitionImageLayout, !!savedFlashcardMedia.definition_image_url) } : {}) });
+            storedTermHtml = buildStoredFlashcardSideContent(termHtml, { labels: termImageLabels, drawStrokes: termImageDrawStrokes, metadata: termImageMetadata, imagePresent: !!savedFlashcardMedia.term_image_url, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: termContentMode, imageLayout: normalizeFlashcardImageLayout(termImageLayout, !!savedFlashcardMedia.term_image_url), imagePlacement: getHandwrittenSideImagePlacementFromEditorState('term') } : {}) });
+            storedDefinitionHtml = buildStoredFlashcardSideContent(definitionHtml, { labels: definitionImageLabels, drawStrokes: definitionImageDrawStrokes, metadata: definitionImageMetadata, imagePresent: !!savedFlashcardMedia.definition_image_url, ...(state.auth.handwrittenFlashcardEnabled ? { contentMode: definitionContentMode, imageLayout: normalizeFlashcardImageLayout(definitionImageLayout, !!savedFlashcardMedia.definition_image_url), imagePlacement: getHandwrittenSideImagePlacementFromEditorState('definition') } : {}) });
             const savedQuestionRow = state.auth.studioQuizQuestions.find(row => normalizeSheetText(row?.id) === normalizeSheetText(questionId));
             const savedBuildUp = getStudioQuestionBuildUpValue(savedQuestionRow);
             const detailPayload = {
@@ -35664,6 +38449,7 @@ if (elements.openQuizStudioBtn) {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
+            if (previousMediaRefs.size) stageQuizMediaCleanup(previousMediaRefs);
             if (quizId) {
                 await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
             } else {
@@ -35756,6 +38542,7 @@ if (elements.openQuizStudioBtn) {
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
+            if (previousMediaRefs.size) stageQuizMediaCleanup(previousMediaRefs);
             if (quizId) {
                 await updateQuizShellFromEditor(quizId, { folder_id: folderId, name: quizName });
             } else {
@@ -35851,13 +38638,21 @@ if (elements.openQuizStudioBtn) {
             return;
         }
         if (!state.auth.editingQuizId) {
+            // Initial handwritten card is a pending placeholder, not a persisted ID.
+            // Promote it before saving so a one-card quiz is not silently empty.
+            if (isStudioFlashcardMode()) syncHandwrittenTypedEditorToBase();
             const isBlankQuestion = isCurrentStudioQuestionBlank();
             const canSaveQuestionNow = isCurrentStudioQuestionReadyToSave();
+            if (isStudioFlashcardMode() && !isBlankQuestion && !canSaveQuestionNow) {
+                throw new Error('Finish both sides of the first flashcard before creating the quiz.');
+            }
+            if (canSaveQuestionNow && isStudioFlashcardMode()) cacheCurrentFlashcardDraftForNavigation();
             const quizId = await saveQuizShellFromEditor({ quiet: canSaveQuestionNow });
             if (!quizId) return;
 
             if (canSaveQuestionNow) {
-                await handleSaveStudioQuiz();
+                if (hasStudioQuestionDrafts()) await saveStudioCachedDrafts();
+                else await handleSaveStudioQuiz();
                 return;
             }
 
@@ -36084,13 +38879,16 @@ if (elements.openQuizStudioBtn) {
         try {
             setCreatorProgressStatus('Deleting folder', targets.quizCount ? 'checking linked media' : 'removing empty folder');
             const mediaRefsToDelete = new Set();
+            const handwrittenQuestionIds = new Set();
+            let handwritingCacheCleared = true;
             for (let index = 0; index < targets.quizIds.length; index += 1) {
                 const quizId = targets.quizIds[index];
                 setCreatorProgressStatus('Deleting folder', `checking quiz media ${index + 1} of ${targets.quizIds.length}`);
-                const refs = await getQuizMediaReferences(quizId);
+                const refs = await getQuizMediaReferences(quizId, null, { handwritingQuestionIds: handwrittenQuestionIds });
                 refs.forEach(ref => mediaRefsToDelete.add(ref));
             }
 
+            if (mediaRefsToDelete.size) stageQuizMediaCleanup(mediaRefsToDelete);
             if (targets.quizIds.length) {
                 await deleteChallengeRowsForQuizzes(targets.quizIds);
                 await deleteStudioActivityForDeletedFolder(targets.folderId, targets.quizIds);
@@ -36101,6 +38899,11 @@ if (elements.openQuizStudioBtn) {
                     .delete()
                     .in('id', targets.quizIds);
                 if (quizDeleteError) throw quizDeleteError;
+                // The remote quizzes/questions are confirmed gone; remove only their browser-local handwriting.
+                handwritingCacheCleared = await invalidateDeletedFlashcardHandwritingCaches(handwrittenQuestionIds);
+                if (!handwritingCacheCleared) {
+                    console.warn('Folder quizzes were deleted, but some local handwriting-cache removals were not confirmed.');
+                }
             } else {
                 await deleteStudioActivityForDeletedFolder(targets.folderId, []);
             }
@@ -36128,7 +38931,10 @@ if (elements.openQuizStudioBtn) {
             const currentFolderDeckWasDeleted = selectedQuizValue.startsWith('fd:') && selectedFolderValue === normalizeFolderName(targets.folderName);
             await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ clearIfMissing: currentSelectedWasDeleted || currentFolderDeckWasDeleted });
-            setCreatorStatus(`Folder deleted with ${quizLabel} and ${questionLabel}.`, 'success');
+            setCreatorStatus(handwritingCacheCleared
+                ? `Folder deleted with ${quizLabel} and ${questionLabel}.`
+                : `Folder and quizzes deleted, but browser handwriting-cache cleanup could not be verified.`,
+                handwritingCacheCleared ? 'success' : 'error');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not delete the folder and its contents.', 'error');
@@ -36211,6 +39017,9 @@ if (elements.openQuizStudioBtn) {
                         .eq('quiz_id', quizRow.id)
                         .in('id', incompleteFlashcardQuestionIds);
                     if (cleanupResult.error) throw cleanupResult.error;
+                    if (!await invalidateDeletedFlashcardHandwritingCaches(incompleteFlashcardQuestionIds)) {
+                        console.warn('Interrupted flashcard rows removed, but local handwriting-cache cleanup was not confirmed.');
+                    }
                     state.auth.studioIncompleteFlashcardQuestionIds = [];
                     await refreshStudioManagementData({ force: true });
                     await refreshQuizCatalog({ selectQuizId: `sb:${quizRow.id}` });
@@ -36622,6 +39431,7 @@ if (elements.openQuizStudioBtn) {
         if (!normalizedQuizId || !state.auth.client) return;
         try {
             const mediaRefs = await getQuizMediaReferences(normalizedQuizId);
+            if (mediaRefs.size) stageQuizMediaCleanup(mediaRefs);
             await state.auth.client.from('quizzes').delete().eq('id', normalizedQuizId);
             await deleteSupabaseMediaReferences(mediaRefs);
         } catch (cleanupError) {
@@ -36890,13 +39700,15 @@ if (elements.openQuizStudioBtn) {
             // a future slow deletion can be attributed to its actual stage.
             const deleteStartedAt = performance.now();
             setCreatorProgressStatus('Deleting quiz', 'checking linked media');
+            const handwrittenQuestionIds = new Set();
             const mediaRefsToDelete = await getQuizMediaReferences(quizId, ({ current, total }) => {
                 if (total) {
                     setCreatorProgressStatus('Deleting quiz', `checking media ${current} of ${total}`);
                 }
-            });
+            }, { handwritingQuestionIds: handwrittenQuestionIds });
             const scanCompletedAt = performance.now();
             const mediaCount = mediaRefsToDelete.size;
+            if (mediaRefsToDelete.size) stageQuizMediaCleanup(mediaRefsToDelete);
 
             setCreatorProgressStatus('Deleting quiz', 'removing quiz data');
             const { error } = await state.auth.client
@@ -36905,6 +39717,11 @@ if (elements.openQuizStudioBtn) {
                 .eq('id', quizId);
 
             if (error) throw error;
+            // Remote-first: never clear local handwriting for a quiz that failed to delete.
+            const handwritingCacheCleared = await invalidateDeletedFlashcardHandwritingCaches(handwrittenQuestionIds);
+            if (!handwritingCacheCleared) {
+                console.warn('Quiz was deleted, but local handwritten-flashcard cache removal could not be confirmed.');
+            }
             const quizDeletedAt = performance.now();
             setCreatorProgressStatus('Deleting quiz', mediaCount ? `cleaning ${mediaCount} linked ${mediaCount === 1 ? 'media file' : 'media files'}` : 'no linked media to clean');
             await deleteSupabaseMediaReferences(mediaRefsToDelete);
@@ -36926,7 +39743,10 @@ if (elements.openQuizStudioBtn) {
                 mediaCleanup: Math.round(mediaCleanedAt - quizDeletedAt),
                 catalogRefresh: Math.round(performance.now() - mediaCleanedAt)
             });
-            setCreatorStatus('Quiz deleted.', 'success');
+            setCreatorStatus(handwritingCacheCleared
+                ? 'Quiz deleted.'
+                : 'Quiz deleted in Supabase, but browser handwriting-cache cleanup could not be verified.',
+                handwritingCacheCleared ? 'success' : 'error');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not delete the quiz.', 'error');
@@ -37765,6 +40585,9 @@ if (elements.openQuizStudioBtn) {
             ...managedCache,
             managedQuizzes: state.auth.managedQuizzes,
             quizChallengeAchievements: cloneQuizChallengeAchievementMap(state.auth.quizChallengeAchievements),
+            quizSpacedReviews: [...state.auth.quizSpacedReviews],
+            quizSpacedContentRevisions: [...state.auth.quizSpacedContentRevisions],
+            quizSpacedMigrationMissing: state.auth.quizSpacedMigrationMissing,
             quizChallengeUnavailable: !!state.auth.quizChallengeUnavailable,
             studioActivity: cloneStudioActivityCache(state.auth.studioActivity)
         });
@@ -39600,7 +42423,7 @@ function updateUnstarOnWrongAvailability() {
 function updateShuffleQuestionsAvailability() {
     const shuffleQuestionsCheckbox = document.getElementById('shuffleQuestions');
     const shuffleQuestionsSetting = document.getElementById('shuffleQuestionsSetting');
-    const challengeLocked = isActiveQuizChallenge();
+    const challengeLocked = !!getQuizChallengeDefinition(state.activeQuizChallenge?.challengeKey || '')?.requiresBuildUp;
 
     if (challengeLocked && shuffleQuestionsCheckbox) {
         shuffleQuestionsCheckbox.checked = true;
@@ -39615,6 +42438,12 @@ function updateShuffleQuestionsAvailability() {
         shuffleQuestionsSetting.classList.toggle('challenge-locked-setting', challengeLocked);
     }
 }
+
+document.addEventListener('change', event => {
+    if (event.target?.id === 'shuffleAnswers' && !event.target.checked && state.quizSpacedAttempt) {
+        state.quizSpacedAttempt.shuffleDisqualified = true;
+    }
+});
 
 function updateShuffleAnswersAvailability() {
     const shuffleAnswersCheckbox = document.getElementById('shuffleAnswers');
@@ -40816,6 +43645,23 @@ function getContainedImageStageSize(container, img) {
     };
 }
 
+// Phase 24A.5s — shared Saved Image inset geometry for handwritten flashcards.
+// Margin is inside the allocated Half/Full region; padding is only around the
+// rectangular image. Neither is tied to the editor-only center dashed guide.
+// Do not modify canonical image coordinates, overlay percentages or media files.
+function fitHandwrittenSavedImageInset(naturalWidth, naturalHeight, regionWidth, regionHeight) {
+    const margin = 12, insetPadding = 8, insetBorder = 1;
+    const roomWidth = Math.max(1, Number(regionWidth) - 2 * (margin + insetPadding + insetBorder));
+    const roomHeight = Math.max(1, Number(regionHeight) - 2 * (margin + insetPadding + insetBorder));
+    const sourceWidth = Math.max(1, Number(naturalWidth) || 1);
+    const sourceHeight = Math.max(1, Number(naturalHeight) || 1);
+    const scale = Math.min(roomWidth / sourceWidth, roomHeight / sourceHeight);
+    const width = Math.max(1, sourceWidth * scale);
+    const height = Math.max(1, sourceHeight * scale);
+    return {width, height, outerWidth: width + 2 * (insetPadding + insetBorder),
+        outerHeight: height + 2 * (insetPadding + insetBorder)};
+}
+
 function clearStageLabelLayerOffsets(layer) {
     if (!layer) return;
     layer.style.removeProperty('left');
@@ -41418,6 +44264,7 @@ function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestion
     }
 
     state.questions = [...visibleQuestions];
+    if (resetSession) beginQuizSpacedAttempt(visibleQuestions);
     state.questionQueue = buildStudyQuestionQueue(visibleQuestions, {
         shuffle: !!document.getElementById('shuffleQuestions')?.checked && resetSession
     });
@@ -41926,6 +44773,8 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                     definitionImageSavedSignature: parsedDefinitionSide.savedImageSignature,
                     termContentMode: parsedTermSide.contentMode,
                     definitionContentMode: parsedDefinitionSide.contentMode,
+                    termImagePlacement: parsedTermSide.imagePlacement,
+                    definitionImagePlacement: parsedDefinitionSide.imagePlacement,
                     termImageLayout: normalizeFlashcardImageLayout(parsedTermSide.imageLayout, !!normalizeSheetText(detail.term_image_url)),
                     definitionImageLayout: normalizeFlashcardImageLayout(parsedDefinitionSide.imageLayout, !!normalizeSheetText(detail.definition_image_url)),
                     termHandwriting: [],
@@ -42866,6 +45715,7 @@ async function toggleCurrentQuestionStarState() {
 function applyQuestionOutcome(q, isCorrect, options = {}) {
     const { useSideFeedback = true } = options;
     recordProgressModeOutcome(q, isCorrect);
+    trackQuizSpacedOutcome(q, isCorrect);
     maybeAutoStarQuestionFromOutcome(q, isCorrect);
     maybeUnstarQuestionFromOutcome(q, isCorrect);
     if (state.studyTimer.scope === 'question') {
@@ -43090,6 +45940,8 @@ function showQuestion() {
         updateNavigationButtons();
         syncQuestionStarButton();
         maybeCompleteActiveQuizChallenge();
+        maybeRecordQuizSpacedCompletion();
+        renderQuizSpacedCompletionFeedback();
         maybeOpenCompletionChallengePrompt();
         return;
     }
@@ -44111,6 +46963,8 @@ function getFlashcardSideData(q, side) {
             contentMode: normalizeFlashcardContentMode(q.definitionContentMode || 'typed'),
             handwritingStrokes: normalizeHandwritingStrokes(q.definitionHandwriting || []),
             imageLayout: normalizeFlashcardImageLayout(q.definitionImageLayout, !!normalizeSheetText(q.definitionImage)),
+            imagePlacement: normalizeFlashcardImagePlacement(q.definitionImagePlacement),
+            savedImageSignature: normalizeSheetText(q.definitionImageSavedSignature || ''),
             flashcardStyle: normalizeHandwrittenFlashcardStyle(q.handwrittenFlashcardStyle || {}),
             handwrittenQuizEnabled: !!q.handwrittenQuizEnabled,
             labelDisplayMode: 'normal'
@@ -44127,6 +46981,8 @@ function getFlashcardSideData(q, side) {
         contentMode: normalizeFlashcardContentMode(q.termContentMode || 'typed'),
         handwritingStrokes: normalizeHandwritingStrokes(q.termHandwriting || []),
         imageLayout: normalizeFlashcardImageLayout(q.termImageLayout, !!normalizeSheetText(q.termImage)),
+        imagePlacement: normalizeFlashcardImagePlacement(q.termImagePlacement),
+        savedImageSignature: normalizeSheetText(q.termImageSavedSignature || ''),
         flashcardStyle: normalizeHandwrittenFlashcardStyle(q.handwrittenFlashcardStyle || {}),
         handwrittenQuizEnabled: !!q.handwrittenQuizEnabled,
         labelDisplayMode: 'normal'
@@ -44490,6 +47346,39 @@ function setFlashcardHandwritingDetailCache(questionId = '', termHandwriting = [
     );
 }
 
+// Phase 24A.5l: purge caches for already-deleted flashcards in one IndexedDB
+// transaction. This is local-only: never delete cached data before Supabase
+// confirms the corresponding question/quiz deletion. Other users' keys and
+// active cards are never scanned or touched.
+async function invalidateDeletedFlashcardHandwritingCaches(questionIds = []) {
+    const ids = Array.from(new Set(Array.from(questionIds || []).map(normalizeSheetText).filter(Boolean)));
+    if (!ids.length) return true;
+    ensureFlashcardHandwritingDetailCaches();
+    // Cancel outstanding reads before they can repopulate deleted cards.
+    ids.forEach(id => {
+        state.auth.flashcardHandwritingDetailCache.delete(id);
+        state.auth.flashcardHandwritingDetailPromiseCache.delete(id);
+        state.auth.flashcardHandwritingRevisionMap.delete(id);
+    });
+    const keys = ids.map(getFlashcardHandwritingPersistentCacheKey).filter(Boolean);
+    if (keys.length !== ids.length) return false;
+    const db = await openFlashcardHandwritingPersistentDb();
+    if (!db) return false;
+    return new Promise(resolve => {
+        try {
+            const transaction = db.transaction(FLASHCARD_HANDWRITING_IDB_STORE, 'readwrite');
+            const store = transaction.objectStore(FLASHCARD_HANDWRITING_IDB_STORE);
+            keys.forEach(key => store.delete(key));
+            transaction.oncomplete = () => resolve(true);
+            transaction.onerror = () => resolve(false);
+            transaction.onabort = () => resolve(false);
+        } catch (error) {
+            console.warn('Could not purge deleted flashcard handwriting cache entries:', error);
+            resolve(false);
+        }
+    });
+}
+
 function invalidateFlashcardHandwritingDetailCache(questionId = '') {
     const safeId = normalizeSheetText(questionId);
     if (!safeId) return Promise.resolve(false);
@@ -44628,11 +47517,15 @@ function buildFlashcardFace(sideData, faceClass) {
     const displayImageLabels = getFlashcardSideImageLabelsForMode(imageLabels, sideData.labelDisplayMode || 'normal');
 
     const imageLayout = normalizeFlashcardImageLayout(sideData.imageLayout, hasImage);
+    const regularHandwrittenImage = handwrittenMode && hasImage && !normalizeSheetText(sideData.savedImageSignature) && !!normalizeFlashcardImagePlacement(sideData.imagePlacement);
+    const savedHandwrittenImage = handwrittenMode && hasImage && !!normalizeSheetText(sideData.savedImageSignature);
+    if (savedHandwrittenImage) content.classList.add('handwriting-saved-image');
     const fullImageOnly = !!(sideData.handwrittenQuizEnabled && hasImage && imageLayout === 'full' && !handwrittenMode);
     if (fullImageOnly) {
         content.classList.add('handwriting-full-image', 'image-only');
     } else if (handwrittenMode) {
-        if (hasImage && imageLayout === 'full') content.classList.add('handwriting-full-image');
+        if (regularHandwrittenImage) content.classList.add('handwriting-free-image');
+        else if (hasImage && imageLayout === 'full') content.classList.add('handwriting-full-image');
         else if (hasImage) content.classList.add('handwriting-half');
         else content.classList.add('text-only');
         const handwritingArea = document.createElement('div');
@@ -44736,8 +47629,28 @@ function buildFlashcardFace(sideData, faceClass) {
             imageFrame.appendChild(labelLayer);
         }
         imageFrame.appendChild(zoomBtn);
+        if (regularHandwrittenImage) {
+            // Full-card overlay; the image is underneath the original-size ink canvas.
+            // Transform percentage values are relative to the whole card, not an inset.
+            const placement = normalizeFlashcardImagePlacement(sideData.imagePlacement);
+            imageWrap.style.setProperty('left', `${placement.x*100}%`);
+            imageWrap.style.setProperty('top', `${placement.y*100}%`);
+            imageWrap.style.setProperty('width', `${placement.w*100}%`);
+            imageWrap.style.setProperty('height', `${placement.h*100}%`);
+            imageWrap.classList.add('flashcard-free-image-wrap');
+        }
 
-        imageWrap.appendChild(imageFrame);
+        if (savedHandwrittenImage) {
+            // The outer Half/Full region is NOT the purple inset. Only this
+            // snug shell receives its background/border. Stage still owns all
+            // percent-based image label, connector and stroke coordinates.
+            const inset = document.createElement('div');
+            inset.className = 'flashcard-saved-image-inset';
+            inset.appendChild(imageFrame);
+            imageWrap.appendChild(inset);
+        } else {
+            imageWrap.appendChild(imageFrame);
+        }
         content.appendChild(imageWrap);
         renderFlashcardStudyStrokeLayer(imageFrame);
         renderFlashcardStudyConnectorLayer(imageFrame);
@@ -44782,7 +47695,17 @@ function syncFlashcardImageFrameOverlayBounds(frame) {
     if (!img || !imageWrap) return;
     if (!img.complete || !img.naturalWidth || !img.naturalHeight) return;
 
-    applyImageStageSize(frame, img, imageWrap);
+    if (frame.closest('.handwriting-saved-image')) {
+        // Same rectangle-fitting geometry as the handwritten editor; it leaves
+        // a gap around the inset and never pushes it against the center guide.
+        const size = fitHandwrittenSavedImageInset(img.naturalWidth, img.naturalHeight,
+            imageWrap.clientWidth, imageWrap.clientHeight);
+        frame.style.width = `${size.width}px`;
+        frame.style.height = `${size.height}px`;
+        frame.classList.add('is-image-stage-sized');
+    } else {
+        applyImageStageSize(frame, img, imageWrap);
+    }
 
     // Phase 22GD: the image frame itself is now the coordinate stage. Labels use
     // their saved percentage positions against this stage in normal, fullscreen,
@@ -47060,6 +49983,7 @@ function resetModeState() {
     state.progressStarActionInFlight = false;
 
     state.normalFinished = false;
+    state.quizSpacedAttempt = null;
     state.questionAnswered = false;
     state.flashcardFlipped = false;
     state.currentQuestionType = '';
@@ -47519,7 +50443,11 @@ if (elements.openQuizStudioBtn) {
 
 elements.quizStudioSectionButtons.forEach(button => {
     button.addEventListener('click', () => {
-        setQuizStudioSection(button.dataset.studioSectionTarget || 'home').catch(err => {
+        const target = button.dataset.studioSectionTarget || 'home';
+        const openingNewEditor = target === 'editor' && state.auth.currentStudioSection !== 'editor';
+        setQuizStudioSection(target).then(switched => {
+            if (switched && openingNewEditor) clearCreatorInputs();
+        }).catch(err => {
             console.error(err);
             setCreatorStatus('Could not switch Quiz Studio sections.', 'error');
         });
@@ -47609,7 +50537,7 @@ if (elements.diagramCreatorImageGrid) {
             const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
             if (result === 'cancelled') return;
             if (result === 'deleted') {
-                setCreatorStatus('Saved image removed. Existing flashcards were not changed.', 'success');
+                setCreatorStatus('Saved Image deletion queued. Shared flashcard image links will be cleared before physical cleanup.', 'success');
             } else {
                 setCreatorStatus('That saved image could not be found.', 'error');
             }
@@ -47706,8 +50634,9 @@ if (elements.multiAngleWidthInput) elements.multiAngleWidthInput.addEventListene
 if (elements.multiAngleHeightInput) elements.multiAngleHeightInput.addEventListener('change', () => setMultiAngleCanvasDimension('canvasHeight', elements.multiAngleHeightInput));
 if (elements.multiAngleFormatSelect) elements.multiAngleFormatSelect.addEventListener('change', () => {
     const angle = getActiveMultiAngleDraftAngle();
-    if (!angle || angle.setupLocked) return;
+    if (!angle || (angle.setupLocked && !mayConvertSavedAngle(angle))) return;
     angle.exportFormat = ['png', 'jpeg', 'webp'].includes(elements.multiAngleFormatSelect.value) ? elements.multiAngleFormatSelect.value : 'webp';
+    if (angle.setupLocked) angle.conversionDirty = true;
     angle.estimateKey = '';
     syncMultiAngleCreatorControls();
 });
@@ -47720,10 +50649,33 @@ if (elements.multiAngleTransparentToggle) elements.multiAngleTransparentToggle.a
 });
 if (elements.multiAngleQualityInput) elements.multiAngleQualityInput.addEventListener('input', () => {
     const angle = getActiveMultiAngleDraftAngle();
-    if (!angle || angle.setupLocked || angle.exportFormat === 'png') return;
+    if (!angle || (angle.setupLocked && !mayConvertSavedAngle(angle)) || angle.exportFormat === 'png') return;
+    if (angle.setupLocked) angle.conversionDirty = true;
     angle.exportQuality = Math.max(0.6, Math.min(1, Number(elements.multiAngleQualityInput.value) / 100 || 0.88));
     angle.estimateKey = '';
     syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleTargetSizeInput) elements.multiAngleTargetSizeInput.addEventListener('change', () => {
+    const angle = getActiveMultiAngleDraftAngle();
+    if (!angle || (angle.setupLocked && !mayConvertSavedAngle(angle)) || !['webp','jpeg'].includes(angle.exportFormat)) return;
+    const kb = Math.round(Number(elements.multiAngleTargetSizeInput.value) || 0);
+    angle.exportTargetKB = kb > 0 ? Math.max(25,Math.min(3072,kb)) : 0;
+    if (angle.setupLocked) angle.conversionDirty = true;
+    angle.estimateKey = '';
+    syncMultiAngleCreatorControls();
+});
+if (elements.multiAngleApplyFormatAllBtn) elements.multiAngleApplyFormatAllBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState(), active = getActiveMultiAngleDraftAngle();
+    if (!draft.originalEntry || !active || draft.saving) return;
+    draft.angles.filter(a => a.setupLocked).forEach(angle => {
+        angle.exportFormat = active.exportFormat;
+        angle.exportQuality = active.exportQuality;
+        angle.exportTargetKB = active.exportTargetKB;
+        angle.conversionDirty = true;
+        angle.estimateKey = '';
+    });
+    syncMultiAngleCreatorControls();
+    setCreatorStatus(`Compression settings applied to ${draft.angles.filter(a => a.setupLocked).length} saved angle(s). Click Save to confirm conversion.`, 'success');
 });
 if (elements.multiAngleResetCanvasBtn) elements.multiAngleResetCanvasBtn.addEventListener('click', () => {
     const angle = getActiveMultiAngleDraftAngle();
@@ -47748,6 +50700,7 @@ if (elements.multiAngleReplaceInput) elements.multiAngleReplaceInput.addEventLis
     const file = elements.multiAngleReplaceInput.files?.[0];
     elements.multiAngleReplaceInput.value = '';
     if (!old || !file) return;
+    if (old.setupLocked) { setCreatorStatus('Saved image resolution and position are permanently locked. Format conversion only.', 'error'); return; }
     if (file.size > STUDY_BUNNY_CANVAS_SOURCE_MAX_BYTES) { setCreatorStatus('Canvas Setup source files must be 20 MB or smaller.', 'error'); return; }
     if (!window.confirm(`Re-upload an original for “${old.name}”? The current image framing cannot be recovered. Existing labels and Visual Aids will remain but may need repositioning after the new canvas is flattened.`)) return;
     try {
@@ -47839,10 +50792,7 @@ if (elements.multiAngleToggleListBtn) elements.multiAngleToggleListBtn.addEventL
     draft.listOpen = !draft.listOpen;
     syncMultiAngleCreatorControls();
 });
-if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.addEventListener('click', () => flattenSaveAndOpenMultiAngleEditor().catch(error => {
-    console.error(error);
-    setCreatorStatus('Could not save and open Edit Labels + Drawings. Canvas Setup remains available.', 'error');
-}));
+if (elements.multiAngleSaveSetBtn) elements.multiAngleSaveSetBtn.addEventListener('click', () => runAuxiliarySaveAction(elements.multiAngleSaveSetBtn, () => flattenSaveAndOpenMultiAngleEditor(), {group:'canvas-flatten'}));
 if (elements.multiAngleList) elements.multiAngleList.addEventListener('click', event => {
     const button = event.target.closest('[data-multi-angle-action]');
     if (!button) return;
@@ -48281,7 +51231,7 @@ if (elements.reviewModeImageGrid) {
             const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
             if (result === 'cancelled') return;
             if (result === 'deleted') {
-                setCreatorStatus('Saved image removed from Saved Images. Existing flashcards were not changed.', 'success');
+                setCreatorStatus('Saved Image deletion queued. Linked flashcard images will be detached before physical cleanup; the cards and quizzes remain.', 'success');
             } else {
                 setCreatorStatus('That saved image could not be found.', 'error');
             }
@@ -49496,20 +52446,14 @@ function getStudioExplicitSaveErrorMessage(error) {
 if (elements.createQuizBtn) {
     elements.createQuizBtn.addEventListener('click', () => {
         if (state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied) autoAlignCurrentHandwrittenFlashcard();
-        handleSaveStudioEditorChanges().catch(err => {
-            console.error(err);
-            setCreatorStatus(getStudioExplicitSaveErrorMessage(err), 'error');
-        });
+        runStudioExplicitSave();
     });
 }
 
 if (elements.studioEditorActionSaveBtn) {
     elements.studioEditorActionSaveBtn.addEventListener('click', () => {
         if (state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied) autoAlignCurrentHandwrittenFlashcard();
-        handleSaveStudioEditorChanges().catch(err => {
-            console.error(err);
-            setCreatorStatus(getStudioExplicitSaveErrorMessage(err), 'error');
-        });
+        runStudioExplicitSave();
     });
 }
 
@@ -49529,12 +52473,18 @@ if (elements.studioStudyQuizBtn) {
 
 if (elements.createQuizCancelEditBtn) {
     elements.createQuizCancelEditBtn.addEventListener('click', () => {
+        if (state.auth.studioExplicitSavePromise || state.auth.studioAutosaveInFlight) {
+            setCreatorStatus('Finish saving before starting a new quiz.', 'error');
+            return;
+        }
+        if ((state.auth.studioHasUnsavedChanges || hasStudioQuestionDrafts())
+            && !window.confirm('Discard unsaved changes and start a new quiz?')) return;
         clearCreatorInputs();
         setQuizStudioSection('editor', { force: true }).catch(err => {
             console.error(err);
             setCreatorStatus('Could not open the editor.', 'error');
         });
-        setCreatorStatus('Ready to create a new quiz.');
+        setCreatorStatus('Ready to create a new quiz. Click Create Quiz when ready.');
     });
 }
 
@@ -49563,7 +52513,7 @@ if (elements.studioNextQuestionBottomBtn) {
 
 async function handleStudioSaveAndAddQuestion() {
     if (!state.auth.editingQuizId) {
-        setCreatorStatus('Click Save Changes first to create this quiz, then you can add more questions to it.', 'error');
+        setCreatorStatus('Click Create Quiz first, then add more questions.', 'error');
         return;
     }
     const scrollSnapshot = captureStudioEditorScrollAnchor();
@@ -51024,13 +53974,13 @@ if (elements.studioImageEditorResetBtn) {
 }
 
 if (elements.studioImageEditorSaveBtn) {
-    elements.studioImageEditorSaveBtn.addEventListener('click', () => saveStudioImageEditorImage());
+    elements.studioImageEditorSaveBtn.addEventListener('click', () => runAuxiliarySaveAction(elements.studioImageEditorSaveBtn, () => saveStudioImageEditorImage(), {group:'image-editor'}));
 }
 if (elements.studioImageEditorSendSavedBtn) {
-    elements.studioImageEditorSendSavedBtn.addEventListener('click', handleStudioImageEditorSendSavedRequest);
+    elements.studioImageEditorSendSavedBtn.addEventListener('click', () => runAuxiliarySaveAction(elements.studioImageEditorSendSavedBtn, handleStudioImageEditorSendSavedRequest, {group:'image-editor'}));
 }
 if (elements.studioImageEditorAttachAllFrontBtn) {
-    elements.studioImageEditorAttachAllFrontBtn.addEventListener('click', () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }));
+    elements.studioImageEditorAttachAllFrontBtn.addEventListener('click', () => runAuxiliarySaveAction(elements.studioImageEditorAttachAllFrontBtn, () => saveStudioImageEditorImage({ sendToSavedImages: true, attachToAllFront: true }), {group:'image-editor'}));
 }
 // Phase 22MA: the static editor is bound by this legacy startup block before
 // ensureStudioImageEditorDom() runs. Bind only the missing Diagram Details
@@ -51196,7 +54146,9 @@ function handleStudioEmptyStateAction(e) {
     }
 
     if (action === 'open-editor') {
-        setQuizStudioSection('editor').then(() => {
+        setQuizStudioSection('editor').then(switched => {
+            if (!switched) return;
+            clearCreatorInputs();
             elements.createQuizName?.focus();
         }).catch(err => {
             console.error(err);
@@ -51220,11 +54172,21 @@ function handleStudioEmptyStateAction(e) {
         return;
     }
 
+    if (action === 'open-all-quizzes') {
+        state.auth.studioQuizManageView = 'all';
+        state.auth.studioQuizPage = 1;
+        renderQuizManagementList();
+        return;
+    }
+
     if (action === 'clear-quiz-filters') {
         state.auth.studioQuizSearchQuery = '';
         state.auth.studioQuizFolderFilterId = '';
         state.auth.studioQuizClassFilterId = '';
-        state.auth.studioQuizManageView = 'all';
+        state.auth.studioQuizManageView = 'recent';
+        state.auth.studioQuizProgressFilter = 'all';
+        state.auth.studioQuizPage = 1;
+        if (elements.studioQuizProgressFilterSelect) elements.studioQuizProgressFilterSelect.value = 'all';
         state.auth.studioClassQuickAddOpenId = '';
         if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
         if (elements.studioQuizClassFilterSelect) elements.studioQuizClassFilterSelect.value = '';
@@ -51382,6 +54344,13 @@ if (elements.studioFolderList) {
 
 if (elements.studioQuizList) {
     elements.studioQuizList.addEventListener('click', e => {
+        const pagingButton = e.target.closest('[data-action="quiz-previous-page"], [data-action="quiz-next-page"]');
+        if (pagingButton && !pagingButton.disabled) {
+            state.auth.studioQuizPage += pagingButton.dataset.action === 'quiz-next-page' ? 1 : -1;
+            renderQuizManagementList();
+            elements.studioQuizList.closest('.quiz-studio-panel')?.scrollIntoView({ block: 'start', behavior: 'auto' });
+            return;
+        }
         const classGroup = e.target.closest('[data-class-group-id]');
         const classActionButton = e.target.closest('[data-action]');
         if (classGroup && classActionButton && classGroup.contains(classActionButton)) {
@@ -51407,6 +54376,13 @@ if (elements.studioQuizList) {
             }
         }
 
+        const quizProgressButton = e.target.closest('[data-study-progress^="quiz:"]');
+        if (quizProgressButton && elements.studioQuizList.contains(quizProgressButton)) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleSavedImageStudyProgress(quizProgressButton.dataset.studyProgress, elements.studioQuizList);
+            return;
+        }
         const item = e.target.closest('[data-quiz-id]');
         if (!item) return;
 
@@ -51569,7 +54545,8 @@ if (elements.studioFolderSearchInput) {
 elements.studioQuizManageTabs.forEach(button => {
     button.addEventListener('click', () => {
         const nextView = normalizeSheetText(button.dataset.studioManageView || 'all') || 'all';
-        state.auth.studioQuizManageView = ['all', 'classes', 'folders', 'recent'].includes(nextView) ? nextView : 'all';
+        state.auth.studioQuizManageView = ['all', 'classes', 'folders', 'recent'].includes(nextView) ? nextView : 'recent';
+        state.auth.studioQuizPage = 1;
         if (state.auth.studioQuizManageView !== 'classes') {
             state.auth.studioQuizClassFilterId = '';
             state.auth.studioClassQuickAddOpenId = '';
@@ -51587,6 +54564,7 @@ elements.studioQuizManageTabs.forEach(button => {
 if (elements.studioQuizSearchInput) {
     elements.studioQuizSearchInput.addEventListener('input', () => {
         state.auth.studioQuizSearchQuery = normalizeSheetText(elements.studioQuizSearchInput.value);
+        state.auth.studioQuizPage = 1;
         renderQuizManagementList();
     });
 }
@@ -51594,6 +54572,7 @@ if (elements.studioQuizSearchInput) {
 if (elements.studioQuizClassFilterSelect) {
     elements.studioQuizClassFilterSelect.addEventListener('change', () => {
         state.auth.studioQuizClassFilterId = normalizeSheetText(elements.studioQuizClassFilterSelect.value);
+        state.auth.studioQuizPage = 1;
         state.auth.studioQuizFolderFilterId = '';
         if (state.auth.studioClassQuickAddOpenId && state.auth.studioClassQuickAddOpenId !== state.auth.studioQuizClassFilterId) {
             state.auth.studioClassQuickAddOpenId = '';
@@ -51606,6 +54585,15 @@ if (elements.studioQuizClassFilterSelect) {
 if (elements.studioQuizFolderFilterSelect) {
     elements.studioQuizFolderFilterSelect.addEventListener('change', () => {
         state.auth.studioQuizFolderFilterId = normalizeSheetText(elements.studioQuizFolderFilterSelect.value);
+        state.auth.studioQuizPage = 1;
+        renderQuizManagementList();
+    });
+}
+
+if (elements.studioQuizProgressFilterSelect) {
+    elements.studioQuizProgressFilterSelect.addEventListener('change', () => {
+        state.auth.studioQuizProgressFilter = normalizeSheetText(elements.studioQuizProgressFilterSelect.value) || 'all';
+        state.auth.studioQuizPage = 1;
         renderQuizManagementList();
     });
 }
@@ -51615,7 +54603,10 @@ if (elements.studioQuizClearFiltersBtn) {
         state.auth.studioQuizSearchQuery = '';
         state.auth.studioQuizFolderFilterId = '';
         state.auth.studioQuizClassFilterId = '';
-        state.auth.studioQuizManageView = 'all';
+        state.auth.studioQuizManageView = 'recent';
+        state.auth.studioQuizProgressFilter = 'all';
+        state.auth.studioQuizPage = 1;
+        if (elements.studioQuizProgressFilterSelect) elements.studioQuizProgressFilterSelect.value = 'all';
         if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
         if (elements.studioQuizClassFilterSelect) elements.studioQuizClassFilterSelect.value = '';
         if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = '';
@@ -51654,6 +54645,15 @@ if (elements.exportAllBtn) {
         exportAllBackup().catch(err => {
             console.error(err);
             setCreatorStatus(err.message || 'Could not export the full library backup.', 'error');
+        });
+    });
+}
+
+if (elements.exportSavedImagesBackupBtn) {
+    elements.exportSavedImagesBackupBtn.addEventListener('click', () => {
+        exportAllSavedImagesWithLabels().catch(err => {
+            console.error('Saved Images archive export failed:',err);
+            savedImageBackupStatus(err.message || 'Could not export Saved Images and labels. No partial backup was downloaded.',true);
         });
     });
 }
@@ -51964,7 +54964,7 @@ if (elements.studioQuestionJumpInput) {
 }
 
 window.addEventListener('beforeunload', event => {
-    if (!state.auth.studioHasUnsavedChanges) return;
+    if (!state.auth.studioHasUnsavedChanges && !hasStudioQuestionDrafts() && !state.auth.studioExplicitSavePromise && !state.auth.studioAutosaveInFlight && !state.auth.studioSaveInFlightPromise) return;
     event.preventDefault();
     event.returnValue = '';
 });
@@ -52341,6 +55341,7 @@ elements.questionImage.onclick = function () {
             return;
         }
         if (nextTool === 'pen' || nextTool === 'eraser') clearHandwrittenSelection({ redraw:false });
+        state.auth.handwrittenImageTransformMode = false;
         state.auth.handwrittenFlashcardTool = nextTool;
         closeHandwrittenFloatingPopovers();
         renderHandwrittenFlashcardWorkspace();
@@ -52426,6 +55427,8 @@ elements.questionImage.onclick = function () {
         const opening = popover.classList.contains('hidden');
         closeHandwrittenFloatingPopovers();
         if (!opening) return;
+        ensureHandwrittenToolPrefsLoaded();
+        if (elements.flashcardHandwrittenDiagramBothSides) elements.flashcardHandwrittenDiagramBothSides.checked = state.auth.handwrittenFlashcardDiagramBothSides !== false;
         popover.classList.remove('hidden');
         button.setAttribute('aria-expanded','true');
         requestAnimationFrame(() => positionHandwrittenFloatingPopover(popover, button, {forceBelow:true}));
@@ -52433,6 +55436,11 @@ elements.questionImage.onclick = function () {
     [elements.flashcardHandwrittenSettingsBtn, elements.flashcardHandwrittenSettingsPopover].forEach(control => {
         control?.addEventListener('pointerenter',cancelHandwrittenSettingsDismiss);
         control?.addEventListener('pointerleave',scheduleHandwrittenSettingsDismiss);
+    });
+    elements.flashcardHandwrittenDiagramBothSides?.addEventListener('change', () => {
+        state.auth.handwrittenFlashcardDiagramBothSides = !!elements.flashcardHandwrittenDiagramBothSides.checked;
+        persistHandwrittenToolPrefs();
+        // Do not retroactively rewrite previously saved cards. Apply on next front-side diagram insertion/layout change.
     });
     elements.flashcardHandwrittenAutoAlign?.addEventListener('change', () => {
         state.auth.handwrittenFlashcardAutoAlign = !!elements.flashcardHandwrittenAutoAlign.checked;
@@ -52448,8 +55456,8 @@ elements.questionImage.onclick = function () {
     [elements.flashcardHandwrittenSaveBtn, elements.flashcardHandwrittenFocusSaveBtn].forEach(button => button?.addEventListener('click', () => {
         saveHandwrittenFlashcardFromToolbar().catch(() => {});
     }));
-    elements.flashcardHandwrittenUndoBtn?.addEventListener('click',undoHandwrittenStroke);
-    elements.flashcardHandwrittenRedoBtn?.addEventListener('click',redoHandwrittenStroke);
+    elements.flashcardHandwrittenUndoBtn?.addEventListener('click',()=>state.auth.handwrittenImageTransformMode?navigateHandwrittenImageHistory('undo'):undoHandwrittenStroke());
+    elements.flashcardHandwrittenRedoBtn?.addEventListener('click',()=>state.auth.handwrittenImageTransformMode?navigateHandwrittenImageHistory('redo'):redoHandwrittenStroke());
     // Capture Pencil input as early as possible on iPad. passive:false is required
     // for preventDefault() to reliably suppress Safari's compatibility selection path.
     elements.flashcardHandwrittenCanvas?.addEventListener('pointerdown',handleHandwrittenPointerDown,{capture:true,passive:false});
@@ -52510,7 +55518,7 @@ elements.questionImage.onclick = function () {
         elements.flashcardHandwrittenCard?.addEventListener(eventName, suppressHandwrittenNativeSelection);
     });
     elements.flashcardHandwrittenTypedEditor?.addEventListener('input',syncHandwrittenTypedEditorToBase);
-    elements.flashcardHandwrittenImageLayout?.addEventListener('change',()=>{
+    elements.flashcardHandwrittenImageLayout?.addEventListener('change', async () => {
         const side=getHandwrittenSideKey();
         const layout=elements.flashcardHandwrittenImageLayout?.checked?'full':'half';
         const row=getCurrentHandwrittenFlashcardRow();
@@ -52518,12 +55526,108 @@ elements.questionImage.onclick = function () {
             ? normalizeSheetText(row?.definition_image_url || state.auth.studioFlashcardDefinitionImageDataUrl)
             : normalizeSheetText(row?.term_image_url || state.auth.studioFlashcardTermImageDataUrl);
         if (!imageValue) return;
-        // Phase 23F.32.3: Half/Full is a pure layout mutation.
-        // Do NOT call cacheCurrentStudioQuestionDraft() here: on a pending new card
-        // that generic navigation cache promotes the row into a local draft and leaves
-        // the editor on a fresh pending row, producing an orphan/incomplete card at Save.
-        setHandwrittenSideState(side,{imageLayout:layout});
+        const signature = getHandwrittenSideSavedImageSignature(row, side);
+        const mirrorBack = side === 'term' && shouldMirrorSavedDiagramFrontToBack(row, imageValue, signature)
+            && backHasSameHandwrittenSavedDiagram(row, imageValue, signature);
+        const sides = mirrorBack ? ['term','definition'] : [side];
+        // Full erases ink only after confirmation; a canceled action preserves BOTH sides.
+        if (layout === 'full' && signature) {
+            if (!await confirmSavedHandwrittenFullInkClear(sides)) {
+                renderHandwrittenFlashcardWorkspace();
+                return;
+            }
+            sides.forEach(key => setSavedHandwrittenFullLayout(key));
+        } else {
+            sides.forEach(key => setHandwrittenSideState(key, {imageLayout:layout}));
+        }
         renderHandwrittenFlashcardWorkspace();
+    });
+
+    // PHASE 24A.5p: independent transform of REGULAR images, not Saved Images.
+    // The original media is never re-encoded or re-uploaded when moving/resizing.
+    elements.flashcardHandwrittenTransformBtn?.addEventListener('click', event => {
+        event.preventDefault();
+        const row=getCurrentHandwrittenFlashcardRow(), side=getHandwrittenSideKey();
+        if (!row || !normalizeSheetText(row[`${side}_image_url`]) || getHandwrittenSideSavedImageSignature(row,side)) return;
+        state.auth.handwrittenImageTransformMode = !state.auth.handwrittenImageTransformMode;
+        if (state.auth.handwrittenImageTransformMode && !getHandwrittenSideImagePlacementFromEditorState(side)) {
+            row[`${side}_free_image_pending`] = true;
+            const original = getDefaultHandwrittenImagePlacement(elements.flashcardHandwrittenImage);
+            if (original) commitHandwrittenImagePlacement(side, original);
+        }
+        state.auth.handwrittenFlashcardPointer = null;
+        renderHandwrittenFlashcardWorkspace();
+    });
+    elements.flashcardHandwrittenImage?.addEventListener('load', () => {
+        const side=getHandwrittenSideKey(), row=getCurrentHandwrittenFlashcardRow();
+        if (!row || getHandwrittenSideSavedImageSignature(row, side)) return;
+        if (getHandwrittenSideModeFromEditorState(side) !== 'handwritten' || !normalizeSheetText(row[`${side}_image_url`])) return;
+        const placement=getHandwrittenSideImagePlacementFromEditorState(side) || getDefaultHandwrittenImagePlacement(elements.flashcardHandwrittenImage);
+        if (placement && (row[`${side}_free_image_pending`] || getHandwrittenSideImagePlacementFromEditorState(side) || state.auth.handwrittenImageTransformMode)) {
+            applyHandwrittenImagePlacement(placement);
+            if (row[`${side}_free_image_pending`]) {
+                row[`${side}_free_image_pending`] = false;
+                commitHandwrittenImagePlacement(side,placement);
+                renderHandwrittenFlashcardWorkspace();
+            }
+        }
+    });
+    elements.flashcardHandwrittenImageWrap?.addEventListener('pointerdown', event => {
+        if (!state.auth.handwrittenImageTransformMode || event.target.closest('#flashcardHandwrittenImageZoomBtn')) return;
+        const row=getCurrentHandwrittenFlashcardRow(), side=getHandwrittenSideKey(), card=elements.flashcardHandwrittenCard;
+        if (!row || getHandwrittenSideSavedImageSignature(row,side) || !card) return;
+        const old=getHandwrittenSideImagePlacementFromEditorState(side) || getDefaultHandwrittenImagePlacement(elements.flashcardHandwrittenImage);
+        if (!old) return;
+        event.preventDefault(); event.stopPropagation();
+        const corner=event.target.closest('[data-handwritten-image-handle]')?.dataset.handwrittenImageHandle || '';
+        state.auth.handwrittenImageTransformGesture = {id:event.pointerId,side,old,corner,startX:event.clientX,startY:event.clientY,current:old};
+        elements.flashcardHandwrittenImageWrap.setPointerCapture(event.pointerId);
+    });
+    elements.flashcardHandwrittenImageWrap?.addEventListener('pointermove', event => {
+        const gesture=state.auth.handwrittenImageTransformGesture;
+        if (!gesture || gesture.id!==event.pointerId) return;
+        event.preventDefault(); event.stopPropagation();
+        const rect=elements.flashcardHandwrittenCard.getBoundingClientRect();
+        const dx=(event.clientX-gesture.startX)/Math.max(1,rect.width), dy=(event.clientY-gesture.startY)/Math.max(1,rect.height);
+        const p=gesture.old; let result;
+        if (!gesture.corner) {
+            result={...p,x:Math.max(0,Math.min(1-p.w,p.x+dx)),y:Math.max(0,Math.min(1-p.h,p.y+dy))};
+        } else {
+            const fromLeft=gesture.corner.includes('l'), fromTop=gesture.corner.includes('t');
+            const anchorX=fromLeft?p.x+p.w:p.x, anchorY=fromTop?p.y+p.h:p.y;
+            const maxW=fromLeft?anchorX:1-anchorX, maxH=fromTop?anchorY:1-anchorY;
+            const proposedX=(fromLeft?-dx:dx), proposedY=(fromTop?-dy:dy);
+            const scaleX=proposedX, scaleY=proposedY*p.w/p.h;
+            const delta=Math.abs(scaleX)>Math.abs(scaleY)?scaleX:scaleY;
+            const maxAllowed=Math.min(maxW,maxH*p.w/p.h);
+            const w=Math.max(Math.min(.06,maxAllowed),Math.min(p.w+delta,maxAllowed));
+            const h=w*p.h/p.w;
+            result={x:fromLeft?anchorX-w:anchorX,y:fromTop?anchorY-h:anchorY,w,h};
+        }
+        gesture.current=normalizeFlashcardImagePlacement(result) || gesture.current;
+        applyHandwrittenImagePlacement(gesture.current);
+    });
+    const finishHandwrittenImageTransform = event => {
+        const gesture=state.auth.handwrittenImageTransformGesture;
+        if (!gesture || gesture.id!==event.pointerId) return;
+        event.preventDefault(); event.stopPropagation();
+        state.auth.handwrittenImageTransformGesture=null;
+        if (event.type==='pointercancel') { applyHandwrittenImagePlacement(gesture.old); return; }
+        if (['x','y','w','h'].some(field=>gesture.current[field]!==gesture.old[field])) {
+            pushHandwrittenImageHistory(gesture.side,gesture.old);
+            commitHandwrittenImagePlacement(gesture.side,gesture.current);
+        }
+    };
+    elements.flashcardHandwrittenImageWrap?.addEventListener('pointerup',finishHandwrittenImageTransform);
+    elements.flashcardHandwrittenImageWrap?.addEventListener('pointercancel',finishHandwrittenImageTransform);
+    elements.flashcardHandwrittenImageZoomBtn?.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation();
+        const side=getHandwrittenSideKey(), row=getCurrentHandwrittenFlashcardRow();
+        const imageValue=normalizeSheetText(row?.[`${side}_image_url`]);
+        if (!imageValue) return;
+        const zoom=url=>openFlashcardImageOverlay(url,side==='term'?'Front image':'Back image');
+        if (isSupabaseMediaReference(imageValue)) resolveSupabaseMediaValue(imageValue).then(url=>{if(url)zoom(url);}).catch(console.error);
+        else zoom(elements.flashcardHandwrittenImage?.dataset.resolvedMediaUrl || imageValue);
     });
     elements.flashcardHandwrittenAddImageBtn?.addEventListener('click',()=>{
         const side=getHandwrittenSideKey(); const layout=elements.flashcardHandwrittenImageLayout?.checked?'full':'half';
@@ -52640,11 +55744,11 @@ elements.questionImage.onclick = function () {
         if(key==='b'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();clearHandwrittenSelection({redraw:false});state.auth.handwrittenFlashcardTool='pen';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
         if(key==='e'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();clearHandwrittenSelection({redraw:false});state.auth.handwrittenFlashcardTool='eraser';closeHandwrittenFloatingPopovers();renderHandwrittenFlashcardWorkspace();return;}
         if(event.code==='Space'){event.preventDefault();elements.flashcardHandwrittenFlipBtn?.click();}
-        else if((event.ctrlKey||event.metaKey)&&key==='z'){event.preventDefault();event.shiftKey?redoHandwrittenStroke():undoHandwrittenStroke();}
+        else if((event.ctrlKey||event.metaKey)&&key==='z'){event.preventDefault();if(state.auth.handwrittenImageTransformMode)navigateHandwrittenImageHistory(event.shiftKey?'redo':'undo');else event.shiftKey?redoHandwrittenStroke():undoHandwrittenStroke();}
     });
     window.addEventListener('resize',()=>{
         closeHandwrittenFloatingPopovers();
-        if(state.auth.handwrittenFlashcardEnabled){const side=getHandwrittenSideKey();requestAnimationFrame(()=>drawHandwrittenEditorCanvas(side));}
+        if(state.auth.handwrittenFlashcardEnabled){const side=getHandwrittenSideKey();requestAnimationFrame(()=>{drawHandwrittenEditorCanvas(side);syncSavedHandwrittenPreviewZoom();});}
     });
 
     elements.createQuizTypeSelect?.addEventListener('change', () => {

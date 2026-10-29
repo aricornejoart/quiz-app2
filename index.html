@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=23f41_77" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a5u_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=23f41_77-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a5u_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -824,14 +824,16 @@ MODIFICATION RULES FOR THIS APP
 
                           <div class="multi-angle-control-group">
                             <div class="multi-angle-control-title">4. Final image quality · Active angle</div>
-                            <label class="multi-angle-format-choice"><span>Flattened format</span><select id="multiAngleFormatSelect"><option value="webp" selected>WebP — optimized (recommended)</option><option value="png">PNG — pixel-lossless</option><option value="jpeg">JPEG — optimized</option></select></label>
-                            <label class="multi-angle-quality-choice"><span>Compression quality <strong id="multiAngleQualityValue">88%</strong></span><input id="multiAngleQualityInput" type="range" min="60" max="100" step="1" value="88"></label>
+                            <label class="multi-angle-format-choice"><span>Flattened format</span><select id="multiAngleFormatSelect"><option value="webp" selected>WebP — lossy (recommended)</option><option value="png">PNG — lossless</option><option value="jpeg">JPEG — lossy</option></select></label>
+                            <label id="multiAngleQualityChoice" class="multi-angle-quality-choice"><span>Lossy quality <strong id="multiAngleQualityValue">88%</strong></span><input id="multiAngleQualityInput" type="range" min="60" max="100" step="1" value="88"></label>
+                            <label class="multi-angle-format-choice"><span>Optional target size (KB) — WebP/JPEG lossy only</span><input id="multiAngleTargetSizeInput" type="number" min="25" max="3072" step="25" placeholder="e.g. 500 (leave blank for quality slider)"></label>
+                            <button id="multiAngleApplyFormatAllBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Apply format + compression to all saved angles</button>
                             <img id="multiAngleConvertedPreview" class="multi-angle-converted-preview hidden" alt="Locally encoded output preview. No upload occurs until saving.">
                             <div class="multi-angle-export-metrics"><div>Current image <strong id="multiAngleCurrentBytes">Calculating…</strong></div><div>Flattened preview <strong id="multiAngleEstimateBytes" aria-live="polite">Calculating…</strong></div></div>
-                            <div class="multi-angle-export-note">Actual encoded sizes are calculated locally; nothing uploads during adjustment. Final flattened image limit: 3 MB per angle. PNG stays lossless; WebP/JPEG are quality-adjustable lossy formats. True lossless WebP requires a dedicated encoder and is not offered as PNG-in-WebP disguise.</div>
+                            <div class="multi-angle-export-note">Actual encoded sizes are calculated locally; nothing uploads during adjustment. Final flattened image limit: 3 MB per angle. PNG preserves decoded pixels. WebP Lossy/JPEG use adjustable quality. JPEG removes transparency. The optional target is a file-size ceiling, not a guarantee, and never forces resolution changes or quality below 60%. For saved images, geometry remains permanently locked; only confirmed conversions replace canonical media.</div>
                           </div>
 
-                          <div id="multiAngleFlattenNotice" class="multi-angle-flatten-notice hidden" role="status">This image is already flattened. Its canvas and position are locked. Re-upload the original to prepare a new flattened image.</div>
+                          <div id="multiAngleFlattenNotice" class="multi-angle-flatten-notice hidden" role="status">Saved angle: pixel dimensions, subject position, and cropping are permanently locked. Format and compression can be changed without unlocking geometry.</div>
                           <input id="multiAngleReplaceInput" type="file" accept="image/png,image/jpeg,image/webp,image/*" class="hidden" aria-label="Re-upload original for current angle">
                           <button id="multiAngleReplaceBtn" type="button" class="auth-action-btn auth-secondary-btn multi-angle-replace-btn hidden">Re-upload Original for This Angle</button>
 
@@ -976,10 +978,10 @@ MODIFICATION RULES FOR THIS APP
                 <section class="creator-subsection quiz-studio-panel">
                   <div class="creator-subsection-title">Manage Quizzes</div>
                   <div class="studio-manage-tabs" role="tablist" aria-label="Manage quiz organization views">
-                    <button type="button" class="studio-manage-tab active" data-studio-manage-view="all" role="tab" aria-selected="true">All Quizzes</button>
+                    <button type="button" class="studio-manage-tab active" data-studio-manage-view="recent" role="tab" aria-selected="true">Recent Quizzes</button>
                     <button type="button" class="studio-manage-tab" data-studio-manage-view="classes" role="tab" aria-selected="false">Classes</button>
                     <button type="button" class="studio-manage-tab" data-studio-manage-view="folders" role="tab" aria-selected="false">Folders</button>
-                    <button type="button" class="studio-manage-tab" data-studio-manage-view="recent" role="tab" aria-selected="false">Recent</button>
+                    <button type="button" class="studio-manage-tab" data-studio-manage-view="all" role="tab" aria-selected="false">All Quizzes</button>
                   </div>
                   <div class="studio-filter-bar" aria-label="Manage quiz filters">
                     <label class="studio-filter-field">
@@ -998,10 +1000,31 @@ MODIFICATION RULES FOR THIS APP
                         <option value="">All folders</option>
                       </select>
                     </label>
+                    <label class="studio-filter-field">
+                      <span>Study Progress</span>
+                      <select id="studioQuizProgressFilterSelect">
+                        <option value="all">All statuses</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="learning">LEARNING</option>
+                        <option value="mastered">MASTERED</option>
+                      </select>
+                    </label>
                     <button id="studioQuizClearFiltersBtn" type="button" class="auth-action-btn auth-secondary-btn">Clear</button>
                   </div>
                   <div id="studioQuizFilterStatus" class="studio-filter-status hidden"></div>
                   <div id="studioQuizList" class="studio-list"></div>
+                  <section id="studioKeepCleanupPanel" class="studio-keep-cleanup-panel" aria-label="Temporary KEEP and Cleanup">
+                    <div class="creator-subsection-title">Temporary KEEP &amp; CLEANUP</div>
+                    <p class="creator-note">Mark KEEP on every quiz and Saved Image you want to retain, including across all pages. Nothing is deleted by marking KEEP. Back up both your data and actual Storage image files before cleanup.</p>
+                    <div class="studio-keep-cleanup-toolbar">
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-cleanup-action="load">Load KEEP selections</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-cleanup-action="keep-all-images">KEEP all Saved Images</button>
+                      <button type="button" class="auth-action-btn auth-secondary-btn" data-cleanup-action="preview">Review full cleanup</button>
+                      <button type="button" class="auth-action-btn studio-cleanup-delete-btn" data-cleanup-action="delete">Delete everything not KEEP</button>
+                    </div>
+                    <p id="studioCleanupStatus" class="creator-note" role="status" aria-live="polite">Selections must be loaded from Supabase first. The deletion button requires a fresh review and typed confirmation.</p>
+                    <pre id="studioCleanupReport" class="studio-cleanup-report" hidden></pre>
+                  </section>
                 </section>
               </section>
 
@@ -1033,8 +1056,28 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Export Full Library</div>
-                    <div class="creator-note">Download all your Supabase folders, quizzes, questions, starred-question state, and private-media references as one JSON backup. Private Storage files are represented by metadata/references, not copied as image files.</div>
+                    <div class="creator-note">Download your quiz-library metadata, questions, starred state, and media references as JSON. This does NOT include Saved Images library records or physical Supabase/R2 image files. A separate complete backup is required before cleanup.</div>
                     <button id="exportAllBtn" type="button" class="auth-action-btn">Export All JSON Backup</button>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel studio-dashboard-wide" aria-label="Saved Images and label library backup">
+                    <div class="creator-subsection-title">Backup All Saved Images &amp; Labels</div>
+                    <div class="creator-note">Download a standalone TAR archive containing every active Saved Image diagram (all angles, labels, connectors, drawing strokes, Visual Aids and metadata), the full label sets/information library, and the actual private image files referenced by those diagrams. No diagram is changed. This is separate from the quiz JSON backup and does not export every quiz image.</div>
+                    <button id="exportSavedImagesBackupBtn" type="button" class="auth-action-btn">Backup All Saved Images + Label Library</button>
+                    <div id="exportSavedImagesBackupStatus" class="studio-backup-preview" role="status" aria-live="polite">Ready. Exporting physical image bytes may use substantial download bandwidth. A Mac can open the downloaded .tar archive.</div>
+                  </section>
+
+                  <section class="creator-subsection quiz-studio-panel studio-dashboard-wide" aria-label="Restore Saved Images and label library TAR">
+                    <div class="creator-subsection-title">Restore Saved Images + Label Library TAR</div>
+                    <div class="creator-note">Same-account recovery from your Saved Images TAR archive. Preview verifies every SHA-256 media checksum before any writes. Restores missing diagrams, files, labels, and related organization; never overwrites active diagrams or existing label entries. A failed restore may leave partial additions and can be retried. This is separate from Quiz JSON Import.</div>
+                    <label class="auth-field"><span>Saved Images TAR archive</span>
+                      <input id="restoreSavedImagesTarInput" type="file" accept=".tar,application/x-tar">
+                    </label>
+                    <div class="studio-backup-actions">
+                      <button id="previewSavedImagesRestoreBtn" type="button" class="auth-action-btn">Preview &amp; Verify TAR</button>
+                      <button id="restoreSavedImagesTarBtn" type="button" class="auth-action-btn auth-secondary-btn" disabled>Restore Missing Saved Images</button>
+                    </div>
+                    <div id="restoreSavedImagesTarStatus" class="studio-backup-preview" role="status" aria-live="polite">Select your verified TAR backup. Restoration requires the same signed-in Supabase account.</div>
                   </section>
 
                   <section class="creator-subsection quiz-studio-panel studio-dashboard-wide">
@@ -1228,9 +1271,9 @@ MODIFICATION RULES FOR THIS APP
                   <div class="studio-editor-title-row">
                     <div class="creator-subsection-title">Quiz Editor</div>
                     <div class="studio-editor-title-actions">
-                      <button id="createQuizBtn" type="button" class="auth-action-btn">Save Changes</button>
-                      <button id="studioStudyQuizBtn" type="button" class="auth-action-btn auth-secondary-btn">Study Quiz</button>
-                      <button id="createQuizCancelEditBtn" type="button" class="auth-action-btn auth-secondary-btn">Create Quiz</button>
+                      <button id="createQuizBtn" type="button" class="auth-action-btn">Create Quiz</button>
+                      <button id="createQuizCancelEditBtn" type="button" class="auth-action-btn auth-secondary-btn">New Quiz</button>
+                      <button id="studioStudyQuizBtn" type="button" class="auth-action-btn auth-secondary-btn" disabled title="Create and save the quiz first">Study Quiz</button>
                     </div>
                   </div>
 
@@ -1355,7 +1398,7 @@ MODIFICATION RULES FOR THIS APP
                       <button id="studioDuplicateQuestionBtn" type="button" class="auth-action-btn auth-secondary-btn">Duplicate Question</button>
                       <button id="addOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Option</button>
                       <button id="removeOptionFieldBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Option</button>
-                      <button id="studioEditorActionSaveBtn" type="button" class="auth-action-btn auth-secondary-btn">Save Changes</button>
+                      <button id="studioEditorActionSaveBtn" type="button" class="auth-action-btn auth-secondary-btn">Create Quiz</button>
                     </div>
                   </div>
 
@@ -1709,6 +1752,7 @@ MODIFICATION RULES FOR THIS APP
                         <button id="flashcardHandwrittenAddImageBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" aria-label="Attach image" title="Attach image">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                         </button>
+                        <button id="flashcardHandwrittenTransformBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn hidden" aria-label="Move or resize uploaded image" title="Move/Resize uploaded image" aria-pressed="false">⤢</button>
                         <button id="flashcardHandwrittenRemoveImageBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Remove image" title="Remove image">×</button>
                         <button id="flashcardHandwrittenSettingsBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" aria-label="Writing mode settings" title="Writing mode settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="flashcardHandwrittenSettingsPopover">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"></path><path d="m19.4 15.1.1.1 1.5 1.2-1.5 2.6-1.9-.6a8.9 8.9 0 0 1-2 1.2l-.4 2h-3l-.4-2a8.9 8.9 0 0 1-2-1.2l-1.9.6-1.5-2.6 1.5-1.2a9 9 0 0 1 0-2.4l-1.5-1.2L7.9 9l1.9.6a8.9 8.9 0 0 1 2-1.2l.4-2h3l.4 2a8.9 8.9 0 0 1 2 1.2l1.9-.6 1.5 2.6-1.5 1.2a9 9 0 0 1 0 2.3Z" transform="translate(-1.5 -2)"></path></svg>
@@ -1742,7 +1786,8 @@ MODIFICATION RULES FOR THIS APP
                             </label>
                             <span>Typed</span>
                           </div>
-                          <label class="studio-handwritten-align-option"><span>Auto Align</span><input id="flashcardHandwrittenAutoAlign" type="checkbox" role="switch" aria-label="Automatically align front and back handwriting on flip, save, or navigation"></label>
+                          <label class="studio-handwritten-align-option"><span>Diagram Both Sides</span><span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenDiagramBothSides" type="checkbox" role="switch" checked aria-label="Copy a Saved Image diagram and its Half or Full setting from the front to the back"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span></label>
+                          <label class="studio-handwritten-align-option"><span>Auto Align</span><span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenAutoAlign" type="checkbox" role="switch" aria-label="Automatically align front and back handwriting on flip, save, or navigation"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span></label>
                           <label class="studio-handwritten-align-option"><span>Alignment</span><select id="flashcardHandwrittenAlignTarget" aria-label="Handwriting alignment"><option value="center" selected>Center</option><option value="top">Top</option><option value="left">Left</option><option value="right">Right</option><option value="bottom">Bottom</option></select></label>
                         </div>
                         <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Stroke thickness">
@@ -1770,7 +1815,8 @@ MODIFICATION RULES FOR THIS APP
                           </div>
                         </div>
                         <div id="flashcardHandwrittenToolIndicator" class="studio-handwritten-tool-indicator hidden" aria-hidden="true"></div>
-                        <div id="flashcardHandwrittenImageWrap" class="studio-handwritten-image-wrap hidden"><img id="flashcardHandwrittenImage" alt="Flashcard image"></div>
+                        <div id="flashcardHandwrittenImageWrap" class="studio-handwritten-image-wrap hidden"><img id="flashcardHandwrittenImage" alt="Flashcard image"><i data-handwritten-image-handle="tl"></i><i data-handwritten-image-handle="tr"></i><i data-handwritten-image-handle="bl"></i><i data-handwritten-image-handle="br"></i></div>
+                        <button id="flashcardHandwrittenImageZoomBtn" class="studio-handwritten-image-zoom" type="button" title="Zoom uploaded image" aria-label="Zoom uploaded image">⤢</button>
                         <div id="flashcardHandwrittenFullImageNote" class="studio-handwritten-full-image-note hidden">Full image side — drawing is disabled.</div>
                       </div>
 
@@ -2527,6 +2573,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=23f41_77"></script>
+  <script src="script.js?v=24a5u_1"></script>
 </body>
 </html>
