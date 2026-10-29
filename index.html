@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a5u_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a5w_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a5u_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a5w_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -2476,7 +2476,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
       <div class="studio-image-editor-workspace">
         <div id="studioImageEditorVisualAidPanel" class="studio-image-editor-visual-aid-panel hidden" aria-label="Animated Visual Aids">
-          <div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">One Visual Aid preset is visible at a time. A preset can contain multiple paths; the active path accepts label connector snapping.</div></div><div class="studio-visual-aid-header-buttons"><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button><button id="studioImageEditorAddFlowFillBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Flow Fill Visual Aid</button></div></div>
+          <div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">One Visual Aid preset is visible at a time. A preset can contain multiple paths; the active path accepts label connector snapping.</div></div><div class="studio-visual-aid-header-buttons"><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button><button id="studioImageEditorAddFlowFillBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Flow Fill Visual Aid</button><button id="studioImageEditorImportAnimationBtn" type="button" class="auth-action-btn auth-secondary-btn">Import Animation</button><input id="studioImageEditorImportAnimationInput" type="file" accept=".json,application/json" hidden></div></div>
           <div id="studioImageEditorVisualAidList" class="studio-image-editor-visual-aid-list"></div>
         </div>
         <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
@@ -2573,6 +2573,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a5u_1"></script>
+  <script src="script.js?v=24a5w_1"></script>
 </body>
 </html>

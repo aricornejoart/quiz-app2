@@ -1157,6 +1157,8 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorVisualAidPanel: document.getElementById('studioImageEditorVisualAidPanel'),
         studioImageEditorVisualAidList: document.getElementById('studioImageEditorVisualAidList'),
         studioImageEditorAddVisualAidBtn: document.getElementById('studioImageEditorAddVisualAidBtn'),
+        studioImageEditorImportAnimationBtn: document.getElementById('studioImageEditorImportAnimationBtn'),
+        studioImageEditorImportAnimationInput: document.getElementById('studioImageEditorImportAnimationInput'),
         studioImageEditorVisualAidClosePathBtn: document.getElementById('studioImageEditorVisualAidClosePathBtn'),
         studioImageEditorZoomControls: document.getElementById('studioImageEditorZoomControls'),
         studioImageEditorZoomOutBtn: document.getElementById('studioImageEditorZoomOutBtn'),
@@ -3782,11 +3784,112 @@ MODIFICATION RULES FOR THIS APP
         return Math.max(0, leadProgress - trailingFraction);
     }
 
+    // Phase 24A.5v: first-test Synfig Lottie JSON imports. Only small, self-contained
+    // vector exports are embedded in existing Visual Aid metadata. External assets,
+    // image layers and raw Synfig .sif XML are intentionally unsupported.
+    const DIAGRAM_VISUAL_AID_LOTTIE_LIMIT_BYTES = 256 * 1024;
+    const DIAGRAM_VISUAL_AID_LOTTIE_LIBRARY_URL = 'https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie_svg.min.js';
+    let diagramVisualAidLottieLibraryPromise = null;
+    const diagramVisualAidLottieInstances = new WeakMap();
+    function validateImportedVisualAidLottie(data, byteSize = 0) {
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('This is not a Lottie JSON animation. Export from Synfig using Plugins → Export to Lottie.');
+        if (byteSize > DIAGRAM_VISUAL_AID_LOTTIE_LIMIT_BYTES) throw new Error('This first-test importer supports Lottie JSON files up to 256 KiB. Simplify this animation before importing.');
+        const { w, h, fr, ip, op } = data;
+        if (![w, h, fr, ip, op].every(v => Number.isFinite(Number(v))) || w < 1 || h < 1 || w > 8192 || h > 8192 || fr < 1 || fr > 120 || op <= ip || (op - ip) / fr > 120 || !Array.isArray(data.layers) || data.layers.length > 500) throw new Error('Unsupported Lottie dimensions, frame rate, duration, or layers.');
+        const media = Array.isArray(data.assets) ? data.assets : [];
+        if (media.some(item => item && (item.p || item.u || item.e || item.t || (!Array.isArray(item.layers) && item.id)))) throw new Error('This test version supports self-contained vector animations only (no external images or media).');
+        if (data.fonts || data.chars || JSON.stringify(data).includes('"x":"')) throw new Error('This animation contains unsupported text/font or expression data. Use vector shapes in Synfig.');
+        const layers = [...data.layers, ...media.flatMap(item => Array.isArray(item.layers) ? item.layers : [])];
+        if (layers.some(item => item && (item.ty === 2 || item.ty === 5))) throw new Error('Image and font layers are not supported in this first-test importer.');
+        return { durationSec: (op - ip) / fr, frameRate: fr, firstFrame: ip, lastFrame: op };
+    }
+    function getImportedVisualAidAnimation(aid = {}) {
+        const imported = aid?.importedAnimation;
+        return imported?.type === 'lottie' && imported.data && Number(imported.durationSec) > 0 ? imported : null;
+    }
+    function hasDiagramVisualAidContent(aid = {}) {
+        return !!getImportedVisualAidAnimation(aid) || (aid.path?.length || 0) > 1 || hasFlowFillGeometry(aid);
+    }
+    function loadDiagramVisualAidLottieLibrary() {
+        if (window.lottie?.loadAnimation) return Promise.resolve(window.lottie);
+        if (!diagramVisualAidLottieLibraryPromise) {
+            diagramVisualAidLottieLibraryPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = DIAGRAM_VISUAL_AID_LOTTIE_LIBRARY_URL;
+                script.async = true;
+                script.crossOrigin = 'anonymous';
+                script.onload = () => window.lottie?.loadAnimation ? resolve(window.lottie) : reject(new Error('Lottie player unavailable.'));
+                script.onerror = () => reject(new Error('Could not load the Lottie SVG player. Check your internet connection.'));
+                document.head.appendChild(script);
+            }).catch(error => { diagramVisualAidLottieLibraryPromise = null; throw error; });
+        }
+        return diagramVisualAidLottieLibraryPromise;
+    }
+    function destroyDiagramVisualAidLottiePlayers(svg) {
+        (diagramVisualAidLottieInstances.get(svg) || []).forEach(entry => { try { entry.player?.destroy(); } catch (_) {} });
+        diagramVisualAidLottieInstances.delete(svg);
+    }
+    function updateDiagramVisualAidLottiePlayers(svg, progress) {
+        const surface = diagramVisualAidPlaybackSurfaceCache.get(svg);
+        if (surface) surface.lastImportedProgress = normalizeDiagramVisualAidPosition(progress ?? 0);
+        for (const entry of diagramVisualAidLottieInstances.get(svg) || []) {
+            if (!entry.player || !entry.ready) continue;
+            const p = surface?.lastImportedProgress ?? 0;
+            const imported = entry.imported;
+            const frame = Math.min(imported.data.op - 0.001, imported.data.ip + (imported.data.op - imported.data.ip) * p);
+            // Do not run a second player clock. Every seek/frame comes from Study Bunny.
+            if (Math.abs((entry.lastFrame ?? -999) - frame) >= 0.5) {
+                entry.player.goToAndStop(frame, true);
+                entry.lastFrame = frame;
+            }
+        }
+    }
+    function mountDiagramVisualAidLottiePlayers(svg, surface) {
+        const entries = (surface.importedAnimations || []).map(item => ({...item, ready:false, lastFrame:null, player:null }));
+        if (!entries.length) return;
+        diagramVisualAidLottieInstances.set(svg, entries);
+        loadDiagramVisualAidLottieLibrary().then(lottie => {
+            if (diagramVisualAidPlaybackSurfaceCache.get(svg) !== surface) return;
+            for (const entry of entries) {
+                const host = Array.from(svg.querySelectorAll('[data-imported-lottie-host]')).find(node => node.dataset.importedLottieHost === entry.aidId);
+                if (!host || !host.isConnected) continue;
+                try {
+                    // Animation data is deep-cloned because lottie-web mutates it in-place.
+                    const player = lottie.loadAnimation({container:host, renderer:'svg', autoplay:false, loop:false, animationData:JSON.parse(JSON.stringify(entry.imported.data)), rendererSettings:{preserveAspectRatio:'xMidYMid meet', progressiveLoad:true}});
+                    entry.player = player;
+                    const ready = () => { if (diagramVisualAidPlaybackSurfaceCache.get(svg) !== surface) return; entry.ready=true; updateDiagramVisualAidLottiePlayers(svg, surface.lastImportedProgress ?? 0); };
+                    if (player.isLoaded) ready();
+                    else { player.addEventListener?.('DOMLoaded', ready); player.addEventListener?.('data_ready', ready); }
+                    player.addEventListener?.('data_failed', () => { host.dataset.lottieFailed = 'true'; host.textContent = 'Animation could not be rendered'; });
+                } catch (error) { console.warn('Study Bunny: imported Visual Aid could not render.', error); host.dataset.lottieFailed = 'true'; }
+            }
+        }).catch(error => {
+            if (diagramVisualAidPlaybackSurfaceCache.get(svg) !== surface) return;
+            console.warn('Study Bunny imported animation:', error);
+            svg.querySelectorAll('[data-imported-lottie-host]').forEach(host => { host.dataset.lottieFailed = 'true'; host.title = error.message; host.textContent = 'Animation player unavailable'; });
+        });
+    }
+    function renderDiagramImportedLottieMarkup(aid, width, height) {
+        const imported = getImportedVisualAidAnimation(aid);
+        if (!imported) return '';
+        const box = imported.box || {x:0,y:0,width:100,height:100,opacity:100};
+        const x = (box.x / 100) * width, y = (box.y / 100) * height;
+        const w = (box.width / 100) * width, h = (box.height / 100) * height;
+        return `<foreignObject x="${x}" y="${y}" width="${w}" height="${h}" opacity="${box.opacity / 100}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" class="diagram-imported-lottie-host" data-imported-lottie-host="${escapeHtml(aid.id)}" style="width:100%;height:100%;pointer-events:none"></div></foreignObject>`;
+    }
+
     function getDiagramVisualAidPlaybackDurationMs(aid = {}) {
         const normalized = normalizeDiagramVisualAid(aid);
+        const imported = getImportedVisualAidAnimation(normalized);
+        if (imported) return (imported.durationSec * 1000) / normalizeDiagramVisualAidSpeed(normalized.speed);
         if (normalized.flowFillType === 'flow-fill') return (normalized.flowDurationSec * 1000) / normalizeDiagramVisualAidSpeed(normalized.speed);
         const trailingFraction = getDiagramVisualAidTrailingFraction(normalized);
         return getDiagramVisualAidDurationMs(normalized.speed) * (1 + trailingFraction);
+    }
+
+    function getDiagramVisualAidGroupPlaybackDurationMs(group = [], activeAid = {}, speedOverride = null) {
+        const master = (group || []).find(aid => getImportedVisualAidAnimation(aid)) || activeAid;
+        return getDiagramVisualAidPlaybackDurationMs({ ...master, speed: speedOverride ?? master?.speed ?? 1 });
     }
 
     function normalizeDiagramVisualAidBallDirection(value = 'forward') {
@@ -3910,6 +4013,7 @@ MODIFICATION RULES FOR THIS APP
             divisions,
             points,
             textBoxes: (Array.isArray(source.textBoxes) ? source.textBoxes : []).slice(0, 16).map(normalizeDiagramVisualAidTextBox),
+            importedAnimation: source.importedAnimation?.type === 'lottie' && source.importedAnimation.data ? { type:'lottie', name:normalizeSheetText(source.importedAnimation.name || 'Synfig Animation').slice(0,100), durationSec:Number(source.importedAnimation.durationSec) || 0, data:source.importedAnimation.data, box: { x:Math.max(0,Math.min(95,Number(source.importedAnimation.box?.x) || 0)), y:Math.max(0,Math.min(95,Number(source.importedAnimation.box?.y) || 0)), width:Math.max(5,Math.min(100,Number(source.importedAnimation.box?.width) || 100)), height:Math.max(5,Math.min(100,Number(source.importedAnimation.box?.height) || 100)), opacity:Math.max(0,Math.min(100,Number(source.importedAnimation.box?.opacity ?? 100))) } } : null,
             defaultColor,
             thickness: Math.min(48, Math.max(2, Number(source.thickness) || 7)),
             speed: normalizeDiagramVisualAidSpeed(source.speed),
@@ -4648,7 +4752,7 @@ MODIFICATION RULES FOR THIS APP
     function getDiagramVisualAidSelectableItems(aid = {}) {
         const normalized = normalizeDiagramVisualAid(aid);
         if (normalized.flowFillType === 'flow-fill') return getDiagramVisualAidSequenceItems(normalized);
-        return [{ type: 'path', id: normalized.id, name: normalized.name, position: 0.5 }, ...getDiagramVisualAidSequenceItems(normalized)];
+        return [...(normalized.path.length > 1 ? [{ type: 'path', id: normalized.id, name: normalized.name, position: 0.5 }] : []), ...getDiagramVisualAidSequenceItems(normalized)];
     }
 
     function getActiveImageEditorVisualAid(editor = state.auth.imageEditor) {
@@ -4784,7 +4888,7 @@ MODIFICATION RULES FOR THIS APP
         const normalizedAids = normalizeDiagramVisualAids(aids).filter(aid => aid.visible && (!activeOnlyId || aid.id === activeOnlyId));
         const markup = normalizedAids.map((aid, aidIndex) => {
             if (aid.flowFillType === 'flow-fill') {
-                if (!hasFlowFillGeometry(aid)) return '';
+                if (!hasFlowFillGeometry(aid)) return getImportedVisualAidAnimation(aid) ? `<g data-visual-aid-id="${escapeHtml(aid.id)}">${renderDiagramImportedLottieMarkup(aid,safeWidth,safeHeight)}${renderDiagramVisualAidTextMarkup(aid,safeWidth,safeHeight,options)}</g>` : '';
                 const prefix = `flowFill_${surfaceSerial}_${aidIndex}`;
                 const regions = aid.flowItems.filter(item=>item.type==='region' && item.path.length>=3);
                 const routes = aid.flowItems.filter(item=>item.type==='connection' && item.path.length>=2);
@@ -4818,9 +4922,9 @@ MODIFICATION RULES FOR THIS APP
                 const actionRegion=activeAction && (activeAction.regionId||activeAction.toId);
                 const activeRegion=regions.find(item=>item.id===actionRegion);
                 const highlight=activeRegion?`<polygon points="${activeRegion.path.map(pt=>`${pt.x*safeWidth/100},${pt.y*safeHeight/100}`).join(' ')}" fill="none" stroke="#fbbf24" stroke-width="4" opacity="0.95"/>`:'';
-                return `<g data-visual-aid-id="${escapeHtml(aid.id)}" data-flow-fill-aid="true"><defs>${clipDefs}</defs>${regionMarkup}${routeMarkup}${highlight}${renderDiagramVisualAidTextMarkup(aid, safeWidth, safeHeight, options)}</g>`;
+                return `<g data-visual-aid-id="${escapeHtml(aid.id)}" data-flow-fill-aid="true">${renderDiagramImportedLottieMarkup(aid,safeWidth,safeHeight)}<defs>${clipDefs}</defs>${regionMarkup}${routeMarkup}${highlight}${renderDiagramVisualAidTextMarkup(aid, safeWidth, safeHeight, options)}</g>`;
             }
-            if (aid.path.length < 2) return '';
+            if (aid.path.length < 2) return getImportedVisualAidAnimation(aid) ? `<g data-visual-aid-id="${escapeHtml(aid.id)}">${renderDiagramImportedLottieMarkup(aid,safeWidth,safeHeight)}${renderDiagramVisualAidTextMarkup(aid,safeWidth,safeHeight,options)}</g>` : '';
             const masterMetrics = getDiagramVisualAidPathMetrics(aid);
             const svgMasterMetrics = getDiagramVisualAidSvgPathMetrics(masterMetrics, safeWidth, safeHeight);
             const masterPoints = svgMasterMetrics.pointsText;
@@ -4937,7 +5041,7 @@ MODIFICATION RULES FOR THIS APP
                     }
                 }
             }
-            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${base}${baseEndpoints}${divisionHits}<g data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}${renderDiagramVisualAidTextMarkup(aid, safeWidth, safeHeight, options)}</g>`;
+            return `<g data-visual-aid-id="${escapeHtml(aid.id)}">${renderDiagramImportedLottieMarkup(aid,safeWidth,safeHeight)}${base}${baseEndpoints}${divisionHits}<g data-visual-aid-revealed>${revealGlow}${colored}</g>${boundaryArrows}${revealCap}${pointMarkup}${leadArrow}${leadBall}${quizOverlay}${renderDiagramVisualAidTextMarkup(aid, safeWidth, safeHeight, options)}</g>`;
         }).join('');
         const behaviorBalls = normalizedAids.flatMap(aid => {
             const balls = aid.multipleBalls ? aid.balls : aid.balls.slice(0, 1);
@@ -4945,7 +5049,7 @@ MODIFICATION RULES FOR THIS APP
         });
         const behaviorBallMarkup = behaviorBalls.length ? `<g data-visual-aid-behavior-ball-layer>${behaviorBalls.map(item => `<circle data-visual-aid-behavior-ball data-visual-aid-origin-id="${escapeHtml(item.aidId)}" data-visual-aid-ball-id="${escapeHtml(item.ballId)}" cx="0" cy="0" r="${item.radius}" fill="${item.color}" opacity="0" pointer-events="none"/>`).join('')}</g>` : '';
         const defs = `<defs><filter id="${glowId}"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="${quizGlowId}"><feGaussianBlur stdDeviation="4.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="${arrowId}" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="2.16" markerHeight="2.16" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>`;
-        return { markup: `${defs}${markup}${behaviorBallMarkup}`, runtimes, animated, behaviorBalls };
+        return { markup: `${defs}${markup}${behaviorBallMarkup}`, runtimes, animated, behaviorBalls, importedAnimations: normalizedAids.filter(aid => getImportedVisualAidAnimation(aid)).map(aid => ({aidId:aid.id, imported:aid.importedAnimation})) };
     }
 
     function findDiagramVisualAidPlaybackNodeByData(root, selector, dataKey, value) {
@@ -4954,6 +5058,7 @@ MODIFICATION RULES FOR THIS APP
 
     function mountDiagramVisualAidPlaybackSurface(svg, aids = [], width = 1, height = 1, options = {}) {
         if (!svg) return null;
+        destroyDiagramVisualAidLottiePlayers(svg);
         const surface = createDiagramVisualAidPlaybackSurface(aids, width, height, options);
         svg.setAttribute('viewBox', `0 0 ${Math.max(1, Number(width) || 1)} ${Math.max(1, Number(height) || 1)}`);
         svg.innerHTML = surface.markup;
@@ -4987,6 +5092,7 @@ MODIFICATION RULES FOR THIS APP
             ballId: normalizeSheetText(node.dataset.visualAidBallId || '')
         }));
         diagramVisualAidPlaybackSurfaceCache.set(svg, surface);
+        mountDiagramVisualAidLottiePlayers(svg, surface);
         return surface;
     }
 
@@ -5184,11 +5290,13 @@ MODIFICATION RULES FOR THIS APP
         if (animationFrame && diagramVisualAidPlaybackSurfaceCache.has(svg)) {
             updateDiagramVisualAidPlaybackSurface(svg, progress);
             updateDiagramVisualAidBehaviorBalls(svg, progress);
+            updateDiagramVisualAidLottiePlayers(svg, progress);
             return;
         }
         mountDiagramVisualAidPlaybackSurface(svg, aids, width, height, options);
         updateDiagramVisualAidPlaybackSurface(svg, progress);
         updateDiagramVisualAidBehaviorBalls(svg, progress);
+        updateDiagramVisualAidLottiePlayers(svg, progress);
     }
 
     function startDiagramVisualAidPlaybackClock({ owner, playingKey, progressKey, startedAtKey, frameIdKey, loopKey, duration, renderFrame, renderResting }) {
@@ -14653,7 +14761,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function getReviewModeAvailableVisualAids() {
-        return getReviewModeVisualAids().filter(aid => aid.path.length > 1 || hasFlowFillGeometry(aid));
+        return getReviewModeVisualAids().filter(hasDiagramVisualAidContent);
     }
 
     function getReviewModeActiveVisualAid() {
@@ -14989,6 +15097,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!layer || !diagramVisualAidPlaybackSurfaceCache.has(layer)) return false;
         updateDiagramVisualAidPlaybackSurface(layer, review.visualAidProgress);
         updateDiagramVisualAidBehaviorBalls(layer, review.visualAidProgress);
+        updateDiagramVisualAidLottiePlayers(layer, review.visualAidProgress);
         if (!sequence) return true;
         const progress = normalizeDiagramVisualAidPosition(review.visualAidProgress);
         const scrubber = sequence.querySelector('[data-review-visual-aid-scrubber]');
@@ -15025,7 +15134,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!availableAids.length && !visualQuiz) review.showVisualAid = false;
         const activeAid = visualQuiz?.aid || getReviewModeActiveVisualAid() || null;
         const showAid = !!activeAid && (review.showVisualAid || !!visualQuiz);
-        const groupedAids = activeAid ? getDiagramVisualAidGroup(availableAids, activeAid).filter(item => item.path.length > 1 || hasFlowFillGeometry(item)) : [];
+        const groupedAids = activeAid ? getDiagramVisualAidGroup(availableAids, activeAid).filter(hasDiagramVisualAidContent) : [];
         const activeGroup = activeAid ? [activeAid, ...groupedAids.filter(item => item.id !== activeAid.id)] : [];
         const aids = showAid ? activeGroup.map(item => ({ ...item, visible: true })) : [];
         const width = Math.max(1, img.naturalWidth || 1);
@@ -15128,7 +15237,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!review.miniQuiz.active) { review.visualAidSelectedKind = ''; review.visualAidSelectedId = ''; }
         review.visualAidPlaying = true;
         const activeAid = getReviewModeMiniQuizVisualTargetDetails(review)?.aid || getReviewModeActiveVisualAid();
-        const duration = getDiagramVisualAidPlaybackDurationMs({ ...activeAid, speed: review.visualAidSpeed ?? activeAid?.speed ?? 1 });
+        const duration = getDiagramVisualAidGroupPlaybackDurationMs(getDiagramVisualAidGroup(getReviewModeAvailableVisualAids(), activeAid), activeAid, review.visualAidSpeed ?? activeAid?.speed ?? 1);
         review.visualAidStartedAt = performance.now() - (review.visualAidProgress * duration);
         // Re-mount once with non-interactive playback geometry, then only update progress.
         renderReviewModeVisualAids();
@@ -16617,6 +16726,8 @@ The deletion becomes permanent when you save the diagram.`);
         elements.studioImageEditorVisualAidPanel = document.getElementById('studioImageEditorVisualAidPanel');
         elements.studioImageEditorVisualAidList = document.getElementById('studioImageEditorVisualAidList');
         elements.studioImageEditorAddVisualAidBtn = document.getElementById('studioImageEditorAddVisualAidBtn');
+        elements.studioImageEditorImportAnimationBtn = document.getElementById('studioImageEditorImportAnimationBtn');
+        elements.studioImageEditorImportAnimationInput = document.getElementById('studioImageEditorImportAnimationInput');
         elements.studioImageEditorAddFlowFillBtn = document.getElementById('studioImageEditorAddFlowFillBtn');
         elements.studioImageEditorVisualAidClosePathBtn = document.getElementById('studioImageEditorVisualAidClosePathBtn');
         elements.studioImageEditorMetadataPanel = document.getElementById('studioImageEditorMetadataPanel');
@@ -16720,7 +16831,7 @@ The deletion becomes permanent when you save the diagram.`);
                     </div>
                     <div id="studioImageEditorStatus" class="studio-image-editor-status" aria-live="polite"></div>
                     <div class="studio-image-editor-workspace">
-                      <div id="studioImageEditorVisualAidPanel" class="studio-image-editor-visual-aid-panel hidden" aria-label="Animated Visual Aids"><div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">One Visual Aid preset is visible at a time. A preset can contain multiple paths; the active path accepts label connector snapping.</div></div><div class="studio-visual-aid-header-buttons"><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button><button id="studioImageEditorAddFlowFillBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Flow Fill Visual Aid</button></div></div><div id="studioImageEditorVisualAidList" class="studio-image-editor-visual-aid-list"></div></div>
+                      <div id="studioImageEditorVisualAidPanel" class="studio-image-editor-visual-aid-panel hidden" aria-label="Animated Visual Aids"><div class="studio-image-editor-label-panel-header"><div><div class="studio-image-editor-label-panel-title">Visual Aids</div><div class="studio-visual-aid-help">One Visual Aid preset is visible at a time. A preset can contain multiple paths; the active path accepts label connector snapping.</div></div><div class="studio-visual-aid-header-buttons"><button id="studioImageEditorAddVisualAidBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Visual Aid</button><button id="studioImageEditorAddFlowFillBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Flow Fill Visual Aid</button><button id="studioImageEditorImportAnimationBtn" type="button" class="auth-action-btn auth-secondary-btn">Import Animation</button><input id="studioImageEditorImportAnimationInput" type="file" accept=".json,application/json" hidden></div></div><div id="studioImageEditorVisualAidList" class="studio-image-editor-visual-aid-list"></div></div>
                       <div id="studioImageEditorCanvasWrap" class="studio-image-editor-canvas-wrap">
                         <canvas id="studioImageEditorCanvas"></canvas>
                         <svg id="studioImageEditorVisualAidLayer" class="studio-image-editor-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg><svg id="studioImageEditorConnectorLayer" class="studio-image-editor-connector-layer hidden" aria-hidden="true" focusable="false"></svg>
@@ -21642,6 +21753,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (animationFrame && diagramVisualAidPlaybackSurfaceCache.has(svg)) {
             updateDiagramVisualAidPlaybackSurface(svg, editor.visualAidPreviewProgress);
             updateDiagramVisualAidBehaviorBalls(svg, editor.visualAidPreviewProgress);
+            updateDiagramVisualAidLottiePlayers(svg, editor.visualAidPreviewProgress);
             renderImageEditorVisualAidPreviewSequence({ animationFrame: true });
             updateImageEditorVisualAidClosePathSnap();
             return;
@@ -21651,7 +21763,7 @@ The deletion becomes permanent when you save the diagram.`);
         const visibleGroup = getDiagramVisualAidGroup(storedAids, visibleId);
         const visibleIds = new Set(visibleGroup.map(item => item.id));
         const aids = storedAids.map(aid => ({ ...aid, visible: visibleIds.has(aid.id) }));
-        const activeAid = aids.find(aid => aid.id === editor.activeVisualAidId && aid.visible && (aid.path.length > 1 || hasFlowFillGeometry(aid))) || null;
+        const activeAid = aids.find(aid => aid.id === editor.activeVisualAidId && aid.visible && hasDiagramVisualAidContent(aid)) || null;
         const width = Math.max(1, canvas.width || 1);
         const height = Math.max(1, canvas.height || 1);
         const previewOptions = editor.visualAidPreviewActive && activeAid
@@ -21664,7 +21776,7 @@ The deletion becomes permanent when you save the diagram.`);
         if (!animationFrame && penAid) renderImageEditorVisualAidPenOverlay(svg, penAid);
         if (!animationFrame) renderImageEditorVisualAidLazyGuide(svg);
         const hasCurveEditorGeometry = !!(isImageEditorVisualAidCurveMode(editor) && penAid && (penAid.curveAnchors || []).length);
-        svg.classList.toggle('hidden', !aids.some(aid => aid.visible && (aid.path.length > 1 || hasFlowFillGeometry(aid))) && !hasCurveEditorGeometry);
+        svg.classList.toggle('hidden', !aids.some(aid => aid.visible && hasDiagramVisualAidContent(aid)) && !hasCurveEditorGeometry);
         renderImageEditorVisualAidPreviewSequence({ animationFrame });
         updateImageEditorVisualAidClosePathSnap();
     }
@@ -21755,7 +21867,7 @@ The deletion becomes permanent when you save the diagram.`);
         const sequence = list.querySelector('[data-visual-aid-preview-sequence]');
         const loopSwitch = list.querySelector('[data-visual-aid-preview-loop]');
         if (loopSwitch) loopSwitch.checked = !!editor.visualAidPreviewLoop;
-        if (!sequence || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || (aid.path.length < 2 && !hasFlowFillGeometry(aid))) { if (sequence) sequence.innerHTML = ''; return; }
+        if (!sequence || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || !hasDiagramVisualAidContent(aid)) { if (sequence) sequence.innerHTML = ''; return; }
         const items = getDiagramVisualAidSequenceItems(aid);
         const progress = getDiagramVisualAidPlaybackLeadProgress(aid, editor.visualAidPreviewProgress);
         let active = items.findIndex(item => item.type === 'point' && Math.abs(item.position - progress) <= 0.012);
@@ -21799,10 +21911,10 @@ The deletion becomes permanent when you save the diagram.`);
     function playImageEditorVisualAidPreview() {
         const editor = state.auth.imageEditor;
         const aid = getActiveImageEditorVisualAid(editor);
-        if (!editor || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || (aid.path.length < 2 && !hasFlowFillGeometry(aid)) || editor.visualAidPreviewPlaying) return;
+        if (!editor || !aid || !isImageEditorVisualAidSessionVisible(editor, aid.id) || !hasDiagramVisualAidContent(aid) || editor.visualAidPreviewPlaying) return;
         editor.visualAidPreviewActive = true;
         editor.visualAidPreviewPlaying = true;
-        const duration = getDiagramVisualAidPlaybackDurationMs(aid);
+        const duration = getDiagramVisualAidGroupPlaybackDurationMs(getActiveImageEditorVisualAidGroup(editor), aid);
         editor.visualAidPreviewStartedAt = performance.now() - (editor.visualAidPreviewProgress * duration);
         // Mount the shared persistent surface once before RAF playback starts.
         renderImageEditorVisualAidLayer();
@@ -21858,7 +21970,7 @@ The deletion becomes permanent when you save the diagram.`);
             <button type="button" data-visual-aid-text-delete="${escapeHtml(selected.id)}">Delete Text</button>
             <p class="studio-visual-aid-text-note">Drag text on the diagram to move it; drag its corner to resize. Only the text appears in Review and Mini Quiz.</p>
         </div>` : '';
-        return `<div class="studio-visual-aid-text-section"><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Text Boxes</span><button type="button" data-visual-aid-text-add ${aid.textBoxes.length >= 16 || (aid.path.length < 2 && !hasFlowFillGeometry(aid)) ? 'disabled' : ''}>+ Add Text</button></div><div class="studio-visual-aid-text-tabs">${aid.textBoxes.map((box, i) => `<button type="button" data-visual-aid-text-select="${escapeHtml(box.id)}" class="${box.id === selected?.id ? 'active' : ''}">Text ${i + 1}</button>`).join('')}</div>${boxUi}</div>`;
+        return `<div class="studio-visual-aid-text-section"><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Text Boxes</span><button type="button" data-visual-aid-text-add ${aid.textBoxes.length >= 16 || !hasDiagramVisualAidContent(aid) ? 'disabled' : ''}>+ Add Text</button></div><div class="studio-visual-aid-text-tabs">${aid.textBoxes.map((box, i) => `<button type="button" data-visual-aid-text-select="${escapeHtml(box.id)}" class="${box.id === selected?.id ? 'active' : ''}">Text ${i + 1}</button>`).join('')}</div>${boxUi}</div>`;
     }
 
     function renderImageEditorVisualAidPanel() {
@@ -21887,7 +21999,7 @@ The deletion becomes permanent when you save the diagram.`);
                 return `<div class="studio-visual-aid-ball-row"><span class="studio-visual-aid-ball-index">${ballIndex + 1}</span><input data-visual-aid-ball-color-id="${escapeHtml(ball.id)}" type="color" value="${escapeHtml(ball.color)}" aria-label="Ball ${ballIndex + 1} color" ${aid.divisionColorSync?'disabled':''}><button type="button" class="studio-visual-aid-ball-option ${directionOpen?'active':''}" data-visual-aid-ball-menu="direction" data-ball-id="${escapeHtml(ball.id)}" title="Direction: ${escapeHtml(ball.direction)}" aria-label="Ball direction">↕</button><button type="button" class="studio-visual-aid-ball-option ${functionOpen?'active':''}" data-visual-aid-ball-menu="function" data-ball-id="${escapeHtml(ball.id)}" title="Function: ${escapeHtml(ball.function)}" aria-label="Ball function">ƒx</button><button type="button" data-visual-aid-delete-ball="${escapeHtml(ball.id)}" aria-label="Delete ball">×</button>${directionOpen ? `<div class="studio-visual-aid-ball-popover" role="menu"><button type="button" data-visual-aid-ball-direction-value="forward" data-ball-id="${escapeHtml(ball.id)}" class="${ball.direction==='forward'?'active':''}">Forward</button><button type="button" data-visual-aid-ball-direction-value="reverse" data-ball-id="${escapeHtml(ball.id)}" class="${ball.direction==='reverse'?'active':''}">Reverse</button></div>` : ''}${functionOpen ? `<div class="studio-visual-aid-ball-popover" role="menu"><button type="button" data-visual-aid-ball-function-value="loop" data-ball-id="${escapeHtml(ball.id)}" class="${ball.function==='loop'?'active':''}">Loop</button><button type="button" data-visual-aid-ball-function-value="stop" data-ball-id="${escapeHtml(ball.id)}" class="${ball.function==='stop'?'active':''}">Stop</button></div>` : ''}</div>`;
             }).join('');
             const sessionVisible = isImageEditorVisualAidSessionVisible(editor, aid.id);
-            const previewReady = sessionVisible && aid.path.length > 1;
+            const previewReady = sessionVisible && hasDiagramVisualAidContent(aid);
             const pathMethod = active ? normalizeDiagramVisualAidPathAuthoring(editor.activeVisualAidPathMethod || aid.pathAuthoring || 'brush') : aid.pathAuthoring;
             const pathMenuOpen = !!(active && editor.visualAidPathMenuOpen);
             const curveMode = !!(active && editor.activeVisualAidTool === 'path' && pathMethod === 'curves');
@@ -21898,11 +22010,13 @@ The deletion becomes permanent when you save the diagram.`);
             const visualAidToggle = (label, attribute, checked, disabled = false) => `<label class="studio-visual-aid-switch${disabled ? ' is-disabled' : ''}"><span class="studio-visual-aid-switch-control"><input ${attribute} type="checkbox" role="switch" aria-label="${label}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="studio-visual-aid-switch-track" aria-hidden="true"></span></span><span>${label}</span></label>`;
             const brushLazyUi = brushMode ? `<div class="studio-visual-aid-lazy-controls${lazyEnabled ? ' is-enabled' : ''}" aria-label="Brush Lazy Drag controls">${visualAidToggle('Lazy Drag', 'data-visual-aid-lazy-enabled', lazyEnabled)}${lazyEnabled ? `<label>Lazy Distance <input data-visual-aid-lazy-distance type="range" min="4" max="120" step="1" value="${lazyDistance}"><span data-visual-aid-lazy-distance-value>${lazyDistance}</span></label><label>Lazy Step <input data-visual-aid-lazy-step type="range" min="1" max="20" step="1" value="${lazyStep}"><span data-visual-aid-lazy-step-value>${lazyStep}</span></label>` : ''}</div>` : '';
             const pathAuthoringUi = `<div class="studio-visual-aid-path-tool-wrap"><button type="button" data-visual-aid-path-menu-toggle class="${editor.activeVisualAidTool==='path'?'active':''}" aria-expanded="${pathMenuOpen?'true':'false'}">Draw Path <span aria-hidden="true">▾</span></button>${pathMenuOpen ? `<div class="studio-visual-aid-path-menu" role="menu"><button type="button" data-visual-aid-path-method="brush" class="${pathMethod==='brush'?'active':''}" role="menuitem">Brush</button><button type="button" data-visual-aid-path-method="curves" class="${pathMethod==='curves'?'active':''}" role="menuitem">Curves</button></div>` : ''}</div>${curveMode ? `<div class="studio-visual-aid-curve-controls" aria-label="Curves path controls"><button type="button" data-visual-aid-curve-action="add">Add</button><button type="button" data-visual-aid-curve-action="reset">Reset</button><button type="button" data-visual-aid-curve-action="finish" ${(aid.curveAnchors||[]).length<2?'disabled':''}>Finish</button></div>` : ''}${brushLazyUi}`;
+            const imported = getImportedVisualAidAnimation(aid);
+            const importedUi = imported ? `<div class="studio-imported-animation-settings"><strong>Imported animation</strong><div>${escapeHtml(imported.name)} · ${imported.durationSec.toFixed(2)}s · synchronized timeline</div><div class="studio-imported-animation-grid">${[['x','Left'],['y','Top'],['width','Width'],['height','Height'],['opacity','Opacity']].map(([key,label]) => `<label>${label} <input data-visual-aid-lottie-box="${key}" type="number" min="${key==='opacity'?0:key==='width'||key==='height'?5:0}" max="${key==='opacity'?100:key==='width'||key==='height'?100:95}" value="${imported.box[key]}" step="1">%</label>`).join('')}</div><small>The Lottie source is locked. Draw Path, arrows, and text are editable overlays sharing its timeline.</small><button type="button" class="auth-action-btn auth-secondary-btn" data-visual-aid-remove-imported-animation>Remove imported animation</button></div>` : '';
             if (aid.flowFillType === 'flow-fill') {
-                return `<section class="studio-visual-aid-item ${active?'is-active':''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index+1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Flow Fill Visual Aid name"><button type="button" class="studio-visual-aid-eye" data-visual-aid-visibility="${escapeHtml(aid.id)}">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}">🗑</button></div>${active?getFlowFillEditorPanelMarkup(aid,editor,pathAuthoringUi,visualAidToggle,previewReady):''}${active?renderImageEditorVisualAidTextControls(aid,editor):''}</section>`;
+                return `<section class="studio-visual-aid-item ${active?'is-active':''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index+1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Flow Fill Visual Aid name"><button type="button" class="studio-visual-aid-eye" data-visual-aid-visibility="${escapeHtml(aid.id)}">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}">🗑</button></div>${active?getFlowFillEditorPanelMarkup(aid,editor,pathAuthoringUi,visualAidToggle,previewReady):''}${active?renderImageEditorVisualAidTextControls(aid,editor)+importedUi:''}</section>`;
             }
             const behaviorUi = `<div class="studio-visual-aid-behavior"><div class="studio-visual-aid-section-title">Behavior</div>${visualAidToggle('Display Full Path', 'data-visual-aid-complete-path', aid.completePath)}${visualAidToggle('Trailing Path', 'data-visual-aid-trailing-enabled', aid.trailingEnabled)}${aid.trailingEnabled ? `<label class="studio-visual-aid-trailing-control">Trail Length <input data-visual-aid-trailing-length type="range" min="5" max="100" step="1" value="${aid.trailingLength}" aria-label="Trailing path length"><span data-visual-aid-trailing-length-value>${aid.trailingLength}%</span></label>` : ''}${visualAidToggle('Multiple Balls', 'data-visual-aid-multiple-balls', aid.multipleBalls)}${visualAidToggle('Division Color Sync', 'data-visual-aid-division-color-sync', aid.divisionColorSync)}${visualAidToggle('Ball Follows Division Order', 'data-visual-aid-ball-follows-divisions', aid.ballFollowsDivisionOrder)}${visualAidToggle('Multiple Paths', 'data-visual-aid-multiple-paths', aid.multiplePaths)}${visualAidToggle('Continue to Next Path', 'data-visual-aid-continue-next-path', aid.continueToNextPath, !aid.multiplePaths)}</div>`;
-            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Path name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid path">🗑</button></div>${active ? `<div class="studio-visual-aid-tools">${pathAuthoringUi}<button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><button type="button" data-visual-aid-tool="ball" class="${editor.activeVisualAidTool==='ball'?'active':''}" ${aid.path.length>1?'':'disabled'}>Add Ball</button>${aid.multiplePaths ? `<button type="button" data-visual-aid-add-path>Add Path</button>` : ''}<label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="48" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls">${visualAidToggle('Arrow', 'data-visual-aid-arrows', aid.arrows)}</div></div>${behaviorUi}<div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button>${visualAidToggle('Loop', 'data-visual-aid-preview-loop', editor.visualAidPreviewLoop, !previewReady)}</div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Balls</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='ball'?'active':''}" data-visual-aid-tool="ball" ${aid.path.length>1?'':'disabled'}>+ Add Ball</button></div>${balls || '<div class="studio-visual-aid-empty">Click Add Ball, then click anywhere on the path to set its start position.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Divisions</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='division'?'active':''}" data-visual-aid-tool="division">+ Add Division</button></div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Points</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='point'?'active':''}" data-visual-aid-tool="point">+ Add Point</button></div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}${renderImageEditorVisualAidTextControls(aid,editor)}` : ''}</section>`;
+            return `<section class="studio-visual-aid-item ${active ? 'is-active' : ''}" data-visual-aid-id="${escapeHtml(aid.id)}"><div class="studio-visual-aid-item-head"><button type="button" class="studio-visual-aid-select" data-visual-aid-select="${escapeHtml(aid.id)}">${index + 1}</button><input data-visual-aid-name value="${escapeHtml(aid.name)}" aria-label="Path name"><button type="button" class="studio-visual-aid-eye ${sessionVisible ? 'is-visible' : 'is-hidden'}" data-visual-aid-visibility="${escapeHtml(aid.id)}" aria-pressed="${sessionVisible ? 'true':'false'}" title="${sessionVisible ? 'Hide':'Show'} visual aid in Diagram Creator">👁</button><button type="button" data-visual-aid-delete="${escapeHtml(aid.id)}" aria-label="Delete visual aid path">🗑</button></div>${active ? `<div class="studio-visual-aid-tools">${pathAuthoringUi}<button type="button" data-visual-aid-tool="division" class="${editor.activeVisualAidTool==='division'?'active':''}">Add Division</button><button type="button" data-visual-aid-tool="point" class="${editor.activeVisualAidTool==='point'?'active':''}">Add Point</button><button type="button" data-visual-aid-tool="ball" class="${editor.activeVisualAidTool==='ball'?'active':''}" ${aid.path.length>1?'':'disabled'}>Add Ball</button>${aid.multiplePaths ? `<button type="button" data-visual-aid-add-path>Add Path</button>` : ''}<label>Path <input data-visual-aid-default-color type="color" value="${escapeHtml(aid.defaultColor)}" aria-label="Path color"></label><label class="studio-visual-aid-thickness-control">Thickness <input data-visual-aid-thickness type="range" min="2" max="48" step="1" value="${aid.thickness}" aria-label="Visual Aid path thickness"><span data-visual-aid-thickness-value>${aid.thickness}</span></label><label class="studio-visual-aid-speed-control">Speed <input data-visual-aid-speed type="range" min="0.25" max="3" step="0.25" value="${aid.speed}" aria-label="Visual Aid animation speed"><span data-visual-aid-speed-value>${Number(aid.speed).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}×</span></label><div class="studio-visual-aid-end-marker-controls">${visualAidToggle('Arrow', 'data-visual-aid-arrows', aid.arrows)}</div></div>${behaviorUi}<div class="studio-visual-aid-preview"><div class="studio-visual-aid-preview-controls" aria-label="Visual Aid preview controls"><button type="button" data-visual-aid-preview-action="play" aria-label="Play preview" ${previewReady?'':'disabled'}>▶</button><button type="button" data-visual-aid-preview-action="pause" aria-label="Pause preview" ${previewReady?'':'disabled'}>⏸</button><button type="button" data-visual-aid-preview-action="reset" aria-label="Reset preview" ${previewReady?'':'disabled'}>↺</button>${visualAidToggle('Loop', 'data-visual-aid-preview-loop', editor.visualAidPreviewLoop, !previewReady)}</div><div class="studio-visual-aid-preview-sequence" data-visual-aid-preview-sequence aria-label="Visual Aid preview sequence"></div></div><div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Balls</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='ball'?'active':''}" data-visual-aid-tool="ball" ${aid.path.length>1?'':'disabled'}>+ Add Ball</button></div>${balls || '<div class="studio-visual-aid-empty">Click Add Ball, then click anywhere on the path to set its start position.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Divisions</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='division'?'active':''}" data-visual-aid-tool="division">+ Add Division</button></div>${divisions || '<div class="studio-visual-aid-empty">Click Add Division, then click the path.</div>'}<div class="studio-visual-aid-section-heading"><span class="studio-visual-aid-section-title">Points</span><button type="button" class="studio-visual-aid-quick-add ${editor.activeVisualAidTool==='point'?'active':''}" data-visual-aid-tool="point">+ Add Point</button></div>${points || '<div class="studio-visual-aid-empty">Click Add Point, then click the path.</div>'}${renderImageEditorVisualAidTextControls(aid,editor)}${importedUi}` : ''}</section>`;
         }).join('') || '<div class="studio-visual-aid-empty">Add a Visual Aid, draw its path, then add divisions, points, and balls.</div>';
         list.innerHTML = `${presetBar}${itemMarkup}`;
         renderImageEditorVisualAidPreviewSequence();
@@ -21919,6 +22033,47 @@ The deletion becomes permanent when you save the diagram.`);
         }
         renderImageEditorVisualAidPanel();
         renderImageEditorVisualAidLayer();
+    }
+
+    async function importImageEditorLottieAnimation(file) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.visualAidsEnabled || !file) return;
+        try {
+            if (!/\.json$/i.test(file.name)) throw new Error('Export from Synfig as Lottie JSON (.json), not Synfig project XML.');
+            if (file.size > DIAGRAM_VISUAL_AID_LOTTIE_LIMIT_BYTES) throw new Error('This first test accepts files no larger than 256 KiB.');
+            const data = JSON.parse(await file.text());
+            const meta = validateImportedVisualAidLottie(data, file.size);
+            let aids = normalizeDiagramVisualAids(editor.visualAids || []);
+            const active = aids.find(aid => aid.id === editor.activeVisualAidId);
+            if (active?.importedAnimation && !window.confirm('Replace the animation on this Visual Aid? Its native arrows and paths will be kept.')) return;
+            if (!active) {
+                if (aids.length >= DIAGRAM_VISUAL_AID_MAX_ITEMS) throw new Error('Visual Aid limit reached. Remove an unused aid before importing.');
+                // New imports are regular Visual Aids, so Draw Path and text still work.
+                const name = file.name.replace(/\.json$/i, '').slice(0, 100) || `Animation ${aids.length + 1}`;
+                aids = aids.map(aid => ({...aid,visible:false}));
+                const next = normalizeDiagramVisualAid({name,presetName:name,presetInstanceId:createDiagramVisualAidId('preset-instance'), visible:true, defaultColor:'#8b5cf6', arrows:false, path:[]},aids.length);
+                aids.push(next);
+                editor.activeVisualAidId = next.id;
+            }
+            const selected = aids.find(aid => aid.id === editor.activeVisualAidId);
+            // Keep the selected object's identity: cloning the array here would
+            // lose the just-imported data when the aid is saved.
+            aids.forEach(aid => { aid.visible = aid.id === selected.id; });
+            const priorBox = selected.importedAnimation?.box || {x:0,y:0,width:100,height:100,opacity:100};
+            selected.importedAnimation = {type:'lottie', name:file.name.slice(0,100), durationSec:meta.durationSec, data, box:priorBox};
+            selected.visible = true;
+            editor.sessionVisibleVisualAidId = selected.id;
+            stopImageEditorVisualAidPreview({reset:true,deactivate:true});
+            editor.visualAids = normalizeDiagramVisualAids(aids);
+            editor.showVisualAidPanel = true;
+            editor.activeVisualAidTool = 'path';
+            setImageEditorMode('visual-aid');
+            refreshImageEditorVisualAidUi();
+            setImageEditorStatus(`Imported ${selected.importedAnimation.name} (${meta.durationSec.toFixed(2)} seconds). Play, pause and scrub using the existing Visual Aid timeline.`);
+        } catch (error) {
+            console.warn('Study Bunny animation import failed:', error);
+            setImageEditorStatus(`Animation import failed: ${error.message}`);
+        }
     }
 
     function addImageEditorVisualAid() {
@@ -23507,12 +23662,23 @@ The deletion becomes permanent when you save the diagram.`);
                 if (editor.showLabelPanel) requestAnimationFrame(() => applyImageEditorLabelPanelWidth());
             });
             elements.studioImageEditorAddVisualAidBtn?.addEventListener('click', addImageEditorVisualAid);
+            elements.studioImageEditorImportAnimationBtn?.addEventListener('click', () => elements.studioImageEditorImportAnimationInput?.click());
+            elements.studioImageEditorImportAnimationInput?.addEventListener('change', event => { const file = event.target.files?.[0]; event.target.value = ''; importImageEditorLottieAnimation(file); });
             elements.studioImageEditorAddFlowFillBtn?.addEventListener('click', addImageEditorFlowFillAid);
             elements.studioImageEditorVisualAidClosePathBtn?.addEventListener('click', closeActiveImageEditorVisualAidPath);
             elements.studioImageEditorVisualAidList?.addEventListener('click', event => {
                 const editor = state.auth.imageEditor;
                 if (!editor?.visualAidsEnabled) return;
                 let aids = normalizeDiagramVisualAids(editor.visualAids || []);
+                if (event.target.closest('[data-visual-aid-remove-imported-animation]')) {
+                    const active = aids.find(aid => aid.id === editor.activeVisualAidId);
+                    if (!active?.importedAnimation || !window.confirm('Remove this imported animation? Native arrows, paths and text boxes will remain.')) return;
+                    active.importedAnimation = null;
+                    stopImageEditorVisualAidPreview({reset:true,deactivate:true});
+                    editor.visualAids = normalizeDiagramVisualAids(aids);
+                    refreshImageEditorVisualAidUi();
+                    return;
+                }
                 const flowAddItem=event.target.closest('[data-flow-add-item]');
                 const flowSelectItem=event.target.closest('[data-flow-select-item]');
                 const flowDeleteItem=event.target.closest('[data-flow-delete-item]');
@@ -23910,6 +24076,16 @@ The deletion becomes permanent when you save the diagram.`);
                         if(action){action[actionQuestion?'question':'answer']=el.value.slice(0,actionQuestion?400:300);changed=true;}
                     }
                     if(changed){editor.visualAids=normalizeDiagramVisualAids(aids);renderImageEditorVisualAidLayer();}
+                    return;
+                }
+                const animationBox = event.target.closest('[data-visual-aid-lottie-box]');
+                if (animationBox) {
+                    const active = aids.find(item => item.id === editor.activeVisualAidId);
+                    const key = animationBox.dataset.visualAidLottieBox;
+                    if (!active?.importedAnimation?.box || !['x','y','width','height','opacity'].includes(key)) return;
+                    active.importedAnimation.box[key] = Math.min(key === 'x' || key === 'y' ? 95 : 100, Math.max(key === 'width' || key === 'height' ? 5 : 0, Number(animationBox.value) || 0));
+                    editor.visualAids = normalizeDiagramVisualAids(aids);
+                    renderImageEditorVisualAidLayer();
                     return;
                 }
                 const textField = event.target.closest('[data-visual-aid-text-field]');
@@ -25310,6 +25486,7 @@ The deletion becomes permanent when you save the diagram.`);
     const EXAM_QUESTION_TYPES = ['multiple_choice', 'typed_answer', 'hierarchy', 'classify'];
 
     function getStudioQuizMode() {
+        if (state.auth.editingQuizId && state.auth.handwrittenFlashcardPersistedEnabled) return 'flashcard';
         const explicitMode = normalizeSheetText(state.auth.editingQuizMode);
         if (explicitMode) return explicitMode;
         const selectedMode = normalizeSheetText(elements.createQuizTypeSelect?.value || 'multiple_choice') || 'multiple_choice';
@@ -25321,6 +25498,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function getStudioCurrentQuizType() {
+        if (state.auth.editingQuizId && state.auth.handwrittenFlashcardPersistedEnabled) return 'flashcard';
         const currentType = normalizeSheetText(state.auth.editingQuizType || '');
         if (isStudioExamMode()) {
             return EXAM_QUESTION_TYPES.includes(currentType) ? currentType : 'multiple_choice';
@@ -26331,7 +26509,7 @@ The deletion becomes permanent when you save the diagram.`);
                 completedToday && master && !progress.data.ribbonResetPending ? '🏆 MASTERED — spaced-repetition milestone earned or maintained!' :
                 completedToday && result.data.stages.d1 && !progress.data.ribbonResetPending
                     ? '✓ LEARNING — scheduled study milestone completed (2/2)!' :
-                '✓ Successful spaced-repetition pass recorded (1/2). Next pass after six hours on the same day.';
+                ''; // First successful pass stays silent; normal completion UI remains.
             if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
             renderQuizManagementList();
         }).catch(error => {
@@ -28843,6 +29021,13 @@ if (elements.importBackupFile) {
         const creatorEnabled = !!state.auth.configured && !!state.auth.user?.id;
         const busy = state.auth.studioSaveFeedback === 'saving';
         const canSaveChanges = creatorEnabled && !!quizName && !busy;
+        // A saved quiz's question family cannot be changed in the editor. Native
+        // iPad pickers could otherwise briefly show a conflicting type on return.
+        if (elements.createQuizTypeSelect) {
+            elements.createQuizTypeSelect.disabled = isEditingQuiz || busy;
+            elements.createQuizTypeSelect.title = isEditingQuiz
+                ? 'Quiz type is locked for an existing quiz.' : '';
+        }
         [elements.createQuizBtn, elements.studioEditorActionSaveBtn].forEach(button => {
             if (!button) return;
             const base = isEditingQuiz ? 'Save Changes' : 'Create Quiz';
@@ -34299,6 +34484,10 @@ if (elements.importBackupFile) {
             throw new Error('Could not load that question into the editor.');
         }
 
+        if (state.auth.editingQuizId && state.auth.handwrittenFlashcardPersistedEnabled
+            && normalizeSheetText(questionRow.question_type) !== 'flashcard') {
+            throw new Error('Handwritten flashcard editor received a non-flashcard question. Loading stopped to protect this quiz.');
+        }
         state.auth.editingQuestionId = questionRow.id;
         syncStudioQuestionFocusToEditor();
         state.auth.pendingInsertAfterQuestionId = null;
@@ -35569,6 +35758,10 @@ if (elements.openQuizStudioBtn) {
     }
 
     async function saveQuizShellFromEditor(options = {}) {
+        if (state.auth.editingQuizId && state.auth.handwrittenFlashcardPersistedEnabled
+            && (getStudioQuizMode() !== 'flashcard' || !state.auth.handwrittenFlashcardEnabled)) {
+            throw new Error('A saved handwritten flashcard quiz cannot be changed to a different quiz type.');
+        }
         if (!state.auth.client || !state.auth.user?.id) {
             setCreatorStatus('Sign in before creating or editing a quiz.', 'error');
             return '';
@@ -38941,6 +39134,13 @@ if (elements.openQuizStudioBtn) {
         }
     }
 
+    function resolveSavedQuizEditorMode(description = '', cachedType = '') {
+        const handwritten = getHandwrittenFlashcardConfigFromDescription(description).enabled;
+        const exam = getQuizModeFromDescription(description) === 'exam';
+        // Saved handwritten metadata beats stale question-type cache on iPad and desktop.
+        return handwritten ? 'flashcard' : (exam ? 'exam' : (normalizeSheetText(cachedType) || 'multiple_choice'));
+    }
+
     async function loadQuizIntoEditor(quizId, preferredQuestionId = null, options = {}) {
         try {
             if (!options.force && state.auth.studioHasUnsavedChanges) {
@@ -38950,11 +39150,6 @@ if (elements.openQuizStudioBtn) {
             const managedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
             if (!managedQuiz) {
                 setCreatorStatus('Could not find that quiz.', 'error');
-                return;
-            }
-
-            if (managedQuiz.quizType === 'mixed') {
-                setCreatorStatus('This legacy mixed quiz is not marked as an Exam. Convert or recreate it as an Exam before editing mixed question types.', 'error');
                 return;
             }
 
@@ -38969,11 +39164,24 @@ if (elements.openQuizStudioBtn) {
                 throw new Error('Could not load the selected quiz for editing.');
             }
 
+            // The stored handwritten marker is authoritative for its editor mode.
+            // iPad Study -> Edit Quiz can reach this path with a cached managed-list
+            // classification that still says multiple_choice. Never let that cache
+            // reclassify a saved handwritten deck or unlock its mode switch.
+            const handwrittenConfig = getHandwrittenFlashcardConfigFromDescription(quizRow.description || '');
+            const cachedType = normalizeSheetText(managedQuiz.quizType);
+            const editorMode = resolveSavedQuizEditorMode(quizRow.description || '', cachedType);
+            if (editorMode === 'mixed') {
+                setCreatorStatus('This legacy mixed quiz is not marked as an Exam. Convert or recreate it as an Exam before editing mixed question types.', 'error');
+                return;
+            }
             state.auth.editingQuizId = quizRow.id;
             state.auth.pendingInsertAfterQuestionId = null;
-            state.auth.editingQuizMode = managedQuiz.quizType || getQuizModeFromDescription(quizRow.description || '') || 'multiple_choice';
-            state.auth.editingQuizType = state.auth.editingQuizMode === 'exam' ? 'multiple_choice' : state.auth.editingQuizMode;
-            const handwrittenConfig = getHandwrittenFlashcardConfigFromDescription(quizRow.description || '');
+            state.auth.editingQuizMode = editorMode;
+            state.auth.editingQuizType = editorMode === 'exam' ? 'multiple_choice' : editorMode;
+            if (handwrittenConfig.enabled && cachedType !== 'flashcard') {
+                console.warn('Recovered handwritten flashcard editor mode from saved quiz metadata rather than stale managed classification.', { quizId: quizRow.id, cachedType });
+            }
             state.auth.handwrittenFlashcardEnabled = state.auth.editingQuizMode === 'flashcard' && handwrittenConfig.enabled;
             state.auth.handwrittenFlashcardPersistedEnabled = state.auth.handwrittenFlashcardEnabled;
             state.auth.handwrittenFlashcardStyle = handwrittenConfig.style;
@@ -39002,6 +39210,12 @@ if (elements.openQuizStudioBtn) {
             if (elements.createQuizTypeSelect) elements.createQuizTypeSelect.value = state.auth.editingQuizMode;
 
             let questionRows = await loadStudioQuestionListForQuiz(quizRow.id);
+            if (handwrittenConfig.enabled) {
+                const incompatible = (questionRows || []).filter(row => normalizeSheetText(row?.question_type) !== 'flashcard');
+                if (incompatible.length) {
+                    throw new Error('This saved handwritten flashcard quiz has inconsistent question types. Editing was stopped to protect the flashcard data; no quiz type was changed.');
+                }
+            }
             const incompleteFlashcardQuestionIds = Array.from(new Set(state.auth.studioIncompleteFlashcardQuestionIds || []));
             if (incompleteFlashcardQuestionIds.length && !options.skipIncompleteFlashcardCleanupPrompt) {
                 const countLabel = incompleteFlashcardQuestionIds.length === 1
