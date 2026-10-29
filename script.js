@@ -26314,6 +26314,45 @@ The deletion becomes permanent when you save the diagram.`);
         };
     }
 
+    // Phase 24A.5x: quiz-content edits already revoke progress in the Phase 24A.1
+    // database triggers. Re-read only the affected quiz's spaced metadata so an
+    // older browser cache cannot submit a stale revision or display an old ribbon.
+    async function refreshQuizSpacedStateForQuiz(quizId = '') {
+        const id = normalizeSheetText(quizId);
+        if (!id || !state.auth.client || !state.auth.user?.id || state.auth.quizSpacedMigrationMissing) return false;
+        if (!(state.auth.quizSpacedUnverifiedIds instanceof Set)) state.auth.quizSpacedUnverifiedIds = new Set();
+        const [review, revision] = await Promise.all([
+            state.auth.client.from(QUIZ_SPACED_REVIEW_TABLE)
+                .select('quiz_id, progress, version').eq('user_id', state.auth.user.id)
+                .eq('quiz_id', id).maybeSingle(),
+            state.auth.client.from('quiz_spaced_content_versions')
+                .select('quiz_id, revision').eq('quiz_id', id).maybeSingle()
+        ]);
+        if (review.error || revision.error || !revision.data) {
+            state.auth.quizSpacedUnverifiedIds.add(id);
+            state.auth.quizSpacedReviews.delete(id);
+            state.auth.quizSpacedContentRevisions.delete(id);
+            throw review.error || revision.error || new Error('Quiz spaced-review revision could not be verified.');
+        }
+        if (review.data) state.auth.quizSpacedReviews.set(id, {
+            progress: review.data.progress || {}, version: Number(review.data.version || 0)
+        });
+        else state.auth.quizSpacedReviews.delete(id); // Edit reset in Supabase: Day 1 again.
+        state.auth.quizSpacedContentRevisions.set(id, Number(revision.data.revision || 0));
+        state.auth.quizSpacedUnverifiedIds.delete(id);
+        const cached = getSupabaseManagementCacheEntry('managedQuizzes');
+        if (cached) setSupabaseManagementCacheEntry('managedQuizzes', {
+            ...cached,
+            quizSpacedReviews: [...state.auth.quizSpacedReviews],
+            quizSpacedContentRevisions: [...state.auth.quizSpacedContentRevisions]
+        });
+        return true;
+    }
+
+    function isQuizSpacedEditConflict(error) {
+        return /quiz content changed since this study session started/i.test(String(error?.message || ''));
+    }
+
     function getQuizSpacedIdsSignature(questionIds = []) {
         const ids = [...new Set((questionIds || []).map(id => normalizeSheetText(id)).filter(Boolean))].sort();
         if (!ids.length) return '';
@@ -26382,6 +26421,12 @@ The deletion becomes permanent when you save the diagram.`);
         const quizId = getActiveStudySupabaseQuizIdForShortcut();
         const all = state.sourceQuestions || [];
         if (!quizId || !all.length || !visibleQuestions.length) return;
+        // Still allow studying if Supabase could not verify the latest revision,
+        // but never credit an unverifiable or potentially stale study attempt.
+        if (state.auth.quizSpacedUnverifiedIds?.has(quizId)) {
+            state.quizSpacedAttempt = null;
+            return;
+        }
         const ids = all.map(q => normalizeSheetText(q.sourceQuestionId || q.id));
         const expectedIds = getQuizSpacedIdsSignature(ids);
         const visibleIds = getQuizSpacedIdsSignature(visibleQuestions.map(q => q.sourceQuestionId || q.id));
@@ -26512,9 +26557,20 @@ The deletion becomes permanent when you save the diagram.`);
                 ''; // First successful pass stays silent; normal completion UI remains.
             if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
             renderQuizManagementList();
-        }).catch(error => {
-            console.error('Quiz spaced-review pass was not saved:', error);
+        }).catch(async error => {
             attempt.finalized = true;
+            if (isQuizSpacedEditConflict(error)) {
+                // Another edit revoked the previous revision while this study
+                // attempt was open. Do not credit old content or show the
+                // redundant "quiz changed" warning in the completion screen.
+                attempt.feedback = '';
+                try { await refreshQuizSpacedStateForQuiz(attempt.quizId); }
+                catch (refreshError) { console.warn('Could not refresh quiz progress after content edit:', refreshError); }
+                if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
+                renderQuizManagementList();
+                return;
+            }
+            console.error('Quiz spaced-review pass was not saved:', error);
             attempt.feedback = `Spaced-repetition progress was NOT saved: ${error.message || 'database unavailable'}`;
             if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
         }).finally(() => { attempt.inFlight = false; });
@@ -31941,6 +31997,15 @@ if (elements.importBackupFile) {
         }
         if (state.auth.handwrittenTouchedCardIds) {
             for (const [id] of flashcardDraftEntries) state.auth.handwrittenTouchedCardIds.delete(id);
+        }
+        if (state.auth.editingQuizId) {
+            try { await refreshQuizSpacedStateForQuiz(state.auth.editingQuizId); }
+            catch (error) {
+                // Saving authored content already succeeded. Do not misreport a
+                // save failure because the read-only progress refresh failed.
+                console.warn('Quiz changes saved; spaced-review status will be verified again on Study:', error);
+            }
+            renderQuizManagementList();
         }
         setStudioDirtyState(false);
         const elapsedMs = Math.round(performance.now() - startedAt);
@@ -43287,6 +43352,10 @@ async function openCurrentStudyQuizEditorShortcut() {
     closeSettingsPopup();
     if (state.isAppFullscreen) exitFullscreenMode();
     await loadQuizIntoEditor(quizId, null, { force: true });
+    if (state.auth.editingQuizId === quizId && state.quizSpacedAttempt?.quizId === quizId) {
+        state.quizSpacedAttempt = null;
+        renderQuizSpacedCompletionFeedback();
+    }
 }
 
 function openCurrentStudyChallengesShortcut() {
@@ -45280,6 +45349,15 @@ async function loadSelectedQuiz(selectorValue, options = {}) {
         throw createStudyLoadDiagnosticError(`No usable questions were loaded for "${selectedQuiz.name || 'this quiz'}". This usually means the saved question rows do not match the quiz detail table, or every row was filtered out during study-load parsing.`);
     }
 
+    if (selectedQuiz.source === DATA_SOURCES.SUPABASE) {
+        const quizId = normalizeSheetText(selectedQuiz.sourceQuizId || selectedQuiz.id.replace(/^sb:/, ''));
+        try { await refreshQuizSpacedStateForQuiz(quizId); }
+        catch (error) {
+            // A study may still proceed offline, but never certify progress
+            // against an unverified revision from an earlier editor session.
+            console.warn('Study started without verified spaced-review status:', error);
+        }
+    }
     await applyLoadedQuestions(loadedQuestions);
 }
 
