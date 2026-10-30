@@ -55750,6 +55750,17 @@ elements.questionImage.onclick = function () {
     }));
     elements.flashcardHandwrittenUndoBtn?.addEventListener('click',()=>state.auth.handwrittenImageTransformMode?navigateHandwrittenImageHistory('undo'):undoHandwrittenStroke());
     elements.flashcardHandwrittenRedoBtn?.addEventListener('click',()=>state.auth.handwrittenImageTransformMode?navigateHandwrittenImageHistory('redo'):redoHandwrittenStroke());
+    // Phase 24A.5y: backup protection if WebKit emits a dblclick on controls.
+    // Cancel only the browser's double-click default, never either click event;
+    // rapid Undo/Redo still execute for each deliberate tap (Pencil or finger).
+    [
+        elements.flashcardHandwrittenWorkspace?.querySelector('.studio-handwritten-toolbar'),
+        elements.flashcardHandwrittenWorkspace?.querySelector('.studio-handwritten-navigation'),
+        elements.flashcardHandwrittenWorkspace?.querySelector('.studio-handwritten-focus-navigation')
+    ].forEach(controlGroup => controlGroup?.addEventListener('dblclick', event => {
+        if (!event.target?.closest?.('button, .toggle-switch, .studio-handwritten-settings-switch')) return;
+        if (event.cancelable) event.preventDefault();
+    }, {capture:true, passive:false}));
     // Capture Pencil input as early as possible on iPad. passive:false is required
     // for preventDefault() to reliably suppress Safari's compatibility selection path.
     elements.flashcardHandwrittenCanvas?.addEventListener('pointerdown',handleHandwrittenPointerDown,{capture:true,passive:false});

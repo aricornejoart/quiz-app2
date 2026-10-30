@@ -13957,6 +13957,24 @@ body.review-mode-image-open {
 }
 .studio-handwritten-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px; border:1px solid rgba(167,139,250,.28); border-radius:14px; background:rgba(28,24,48,.76); }
 .studio-handwritten-toolbar .active { box-shadow:0 0 0 2px rgba(124,108,255,.7) inset; }
+
+/* Phase 24A.5y — iPad Safari: rapid toolbar taps (Undo, Pen, etc.) must
+   remain individual clicks, not become a browser double-tap-to-zoom gesture.
+   Protect ONLY the interactive controls, not the scrollable toolbar container,
+   typed editor, drawing surface, or page viewport. touch-action: none is used
+   instead of manipulation for older iPad WebKit double-tap compatibility. */
+.studio-handwritten-workspace .studio-handwritten-toolbar button,
+.studio-handwritten-workspace .studio-handwritten-toolbar .toggle-switch,
+.studio-handwritten-workspace .studio-handwritten-navigation button,
+.studio-handwritten-workspace .studio-handwritten-navigation .toggle-switch,
+.studio-handwritten-workspace .studio-handwritten-focus-navigation button,
+.studio-handwritten-workspace .studio-handwritten-floating-popover button,
+.studio-handwritten-workspace .studio-handwritten-floating-popover .toggle-switch,
+.studio-handwritten-workspace .studio-handwritten-floating-popover .studio-handwritten-settings-switch,
+.studio-handwritten-workspace .studio-handwritten-card button {
+  touch-action: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
 .studio-handwritten-inline-control { display:inline-flex; align-items:center; gap:6px; font-size:.86rem; }
 .studio-handwritten-inline-control select, .studio-handwritten-inline-control input[type="range"] { max-width:128px; }
 .studio-handwritten-color-presets { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
