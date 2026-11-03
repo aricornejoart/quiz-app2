@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a5y_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a6j_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a5y_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a6j_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -823,14 +823,32 @@ MODIFICATION RULES FOR THIS APP
                           </div>
 
                           <div class="multi-angle-control-group">
-                            <div class="multi-angle-control-title">4. Final image quality · Active angle</div>
+                            <div class="multi-angle-control-title multi-angle-quality-title">
+                              <span>4. Final image quality · Active angle</span>
+                              <details class="multi-angle-info" aria-label="Conversion and size guidance">
+                                <summary title="Encoded sizes are calculated locally. Each flattened angle must be 3 MB or less. PNG is lossless; WebP/JPEG quality is adjustable. JPEG removes transparency. Saved-image geometry stays locked." aria-label="About image conversion and size limits">ⓘ</summary>
+                                <div class="multi-angle-info-popup">Actual encoded sizes are calculated locally; nothing uploads during adjustment. Final flattened image limit: 3 MB per angle. PNG preserves decoded pixels. WebP Lossy/JPEG use adjustable quality. JPEG removes transparency. The optional target is a file-size ceiling, not a guarantee, and never forces resolution changes or quality below 60%. For saved images, geometry remains permanently locked; only confirmed conversions replace canonical media.</div>
+                              </details>
+                            </div>
+                            <div id="multiAngleQualityNav" class="multi-angle-quality-nav hidden" aria-label="Navigate angles while adjusting conversion quality">
+                              <button id="multiAngleQualityPrevBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-label="Previous angle in image quality">‹ Previous</button>
+                              <strong id="multiAngleQualityAngleIndicator" class="multi-angle-quality-angle-indicator" aria-live="polite">1 of 1</strong>
+                              <button id="multiAngleQualityNextBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-label="Next angle in image quality">Next ›</button>
+                            </div>
                             <label class="multi-angle-format-choice"><span>Flattened format</span><select id="multiAngleFormatSelect"><option value="webp" selected>WebP — lossy (recommended)</option><option value="png">PNG — lossless</option><option value="jpeg">JPEG — lossy</option></select></label>
                             <label id="multiAngleQualityChoice" class="multi-angle-quality-choice"><span>Lossy quality <strong id="multiAngleQualityValue">88%</strong></span><input id="multiAngleQualityInput" type="range" min="60" max="100" step="1" value="88"></label>
                             <label class="multi-angle-format-choice"><span>Optional target size (KB) — WebP/JPEG lossy only</span><input id="multiAngleTargetSizeInput" type="number" min="25" max="3072" step="25" placeholder="e.g. 500 (leave blank for quality slider)"></label>
+                            <div class="multi-angle-webp-action-row">
+                              <button id="multiAngleApplyWebpQualityAllBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Apply to All Angles</button>
+                              <details id="multiAngleApplyWebpHelp" class="multi-angle-info hidden" aria-label="Apply to All Angles guidance">
+                                <summary title="Uses this angle’s WebP percentage on every angle. Clears optional KB targets; you can fine-tune each angle before Flatten/Commit." aria-label="About Apply to All Angles">ⓘ</summary>
+                                <div class="multi-angle-info-popup">Uses this angle’s WebP percentage on every angle. Clears optional KB targets so each angle uses its slider quality. You can fine-tune individual angles before the existing Flatten/Commit step.</div>
+                              </details>
+                            </div>
                             <button id="multiAngleApplyFormatAllBtn" type="button" class="auth-action-btn auth-secondary-btn hidden">Apply format + compression to all saved angles</button>
                             <img id="multiAngleConvertedPreview" class="multi-angle-converted-preview hidden" alt="Locally encoded output preview. No upload occurs until saving.">
                             <div class="multi-angle-export-metrics"><div>Current image <strong id="multiAngleCurrentBytes">Calculating…</strong></div><div>Flattened preview <strong id="multiAngleEstimateBytes" aria-live="polite">Calculating…</strong></div></div>
-                            <div class="multi-angle-export-note">Actual encoded sizes are calculated locally; nothing uploads during adjustment. Final flattened image limit: 3 MB per angle. PNG preserves decoded pixels. WebP Lossy/JPEG use adjustable quality. JPEG removes transparency. The optional target is a file-size ceiling, not a guarantee, and never forces resolution changes or quality below 60%. For saved images, geometry remains permanently locked; only confirmed conversions replace canonical media.</div>
+
                           </div>
 
                           <div id="multiAngleFlattenNotice" class="multi-angle-flatten-notice hidden" role="status">Saved angle: pixel dimensions, subject position, and cropping are permanently locked. Format and compression can be changed without unlocking geometry.</div>
@@ -849,9 +867,10 @@ MODIFICATION RULES FOR THIS APP
                             <button id="multiAngleEditAngleBtn" type="button" class="auth-action-btn auth-primary-btn">Edit Labels + Drawings</button>
                             <button id="multiAngleAddImagesBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Images</button>
                             <button id="multiAngleDeleteAngleBtn" type="button" class="auth-action-btn auth-secondary-btn multi-angle-delete-angle-btn">Delete Angle</button>
+                            <button id="multiAngleUndoDeleteBtn" type="button" class="auth-action-btn auth-secondary-btn" disabled>Undo Last Delete</button>
                             <button id="multiAngleToggleListBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-expanded="false">Show Angles</button>
                           </div>
-                          <div class="multi-angle-export-note">Add Images lets you upload originals or reuse Saved Images. Unchanged Saved Image angles reuse their existing full-size file instead of creating another one.</div>
+                          <div class="multi-angle-export-note">Add Images lets you upload originals or reuse Saved Images, including after saving. Existing angles keep their locked resolution, crop and positioning. New angles can be framed before Flatten/Commit. Delete Angle stages a reversible removal; use Undo Last Delete before saving. At least one angle must remain.</div>
                         </div>
                       </div>
 
@@ -1318,6 +1337,21 @@ MODIFICATION RULES FOR THIS APP
                     </select>
                   </label>
 
+                  <div id="studioExamSectionsPanel" class="studio-exam-sections-panel hidden">
+                    <div class="creator-subsection-title studio-inline-title">Exam Sections</div>
+                    <div class="creator-note">Assign saved question numbers to reporting sections. The report will not change any study or grading options.</div>
+                    <div class="studio-exam-section-fields">
+                      <label class="auth-field"><span>Questions</span><input id="studioExamSectionRange" type="text" autocomplete="off" placeholder="1-15, 17, 22-25"></label>
+                      <label class="auth-field"><span>Create Section Name</span><input id="studioExamSectionName" type="text" maxlength="90" autocomplete="off" placeholder="English Comprehension"></label>
+                      <label class="auth-field"><span>Existing Sections</span><select id="studioExamSectionSelect"><option value="">Create new section</option></select></label>
+                    </div>
+                    <div class="studio-exam-section-actions">
+                      <button type="button" id="studioExamSectionApply" class="auth-action-btn auth-primary-btn">Create</button>
+                      <button type="button" id="studioExamSectionDelete" class="auth-action-btn auth-secondary-btn hidden">Delete Section</button>
+                    </div>
+                    <div id="studioExamSectionStatus" class="creator-note" role="status" aria-live="polite"></div>
+                  </div>
+
                   <div id="flashcardHandwrittenToggleRow" class="studio-handwritten-toggle-row hidden">
                     <label class="studio-toggle-label">
                       <input id="flashcardHandwrittenToggle" type="checkbox">
@@ -1350,14 +1384,20 @@ MODIFICATION RULES FOR THIS APP
                         <span>Search questions</span>
                         <input id="studioQuestionSearchInput" type="text" autocomplete="off" placeholder="Search term, definition, or prompt">
                       </label>
-                      <button
-                        id="studioQuestionStarredOnly"
-                        type="button"
-                        class="studio-question-starred-filter-btn"
-                        aria-pressed="false"
-                        title="Show only starred questions"
-                        aria-label="Show only starred questions"
-                      >Starred only</button>
+                      <div class="studio-question-filter-pair">
+                        <button
+                          id="studioQuestionStarredOnly"
+                          type="button"
+                          class="studio-question-starred-filter-btn"
+                          aria-pressed="false"
+                          title="Show only starred questions"
+                          aria-label="Show only starred questions"
+                        >Starred only</button>
+                        <div id="studioExamQuestionFilterWrap" class="studio-exam-question-filter-wrap hidden">
+                          <button id="studioExamQuestionFilterBtn" type="button" class="studio-question-starred-filter-btn studio-exam-question-filter-btn" aria-expanded="false" aria-haspopup="true" aria-controls="studioExamQuestionFilterMenu">Filter Sections ▾</button>
+                          <div id="studioExamQuestionFilterMenu" class="studio-exam-question-filter-menu hidden" role="group" aria-label="Filter questions by exam section"></div>
+                        </div>
+                      </div>
                       <div class="studio-question-jump-group">
                         <label class="auth-field studio-question-jump-field">
                           <span>Jump to #</span>
@@ -1941,6 +1981,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="feedback"></div>
       <div id="progressBuildUpText" class="hidden" aria-live="polite"></div>
       <div id="questionText">Loading...</div>
+      <div id="examPostQuizCompletion" class="exam-post-quiz-completion hidden" aria-live="polite"></div>
 
       <div class="options">
         <div class="option-block">
@@ -2573,6 +2614,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a5y_1"></script>
+  <script src="script.js?v=24a6j_1"></script>
 </body>
 </html>

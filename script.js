@@ -256,6 +256,7 @@ MODIFICATION RULES FOR THIS APP
             timeoutIds: []
         },
         quizSpacedAttempt: null,
+        examPostQuizAttempt: null,
         completionChallengePrompt: {
             open: false,
             shownForSessionKey: ''
@@ -273,6 +274,9 @@ MODIFICATION RULES FOR THIS APP
             supabaseFolders: [],
             managedQuizzes: [],
             quizChallengeAchievements: new Map(),
+            examSections: [],
+            studioExamSectionFilterId: '',
+            examLatestReports: new Map(),
             quizSpacedReviews: new Map(),
             quizSpacedContentRevisions: new Map(),
             quizSpacedMigrationMissing: false,
@@ -513,6 +517,9 @@ MODIFICATION RULES FOR THIS APP
                 suppressMiniVisualPromptClickUntil: 0
             },
             studioSavedImageMemoryLibrary: [],
+            // Client-session guards against stale thumbnail/label writes reviving a deletion.
+            studioSavedImageDeletedKeys: new Set(),
+            studioSavedImageDeleteErrors: new Map(),
             studioSavedImageSync: {
                 loadedUserId: '',
                 lastLoadedAt: 0,
@@ -705,6 +712,10 @@ MODIFICATION RULES FOR THIS APP
         multiAnglePrevBtn: document.getElementById('multiAnglePrevBtn'),
         multiAngleNextBtn: document.getElementById('multiAngleNextBtn'),
         multiAngleIndicator: document.getElementById('multiAngleIndicator'),
+        multiAngleQualityNav: document.getElementById('multiAngleQualityNav'),
+        multiAngleQualityPrevBtn: document.getElementById('multiAngleQualityPrevBtn'),
+        multiAngleQualityNextBtn: document.getElementById('multiAngleQualityNextBtn'),
+        multiAngleQualityAngleIndicator: document.getElementById('multiAngleQualityAngleIndicator'),
         multiAnglePositionActiveName: document.getElementById('multiAnglePositionActiveName'),
         multiAngleBackgroundInput: document.getElementById('multiAngleBackgroundInput'),
         multiAngleBackgroundValue: document.getElementById('multiAngleBackgroundValue'),
@@ -716,6 +727,8 @@ MODIFICATION RULES FOR THIS APP
         multiAngleResetCanvasBtn: document.getElementById('multiAngleResetCanvasBtn'),
         multiAngleFinalBoundaryText: document.getElementById('multiAngleFinalBoundaryText'),
         multiAngleApplyFormatAllBtn: document.getElementById('multiAngleApplyFormatAllBtn'),
+        multiAngleApplyWebpQualityAllBtn: document.getElementById('multiAngleApplyWebpQualityAllBtn'),
+        multiAngleApplyWebpHelp: document.getElementById('multiAngleApplyWebpHelp'),
         multiAngleQualityChoice: document.getElementById('multiAngleQualityChoice'),
         multiAngleTargetSizeInput: document.getElementById('multiAngleTargetSizeInput'),
         multiAngleFormatSelect: document.getElementById('multiAngleFormatSelect'),
@@ -744,6 +757,7 @@ MODIFICATION RULES FOR THIS APP
         multiAngleEditAngleBtn: document.getElementById('multiAngleEditAngleBtn'),
         multiAngleAddImagesBtn: document.getElementById('multiAngleAddImagesBtn'),
         multiAngleDeleteAngleBtn: document.getElementById('multiAngleDeleteAngleBtn'),
+        multiAngleUndoDeleteBtn: document.getElementById('multiAngleUndoDeleteBtn'),
         multiAngleToggleListBtn: document.getElementById('multiAngleToggleListBtn'),
         multiAngleListDrawer: document.getElementById('multiAngleListDrawer'),
         multiAngleList: document.getElementById('multiAngleList'),
@@ -973,6 +987,13 @@ MODIFICATION RULES FOR THIS APP
         createQuizNewFolderCancelBtn: document.getElementById('createQuizNewFolderCancelBtn'),
         createQuizName: document.getElementById('createQuizName'),
         createQuizDescription: document.getElementById('createQuizDescription'),
+        studioExamSectionsPanel: document.getElementById('studioExamSectionsPanel'),
+        studioExamSectionRange: document.getElementById('studioExamSectionRange'),
+        studioExamSectionName: document.getElementById('studioExamSectionName'),
+        studioExamSectionSelect: document.getElementById('studioExamSectionSelect'),
+        studioExamSectionApply: document.getElementById('studioExamSectionApply'),
+        studioExamSectionDelete: document.getElementById('studioExamSectionDelete'),
+        studioExamSectionStatus: document.getElementById('studioExamSectionStatus'),
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
         examQuestionTypeControls: document.getElementById('examQuestionTypeControls'),
         examQuestionTypeSelect: document.getElementById('examQuestionTypeSelect'),
@@ -984,6 +1005,9 @@ MODIFICATION RULES FOR THIS APP
         studioEditorBottomActions: document.getElementById('studioEditorBottomActions'),
         studioQuestionSearchInput: document.getElementById('studioQuestionSearchInput'),
         studioQuestionStarredOnly: document.getElementById('studioQuestionStarredOnly'),
+        studioExamQuestionFilterWrap: document.getElementById('studioExamQuestionFilterWrap'),
+        studioExamQuestionFilterBtn: document.getElementById('studioExamQuestionFilterBtn'),
+        studioExamQuestionFilterMenu: document.getElementById('studioExamQuestionFilterMenu'),
         studioQuestionJumpInput: document.getElementById('studioQuestionJumpInput'),
         studioQuestionJumpBtn: document.getElementById('studioQuestionJumpBtn'),
         studioUnsavedChangesIndicator: document.getElementById('studioUnsavedChangesIndicator'),
@@ -2581,64 +2605,173 @@ MODIFICATION RULES FOR THIS APP
         await cloudflareR2Request('/v1/delete', { objectPaths: safePaths });
     }
 
+    // Phase 24A.6h: a timeout is not proof that a Storage PUT or database
+    // INSERT failed. Probe the SAME object/row identity before retrying.
+    function getPrivateMediaHttpStatus(error) {
+        const field = error?.status ?? error?.statusCode ?? error?.originalError?.status;
+        const numeric = Number(field);
+        if (Number.isInteger(numeric) && numeric >= 400 && numeric <= 599) return numeric;
+        const detail = normalizeSheetText(error?.message || error?.details || error);
+        const match = detail.match(/(?:^|\b)(?:HTTP\s*)?(408|409|429|500|502|503|504)(?=\b)/i);
+        return match ? Number(match[1]) : 0;
+    }
+
+    function isTransientPrivateMediaFailure(error) {
+        return [408, 429, 500, 502, 503, 504].includes(getPrivateMediaHttpStatus(error)) || isTransientFetchFailure(error);
+    }
+
+    function isPrivateMediaDuplicate(error) {
+        const code = normalizeSheetText(error?.code || error?.error || '').toLowerCase();
+        const message = normalizeSheetText(error?.message || error?.details || error).toLowerCase();
+        return code === '23505' || getPrivateMediaHttpStatus(error) === 409 || /already exists|duplicate key|the resource already exists/.test(message);
+    }
+
+    function privateMediaStageFailure(stage, error, assetId = '') {
+        const status = getPrivateMediaHttpStatus(error);
+        const detail = normalizeSheetText(error?.message || error?.details || error) || 'No response from server';
+        const statusLabel = status ? `HTTP ${status}` : detail;
+        const cause = status && !detail.includes(String(status)) ? `${statusLabel}: ${detail}` : statusLabel;
+        const failure = new Error(`${stage} failed (${cause}).${isTransientPrivateMediaFailure(error) ? ' A temporary server failure was retried; no previous Saved Image was replaced.' : ''}`);
+        failure.stage = stage;
+        failure.status = status;
+        failure.assetId = assetId;
+        return failure;
+    }
+
+    async function privateMediaStorageObjectExists(bucketName, objectPath, expectedBytes) {
+        const slash = objectPath.lastIndexOf('/');
+        const folder = objectPath.slice(0, slash);
+        const fileName = objectPath.slice(slash + 1);
+        const { data, error } = await state.auth.client.storage.from(bucketName).list(folder, { limit: 100, search: fileName });
+        if (error) throw error;
+        const item = (data || []).find(record => record?.name === fileName);
+        if (!item) return false;
+        const sizeValue = item.metadata?.size ?? item.metadata?.contentLength ?? item.size;
+        const size = Number(sizeValue);
+        if (sizeValue != null && Number.isFinite(size) && size > 0 && size !== expectedBytes) {
+            throw new Error('An upload object exists at the expected path but its size differs. No overwrite attempted.');
+        }
+        return true;
+    }
+
+    async function privateMediaAssetRowExists(payload) {
+        const { data, error } = await state.auth.client.from('media_assets')
+            .select('id,user_id,bucket_name,object_path,size_bytes')
+            .eq('id', payload.id).eq('user_id', payload.user_id).maybeSingle();
+        if (error) throw error;
+        if (!data) return false;
+        if (data.object_path !== payload.object_path || data.bucket_name !== payload.bucket_name || Number(data.size_bytes) !== payload.size_bytes) {
+            throw new Error('Media record identity mismatch. No additional upload attempted.');
+        }
+        return true;
+    }
+
     async function uploadDataUrlToPrivateMediaAsset(dataUrl, options = {}) {
         const normalizedDataUrl = normalizeSheetText(dataUrl);
         if (!normalizedDataUrl || !isDataUrl(normalizedDataUrl)) return normalizedDataUrl;
-        if (!state.auth.client || !state.auth.user?.id) {
-            throw new Error('Sign in before saving images.');
-        }
+        if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before saving images.');
 
         const blob = getDataUrlBlob(normalizedDataUrl);
         const mimeType = blob.type || 'application/octet-stream';
-        if (/^image\//i.test(mimeType) && blob.size > STUDY_BUNNY_IMAGE_MAX_BYTES) {
-            throw new Error('Images must be 3 MB or smaller.');
-        }
-        const assetId = createMediaAssetId();
-        const fileName = getSafeMediaFileName(options.originalName || options.label || '', mimeType, options.usageContext || 'image');
-        const objectPath = `${state.auth.user.id}/${assetId}/${fileName}`;
+        if (/^image\//i.test(mimeType) && blob.size > STUDY_BUNNY_IMAGE_MAX_BYTES) throw new Error('Images must be 3 MB or smaller.');
+        const owner = state.auth.user.id;
+        const context = normalizeSheetText(options.usageContext || '');
         const useCloudflareR2 = isCloudflareR2Configured();
         const bucketName = useCloudflareR2 ? CONFIG.cloudflareR2.providerBucketName : CONFIG.mediaAssets.bucketName;
-
-        if (useCloudflareR2) {
-            await uploadBlobToCloudflareR2(objectPath, blob, mimeType);
-        } else {
-            const { error: uploadError } = await state.auth.client.storage
-                .from(bucketName)
-                .upload(objectPath, blob, {
-                    contentType: mimeType,
-                    cacheControl: '31536000',
-                    upsert: false
-                });
-            if (uploadError) throw new Error(getPhase18StorageErrorMessage(uploadError));
+        const fileName = getSafeMediaFileName(options.originalName || options.label || '', mimeType, context || 'image');
+        // Canvas Setup supplies a draft-local recovery object. It survives a
+        // failed Flatten click, but is discarded if its encoded image changes.
+        const recovery = options.uploadRecovery && typeof options.uploadRecovery === 'object' ? options.uploadRecovery : null;
+        if (recovery && (recovery.dataUrl !== normalizedDataUrl || recovery.userId !== owner || recovery.usageContext !== context)) {
+            for (const key of Object.keys(recovery)) delete recovery[key];
         }
-
+        const assetId = recovery?.assetId || createMediaAssetId();
+        const objectPath = `${owner}/${assetId}/${fileName}`;
+        if (recovery) Object.assign(recovery, { dataUrl: normalizedDataUrl, assetId, objectPath, userId: owner, usageContext: context });
         const mediaPayload = {
-            id: assetId,
-            user_id: state.auth.user.id,
-            bucket_name: bucketName,
-            object_path: objectPath,
-            original_name: fileName,
-            mime_type: mimeType,
-            size_bytes: blob.size,
-            quiz_id: options.quizId || null,
-            question_id: options.questionId || null,
-            usage_context: normalizeSheetText(options.usageContext || '')
+            id: assetId, user_id: owner, bucket_name: bucketName, object_path: objectPath,
+            original_name: fileName, mime_type: mimeType, size_bytes: blob.size,
+            quiz_id: options.quizId || null, question_id: options.questionId || null,
+            usage_context: context
         };
+        const mediaReference = buildSupabaseMediaReference(assetId);
 
-        const { error: assetError } = await state.auth.client
-            .from('media_assets')
-            .insert(mediaPayload);
-
-        if (assetError) {
-            if (useCloudflareR2) {
-                await deleteCloudflareR2Objects([objectPath]).catch(() => {});
-            } else {
-                await state.auth.client.storage.from(bucketName).remove([objectPath]);
+        // A previous attempt might have committed the row even though the
+        // browser received 504. Never upload another object in that case.
+        if (recovery?.previousAttempt) {
+            try {
+                if (await privateMediaAssetRowExists(mediaPayload)) return mediaReference;
+            } catch (error) {
+                console.warn('Could not verify prior media record before retry:', error);
             }
-            throw new Error(getPhase18StorageErrorMessage(assetError));
         }
+        if (recovery) recovery.previousAttempt = true;
 
-        return buildSupabaseMediaReference(assetId);
+        const attempts = 3;
+        let storageConfirmed = false;
+        if (recovery?.storageConfirmed && !useCloudflareR2) {
+            try { storageConfirmed = await privateMediaStorageObjectExists(bucketName, objectPath, blob.size); }
+            catch (error) { console.warn('Could not verify prior Storage upload:', error); }
+        }
+        for (let attempt = 1; attempt <= attempts && !storageConfirmed; attempt += 1) {
+            try {
+                if (useCloudflareR2) await uploadBlobToCloudflareR2(objectPath, blob, mimeType);
+                else {
+                    const { error } = await state.auth.client.storage.from(bucketName).upload(objectPath, blob, {
+                        contentType: mimeType, cacheControl: '31536000', upsert: false
+                    });
+                    if (error) throw error;
+                }
+                storageConfirmed = true;
+            } catch (error) {
+                const temporary = isTransientPrivateMediaFailure(error);
+                const duplicate = isPrivateMediaDuplicate(error);
+                if (!useCloudflareR2 && (temporary || duplicate)) {
+                    try { storageConfirmed = await privateMediaStorageObjectExists(bucketName, objectPath, blob.size); }
+                    catch (probeError) {
+                        // A probe error is not proof that the upload failed.
+                        console.warn('Storage upload outcome could not be verified:', probeError);
+                    }
+                }
+                if (storageConfirmed) break;
+                if ((!temporary && !duplicate) || attempt === attempts || duplicate) {
+                    throw privateMediaStageFailure('Storage upload', error, assetId);
+                }
+                console.warn(`Storage upload timed out; retrying same path (attempt ${attempt + 1}/${attempts}).`, { assetId });
+                await delayStudyBunny(400 * attempt + 250);
+            }
+        }
+        if (recovery) recovery.storageConfirmed = storageConfirmed;
+
+        // Use the SAME row ID on every retry. A 504 or 409 may be an already-
+        // committed INSERT; reconcile it before sending another INSERT.
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+            try {
+                const { error } = await state.auth.client.from('media_assets').insert(mediaPayload);
+                if (error) throw error;
+                return mediaReference;
+            } catch (error) {
+                const temporary = isTransientPrivateMediaFailure(error);
+                const duplicate = isPrivateMediaDuplicate(error);
+                if (temporary || duplicate) {
+                    try {
+                        if (await privateMediaAssetRowExists(mediaPayload)) return mediaReference;
+                    } catch (probeError) {
+                        console.warn('Media database registration outcome could not be verified:', probeError);
+                    }
+                }
+                if ((!temporary && !duplicate) || attempt === attempts || duplicate) {
+                    // Do NOT delete an object on an uncertain timeout: the DB
+                    // INSERT may still commit after our verification request.
+                    // The draft-local recovery token allows the next click to
+                    // reconcile this same asset rather than create a new one.
+                    throw privateMediaStageFailure('Media database registration', error, assetId);
+                }
+                console.warn(`Media record timed out; retrying same ID (attempt ${attempt + 1}/${attempts}).`, { assetId });
+                await delayStudyBunny(400 * attempt + 250);
+            }
+        }
+        throw new Error('Media database registration could not be confirmed.');
     }
 
     async function savePrivateMediaValue(value, options = {}) {
@@ -2701,7 +2834,9 @@ MODIFICATION RULES FOR THIS APP
         const normalizedValue = normalizeSheetText(value);
         if (!normalizedValue || !isDataUrl(normalizedValue)) return normalizedValue;
         const mediaSaveCache = options.mediaSaveCache instanceof Map ? options.mediaSaveCache : null;
-        const saveAction = () => runWithTransientFetchRetry(() => savePrivateMediaValue(normalizedValue, options), 'Saving image media', { attempts: 2 });
+        // The upload function owns bounded stage-specific retries using ONE
+        // asset ID. An outer retry would create orphaned media on HTTP 504.
+        const saveAction = () => savePrivateMediaValue(normalizedValue, options);
         if (!mediaSaveCache) return saveAction();
         if (mediaSaveCache.has(normalizedValue)) return mediaSaveCache.get(normalizedValue);
         const savePromise = saveAction().catch(error => {
@@ -5705,6 +5840,149 @@ MODIFICATION RULES FOR THIS APP
         return buildQuizDescriptionFromMetadata(metadata);
     }
 
+    // Phase 24A.5z: Exam reporting sections use stable question IDs; they are
+    // orthogonal to every quiz mode, retry policy, and spaced-review calculation.
+    function normalizeExamSections(value = []) {
+        if (!Array.isArray(value)) return [];
+        const usedNames = new Set();
+        const usedQuestions = new Set();
+        return value.slice(0, 80).map(section => {
+            const id = normalizeSheetText(section?.id).slice(0, 100);
+            const name = normalizeSheetText(section?.name).slice(0, 90);
+            if (!id || !name || usedNames.has(name.toLowerCase())) return null;
+            usedNames.add(name.toLowerCase());
+            const questionIds = Array.from(new Set((Array.isArray(section.questionIds) ? section.questionIds : [])
+                .map(questionId => normalizeSheetText(questionId)).filter(Boolean)))
+                .filter(questionId => !usedQuestions.has(questionId) && usedQuestions.add(questionId));
+            return { id, name, questionIds };
+        }).filter(Boolean);
+    }
+    function getExamSectionsFromDescription(description = '') {
+        return normalizeExamSections(parseQuizMetadata(description).examSections);
+    }
+    function getExamSectionForQuestion(questionId = '', sections = state.auth.examSections || []) {
+        const id = normalizeSheetText(questionId);
+        return sections.find(section => section.questionIds.includes(id)) || null;
+    }
+    // Phase 24A.6a — editor-only section filter; never affects saved metadata,
+    // quiz order, grading, active study sessions, or the Post Quiz Report.
+    function syncStudioExamQuestionFilterControls() {
+        const wrap = elements.studioExamQuestionFilterWrap;
+        const button = elements.studioExamQuestionFilterBtn;
+        const menu = elements.studioExamQuestionFilterMenu;
+        if (!wrap || !button || !menu) return;
+        const enabled = !!state.auth.editingQuizId && getStudioQuizMode() === 'exam';
+        wrap.classList.toggle('hidden', !enabled);
+        if (!enabled) {
+            menu.classList.add('hidden');
+            button.setAttribute('aria-expanded', 'false');
+            return;
+        }
+        const sections = normalizeExamSections(state.auth.examSections);
+        let activeId = normalizeSheetText(state.auth.studioExamSectionFilterId);
+        if (activeId && activeId !== '__unassigned__' && !sections.some(section => section.id === activeId)) {
+            activeId = '';
+            state.auth.studioExamSectionFilterId = '';
+        }
+        const activeName = sections.find(section => section.id === activeId)?.name
+            || (activeId === '__unassigned__' ? 'Unassigned' : 'All');
+        button.textContent = `Filter Sections: ${activeName} ▾`;
+        button.title = `Filter question list by section (currently ${activeName})`;
+        button.classList.toggle('active', !!activeId);
+        button.setAttribute('aria-expanded', menu.classList.contains('hidden') ? 'false' : 'true');
+        const buttons = [{id:'', name:'All Sections'},
+            ...sections.map(section=>({id:section.id, name:section.name})),
+            {id:'__unassigned__',name:'Unassigned Questions'}];
+        menu.innerHTML = buttons.map(section => {
+            const selected = section.id === activeId;
+            return `<button type="button" class="studio-exam-question-filter-option${selected ? ' active' : ''}" data-studio-exam-filter-id="${escapeHtml(section.id)}" aria-pressed="${selected}">${escapeHtml(section.name)}</button>`;
+        }).join('');
+    }
+    function parseExamQuestionNumbers(input = '', rows = []) {
+        const raw = normalizeSheetText(input);
+        if (!raw) throw new Error('Enter question numbers, such as 1-15 or 2, 8-12.');
+        const nums = new Set();
+        for (const piece of raw.split(',')) {
+            const match = piece.trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+            if (!match) throw new Error('Use question numbers or ranges, for example 1-15, 19, 22-25.');
+            const first = Number(match[1]);
+            const last = match[2] ? Number(match[2]) : first;
+            if (first < 1 || last < first || last > rows.length || last-first > 1000) {
+                throw new Error(`Question numbers must be between 1 and ${rows.length}; check your ranges.`);
+            }
+            for (let i = first; i <= last; i++) nums.add(i);
+        }
+        return [...nums].sort((a,b) => a-b).map(n => normalizeSheetText(rows[n-1]?.id)).filter(Boolean);
+    }
+    function syncStudioExamSectionControls() {
+        const isExam = getStudioQuizMode() === 'exam';
+        elements.studioExamSectionsPanel?.classList.toggle('hidden', !isExam);
+        if (!isExam) return;
+        const sections = normalizeExamSections(state.auth.examSections);
+        const select = elements.studioExamSectionSelect;
+        const oldId = normalizeSheetText(select?.value);
+        if (select) {
+            select.innerHTML = '<option value="">Create new section</option>' + sections.map(section =>
+                `<option value="${escapeHtml(section.id)}">${escapeHtml(section.name)} (${section.questionIds.length})</option>`).join('');
+            select.value = sections.some(section => section.id === oldId) ? oldId : '';
+        }
+        syncStudioExamSectionAction();
+    }
+    function syncStudioExamSectionAction() {
+        const selectedId = normalizeSheetText(elements.studioExamSectionSelect?.value);
+        if (elements.studioExamSectionApply) {
+            elements.studioExamSectionApply.textContent = selectedId ? 'Assign' : 'Create';
+            elements.studioExamSectionApply.disabled = !state.auth.editingQuizId;
+        }
+        elements.studioExamSectionDelete?.classList.toggle('hidden', !selectedId);
+        if (elements.studioExamSectionName) {
+            elements.studioExamSectionName.disabled = !!selectedId;
+            elements.studioExamSectionName.placeholder = selectedId ? 'Select Create new section to enter a name' : 'English Comprehension';
+        }
+        if (!state.auth.editingQuizId && elements.studioExamSectionStatus) {
+            elements.studioExamSectionStatus.textContent = 'Save the new Exam first, then create sections for its saved questions.';
+        }
+    }
+    async function persistStudioExamSections(sections) {
+        const quizId = normalizeSheetText(state.auth.editingQuizId);
+        if (!quizId || getStudioQuizMode() !== 'exam') throw new Error('Open a saved Exam to assign sections.');
+        const { data: row, error: readError } = await state.auth.client.from('quizzes').select('description').eq('id', quizId).maybeSingle();
+        if (readError || !row) throw readError || new Error('Cannot load the exam metadata.');
+        const metadata = getQuizMetadataForWrite(row.description || '');
+        metadata.examSections = normalizeExamSections(sections);
+        const { error } = await state.auth.client.from('quizzes').update({ description: buildQuizDescriptionFromMetadata(metadata) }).eq('id', quizId);
+        if (error) throw error;
+        state.auth.examSections = metadata.examSections;
+        syncStudioExamSectionControls();
+        renderStudioQuestionList();
+        setCreatorStatus('Exam section assignments saved.', 'success');
+    }
+    async function applyStudioExamSectionAssignment() {
+        const rows = state.auth.studioQuizQuestions || [];
+        const questionIds = parseExamQuestionNumbers(elements.studioExamSectionRange?.value || '', rows);
+        const current = normalizeExamSections(state.auth.examSections);
+        const selectedId = normalizeSheetText(elements.studioExamSectionSelect?.value);
+        const name = normalizeSheetText(elements.studioExamSectionName?.value).slice(0, 90);
+        let targetId = selectedId;
+        if (!targetId) {
+            if (!name) throw new Error('Enter a new section name.');
+            if (current.some(section => section.name.toLowerCase() === name.toLowerCase())) throw new Error('That section already exists; select it from Existing Sections.');
+            targetId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `section_${Date.now()}`;
+            current.push({id:targetId, name, questionIds:[]});
+        }
+        if (!current.some(section => section.id === targetId)) throw new Error('Select an existing section or create a new one.');
+        const moving = new Set(questionIds);
+        const updated = current.map(section => ({...section, questionIds: section.id === targetId
+            ? [...new Set([...section.questionIds, ...questionIds])]
+            : section.questionIds.filter(id => !moving.has(id))}));
+        await persistStudioExamSections(updated);
+        if (elements.studioExamSectionRange) elements.studioExamSectionRange.value = '';
+        if (elements.studioExamSectionName) elements.studioExamSectionName.value = '';
+        if (elements.studioExamSectionSelect) elements.studioExamSectionSelect.value = targetId;
+        syncStudioExamSectionAction();
+        if (elements.studioExamSectionStatus) elements.studioExamSectionStatus.textContent = `${questionIds.length} question(s) assigned. Each question belongs to at most one section.`;
+    }
+
     function getQuizClassIdFromDescription(description = '') {
         const metadata = parseQuizMetadata(description);
         return normalizeSheetText(metadata.quizClassId || metadata.classId);
@@ -7509,10 +7787,108 @@ MODIFICATION RULES FOR THIS APP
         activeSavedImageProgressPopup = null;
         activeSavedImageProgressButton = null;
     }
+    // Phase 24A.5z — post-exam diagnostics are a separate reader of answer
+    // outcomes. Never change the existing Retention/Progress/Mastery/Spaced logic.
+    const EXAM_POST_REPORT_TABLE = 'user_exam_post_quiz_reports';
+    function buildExamReportFromAttempt(attempt, questions) {
+        if (!attempt || !questions.length) return null;
+        const bad = attempt.incorrectIds;
+        const seen = new Set(questions.map(q => normalizeSheetText(q.sourceQuestionId || q.id)));
+        const sectionForId = new Map();
+        (attempt.sections || []).forEach(section => section.questionIds.forEach(id => sectionForId.set(id, section.id)));
+        const sectionItems = [...attempt.sections.map(s => ({id:s.id, name:s.name, total:0, incorrect:0, missedQuestionIds:[]})),
+            {id:'__unassigned__',name:'Unassigned Questions',total:0,incorrect:0,missedQuestionIds:[]}];
+        const byId = new Map(sectionItems.map(s=>[s.id,s]));
+        seen.forEach(id => {
+            const section = byId.get(sectionForId.get(id)) || byId.get('__unassigned__');
+            section.total++;
+            if (bad.has(id) || !attempt.answeredIds.has(id)) { section.incorrect++; section.missedQuestionIds.push(id); }
+        });
+        const reported = sectionItems.filter(s=>s.total>0);
+        const total = reported.reduce((sum,s)=>sum+s.total,0);
+        const incorrect = reported.reduce((sum,s)=>sum+s.incorrect,0);
+        return {version:1, quizId:attempt.quizId, completedAt:new Date().toISOString(),
+            contentRevision:state.auth.quizSpacedContentRevisions?.get(attempt.quizId) ?? null,
+            total, incorrect, correct:total-incorrect, percent:total?Math.round((total-incorrect)*100/total):0,
+            sections:reported.map(s=>({...s, correct:s.total-s.incorrect, percent:Math.round((s.total-s.incorrect)*100/s.total)}))};
+    }
+    function renderExamPostQuizReport(report, compact = false) {
+        if (!report || !Array.isArray(report.sections)) return '';
+        const weakest = report.sections.filter(s=>s.id!=='__unassigned__').sort((a,b)=>a.percent-b.percent)[0];
+        const previousRevision = Number(report.contentRevision);
+        const currentRevision = Number(state.auth.quizSpacedContentRevisions?.get(report.quizId));
+        const oldVersion = report.contentRevision != null && state.auth.quizSpacedContentRevisions?.has(report.quizId)
+            && Number.isFinite(previousRevision) && Number.isFinite(currentRevision) && previousRevision !== currentRevision;
+        return `<section class="exam-post-quiz-report ${compact?'is-compact':''}" aria-label="Post Quiz Report">
+            <h3>Post Quiz Report</h3>
+            <p class="exam-post-quiz-summary">${escapeHtml(String(report.percent))}% overall · ${escapeHtml(String(report.correct))}/${escapeHtml(String(report.total))} correct · ${escapeHtml(new Date(report.completedAt).toLocaleString())}</p>
+            ${oldVersion ? '<p class="exam-post-quiz-warning">Previous exam version — this report is a historical snapshot.</p>' : ''}
+            ${report.sections.map(s=>`<div class="exam-post-quiz-section">
+                <div class="exam-post-quiz-section-heading"><strong>${escapeHtml(s.name)}</strong><strong>${s.percent}%</strong></div>
+                <div class="exam-post-quiz-track"><span style="width:${Math.min(100, Math.max(0, s.percent))}%"></span></div>
+                <small>${s.correct} correct · ${s.incorrect} incorrect · ${s.total} questions</small>
+            </div>`).join('')}
+            ${weakest ? `<p class="exam-post-quiz-tip">Area to review: ${escapeHtml(weakest.name)} (${weakest.percent}%).</p>` : ''}
+        </section>`;
+    }
+    async function loadLatestExamPostQuizReport(quizId = '') {
+        const id = normalizeSheetText(quizId);
+        if (!id || !state.auth.client || !state.auth.user?.id) return null;
+        const {data,error} = await state.auth.client.from(EXAM_POST_REPORT_TABLE).select('report')
+            .eq('quiz_id',id).eq('user_id',state.auth.user.id).maybeSingle();
+        if (error) throw error;
+        const report = data?.report || null;
+        if (report) state.auth.examLatestReports.set(id,report);
+        else state.auth.examLatestReports.delete(id);
+        return report;
+    }
+    async function persistExamPostQuizReport(report) {
+        if (!report || !state.auth.user?.id || !state.auth.client) return;
+        const {error} = await state.auth.client.from(EXAM_POST_REPORT_TABLE).upsert({
+            quiz_id:report.quizId, user_id:state.auth.user.id, report,
+            completed_at:report.completedAt
+        },{onConflict:'user_id,quiz_id'});
+        if (error) throw error;
+        state.auth.examLatestReports.set(report.quizId,report);
+    }
+    function beginExamPostQuizAttempt(visibleQuestions = [], allQuestions = []) {
+        const first = visibleQuestions[0];
+        const quizId = normalizeSheetText(first?.sourceQuizId);
+        const allIds = new Set(allQuestions.map(q=>normalizeSheetText(q.sourceQuestionId||q.id)));
+        const visibleIds = new Set(visibleQuestions.map(q=>normalizeSheetText(q.sourceQuestionId||q.id)));
+        const fullDeck = allIds.size>0 && visibleIds.size===allIds.size && [...allIds].every(id=>visibleIds.has(id));
+        state.examPostQuizAttempt = first?.examMode && quizId && fullDeck
+            ? {quizId, sections:normalizeExamSections(first.examSections),
+                answeredIds:new Set(), incorrectIds:new Set(), finalized:false} : null;
+    }
+    function trackExamPostQuizOutcome(question, correct) {
+        const attempt = state.examPostQuizAttempt;
+        if (!attempt || attempt.finalized || normalizeSheetText(question?.sourceQuizId)!==attempt.quizId) return;
+        const id = normalizeSheetText(question.sourceQuestionId || question.id);
+        if (!id) return;
+        attempt.answeredIds.add(id);
+        if (!correct) attempt.incorrectIds.add(id);
+    }
+    function maybeCompleteExamPostQuizReport() {
+        const attempt = state.examPostQuizAttempt;
+        if (!attempt || attempt.finalized || !isQuizFinished()) return;
+        attempt.finalized = true;
+        const report = buildExamReportFromAttempt(attempt, state.questions);
+        if (!report) return;
+        attempt.report = report;
+        const panel = document.getElementById('examPostQuizCompletion');
+        if (panel) { panel.innerHTML = renderExamPostQuizReport(report); panel.classList.remove('hidden'); }
+        // Save once, at completion; never perform Supabase writes during answer checks.
+        persistExamPostQuizReport(report).catch(error => {
+            console.warn('Exam report could not be saved. Apply Phase 24A.5z report-table SQL migration.',error);
+            if (panel) panel.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Report shown for this session, but could not be saved to Progress. Check the Post Quiz Report migration.</p>');
+        });
+    }
+
     function getSpacedProgressPopupSource(panelId) {
         if (panelId.startsWith('quiz:')) {
             const quiz = state.auth.managedQuizzes.find(item => item.id === panelId.slice(5));
-            return quiz ? { markup: renderQuizSpacedStudyProgress(quiz), nextAt: getQuizSpacedStatus(quiz).nextAt } : null;
+            return quiz ? {markup:renderQuizSpacedStudyProgress(quiz),nextAt:getQuizSpacedStatus(quiz).nextAt} : null;
         }
         const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === panelId);
         return entry ? { markup: renderSavedImageStudyProgress(entry), nextAt: getSavedImageSpacedReviewStatus(entry).nextAt } : null;
@@ -7540,6 +7916,23 @@ MODIFICATION RULES FOR THIS APP
             popup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || source.innerHTML;
         } else {
             popup.innerHTML = source.innerHTML;
+        }
+        if (panelId.startsWith('quiz:')) {
+            const quizId=panelId.slice(5);
+            const quiz=state.auth.managedQuizzes.find(item=>item.id===quizId);
+            if (normalizeSheetText(quiz?.quizType)==='exam') {
+                const existing=state.auth.examLatestReports.get(quizId);
+                const holder=document.createElement('div');
+                holder.className='exam-post-quiz-popup-slot';
+                holder.innerHTML=renderExamPostQuizReport(existing,true) || '<p class="exam-post-quiz-placeholder">Loading Post Quiz Report…</p>';
+                popup.appendChild(holder);
+                loadLatestExamPostQuizReport(quizId).then(report=>{
+                    if (popup.isConnected) {
+                        holder.innerHTML=renderExamPostQuizReport(report,true) || '<p class="exam-post-quiz-placeholder">No completed exam report yet.</p>';
+                        popup.style.top=`${Math.max(12,Math.min(popup.getBoundingClientRect().top,window.innerHeight-popup.getBoundingClientRect().height-12))}px`;
+                    }
+                }).catch(()=>{ if(popup.isConnected) holder.innerHTML='<p class="exam-post-quiz-warning">Report unavailable. Check the Phase 24A.5z SQL migration.</p>'; });
+            }
         }
         document.body.appendChild(popup);
         const rect = button.getBoundingClientRect();
@@ -7578,6 +7971,12 @@ MODIFICATION RULES FOR THIS APP
             const template = document.createElement('template');
             template.innerHTML = freshMarkup;
             activeSavedImageProgressPopup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || '';
+            if (panelId.startsWith('quiz:')) {
+                const quizId=panelId.slice(5);
+                if (normalizeSheetText(state.auth.managedQuizzes.find(q=>q.id===quizId)?.quizType)==='exam') {
+                    activeSavedImageProgressPopup.insertAdjacentHTML('beforeend',renderExamPostQuizReport(state.auth.examLatestReports.get(quizId),true) || '<p class="exam-post-quiz-placeholder">No completed exam report yet.</p>');
+                }
+            }
             const rect = activeSavedImageProgressButton.getBoundingClientRect();
             const popup = activeSavedImageProgressPopup;
             const height = popup.getBoundingClientRect().height;
@@ -8561,6 +8960,9 @@ MODIFICATION RULES FOR THIS APP
         const userId = getStudioSavedImageSyncUserId();
         const syncKey = getStudioSavedImageSyncKey(entry);
         if (!userId || !syncKey || state.auth.studioSavedImageSync?.applyingRemote) return;
+        // An old thumbnail/label job must never cancel a confirmed user deletion.
+        if (getStudioSavedImagePendingDeletes(userId).some(item => item.syncKey === syncKey) ||
+            state.auth.studioSavedImageDeletedKeys?.has(syncKey)) return;
         const keys = getStudioSavedImagePendingUpsertKeys(userId);
         keys.add(syncKey);
         saveStudioSavedImagePendingUpsertKeys(keys, userId);
@@ -8593,6 +8995,8 @@ MODIFICATION RULES FOR THIS APP
         if (!saveStudioSavedImagePendingDeletes(deletes, userId)) {
             throw new Error('Could not save the deletion checkpoint. Saved Image was not deleted; check browser storage.');
         }
+        state.auth.studioSavedImageDeletedKeys ||= new Set();
+        state.auth.studioSavedImageDeletedKeys.add(syncKey);
     }
 
     function isStudioSavedImageRemoteSchemaError(error) {
@@ -8726,11 +9130,17 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.client || !userId) return { ok: false, skipped: true };
         const syncKey = normalizeSheetText(options.syncKey || getStudioSavedImageSyncKey(entry));
         if (!syncKey) return { ok: false, skipped: true };
+        if (!options.deletedAt && getStudioSavedImagePendingDeletes(userId).some(item => item.syncKey === syncKey)) {
+            return { ok: false, skipped: true, pendingDelete: true };
+        }
         try {
             const prepared = options.deletedAt
                 ? normalizeStudioSavedImageEntry(entry) || { id: syncKey, imageValue: 'deleted-placeholder' }
                 : await prepareStudioSavedImageEntryForRemote(entry, syncKey);
             if (!prepared && !options.deletedAt) return { ok: false };
+            if (!options.deletedAt && getStudioSavedImagePendingDeletes(userId).some(item => item.syncKey === syncKey)) {
+                return { ok: false, skipped: true, pendingDelete: true };
+            }
             const row = options.deletedAt
                 ? {
                     id: syncKey,
@@ -9068,14 +9478,35 @@ MODIFICATION RULES FOR THIS APP
                     const message=`Global Saved Image deletion deferred: ${error.message||error}`;
                     cleanupKeepStatus(message);
                     console.warn(message);
+                    state.auth.studioSavedImageDeleteErrors ||= new Map();
+                    state.auth.studioSavedImageDeleteErrors.set(item.syncKey, String(error.message || error));
                     remaining.push(item);
                     continue;
                 }
                 const result = await upsertStudioSavedImageRemoteEntry({ id: item.syncKey, imageValue: 'deleted-placeholder' }, {
                     syncKey: item.syncKey, deletedAt: item.deletedAt
                 });
-                if (!result.ok) {remaining.push(item);continue;}
-                item.tombstoneSynced = true;
+                if (!result.ok) {
+                    state.auth.studioSavedImageDeleteErrors ||= new Map();
+                    state.auth.studioSavedImageDeleteErrors.set(item.syncKey,
+                        normalizeSheetText(result.error?.message || 'Supabase could not accept the deletion.'));
+                    remaining.push(item);
+                    continue;
+                }
+                try {
+                    const verified = await state.auth.client.from(STUDIO_SAVED_IMAGE_REMOTE_TABLE)
+                        .select('id,deleted_at').eq('user_id',userId).eq('id',item.syncKey).maybeSingle();
+                    if (verified.error || !verified.data?.deleted_at) {
+                        throw new Error(verified.error?.message || 'Saved Image tombstone not yet confirmed by Supabase.');
+                    }
+                    item.tombstoneSynced = true;
+                    state.auth.studioSavedImageDeleteErrors?.delete(item.syncKey);
+                } catch (error) {
+                    state.auth.studioSavedImageDeleteErrors ||= new Map();
+                    state.auth.studioSavedImageDeleteErrors.set(item.syncKey, String(error.message || error));
+                    remaining.push(item);
+                    continue;
+                }
             }
             // Persist successful tombstone acknowledgment BEFORE attempting
             // Storage deletion, so a restart can safely resume this work.
@@ -9158,9 +9589,9 @@ MODIFICATION RULES FOR THIS APP
             const hadPendingUpserts = getStudioSavedImagePendingUpsertKeys(userId).size > 0;
             const migrationWasPending = !isStudioSavedImageLegacyMigrationComplete(userId);
 
-            await flushStudioSavedImagePendingDeletes(userId);
             await migrateLegacyStudioSavedImagesToRemote(firstIndexLoad.rows, userId);
             await flushStudioSavedImagePendingUpserts(userId);
+            await flushStudioSavedImagePendingDeletes(userId);
             try {
                 if (readPendingQuizMediaCleanup(userId).length) {
                     flushPendingQuizMediaCleanup(userId).catch(error => {
@@ -9188,7 +9619,9 @@ MODIFICATION RULES FOR THIS APP
                 loadStudioSavedImageUserCache(userId),
                 loadLegacyStudioSavedImageLibrary()
             ).filter(entry => pendingKeys.has(getStudioSavedImageSyncKey(entry)));
-            const merged = mergeStudioSavedImageEntries(remoteEntryLoad.entries, pendingLocalEntries);
+            const activeDeleteKeys = new Set(getStudioSavedImagePendingDeletes(userId).map(item => item.syncKey));
+            const merged = mergeStudioSavedImageEntries(remoteEntryLoad.entries, pendingLocalEntries)
+                .filter(entry => !activeDeleteKeys.has(getStudioSavedImageSyncKey(entry)));
             sync.applyingRemote = true;
             try {
                 state.auth.studioSavedImageMemoryLibrary = merged;
@@ -9220,9 +9653,14 @@ MODIFICATION RULES FOR THIS APP
         const sync = state.auth.studioSavedImageSync;
         if (!sync || !state.auth.client || !state.auth.user?.id || sync.applyingRemote) return;
         if (sync.scheduleTimerId) window.clearTimeout(sync.scheduleTimerId);
+        const scheduledUserId = state.auth.user.id;
         sync.scheduleTimerId = window.setTimeout(() => {
             sync.scheduleTimerId = null;
-            syncStudioSavedImagesFromSupabase(options).catch(error => console.warn('Saved Images synchronization failed:', error));
+            const running = sync.inFlight;
+            Promise.resolve(running).catch(() => {}).then(() => {
+                if (state.auth.user?.id !== scheduledUserId) return;
+                return syncStudioSavedImagesFromSupabase(options);
+            }).catch(error => console.warn('Saved Images synchronization failed:', error));
         }, options.immediate ? 0 : 250);
     }
 
@@ -9368,10 +9806,11 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function getStudioSavedImageLibraryForPicker() {
+        const pendingDeleteKeys = new Set(getStudioSavedImagePendingDeletes().map(item => item.syncKey));
         return mergeStudioSavedImageEntries(
             state.auth.studioSavedImageMemoryLibrary || [],
             loadStudioSavedImageLibrary()
-        );
+        ).filter(entry => !pendingDeleteKeys.has(getStudioSavedImageSyncKey(entry)));
     }
 
     function addStudioSavedImageSnapshot(snapshot = {}) {
@@ -9438,10 +9877,13 @@ MODIFICATION RULES FOR THIS APP
         if (!entry || !signature) return;
         preserveStudioSavedImageGlobalLabelInformationBeforeDelete(entry);
         markStudioSavedImagePendingDelete(entry);
+        const deletedSyncKey = getStudioSavedImageSyncKey(entry);
+        const deletedId = normalizeSheetText(entry.id);
         const withoutSignature = list => (Array.isArray(list) ? list : [])
             .map(normalizeStudioSavedImageEntry)
             .filter(Boolean)
-            .filter(item => getStudioSavedImageSignature(item) !== signature && getStudioSavedImagePreMetadataSignature(item) !== signature && getStudioSavedImageLegacySignature(item) !== signature);
+            .filter(item => (deletedId && item.id !== deletedId) &&
+                (!deletedSyncKey || getStudioSavedImageSyncKey(item) !== deletedSyncKey));
         state.auth.studioSavedImageMemoryLibrary = withoutSignature(state.auth.studioSavedImageMemoryLibrary || []);
         saveStudioSavedImageLibrary(withoutSignature(loadStudioSavedImageLibrary()));
         scheduleStudioSavedImageRemoteSync({ reason: 'remove-entry' });
@@ -9470,7 +9912,43 @@ MODIFICATION RULES FOR THIS APP
         const name = normalizeSheetText(metadata.diagramName || metadata.subjectName || entry.fileName) || 'this diagram';
         const approved = window.confirm(`Delete saved image “${name}”?\n\nThis removes its saved angles, labels, and drawings from Saved Images. Any linked flashcard images will be cleared, but the cards and quizzes will remain. Unshared physical files will be deleted after Supabase confirms the changes.\n\nThis cannot be undone.`);
         if (!approved) return 'cancelled';
-        return removeStudioSavedImageEntryById(safeId) ? 'deleted' : 'missing';
+        if (!state.auth.user?.id || !state.auth.client) return 'offline';
+        return removeStudioSavedImageEntryById(safeId) ? 'queued' : 'missing';
+    }
+
+    // Report the real Supabase outcome. Queued deletes remain suppressed on this
+    // device, but the user must be told when a server-side block needs attention.
+    async function confirmStudioSavedImageDeletionCommitted(entryId = '') {
+        const userId = getStudioSavedImageSyncUserId();
+        const syncKey = normalizeSheetText(entryId);
+        try {
+            await syncStudioSavedImagesFromSupabase({ force: true, reason: 'verify-saved-image-deletion' });
+            // If a sync already started before this click, its in-flight snapshot
+            // may be older than the deletion. Run a second pass only if needed.
+            if (getStudioSavedImagePendingDeletes(userId).some(item => item.syncKey === syncKey && !item.tombstoneSynced)) {
+                await syncStudioSavedImagesFromSupabase({ force: true, reason: 'retry-saved-image-deletion' });
+            }
+        } catch (error) {
+            console.warn('Saved Image deletion verification could not finish:', error);
+        }
+        const pending = getStudioSavedImagePendingDeletes(userId).find(item => item.syncKey === syncKey);
+        if (pending && !pending.tombstoneSynced) {
+            const reason = state.auth.studioSavedImageDeleteErrors?.get(syncKey) || 'Supabase is unavailable or another save is pending.';
+            return { ok: false, message: `Saved Image deletion is NOT confirmed in Supabase. Pending retry: ${reason}` };
+        }
+        if (pending?.tombstoneSynced) {
+            return { ok: true, message: 'Saved Image deleted in Supabase. Physical file cleanup is still pending; shared files remain protected.' };
+        }
+        return { ok: true, message: 'Saved Image deletion confirmed. Linked flashcards were detached where needed; unshared files were checked for cleanup.' };
+    }
+
+    async function reportStudioSavedImageDeletion(entryId = '') {
+        setCreatorStatus('Checking Saved Image deletion with Supabase...');
+        const result = await confirmStudioSavedImageDeletionCommitted(entryId);
+        setCreatorStatus(result.message, result.ok ? 'success' : 'error');
+        if (state.auth.studioSavedImagePicker?.open) renderStudioSavedImagePicker();
+        if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
+        if (state.auth.currentStudioSection === 'diagram-creator' && getDiagramCreatorLibraryState().view === 'saved') renderDiagramCreatorSavedImages();
     }
 
     function getStudioFlashcardReusableImageSet() {
@@ -9816,14 +10294,19 @@ MODIFICATION RULES FOR THIS APP
                 const deleteButton = event.target.closest('[data-saved-image-delete]');
                 if (deleteButton) {
                     const entryId = normalizeSheetText(deleteButton.dataset.savedImageDelete);
+                    const deletingEntry = getStudioSavedImageLibraryForPicker().find(item => item.id === entryId);
+                    const deleteSyncKey = deletingEntry ? getStudioSavedImageSyncKey(deletingEntry) : entryId;
                     const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
                     if (result === 'cancelled') return;
-                    if (result === 'deleted') {
-                        setCreatorStatus('Saved Image deletion queued. Linked flashcard images will be detached before physical cleanup; the cards and quizzes remain.', 'success');
+                    if (result === 'queued') {
+                        setCreatorStatus('Saved Image hidden locally; confirming deletion with Supabase...');
+                    } else if (result === 'offline') {
+                        setCreatorStatus('Sign in and reconnect before deleting a Saved Image.', 'error');
                     } else {
                         setCreatorStatus('That saved image could not be found.', 'error');
                     }
                     renderStudioSavedImagePicker();
+                    if (result === 'queued') reportStudioSavedImageDeletion(deleteSyncKey).catch(error => setCreatorStatus(String(error.message || error), 'error'));
                     return;
                 }
                 const useButton = event.target.closest('[data-saved-image-use]');
@@ -10155,10 +10638,12 @@ MODIFICATION RULES FOR THIS APP
         if (!state.auth.multiAngleCreator || typeof state.auth.multiAngleCreator !== 'object') state.auth.multiAngleCreator = {};
         const draft = state.auth.multiAngleCreator;
         draft.angles = Array.isArray(draft.angles) ? draft.angles : [];
+        draft.pendingDeletedAngles = Array.isArray(draft.pendingDeletedAngles) ? draft.pendingDeletedAngles : [];
         draft.activeIndex = Math.max(0, Math.min(draft.angles.length - 1, Math.floor(Number(draft.activeIndex) || 0)));
         draft.canvas = normalizeMultiAngleCanvasConfig(draft.canvas || {});
         draft.backgroundDirty = draft.backgroundDirty === true;
         draft.savedChangeSignature = normalizeSheetText(draft.savedChangeSignature || '');
+        draft.labelSizeApplyAllAngles = draft.labelSizeApplyAllAngles !== false;
         if (!(draft.legacySourceRefs instanceof Set)) draft.legacySourceRefs = new Set();
         draft.metadata = normalizeDiagramMetadata(draft.metadata || {});
         draft.open = draft.open === true;
@@ -10177,7 +10662,7 @@ MODIFICATION RULES FOR THIS APP
 
     function cleanupMultiAngleCreatorRuntime() {
         const draft = getMultiAngleCreatorState();
-        draft.angles.forEach(angle => {
+        [...draft.angles, ...(draft.pendingDeletedAngles || []).map(item => item.angle)].forEach(angle => {
             if (angle.runtimeObjectUrl && /^blob:/i.test(angle.runtimeObjectUrl)) URL.revokeObjectURL(angle.runtimeObjectUrl);
             if (angle.runtimeEditedObjectUrl && /^blob:/i.test(angle.runtimeEditedObjectUrl)) URL.revokeObjectURL(angle.runtimeEditedObjectUrl);
         });
@@ -10191,6 +10676,7 @@ MODIFICATION RULES FOR THIS APP
             open: false,
             setupVisible: false,
             angles: [],
+            pendingDeletedAngles: [],
             activeIndex: 0,
             canvas: { ...MULTI_ANGLE_DEFAULT_CANVAS },
             backgroundDirty: false,
@@ -10198,6 +10684,7 @@ MODIFICATION RULES FOR THIS APP
             classId: '',
             folderId: '',
             savedChangeSignature: '',
+            labelSizeApplyAllAngles: true,
             editingEntryId: '',
             originalEntry: null,
             legacySourceRefs: new Set(),
@@ -10451,6 +10938,11 @@ MODIFICATION RULES FOR THIS APP
             exportQuality: Math.max(0.6, Math.min(1, Number(existing.exportQuality) || 0.88)),
             exportTargetKB: Math.max(0, Math.min(3072, Math.round(Number(existing.exportTargetKB) || 0))),
             conversionDirty: false,
+            savedCompressionSettings: existing.setupLocked === true ? {
+                format: ['webp', 'jpeg', 'png'].includes(existing.exportFormat) ? existing.exportFormat : 'webp',
+                quality: Math.max(0.6, Math.min(1, Number(existing.exportQuality) || 0.88)),
+                targetKB: Math.max(0, Math.min(3072, Math.round(Number(existing.exportTargetKB) || 0)))
+            } : null,
             pendingConvertedValue: '',
             pendingConversionBlob: null,
             background: normalizeMultiAngleBackgroundColor(existing.background || getMultiAngleCreatorState().canvas.background),
@@ -10501,44 +10993,75 @@ MODIFICATION RULES FOR THIS APP
         angle.runtimeEditedObjectUrl = '';
     }
 
+    // Phase 24A.6i: A deletion is a reversible draft edit until the complete
+    // Saved Image record has been persisted. NEVER remove physical media here.
     function deleteMultiAngleDraftAngle(index, options = {}) {
         const draft = getMultiAngleCreatorState();
         const targetIndex = Math.floor(Number(index));
         const targetAngle = draft.angles[targetIndex];
-        if (!targetAngle) return false;
+        if (!targetAngle || draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) return false;
         if (draft.angles.length <= 1) {
-            setCreatorStatus('A multi-angle diagram must contain at least one image. Replace the final image instead.', 'error');
-            syncMultiAngleCreatorControls();
+            setCreatorStatus('Keep at least one angle. To remove the last image, delete the entire Saved Image from its library.', 'error');
             return false;
         }
         const targetName = normalizeSheetText(targetAngle.name || `Angle ${targetIndex + 1}`) || `Angle ${targetIndex + 1}`;
         const targetLabelCount = normalizeDiagramLabels(targetAngle.labels || []).length;
         const targetDrawingCount = cloneImageEditorDrawStrokes(targetAngle.drawStrokes || []).length;
+        const targetAidCount = normalizeDiagramVisualAids(targetAngle.visualAids || []).length;
+        const isSaved = !!(draft.originalEntry && targetAngle.setupLocked && getStudioSavedImageAngles(draft.originalEntry).some(saved => normalizeSheetText(saved.id) === normalizeSheetText(targetAngle.id)));
         if (options.skipConfirm !== true) {
-            const detailParts = [];
-            if (targetLabelCount) detailParts.push(`${targetLabelCount} label${targetLabelCount === 1 ? '' : 's'}`);
-            if (targetDrawingCount) detailParts.push(`${targetDrawingCount} drawing stroke${targetDrawingCount === 1 ? '' : 's'}`);
-            const detail = detailParts.length ? ` It also removes ${detailParts.join(' and ')} from this angle.` : '';
-            const approved = window.confirm(`Delete “${targetName}”?${detail}
-
-The deletion becomes permanent when you save the diagram.`);
+            const contents = [
+                targetLabelCount ? `${targetLabelCount} labels` : '',
+                targetDrawingCount ? `${targetDrawingCount} drawing strokes` : '',
+                targetAidCount ? `${targetAidCount} Visual Aids` : ''
+            ].filter(Boolean).join(', ');
+            const approved = window.confirm(`Remove “${targetName}” from this diagram?${contents ? `\n\nThis angle contains ${contents}.` : ''}\n\n${isSaved ? 'This previously saved angle is protected until you confirm the updated diagram save.' : 'This newly added angle has not been saved.'}\n\nYou can Undo Last Delete before saving. Nothing is deleted from Supabase by this action.`);
             if (!approved) return false;
         }
         const previousActiveIndex = draft.activeIndex;
         const removed = draft.angles.splice(targetIndex, 1)[0];
-        releaseMultiAngleDraftAngleRuntime(removed);
-        if (targetIndex < previousActiveIndex) {
-            draft.activeIndex = previousActiveIndex - 1;
-        } else if (targetIndex === previousActiveIndex) {
-            draft.activeIndex = Math.min(targetIndex, draft.angles.length - 1);
-        } else {
-            draft.activeIndex = previousActiveIndex;
-        }
+        // Keep the in-memory image and metadata for lossless Undo. Releasing the
+        // object URL here would make restoring the angle impossible without egress.
+        draft.pendingDeletedAngles.push({ angle: removed, index: targetIndex, wasSaved: isSaved });
+        if (targetIndex < previousActiveIndex) draft.activeIndex = previousActiveIndex - 1;
+        else if (targetIndex === previousActiveIndex) draft.activeIndex = Math.min(targetIndex, draft.angles.length - 1);
+        else draft.activeIndex = previousActiveIndex;
         draft.activeIndex = Math.max(0, Math.min(draft.activeIndex, draft.angles.length - 1));
         draft.settingAnchor = false;
         syncMultiAngleCreatorControls();
-        setCreatorStatus(`${targetName} removed from this diagram. Save the diagram to make the deletion permanent.`, 'success');
+        setCreatorStatus(`${targetName} removed from the draft. Use Undo Last Delete to restore it, or save to commit the change.`, 'success');
         return true;
+    }
+
+    function undoLastMultiAngleDraftAngleDelete() {
+        const draft = getMultiAngleCreatorState();
+        if (draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) return false;
+        const removal = draft.pendingDeletedAngles.pop();
+        if (!removal?.angle) return false;
+        const index = Math.max(0, Math.min(removal.index, draft.angles.length));
+        draft.angles.splice(index, 0, removal.angle);
+        draft.activeIndex = index;
+        draft.settingAnchor = false;
+        syncMultiAngleCreatorControls();
+        setCreatorStatus(`${removal.angle.name || 'Angle'} restored. No files were deleted.`, 'success');
+        return true;
+    }
+
+    function confirmPendingSavedAngleDeletions(draft) {
+        const removed = (draft.pendingDeletedAngles || []).filter(item => item.wasSaved);
+        if (!removed.length) return true;
+        const summary = removed.map(item => `• ${item.angle.name || 'Saved angle'}`).join('\n');
+        return window.confirm(`Permanently remove ${removed.length} previously saved angle${removed.length === 1 ? '' : 's'} from this Saved Image?\n\n${summary}\n\nThis removes their labels, connectors, drawings, and Visual Aids from this diagram. The remaining angles keep their original files and locked geometry.\n\nStudy progress may reset because the diagram changed. Unshared physical media is eligible for cleanup only AFTER Supabase confirms the updated Saved Image.\n\nCancel to return to Canvas Setup; use Undo Last Delete to restore an angle.`);
+    }
+
+    function getMultiAngleReplacementPinnedLabels(originalEntry, savedAngles, singleAngle = false) {
+        const originalPins = normalizeSavedImagePinnedLabels(originalEntry?.pinnedLabelsByAngle || {});
+        const retained = {};
+        for (const angle of savedAngles) {
+            const id = normalizeSheetText(angle.id);
+            if (id && originalPins[id]) retained[singleAngle ? 'angle_1' : id] = originalPins[id];
+        }
+        return retained;
     }
 
     function drawMultiAngleGuides(ctx, canvas, angle) {
@@ -10719,11 +11242,92 @@ The deletion becomes permanent when you save the diagram.`);
         return true;
     }
 
+    function refreshSavedAngleConversionDirty(angle) {
+        if (!angle?.setupLocked) return false;
+        const saved = angle.savedCompressionSettings;
+        if (saved) angle.conversionDirty = angle.exportFormat !== saved.format
+            || Math.round(angle.exportQuality * 100) !== Math.round(saved.quality * 100)
+            || Math.round(angle.exportTargetKB || 0) !== Math.round(saved.targetKB || 0);
+        // Never reuse stale encoded pixels from a prior aborted Flatten attempt.
+        // The current settings must always be encoded afresh after consent.
+        angle.pendingConvertedValue = '';
+        angle.pendingConversionBlob = null;
+        return angle.conversionDirty === true;
+    }
+
+    function revertSavedAngleCompressionChanges(draft) {
+        let count = 0;
+        for (const angle of draft.angles) {
+            if (!angle.setupLocked || !refreshSavedAngleConversionDirty(angle)) continue;
+            const saved = angle.savedCompressionSettings;
+            if (!saved) continue;
+            angle.exportFormat = saved.format;
+            angle.exportQuality = saved.quality;
+            angle.exportTargetKB = saved.targetKB;
+            angle.conversionDirty = false;
+            angle.pendingConvertedValue = '';
+            angle.pendingConversionBlob = null;
+            angle.estimateKey = '';
+            angle.estimatedBytes = 0;
+            count++;
+        }
+        clearMultiAngleConvertedPreview();
+        syncMultiAngleCreatorControls();
+        return count;
+    }
+
+    let savedRecompressionPromptPromise = null;
+    function promptSavedAngleRecompression(changed) {
+        if (savedRecompressionPromptPromise) return savedRecompressionPromptPromise;
+        savedRecompressionPromptPromise = new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.className = 'studio-diagram-exit-prompt-overlay';
+            overlay.setAttribute('role','presentation');
+            overlay.innerHTML = `<div class="studio-diagram-exit-prompt studio-saved-recompression-prompt" role="dialog" aria-modal="true" aria-labelledby="studioRecompressionPromptTitle">
+                <div class="studio-diagram-exit-prompt-title" id="studioRecompressionPromptTitle">Previously Compressed Angles</div>
+                <div class="studio-diagram-exit-prompt-copy">These saved angles have pending conversion changes. Recompressing may alter quality or file size, but never resolution, crop, or position.</div>
+                <ul class="studio-saved-recompression-list"></ul>
+                <div class="studio-diagram-exit-prompt-copy">Reverting restores only saved angles; newly added angles and their settings stay pending.</div>
+                <div class="studio-diagram-exit-prompt-actions">
+                    <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-recompression="revert">Revert Existing Angles</button>
+                    <button type="button" class="auth-action-btn auth-primary-btn" data-saved-recompression="continue">Continue &amp; Recompress</button>
+                    <button type="button" class="auth-action-btn auth-secondary-btn" data-saved-recompression="cancel">Cancel</button>
+                </div>
+            </div>`;
+            const list = overlay.querySelector('.studio-saved-recompression-list');
+            changed.forEach(angle => { const li = document.createElement('li'); li.textContent = angle.name || 'Saved angle'; list.appendChild(li); });
+            const finish = choice => {
+                document.removeEventListener('keydown', onKeyDown, true);
+                overlay.remove(); savedRecompressionPromptPromise = null; resolve(choice);
+            };
+            const onKeyDown = event => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault(); event.stopImmediatePropagation(); finish('cancel');
+            };
+            overlay.addEventListener('click', event => {
+                const button=event.target.closest?.('[data-saved-recompression]');
+                if (button) finish(button.dataset.savedRecompression);
+                else if (event.target===overlay) finish('cancel');
+            });
+            document.addEventListener('keydown', onKeyDown, true);
+            document.body.appendChild(overlay);
+            requestAnimationFrame(() => overlay.querySelector('[data-saved-recompression="revert"]')?.focus());
+        });
+        return savedRecompressionPromptPromise;
+    }
+
     async function stageSavedAngleFormatConversions(draft) {
-        const changed = draft.angles.filter(a => a.setupLocked && a.conversionDirty);
+        const changed = draft.angles.filter(a => a.setupLocked && refreshSavedAngleConversionDirty(a));
         if (!changed.length) return true;
-        const summary = changed.map(a => `${a.name}: ${a.naturalWidth} × ${a.naturalHeight}px → ${getMultiAngleExportSettings(a).format}`).join('\n');
-        if (!window.confirm(`Convert ${changed.length} saved angle${changed.length === 1 ? '' : 's'}?\n\n${summary}\n\nResolution and positioning are permanent and cannot be changed. Previous image files will be protected until Supabase acknowledges the replacement. Lossy compression can reduce visual detail.`)) return false;
+        // No pixels are encoded or uploaded before the user chooses.
+        const choice = await promptSavedAngleRecompression(changed);
+        if (choice === 'cancel') return false;
+        if (choice === 'revert') {
+            const count = revertSavedAngleCompressionChanges(draft);
+            setCreatorStatus(`Reverted ${count} saved angle conversion(s). New angles are preserved.`, 'success');
+            return true;
+        }
+        if (choice !== 'continue') return false;
         const pending = [];
         for (const angle of changed) {
             const canvas = paintExistingAngleForConversion(angle);
@@ -10814,6 +11418,18 @@ The deletion becomes permanent when you save the diagram.`);
         const locked = angle.setupLocked === true;
         const canChangeFormat = !locked || !!draft.originalEntry;
         if (!canChangeFormat || !setupVisible) clearMultiAngleConvertedPreview();
+        const hasMultipleAngles = draft.angles.length > 1 && !draft.singleImageWorkflow;
+        const qualityNavBlocked = draft.saving || draft.editorSwitching || draft.flattenWorkflowPending;
+        if (elements.multiAngleQualityNav) elements.multiAngleQualityNav.classList.toggle('hidden', !hasMultipleAngles);
+        if (elements.multiAngleQualityAngleIndicator) elements.multiAngleQualityAngleIndicator.textContent = `${draft.activeIndex + 1} of ${draft.angles.length}`;
+        if (elements.multiAngleQualityPrevBtn) elements.multiAngleQualityPrevBtn.disabled = !hasMultipleAngles || qualityNavBlocked;
+        if (elements.multiAngleQualityNextBtn) elements.multiAngleQualityNextBtn.disabled = !hasMultipleAngles || qualityNavBlocked;
+        const canApplyWebpQuality = hasMultipleAngles && angle.exportFormat === 'webp' && canChangeFormat && !qualityNavBlocked;
+        if (elements.multiAngleApplyWebpQualityAllBtn) {
+            elements.multiAngleApplyWebpQualityAllBtn.classList.toggle('hidden', !hasMultipleAngles || angle.exportFormat !== 'webp');
+            elements.multiAngleApplyWebpQualityAllBtn.disabled = !canApplyWebpQuality;
+        }
+        if (elements.multiAngleApplyWebpHelp) elements.multiAngleApplyWebpHelp.classList.toggle('hidden', !hasMultipleAngles || angle.exportFormat !== 'webp');
         if (elements.multiAngleApplyFormatAllBtn) {
             elements.multiAngleApplyFormatAllBtn.classList.toggle('hidden', !draft.originalEntry);
             elements.multiAngleApplyFormatAllBtn.disabled = draft.saving || draft.angles.length < 2;
@@ -10883,17 +11499,27 @@ The deletion becomes permanent when you save the diagram.`);
         if (elements.multiAnglePrevBtn) elements.multiAnglePrevBtn.disabled = draft.angles.length < 2;
         if (elements.multiAngleNextBtn) elements.multiAngleNextBtn.disabled = draft.angles.length < 2;
         if (elements.multiAngleDeleteAngleBtn) {
-            elements.multiAngleDeleteAngleBtn.disabled = draft.saving || draft.angles.length <= 1;
+            elements.multiAngleDeleteAngleBtn.disabled = draft.saving || draft.editorSwitching || draft.flattenWorkflowPending || draft.angles.length <= 1;
             elements.multiAngleDeleteAngleBtn.title = draft.angles.length <= 1
                 ? 'A multi-angle diagram must contain at least one image.'
                 : `Delete ${angle.name || `Angle ${draft.activeIndex + 1}`}`;
         }
+        if (elements.multiAngleUndoDeleteBtn) {
+            elements.multiAngleUndoDeleteBtn.disabled = draft.saving || draft.editorSwitching || draft.flattenWorkflowPending || !draft.pendingDeletedAngles.length;
+            elements.multiAngleUndoDeleteBtn.title = draft.pendingDeletedAngles.length
+                ? `Restore ${draft.pendingDeletedAngles[draft.pendingDeletedAngles.length - 1].angle.name || 'angle'}`
+                : 'No pending angle deletion to undo';
+        }
         if (elements.multiAngleSaveSetBtn) {
             elements.multiAngleSaveSetBtn.textContent = draft.originalEntry ? 'Convert, Save & Edit Labels + Drawings' : (draft.singleImageWorkflow ? 'Flatten & Edit Labels + Drawings' : 'Flatten, Save & Edit Labels + Drawings');
-            elements.multiAngleSaveSetBtn.disabled = draft.saving || draft.flattenWorkflowPending || !draft.angles.length || (draft.originalEntry && !draft.angles.some(a => a.conversionDirty));
+            // Existing Saved Images may now gain new, unflattened angles. Those
+            // angles must enable the original Flatten/Commit even when no old
+            // angle has a pending format conversion.
+            elements.multiAngleSaveSetBtn.disabled = draft.saving || draft.flattenWorkflowPending || !draft.angles.length || (draft.originalEntry && !draft.pendingDeletedAngles.length && !draft.angles.some(a => a.conversionDirty || !a.setupLocked));
         }
-        if (elements.multiAngleAddImagesBtn) elements.multiAngleAddImagesBtn.disabled = !!draft.originalEntry || draft.saving;
-        if (elements.multiAngleDeleteAngleBtn && draft.originalEntry) elements.multiAngleDeleteAngleBtn.disabled = true;
+        // Phase 24A.6e: permit appended angles even when existing angles are
+        // canonical/geometry-locked. Existing angles stay immutable in Setup.
+        if (elements.multiAngleAddImagesBtn) elements.multiAngleAddImagesBtn.disabled = draft.saving || draft.editorSwitching || draft.flattenWorkflowPending;
         if (elements.multiAngleEditAngleBtn) elements.multiAngleEditAngleBtn.disabled = draft.saving || draft.flattenWorkflowPending;
         if (elements.multiAngleToggleListBtn) {
             elements.multiAngleToggleListBtn.textContent = draft.listOpen ? 'Hide Angles' : 'Show Angles';
@@ -10915,7 +11541,7 @@ The deletion becomes permanent when you save the diagram.`);
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="open" data-angle-index="${index}">Open</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="up" data-angle-index="${index}" aria-label="Move angle up">↑</button>
                 <button type="button" class="auth-action-btn auth-secondary-btn" data-multi-angle-action="down" data-angle-index="${index}" aria-label="Move angle down">↓</button>
-                <button type="button" class="auth-action-btn auth-secondary-btn multi-angle-list-delete-btn" data-multi-angle-action="delete" data-angle-index="${index}" aria-label="Delete ${escapeHtml(angle.name || `Angle ${index + 1}`)}" title="${draft.angles.length <= 1 ? 'A multi-angle diagram must contain at least one image.' : `Delete ${escapeHtml(angle.name || `Angle ${index + 1}`)}`}"${draft.angles.length <= 1 ? ' disabled' : ''}>🗑</button>
+                <button type="button" class="auth-action-btn auth-secondary-btn multi-angle-list-delete-btn" data-multi-angle-action="delete" data-angle-index="${index}" aria-label="Delete ${escapeHtml(angle.name || `Angle ${index + 1}`)}" title="${draft.angles.length <= 1 ? 'Keep at least one angle.' : `Remove ${escapeHtml(angle.name || `Angle ${index + 1}`)} from draft`}"${draft.angles.length <= 1 || draft.saving || draft.editorSwitching || draft.flattenWorkflowPending ? ' disabled' : ''}>🗑</button>
               </div>
             </div>
         `).join('');
@@ -10965,6 +11591,16 @@ The deletion becomes permanent when you save the diagram.`);
             return;
         }
         const append = options.append === true && getMultiAngleCreatorState().open;
+        const draftBeforeImport = getMultiAngleCreatorState();
+        if (append && (draftBeforeImport.saving || draftBeforeImport.editorSwitching || draftBeforeImport.flattenWorkflowPending)) {
+            setCreatorStatus('Finish the current Canvas Setup action before adding angles.', 'error');
+            return;
+        }
+        if (append && draftBeforeImport.matchCanvasDimensions && draftBeforeImport.angles.some(angle =>
+            angle.setupLocked && (angle.canvasWidth > 3000 || angle.canvasHeight > 3000))) {
+            setCreatorStatus('A saved angle exceeds the 3000 px new-image canvas limit. Turn off Match Canvas Dimensions before adding another angle.', 'error');
+            return;
+        }
         const existingBytes = append ? getMultiAngleCreatorState().angles.reduce((sum, angle) => sum + (Number(angle.currentBytes) || 0), 0) : 0;
         const batchBytes = list.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
         if (existingBytes + batchBytes > STUDY_BUNNY_CANVAS_BATCH_MAX_BYTES) {
@@ -11008,7 +11644,14 @@ The deletion becomes permanent when you save the diagram.`);
                 angle.estimateKey = '';
             });
         }
-        if (!append) draft.activeIndex = 0;
+        if (append) {
+            // A saved single-image entry becomes a genuine multi-angle entry
+            // only when an additional angle is actually appended. Keep the
+            // existing Saved Image identity and its locked raster intact.
+            draft.savedSingleEntry = false;
+            draft.singleImageWorkflow = false;
+            draft.activeIndex = draft.angles.length - 1;
+        } else draft.activeIndex = 0;
         if (!draft.metadata.diagramName && draft.angles[0]) {
             draft.metadata.diagramName = getSavedImageFileNameFromLabel(draft.angles[0].fileName, 'Multi-Angle Diagram').replace(/\.[^.]+$/, '').slice(0, 120);
         }
@@ -11519,6 +12162,7 @@ The deletion becomes permanent when you save the diagram.`);
     async function commitMultiAngleDraftCanonicalImage(angle, imageValue = '') {
         const value = normalizeSheetText(imageValue);
         if (!angle || !value) return false;
+        const wasLocked = angle.setupLocked === true;
         releaseMultiAngleDraftAngleRuntime(angle);
         angle.sourceValue = value;
         angle.editedValue = '';
@@ -11537,7 +12181,7 @@ The deletion becomes permanent when you save the diagram.`);
         angle.estimatedBytes = 0;
         angle.setupLocked = true;
         // For a re-encode of saved pixels, bounds are authoritative geometry too.
-        if (!getMultiAngleCreatorState().originalEntry) angle.bounds = detectMultiAngleVisibleBounds(angle.runtimeImage);
+        if (!wasLocked) angle.bounds = detectMultiAngleVisibleBounds(angle.runtimeImage);
         return true;
     }
 
@@ -11567,8 +12211,13 @@ The deletion becomes permanent when you save the diagram.`);
         const draft = getMultiAngleCreatorState();
         if (draft.saving || !draft.angles.length) return;
         try {
-            if (!(await finalizeMultiAngleCanvasSetup())) return null;
+            // A saved-angle deletion is staged and reversible. Obtain final
+            // confirmation BEFORE any encoding, Storage, or database writes.
+            if (!confirmPendingSavedAngleDeletions(draft)) return null;
+            // Ask about saved-angle conversions first, so cancellation cannot
+            // prematurely lock a newly imported angle without saving it.
             if (!(await stageSavedAngleFormatConversions(draft))) return null;
+            if (!(await finalizeMultiAngleCanvasSetup())) return null;
         } catch (error) { setCreatorStatus(error.message || 'Could not prepare canvas conversion.', 'error'); return null; }
         draft.saving = true;
         // Track only brand-new uploads, never a pre-existing canonical reference.
@@ -11596,7 +12245,8 @@ The deletion becomes permanent when you save the diagram.`);
                         usageContext: `saved_image_multi_angle_${index + 1}_canonical`,
                         label: `Saved ${angle.name || `Angle ${index + 1}`}`,
                         originalName: getCanonicalImageFileNameForValue(angle.fileName, canonicalInput),
-                        mediaSaveCache: cache
+                        mediaSaveCache: cache,
+                        uploadRecovery: angle.pendingMediaUploadRecovery || (angle.pendingMediaUploadRecovery = {})
                     }) || canonicalInput;
                     if (isSupabaseMediaReference(savedImage) && savedImage !== normalizeSheetText(angle.sourceValue)) stagedNewRefs.add(savedImage);
                     if (!thumbnailValue || canonicalChanged) {
@@ -11605,7 +12255,8 @@ The deletion becomes permanent when you save the diagram.`);
                         if (isSupabaseMediaReference(thumbnailValue)) stagedNewRefs.add(thumbnailValue);
                     }
                 } catch (error) {
-                    throw new Error(`Could not upload angle ${index + 1}; the previous saved version has been preserved. ${error?.message || ''}`);
+                    const stage = normalizeSheetText(error?.stage || 'image upload');
+                    throw new Error(`Could not save angle ${index + 1} (${stage}); the previous saved version has been preserved. ${error?.message || ''}`);
                 }
                 savedAngles.push(normalizeStudioSavedImageAngle({
                     id: angle.id,
@@ -11634,6 +12285,11 @@ The deletion becomes permanent when you save the diagram.`);
                 }, index));
             }
             const first = savedAngles[0];
+            // Reducing an existing multi-angle diagram to one image produces
+            // a normal single-angle Saved Image under the same stable ID.
+            // Nothing about the surviving image's geometry is re-encoded.
+            if (draft.originalEntry) draft.savedSingleEntry = savedAngles.length === 1;
+            else if (savedAngles.length > 1) draft.savedSingleEntry = false;
             const originalEntry = normalizeStudioSavedImageEntry(draft.originalEntry || {});
             const fileName = getMultiAngleSaveFileName(draft);
             const nextEntry = {
@@ -11653,7 +12309,9 @@ The deletion becomes permanent when you save the diagram.`);
                 imageOnlyLabel: `Saved: ${fileName}`,
                 labels: first.labels,
                 labelSize: normalizeDiagramLabelSize(first.labelSize),
-                pinnedLabelsByAngle: originalEntry?.pinnedLabelsByAngle || {},
+                pinnedLabelsByAngle: originalEntry && draft.pendingDeletedAngles.some(item => item.wasSaved)
+                    ? getMultiAngleReplacementPinnedLabels(originalEntry, savedAngles, draft.savedSingleEntry)
+                    : (originalEntry?.pinnedLabelsByAngle || {}),
                 masteredAnglesById: getSavedImageMasteryForReplacement(originalEntry, { angles: savedAngles, imageValue: first.imageValue, isMultiAngle: true }),
                 masteredUniqueLabels: getSavedImageUniqueMasteryForReplacement(originalEntry, { angles: savedAngles, imageValue: first.imageValue, isMultiAngle: true }),
                 spacedReview: originalEntry?.spacedReview || {},
@@ -11683,8 +12341,21 @@ The deletion becomes permanent when you save the diagram.`);
                 : upsertStudioSavedImageLibraryEntry(nextEntry);
             if (!savedEntry) throw new Error('Could not finalize the Saved Image record.');
             savedEntryCommitted = true;
+            // Remote + local metadata now reference only retained angles.
+            // Release staged deletions; the normal post-commit cleanup below
+            // verifies sharing before removing any unreferenced media.
+            for (const item of draft.pendingDeletedAngles) releaseMultiAngleDraftAngleRuntime(item.angle);
+            draft.pendingDeletedAngles = [];
             for (let i = 0; i < draft.angles.length; i++) {
                 const angle = draft.angles[i];
+                // New angles were locally flattened before the remote write.
+                // Once saved, use their canonical media reference rather than
+                // retaining an extra full-resolution data URL in the draft.
+                angle.sourceValue = savedAngles[i].imageValue;
+                angle.thumbnailValue = savedAngles[i].thumbnailValue;
+                angle.thumbnailMediaValue = savedAngles[i].thumbnailMediaValue;
+                angle.thumbnailBytes = savedAngles[i].thumbnailBytes;
+                angle.pendingMediaUploadRecovery = null;
                 if (angle.pendingConvertedValue) {
                     await commitMultiAngleDraftCanonicalImage(angle, angle.pendingConvertedValue);
                     angle.sourceValue = savedAngles[i].imageValue; // canonical remote ref, not transient data URL
@@ -11693,6 +12364,7 @@ The deletion becomes permanent when you save the diagram.`);
                 }
             }
             savedEntry = synchronizeStudioSavedImageGlobalLabelInformationFromEntry(savedEntry) || savedEntry;
+            if (draft.savedSingleEntry && draft.angles.length === 1) draft.angles[0].id = 'angle_1';
             if (remoteResult?.ok) {
                 const pendingKeys = getStudioSavedImagePendingUpsertKeys();
                 pendingKeys.delete(remoteSyncKey);
@@ -11712,6 +12384,12 @@ The deletion becomes permanent when you save the diagram.`);
             if (options.keepDraftOpen === true) {
                 draft.originalEntry = normalizeStudioSavedImageEntry(savedEntry || nextEntry);
                 draft.editingEntryId = normalizeSheetText(savedEntry?.id || nextEntry.id);
+                draft.angles.forEach(angle => {
+                    if (angle.setupLocked) angle.savedCompressionSettings = {
+                        format: angle.exportFormat, quality: angle.exportQuality, targetKB: angle.exportTargetKB || 0
+                    };
+                    angle.conversionDirty = false;
+                });
                 markMultiAngleDraftSavedBaseline(draft);
                 draft.saving = false;
                 syncMultiAngleCreatorControls();
@@ -11726,8 +12404,14 @@ The deletion becomes permanent when you save the diagram.`);
         } catch (error) {
             console.error(error);
             if (!savedEntryCommitted && stagedNewRefs.size) {
-                try { await deleteSupabaseMediaReferences(stagedNewRefs); }
-                catch (cleanupError) { console.warn('Could not clean up staged Canvas Setup uploads:', cleanupError); }
+                try {
+                    await deleteSupabaseMediaReferences(stagedNewRefs);
+                    for (const angle of draft.angles) {
+                        const pendingRef = angle.pendingMediaUploadRecovery?.assetId
+                            ? buildSupabaseMediaReference(angle.pendingMediaUploadRecovery.assetId) : '';
+                        if (stagedNewRefs.has(pendingRef)) angle.pendingMediaUploadRecovery = null;
+                    }
+                } catch (cleanupError) { console.warn('Could not clean up staged Canvas Setup uploads:', cleanupError); }
                 // Never return a cached sb-media reference to an object we just deleted.
                 state.auth.studioSavedImageMediaSaveCache?.clear?.();
             }
@@ -16246,6 +16930,15 @@ The deletion becomes permanent when you save the diagram.`);
             });
         } else if (target.kind === 'multi-angle-add') {
             const draft = getMultiAngleCreatorState();
+            if (draft.open && (draft.saving || draft.editorSwitching || draft.flattenWorkflowPending)) {
+                setCreatorStatus('Finish the current Canvas Setup action before adding angles.', 'error');
+                return;
+            }
+            if (draft.open && draft.matchCanvasDimensions && draft.angles.some(angle =>
+                angle.setupLocked && (angle.canvasWidth > 3000 || angle.canvasHeight > 3000))) {
+                setCreatorStatus('A saved angle exceeds the 3000 px new-image canvas limit. Turn off Match Canvas Dimensions before adding another angle.', 'error');
+                return;
+            }
             const sourceAngles = getStudioSavedImageAngles(normalizedEntry);
             if (!draft.open) {
                 resetMultiAngleCreatorState({ keepFileInput: true });
@@ -16268,6 +16961,10 @@ The deletion becomes permanent when you save the diagram.`);
                 if (!canonicalValue) continue;
                 const angle = await createMultiAngleDraftAngle(canonicalValue, sourceAngle.fileName || normalizedEntry.fileName, draft.angles.length, {
                     ...sourceAngle,
+                    // This is a new angle in this diagram, not a second owner
+                    // of the original angle identity. Its source media is shared.
+                    id: createMultiAngleId('angle'),
+                    setupLocked: false,
                     sourceValue: canonicalValue,
                     imageOnlyValue: canonicalValue,
                     sourceMediaValue: isSupabaseMediaReference(canonicalValue) ? canonicalValue : '',
@@ -16283,6 +16980,10 @@ The deletion becomes permanent when you save the diagram.`);
                 }
                 draft.angles.push(angle);
                 appendedAngles.push(angle);
+            }
+            if (appendedAngles.length && draft.angles.length > 1) {
+                draft.savedSingleEntry = false;
+                draft.singleImageWorkflow = false;
             }
             draft.activeIndex = Math.max(0, draft.angles.length - 1);
             const reusedCount = appendedAngles.filter(angle => normalizeSheetText(angle.sourceValue || '') && !isDataUrl(normalizeSheetText(angle.sourceValue || ''))).length;
@@ -21264,12 +21965,12 @@ The deletion becomes permanent when you save the diagram.`);
                 ? 'rgba(250, 204, 21, 0.72)'
                 : (isHovered ? 'rgba(124, 108, 255, 0.62)' : 'rgba(0, 0, 0, 0.28)');
             ctx.shadowBlur = isDragging ? 18 : (isHovered ? 14 : 6);
-            ctx.fillStyle = isDragging
-                ? 'rgba(50, 44, 92, 0.98)'
-                : (isHovered ? 'rgba(46, 40, 86, 0.96)' : 'rgba(30, 27, 46, 0.92)');
+            // The same clearly visible but restrained purple fill is used in every state.
+            // Hover/drag differentiation continues through the existing ring and shadow.
+            ctx.fillStyle = 'rgba(76, 56, 118, 0.97)';
             ctx.strokeStyle = isDragging
                 ? 'rgba(250, 204, 21, 0.95)'
-                : (isHovered ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.24)');
+                : (isHovered ? 'rgba(255,255,255,0.7)' : 'rgba(128, 106, 171, 0.72)');
             ctx.lineWidth = isDragging ? 2.4 : (isHovered ? 2 : 1.4);
             ctx.beginPath();
             ctx.moveTo(x - width / 2 + radius, y - height / 2);
@@ -21492,7 +22193,7 @@ The deletion becomes permanent when you save the diagram.`);
         popover.className = 'studio-image-editor-layer-visibility-popover hidden';
         popover.setAttribute('role', 'dialog');
         popover.setAttribute('aria-hidden', 'true');
-        popover.innerHTML = '<div class="studio-image-editor-layer-visibility-title" data-layer-visibility-title></div><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-visibility-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span data-layer-visibility-state>Show</span></label><div class="studio-image-editor-layer-visibility-help" data-layer-visibility-help></div><div class="studio-image-editor-ghost-controls hidden" data-layer-ghost-controls><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-single-label-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span>Single Label View</span></label><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-ghost-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span>Ghost Labels</span></label><label class="studio-image-editor-ghost-range"><span>Inactive label opacity <output data-layer-ghost-value>35%</output></span><input type="range" min="0" max="100" step="5" value="35" data-layer-ghost-opacity aria-label="Ghost labels inactive opacity"></label><div class="studio-image-editor-layer-visibility-help" data-layer-single-label-help>Single Label View shows only the active label, connector and drawings. It takes priority over Ghost Labels.</div></div><div class="studio-image-editor-ghost-controls hidden" data-layer-small-labels-controls><label class="studio-image-editor-ghost-range"><span>Label Size <output data-layer-small-labels-value>100%</output></span><input type="range" min="25" max="200" step="5" value="100" data-layer-small-labels-scale aria-label="Diagram label size"></label></div>';
+        popover.innerHTML = '<div class="studio-image-editor-layer-visibility-title" data-layer-visibility-title></div><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-visibility-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span data-layer-visibility-state>Show</span></label><div class="studio-image-editor-layer-visibility-help" data-layer-visibility-help></div><div class="studio-image-editor-ghost-controls hidden" data-layer-ghost-controls><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-single-label-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span>Single Label View</span></label><label class="studio-image-editor-layer-visibility-toggle"><input type="checkbox" data-layer-ghost-input><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span><span>Ghost Labels</span></label><label class="studio-image-editor-ghost-range"><span>Inactive label opacity <output data-layer-ghost-value>35%</output></span><input type="range" min="0" max="100" step="5" value="35" data-layer-ghost-opacity aria-label="Ghost labels inactive opacity"></label><div class="studio-image-editor-layer-visibility-help" data-layer-single-label-help>Single Label View shows only the active label, connector and drawings. It takes priority over Ghost Labels.</div></div><div class="studio-image-editor-ghost-controls hidden" data-layer-small-labels-controls><label class="studio-image-editor-ghost-range"><span>Label Size <output data-layer-small-labels-value>100%</output></span><input type="range" min="25" max="200" step="5" value="100" data-layer-small-labels-scale aria-label="Diagram label size"></label><label class="studio-image-editor-layer-visibility-toggle studio-label-size-all-toggle" data-layer-label-size-all-row><span>Apply to All Angles</span><input type="checkbox" data-layer-label-size-all-switch checked aria-label="Apply label size to all angles"><span class="studio-image-editor-layer-visibility-track" aria-hidden="true"><span></span></span></label></div>';
         overlay.appendChild(popover);
         popover.addEventListener('click', event => event.stopPropagation());
         popover.querySelector('[data-layer-visibility-input]')?.addEventListener('change', event => {
@@ -21518,8 +22219,18 @@ The deletion becomes permanent when you save the diagram.`);
             const editor = state.auth.imageEditor;
             if (!editor || popover.dataset.layerVisibilityKind !== 'labels') return;
             editor.labelSize = normalizeDiagramLabelSize(Number(event.target.value) / 100);
+            if (editor.target?.multiAngleDraft === true) {
+                const draft = getMultiAngleCreatorState();
+                if (draft.labelSizeApplyAllAngles !== false) draft.angles.forEach(angle => { angle.labelSize = editor.labelSize; });
+            }
             syncImageEditorLayerVisibilityPopover();
             renderImageEditorVectorOverlays();
+        });
+        popover.querySelector('[data-layer-label-size-all-switch]')?.addEventListener('change', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor?.open || editor.target?.multiAngleDraft !== true) return;
+            getMultiAngleCreatorState().labelSizeApplyAllAngles = !!event.target.checked;
+            syncImageEditorLayerVisibilityPopover();
         });
         popover.querySelector('[data-layer-ghost-opacity]')?.addEventListener('input', event => {
             const editor = state.auth.imageEditor;
@@ -21594,6 +22305,11 @@ The deletion becomes permanent when you save the diagram.`);
             smallSlider.disabled = !visible;
         }
         if (smallValue) smallValue.textContent = `${badgeSize}%`;
+        const allRow = popover.querySelector('[data-layer-label-size-all-row]');
+        const allToggle = popover.querySelector('[data-layer-label-size-all-switch]');
+        const showAllToggle = isLabels && editor.target?.multiAngleDraft === true && getMultiAngleCreatorState().angles.length > 1;
+        allRow?.classList.toggle('hidden', !showAllToggle);
+        if (allToggle) allToggle.checked = getMultiAngleCreatorState().labelSizeApplyAllAngles !== false;
     }
 
     function openImageEditorLayerVisibilityPopover(kind = '', button = null) {
@@ -25695,6 +26411,7 @@ The deletion becomes permanent when you save the diagram.`);
     }
 
     function updateStudioEditorTypeUI() {
+        syncStudioExamSectionControls();
         const quizType = getStudioCurrentQuizType();
         const quizMode = getStudioQuizMode();
         const isExam = quizMode === 'exam';
@@ -28739,6 +29456,7 @@ if (elements.importBackupFile) {
             state.auth.quizChallengeAchievements = new Map();
             state.auth.quizSpacedReviews = new Map();
             state.auth.quizSpacedContentRevisions = new Map();
+            state.auth.examLatestReports = new Map();
             state.auth.quizSpacedMigrationMissing = false;
             syncQuizSpacedMigrationBanner();
             state.auth.quizChallengeUnavailable = false;
@@ -32439,6 +33157,7 @@ if (elements.importBackupFile) {
 
     function renderStudioQuestionList() {
         syncStudioQuestionStarredFilterButton();
+        syncStudioExamQuestionFilterControls();
         if (!elements.studioQuestionList) return;
 
         if (!state.auth.user?.id) {
@@ -32479,12 +33198,14 @@ if (elements.importBackupFile) {
         const focusModeActive = !buildUpEditActive && !buildUpFocusActive && !!focusQuestionId;
         const focusNewDraftActive = focusModeActive && focusQuestionId === STUDIO_FOCUS_NEW_QUESTION_ID;
         const starredOnlyFilter = !buildUpEditActive && !buildUpFocusActive && !!state.auth.studioQuestionStarredOnly;
+        const examSectionFilterId = isStudioExamMode() && !focusModeActive
+            ? normalizeSheetText(state.auth.studioExamSectionFilterId) : '';
         const hasUnsavedPositionRows = displayRows.some(questionRow => questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID || isStudioLocalFlashcardId(questionRow.id));
         const positionReorderBlockedReason = buildUpEditActive
             ? 'Finish Build Up string editing before moving a question by number.'
             : ((focusModeActive || buildUpFocusActive)
                 ? 'Show all questions before moving a question by number.'
-                : ((starredOnlyFilter || query)
+                : ((starredOnlyFilter || query || examSectionFilterId)
                     ? 'Clear question filters before moving a question by number.'
                     : (hasUnsavedPositionRows ? 'Save or discard new cards before moving a card by number.' : '')));
         const directPositionReorderAvailable = !positionReorderBlockedReason;
@@ -32514,6 +33235,14 @@ if (elements.importBackupFile) {
             if (starredOnlyFilter) {
                 filteredQuestions = filteredQuestions.filter(questionRow => !!questionRow.isStarred);
             }
+            if (examSectionFilterId) {
+                const selectedSection = normalizeExamSections(state.auth.examSections).find(section => section.id === examSectionFilterId);
+                const allowed = new Set(selectedSection?.questionIds || []);
+                const assigned = examSectionFilterId === '__unassigned__'
+                    ? new Set(normalizeExamSections(state.auth.examSections).flatMap(section => section.questionIds)) : null;
+                filteredQuestions = filteredQuestions.filter(questionRow => assigned
+                    ? !assigned.has(questionRow.id) : allowed.has(questionRow.id));
+            }
             if (query) {
                 filteredQuestions = filteredQuestions.filter((questionRow, filteredIndex) => {
                     let previewIndex = state.auth.studioQuizQuestions.findIndex(question => question.id === questionRow.id);
@@ -32531,13 +33260,24 @@ if (elements.importBackupFile) {
                     ? '<div class="studio-list-empty">This Build Up string is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
                     : (focusModeActive
                         ? '<div class="studio-list-empty">Focused question is not visible anymore. <button type="button" class="studio-focus-show-all-inline" data-studio-show-all-questions="true">Show All</button></div>'
-                        : (starredOnlyFilter && !query
-                            ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
-                            : '<div class="studio-list-empty">No questions match your search.</div>')));
+                        : (examSectionFilterId
+                            ? '<div class="studio-list-empty">No questions match this section filter. Choose All Sections to show every question.</div>'
+                            : (starredOnlyFilter && !query
+                                ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
+                                : '<div class="studio-list-empty">No questions match your search.</div>'))));
             elements.studioQuestionList.innerHTML = emptyLabel;
             updateStudioQuestionNavigationUI();
             return;
         }
+        const examGrouping = isStudioExamMode() && !focusModeActive && !buildUpFocusActive && !buildUpEditActive;
+        const examSections = examGrouping ? normalizeExamSections(state.auth.examSections) : [];
+        if (examGrouping && examSections.length) {
+            const rank = new Map(examSections.flatMap((section, groupIndex) => section.questionIds.map(id => [id, groupIndex])));
+            filteredQuestions = [...filteredQuestions].sort((a,b) =>
+                (rank.has(a.id) ? rank.get(a.id) : examSections.length) - (rank.has(b.id) ? rank.get(b.id) : examSections.length) ||
+                displayRows.indexOf(a) - displayRows.indexOf(b));
+        }
+        let lastExamGroup = null;
         const sharedDiagramSourceQuestionId = isStudioSharedDiagramCapableMode(editingType) ? getDiagramSharingSourceQuestionId(state.auth.studioDiagramSharing) : '';
         const buildUpEditorBannerHtml = buildUpEditActive
             ? `<div class="studio-build-up-editor-banner">
@@ -32548,6 +33288,11 @@ if (elements.importBackupFile) {
         let rowsHtml = buildUpEditorBannerHtml + filteredQuestions.map((questionRow, filteredIndex) => {
             let index = displayRows.findIndex(question => question.id === questionRow.id);
             if (index === -1) index = filteredIndex;
+            const examGroup = examGrouping && examSections.length
+                ? (getExamSectionForQuestion(questionRow.id, examSections)?.id || '__unassigned__') : null;
+            const groupHeader = examGroup && examGroup !== lastExamGroup
+                ? `<div class="studio-exam-section-group-title${examGroup === '__unassigned__' ? ' is-unassigned' : ''}">${escapeHtml(examSections.find(section=>section.id===examGroup)?.name || 'Unassigned Questions')}</div>` : '';
+            lastExamGroup = examGroup;
             const isPendingRow = questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID;
             const isLocalFlashcardRow = isStudioLocalFlashcardId(questionRow.id);
             const isUnsavedFlashcardRow = isPendingRow || isLocalFlashcardRow;
@@ -32701,7 +33446,7 @@ if (elements.importBackupFile) {
             const deleteTitle = isUnsavedFlashcardRow ? 'Discard this unsaved card' : `Delete this ${questionType === 'flashcard' ? 'card' : 'question'}`;
             const insertLabel = questionType === 'flashcard' ? `Add a new card after ${navigationName}` : `Add a new question after ${navigationName}`;
 
-            return `
+            return `${groupHeader}
                 <div class="studio-question-list-row">
                   <div
                     class="studio-question-list-item${isActive ? ' active' : ''}${isStarredRow ? ' starred' : ''}${isActiveBuildUpMember || isFocusedBuildUpMember ? ' build-up-member' : ''}${state.auth.studioDraggingQuestionId === questionRow.id ? ' dragging' : ''}"
@@ -35611,6 +36356,8 @@ if (elements.openQuizStudioBtn) {
         setEditorInlineFolderCreatorOpen(false);
 
         state.auth.editingQuizId = null;
+        state.auth.examSections = [];
+        state.auth.studioExamSectionFilterId = '';
         state.auth.studioLastSavedMetadataSignature = '';
         state.auth.studioSaveFeedback = '';
         state.auth.studioQuestionDrafts?.clear();
@@ -35630,6 +36377,7 @@ if (elements.openQuizStudioBtn) {
         state.auth.studioLocalFlashcardSaveIdentities = new Map();
         clearStudioQuestionInputs();
         renderStudioQuestionList();
+        syncStudioExamSectionControls();
         updateCreateQuizModeUI();
     }
 
@@ -37694,6 +38442,11 @@ if (elements.openQuizStudioBtn) {
 
         state.auth.session = session || null;
         state.auth.user = session?.user || null;
+        if (!sameSignedInUser) {
+            // These guards belong to one signed-in account, not a later account.
+            state.auth.studioSavedImageDeletedKeys = new Set();
+            state.auth.studioSavedImageDeleteErrors = new Map();
+        }
 
         // Egress guard: Supabase emits same-user session events (especially
         // INITIAL_SESSION/SIGNED_IN/TOKEN_REFRESHED) without the library changing.
@@ -37751,6 +38504,7 @@ if (elements.openQuizStudioBtn) {
             state.auth.quizChallengeAchievements = new Map();
             state.auth.quizSpacedReviews = new Map();
             state.auth.quizSpacedContentRevisions = new Map();
+            state.auth.examLatestReports = new Map();
             state.auth.quizSpacedMigrationMissing = false;
             syncQuizSpacedMigrationBanner();
             state.auth.quizChallengeUnavailable = false;
@@ -39242,6 +39996,8 @@ if (elements.openQuizStudioBtn) {
             }
             state.auth.editingQuizId = quizRow.id;
             state.auth.pendingInsertAfterQuestionId = null;
+            state.auth.examSections = editorMode === 'exam' ? getExamSectionsFromDescription(quizRow.description || '') : [];
+            state.auth.studioExamSectionFilterId = '';
             state.auth.editingQuizMode = editorMode;
             state.auth.editingQuizType = editorMode === 'exam' ? 'multiple_choice' : editorMode;
             if (handwrittenConfig.enabled && cachedType !== 'flashcard') {
@@ -44547,7 +45303,7 @@ function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestion
     }
 
     state.questions = [...visibleQuestions];
-    if (resetSession) beginQuizSpacedAttempt(visibleQuestions);
+    if (resetSession) { beginQuizSpacedAttempt(visibleQuestions); beginExamPostQuizAttempt(visibleQuestions, state.sourceQuestions || []); }
     state.questionQueue = buildStudyQuestionQueue(visibleQuestions, {
         shuffle: !!document.getElementById('shuffleQuestions')?.checked && resetSession
     });
@@ -45008,7 +45764,9 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         }
 
         if (quizType === 'exam') {
-            return buildExamQuestionsFromSupabaseRows(rows, quizDescriptor, quizName, markLoad);
+            const sections = getExamSectionsFromDescription(quizRow?.description || '');
+            const questions = await buildExamQuestionsFromSupabaseRows(rows, quizDescriptor, quizName, markLoad);
+            return questions.map(q => ({...q, examSections:sections}));
         }
 
         const sharedDiagramSourceQuestionId = getDiagramSharingSourceQuestionId(diagramSharing);
@@ -46008,6 +46766,7 @@ function applyQuestionOutcome(q, isCorrect, options = {}) {
     const { useSideFeedback = true } = options;
     recordProgressModeOutcome(q, isCorrect);
     trackQuizSpacedOutcome(q, isCorrect);
+    trackExamPostQuizOutcome(q, isCorrect);
     maybeAutoStarQuestionFromOutcome(q, isCorrect);
     maybeUnstarQuestionFromOutcome(q, isCorrect);
     if (state.studyTimer.scope === 'question') {
@@ -46233,6 +46992,7 @@ function showQuestion() {
         syncQuestionStarButton();
         maybeCompleteActiveQuizChallenge();
         maybeRecordQuizSpacedCompletion();
+        maybeCompleteExamPostQuizReport();
         renderQuizSpacedCompletionFeedback();
         maybeOpenCompletionChallengePrompt();
         return;
@@ -50276,6 +51036,8 @@ function resetModeState() {
 
     state.normalFinished = false;
     state.quizSpacedAttempt = null;
+    state.examPostQuizAttempt = null;
+    document.getElementById('examPostQuizCompletion')?.classList.add('hidden');
     state.questionAnswered = false;
     state.flashcardFlipped = false;
     state.currentQuestionType = '';
@@ -50826,14 +51588,19 @@ if (elements.diagramCreatorImageGrid) {
             event.preventDefault();
             event.stopPropagation();
             const entryId = normalizeSheetText(deleteButton.dataset.diagramCreatorDelete || '');
+            const deletingEntry = getStudioSavedImageLibraryForPicker().find(item => item.id === entryId);
+            const deleteSyncKey = deletingEntry ? getStudioSavedImageSyncKey(deletingEntry) : entryId;
             const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
             if (result === 'cancelled') return;
-            if (result === 'deleted') {
-                setCreatorStatus('Saved Image deletion queued. Shared flashcard image links will be cleared before physical cleanup.', 'success');
+            if (result === 'queued') {
+                setCreatorStatus('Saved Image hidden locally; confirming deletion with Supabase...');
+            } else if (result === 'offline') {
+                setCreatorStatus('Sign in and reconnect before deleting a Saved Image.', 'error');
             } else {
                 setCreatorStatus('That saved image could not be found.', 'error');
             }
             renderDiagramCreatorSavedImages();
+            if (result === 'queued') reportStudioSavedImageDeletion(deleteSyncKey).catch(error => setCreatorStatus(String(error.message || error), 'error'));
             if (state.auth.currentStudioSection === 'review-mode') renderReviewModeLibrary();
             return;
         }
@@ -50860,6 +51627,18 @@ if (elements.diagramCreatorImageGrid) {
 // Phase 22MZ: multi-angle setup and direct editor controls.
 if (elements.multiAnglePrevBtn) elements.multiAnglePrevBtn.addEventListener('click', () => setActiveMultiAngleIndex(getMultiAngleCreatorState().activeIndex - 1));
 if (elements.multiAngleNextBtn) elements.multiAngleNextBtn.addEventListener('click', () => setActiveMultiAngleIndex(getMultiAngleCreatorState().activeIndex + 1));
+// Phase 24A.6c: secondary angle navigation at the quality controls. Both navigation
+// areas reuse the original angle state and per-angle settings; no duplicate drafts.
+if (elements.multiAngleQualityPrevBtn) elements.multiAngleQualityPrevBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState();
+    if (!draft.open || !draft.setupVisible || draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) return;
+    setActiveMultiAngleIndex(draft.activeIndex - 1);
+});
+if (elements.multiAngleQualityNextBtn) elements.multiAngleQualityNextBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState();
+    if (!draft.open || !draft.setupVisible || draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) return;
+    setActiveMultiAngleIndex(draft.activeIndex + 1);
+});
 if (elements.multiAngleCancelBtn) elements.multiAngleCancelBtn.addEventListener('click', () => {
     resetMultiAngleCreatorState();
     setCreatorStatus('Multi-angle set canceled. No Saved Images were changed.', 'success');
@@ -50928,7 +51707,7 @@ if (elements.multiAngleFormatSelect) elements.multiAngleFormatSelect.addEventLis
     const angle = getActiveMultiAngleDraftAngle();
     if (!angle || (angle.setupLocked && !mayConvertSavedAngle(angle))) return;
     angle.exportFormat = ['png', 'jpeg', 'webp'].includes(elements.multiAngleFormatSelect.value) ? elements.multiAngleFormatSelect.value : 'webp';
-    if (angle.setupLocked) angle.conversionDirty = true;
+    if (angle.setupLocked) refreshSavedAngleConversionDirty(angle);
     angle.estimateKey = '';
     syncMultiAngleCreatorControls();
 });
@@ -50942,8 +51721,8 @@ if (elements.multiAngleTransparentToggle) elements.multiAngleTransparentToggle.a
 if (elements.multiAngleQualityInput) elements.multiAngleQualityInput.addEventListener('input', () => {
     const angle = getActiveMultiAngleDraftAngle();
     if (!angle || (angle.setupLocked && !mayConvertSavedAngle(angle)) || angle.exportFormat === 'png') return;
-    if (angle.setupLocked) angle.conversionDirty = true;
     angle.exportQuality = Math.max(0.6, Math.min(1, Number(elements.multiAngleQualityInput.value) / 100 || 0.88));
+    if (angle.setupLocked) refreshSavedAngleConversionDirty(angle);
     angle.estimateKey = '';
     syncMultiAngleCreatorControls();
 });
@@ -50952,9 +51731,29 @@ if (elements.multiAngleTargetSizeInput) elements.multiAngleTargetSizeInput.addEv
     if (!angle || (angle.setupLocked && !mayConvertSavedAngle(angle)) || !['webp','jpeg'].includes(angle.exportFormat)) return;
     const kb = Math.round(Number(elements.multiAngleTargetSizeInput.value) || 0);
     angle.exportTargetKB = kb > 0 ? Math.max(25,Math.min(3072,kb)) : 0;
-    if (angle.setupLocked) angle.conversionDirty = true;
+    if (angle.setupLocked) refreshSavedAngleConversionDirty(angle);
     angle.estimateKey = '';
     syncMultiAngleCreatorControls();
+});
+// Apply the selected WebP quality without flattening, uploading, or copying pixels.
+// The optional target KB is cleared because it would otherwise silently override
+// the intended quality slider. Saved geometry/annotations never change.
+if (elements.multiAngleApplyWebpQualityAllBtn) elements.multiAngleApplyWebpQualityAllBtn.addEventListener('click', () => {
+    const draft = getMultiAngleCreatorState(), active = getActiveMultiAngleDraftAngle();
+    if (!draft.open || !draft.setupVisible || draft.singleImageWorkflow || draft.angles.length < 2 ||
+        draft.saving || draft.editorSwitching || draft.flattenWorkflowPending || !active || active.exportFormat !== 'webp') return;
+    const percentage = Math.round(getMultiAngleExportSettings(active).quality * 100);
+    draft.angles.forEach(angle => {
+        angle.exportFormat = 'webp';
+        angle.exportQuality = percentage / 100;
+        angle.exportTargetKB = 0;
+        if (angle.setupLocked) refreshSavedAngleConversionDirty(angle);
+        angle.estimateKey = '';
+        angle.estimatedBytes = 0;
+    });
+    clearMultiAngleConvertedPreview();
+    syncMultiAngleCreatorControls();
+    setCreatorStatus(`WebP quality ${percentage}% set for ${draft.angles.length} angles. Review each angle and use the existing Flatten/Commit when ready.`, 'success');
 });
 if (elements.multiAngleApplyFormatAllBtn) elements.multiAngleApplyFormatAllBtn.addEventListener('click', () => {
     const draft = getMultiAngleCreatorState(), active = getActiveMultiAngleDraftAngle();
@@ -50963,7 +51762,7 @@ if (elements.multiAngleApplyFormatAllBtn) elements.multiAngleApplyFormatAllBtn.a
         angle.exportFormat = active.exportFormat;
         angle.exportQuality = active.exportQuality;
         angle.exportTargetKB = active.exportTargetKB;
-        angle.conversionDirty = true;
+        refreshSavedAngleConversionDirty(angle);
         angle.estimateKey = '';
     });
     syncMultiAngleCreatorControls();
@@ -51079,6 +51878,7 @@ if (elements.multiAngleDeleteAngleBtn) elements.multiAngleDeleteAngleBtn.addEven
     const draft = getMultiAngleCreatorState();
     deleteMultiAngleDraftAngle(draft.activeIndex);
 });
+if (elements.multiAngleUndoDeleteBtn) elements.multiAngleUndoDeleteBtn.addEventListener('click', () => undoLastMultiAngleDraftAngleDelete());
 if (elements.multiAngleToggleListBtn) elements.multiAngleToggleListBtn.addEventListener('click', () => {
     const draft = getMultiAngleCreatorState();
     draft.listOpen = !draft.listOpen;
@@ -51093,6 +51893,7 @@ if (elements.multiAngleList) elements.multiAngleList.addEventListener('click', e
     if (!Number.isInteger(index) || !draft.angles[index]) return;
     const action = button.dataset.multiAngleAction;
     if (action === 'open') setActiveMultiAngleIndex(index);
+    if ((draft.saving || draft.editorSwitching || draft.flattenWorkflowPending) && action !== 'open') return;
     if (action === 'up' && index > 0) {
         [draft.angles[index - 1], draft.angles[index]] = [draft.angles[index], draft.angles[index - 1]];
         draft.activeIndex = index - 1;
@@ -51520,14 +52321,19 @@ if (elements.reviewModeImageGrid) {
             event.preventDefault();
             event.stopPropagation();
             const entryId = normalizeSheetText(deleteButton.dataset.reviewImageDelete || '');
+            const deletingEntry = getStudioSavedImageLibraryForPicker().find(item => item.id === entryId);
+            const deleteSyncKey = deletingEntry ? getStudioSavedImageSyncKey(deletingEntry) : entryId;
             const result = confirmAndRemoveStudioSavedImageEntryById(entryId);
             if (result === 'cancelled') return;
-            if (result === 'deleted') {
-                setCreatorStatus('Saved Image deletion queued. Linked flashcard images will be detached before physical cleanup; the cards and quizzes remain.', 'success');
+            if (result === 'queued') {
+                setCreatorStatus('Saved Image hidden locally; confirming deletion with Supabase...');
+            } else if (result === 'offline') {
+                setCreatorStatus('Sign in and reconnect before deleting a Saved Image.', 'error');
             } else {
                 setCreatorStatus('That saved image could not be found.', 'error');
             }
             renderReviewModeLibrary();
+            if (result === 'queued') reportStudioSavedImageDeletion(deleteSyncKey).catch(error => setCreatorStatus(String(error.message || error), 'error'));
             return;
         }
         const card = event.target.closest('[data-review-image-id]');
@@ -55223,6 +56029,8 @@ if (elements.studioQuestionJumpBtn) {
         }
 
         const wasFocusMode = isStudioQuestionFocusMode();
+        // Jump by absolute number should always reveal its destination.
+        state.auth.studioExamSectionFilterId = '';
         state.auth.studioFocusedBuildUpString = '';
         state.auth.studioQuestionSearchQuery = '';
         if (elements.studioQuestionSearchInput) {
@@ -56054,6 +56862,48 @@ elements.questionImage.onclick = function () {
         if(state.auth.handwrittenFlashcardEnabled){const side=getHandwrittenSideKey();requestAnimationFrame(()=>{drawHandwrittenEditorCanvas(side);syncSavedHandwrittenPreviewZoom();});}
     });
 
+    elements.studioExamQuestionFilterBtn?.addEventListener('click', () => {
+        const menu = elements.studioExamQuestionFilterMenu;
+        if (!menu || !state.auth.editingQuizId || !isStudioExamMode()) return;
+        const opening = menu.classList.contains('hidden');
+        menu.classList.toggle('hidden', !opening);
+        elements.studioExamQuestionFilterBtn.setAttribute('aria-expanded', String(opening));
+    });
+    elements.studioExamQuestionFilterMenu?.addEventListener('click', event => {
+        const option = event.target.closest('[data-studio-exam-filter-id]');
+        if (!option) return;
+        state.auth.studioExamSectionFilterId = normalizeSheetText(option.dataset.studioExamFilterId);
+        state.auth.studioFocusedQuestionId = '';
+        elements.studioExamQuestionFilterMenu.classList.add('hidden');
+        renderStudioQuestionList();
+        elements.studioExamQuestionFilterBtn?.focus();
+    });
+    document.addEventListener('pointerdown', event => {
+        if (!event.target.closest?.('#studioExamQuestionFilterWrap')) {
+            elements.studioExamQuestionFilterMenu?.classList.add('hidden');
+            elements.studioExamQuestionFilterBtn?.setAttribute('aria-expanded', 'false');
+        }
+    });
+    elements.studioExamQuestionFilterWrap?.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        elements.studioExamQuestionFilterMenu?.classList.add('hidden');
+        elements.studioExamQuestionFilterBtn?.setAttribute('aria-expanded', 'false');
+        elements.studioExamQuestionFilterBtn?.focus();
+    });
+    elements.studioExamSectionSelect?.addEventListener('change', syncStudioExamSectionAction);
+    elements.studioExamSectionApply?.addEventListener('click', async () => {
+        try { await applyStudioExamSectionAssignment(); }
+        catch (error) { if (elements.studioExamSectionStatus) elements.studioExamSectionStatus.textContent = error.message || 'Could not assign exam questions.'; }
+    });
+    elements.studioExamSectionDelete?.addEventListener('click', async () => {
+        const id = normalizeSheetText(elements.studioExamSectionSelect?.value);
+        if (!id || !window.confirm('Delete this section? Its questions will remain in the exam, unassigned.')) return;
+        try {
+            await persistStudioExamSections((state.auth.examSections || []).filter(section => section.id !== id));
+            if (elements.studioExamSectionSelect) elements.studioExamSectionSelect.value = '';
+            syncStudioExamSectionAction();
+        } catch (error) { if (elements.studioExamSectionStatus) elements.studioExamSectionStatus.textContent = error.message || 'Could not remove section.'; }
+    });
     elements.createQuizTypeSelect?.addEventListener('change', () => {
         const type=normalizeSheetText(elements.createQuizTypeSelect.value);
         if(type!=='flashcard'){setHandwrittenFlashcardFocusMode(false);state.auth.handwrittenFlashcardEnabled=false;state.auth.handwrittenFlashcardPersistedEnabled=false;state.auth.handwrittenFlashcardSetupApplied=false;}

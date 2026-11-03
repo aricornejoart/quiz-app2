@@ -17647,3 +17647,59 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-imported-animation-grid label { display:grid; gap:3px; font-size:11px; }
 .studio-imported-animation-grid input { box-sizing:border-box; width:100%; min-width:0; }
 .studio-imported-animation-settings small { opacity:.72; line-height:1.4; }
+
+/* Phase 24A.5z — Exam sections & independent Post Quiz Report. */
+.studio-exam-sections-panel { margin:12px 0; padding:14px; border:1px solid var(--studio-border, #8f8f9b55); border-radius:12px; }
+.studio-exam-section-fields { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; align-items:end; }
+.studio-exam-section-fields .auth-field { min-width:0; }
+.studio-exam-section-actions { display:flex; gap:10px; margin-top:10px; }
+.studio-exam-section-group-title { font-weight:700; padding:10px 12px; color:#2dd4bf; border:1px solid rgba(45,212,191,.24); background:rgba(45,212,191,.09); border-radius:8px; margin-top:12px; }
+.studio-exam-section-group-title.is-unassigned { color:inherit; border-color:rgba(143,143,155,.2); background:rgba(143,143,155,.09); }
+/* Phase 24A.6b: keep Starred and Filter Sections directly adjacent, never split across wrap lines. */
+.studio-question-filter-pair { display:inline-flex; align-items:flex-end; gap:8px; max-width:100%; flex-wrap:nowrap; }
+/* Section filtering is only a Question List view; use the same purple pill base as Starred only. */
+.studio-exam-question-filter-wrap { position:relative; align-self:end; min-width:0; max-width:min(250px,42vw); }
+.studio-exam-question-filter-btn { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.studio-exam-question-filter-menu { position:absolute; top:calc(100% + 6px); right:0; z-index:45; min-width:min(270px,85vw); max-width:min(340px,90vw); max-height:300px; overflow-y:auto; padding:6px; border:1px solid rgba(159,144,255,.86); border-radius:10px; background:#242039; box-shadow:0 12px 28px #0008; }
+.studio-exam-question-filter-option { display:block; width:100%; border:0; border-radius:7px; padding:9px 10px; background:transparent; color:#ffffff; text-align:left; white-space:normal; overflow-wrap:anywhere; font:inherit; font-size:13px; cursor:pointer; }
+.studio-exam-question-filter-option:hover,.studio-exam-question-filter-option:focus-visible { background:rgba(124,108,255,.26); outline:1px solid rgba(159,144,255,.5); }
+.studio-exam-question-filter-option.active { background:rgba(255,183,77,.28); color:#fff7df; font-weight:800; }
+
+.exam-post-quiz-completion { margin:14px 0; width:min(100%,520px); }
+.exam-post-quiz-report { padding:14px; border-radius:12px; border:1px solid #8c83bb66; color:inherit; background:rgba(110,95,190,.06); text-align:left; }
+.exam-post-quiz-report h3 { margin:0 0 8px; font-size:1.15em; }
+.exam-post-quiz-summary, .exam-post-quiz-tip { margin:7px 0 12px; font-size:.88em; }
+.exam-post-quiz-section { margin:12px 0; }
+.exam-post-quiz-section-heading { display:flex; justify-content:space-between; gap:8px; font-size:.9em; }
+.exam-post-quiz-track { height:8px; background:#8f8f8f3f; overflow:hidden; border-radius:12px; margin:5px 0; }
+.exam-post-quiz-track span { display:block; height:100%; background:#6e7cca; border-radius:12px; }
+.exam-post-quiz-section small { opacity:.85; font-size:.78em; }
+.exam-post-quiz-warning { color:#b87722; font-size:.83em; }
+.exam-post-quiz-placeholder { opacity:.8; font-size:.85em; }
+.exam-post-quiz-report.is-compact {padding:10px; font-size:.9em;}
+.studio-spaced-review-popover:has(.exam-post-quiz-popup-slot) { max-height:min(80vh,560px); overflow:auto; }
+@media(max-width:720px){ .studio-exam-section-fields { grid-template-columns:1fr; } }
+
+/* Phase 24A.6d — compact navigation + hover/tap help instead of long inline notes. */
+.multi-angle-quality-nav { display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 6px; margin: 0 0 10px; padding: 7px; border-radius: 11px; background: var(--color-bg-control, #f1f5f9); border: 1px solid var(--color-border-soft, #cbd5e1); }
+.multi-angle-quality-angle-indicator { min-width: 47px; flex: 1; text-align: center; white-space: nowrap; font-size: .82rem; color: var(--color-text-main, #0f172a); font-variant-numeric: tabular-nums; }
+.multi-angle-quality-nav .auth-action-btn { flex: 0 1 auto; font-size: .81rem; min-width: 0; padding: 8px 9px; }
+.multi-angle-quality-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.multi-angle-webp-action-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+#multiAngleApplyWebpQualityAllBtn { flex: 1; min-width: 0; }
+.multi-angle-info { position: relative; flex: 0 0 auto; font-weight: 400; }
+.multi-angle-info > summary { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; border: 1px solid var(--color-border-soft, #94a3b8); background: var(--color-bg-control, #f1f5f9); color: var(--color-text-main, #334155); font-size: 16px; line-height: 1; cursor: pointer; list-style: none; user-select: none; touch-action: manipulation; }
+.multi-angle-info > summary::-webkit-details-marker { display: none; }
+.multi-angle-info > summary::marker { content: ''; }
+.multi-angle-info > summary:hover, .multi-angle-info > summary:focus-visible, .multi-angle-info[open] > summary { border-color: #8b5cf6; color: #6d28d9; outline-offset: 2px; }
+.multi-angle-info-popup { position: absolute; z-index: 60; right: 0; top: calc(100% + 7px); width: min(290px, 74vw); max-width: calc(100vw - 36px); padding: 10px 12px; border: 1px solid var(--color-border-soft, #94a3b8); border-radius: 10px; background: var(--color-bg-surface, #ffffff); color: var(--color-text-main, #0f172a); box-shadow: 0 12px 28px rgba(0,0,0,.22); line-height: 1.5; font-size: .76rem; font-weight: 400; }
+@media (max-width: 450px) { .multi-angle-quality-nav .auth-action-btn { padding: 7px 6px; font-size: .76rem; } .multi-angle-quality-angle-indicator { font-size: .78rem; } }
+
+/* Phase 24A.6f — saved-angle confirmation and label-size synchronization */
+.studio-label-size-all-toggle { justify-content: space-between; gap: 12px; margin-top: 2px; }
+.studio-label-size-all-toggle.hidden { display: none !important; }
+.studio-label-size-all-toggle .studio-image-editor-layer-visibility-track { flex: 0 0 38px; }
+.studio-saved-recompression-prompt { max-width: 560px; }
+.studio-saved-recompression-list { max-height: 180px; overflow-y: auto; margin: 9px 0 10px; padding: 9px 12px 9px 32px; border:1px solid rgba(196,181,253,.32); border-radius:9px; background:rgba(0,0,0,.17); }
+.studio-saved-recompression-list li { margin:3px 0; }
+.studio-saved-recompression-prompt [data-saved-recompression="continue"] { background:#6b4eae; }
