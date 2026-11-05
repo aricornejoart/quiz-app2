@@ -12156,18 +12156,21 @@ body.review-mode-image-open {
   justify-self: end;
   padding: 0;
   place-items: center;
-  border: 1px solid rgba(248, 113, 113, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 11px;
-  color: #fecaca;
-  background: rgba(127, 29, 29, 0.28);
+  color: #fff;
+  background: rgba(20, 17, 43, 0.9);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   font-size: 1rem;
   cursor: pointer;
 }
 
 .studio-diagram-library-delete:hover,
 .studio-diagram-library-delete:focus-visible {
-  border-color: rgba(248, 113, 113, 0.8);
-  background: rgba(153, 27, 27, 0.55);
+  border-color: rgba(255, 115, 115, 0.9);
+  background: rgba(133, 31, 47, 0.96);
   outline: none;
 }
 
@@ -17111,24 +17114,41 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-spaced-review-subtle { opacity: .84; margin: 5px 0; line-height: 1.45; }
 .studio-spaced-review-history { margin: 7px 0; padding-left: 18px; line-height: 1.45; }
 .studio-study-icon-column { display: flex; flex-direction: column; gap: 7px; align-items: flex-end; }
+/* Phase 24A.6l — keep the ORIGINAL clock symbol, sizes and the Review
+   thumbnail icon placement. Only add a filled surface and yellow states. */
 .studio-image-reminder-toggle {
   display: inline-grid;
   place-items: center;
-  border: 1px solid rgba(255,255,255,.25);
-  border-radius: 10px;
-  background: rgba(255,255,255,.05);
-  color: #7b738b;
+  box-sizing: border-box;
   width: 42px;
   height: 38px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 10px;
+  padding: 0;
+  color: #fff;
+  background: rgba(20,17,43,.9);
+  box-shadow: 0 6px 18px rgba(0,0,0,.34);
   font-size: 1.7rem;
   line-height: 1;
   cursor: pointer;
+  transition: border-color .15s, background-color .15s, color .15s;
 }
-.studio-image-reminder-toggle.is-on { color: #facc15; border-color: rgba(250,204,21,.5); background: rgba(250,204,21,.09); }
+.studio-image-reminder-toggle.is-on { color: #facc15; border-color: rgba(250,204,21,.64); background: rgba(92,67,9,.95); }
+.studio-image-reminder-toggle:hover,
+.studio-image-reminder-toggle:focus-visible { color: #fde68a; border-color: #facc15; background: rgba(125,91,13,.98); }
 .studio-image-reminder-toggle:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
 .studio-study-review-icon-column { position: absolute; z-index: 3; top: 8px; right: 8px; display: flex; flex-direction: column; align-items: center; gap: 7px; }
 .studio-study-review-icon-column .studio-review-image-delete { position: static; }
 .studio-study-review-icon-column .studio-image-reminder-toggle { width: 38px; height: 38px; }
+/* Diagram Creator: anchor the existing 42px trash/42x38px clock above the
+   thumbnail rather than allowing the actions grid to place them below it.
+   The action buttons and column widths retain their existing geometry. */
+.studio-diagram-library-card .studio-study-icon-column {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+}
 
 /* Phase 23F.41.65 — detached, click-to-open progress popup; never grows a card. */
 .studio-spaced-review-popover {
@@ -17653,7 +17673,7 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-exam-section-fields { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; align-items:end; }
 .studio-exam-section-fields .auth-field { min-width:0; }
 .studio-exam-section-actions { display:flex; gap:10px; margin-top:10px; }
-.studio-exam-section-group-title { font-weight:700; padding:10px 12px; color:#2dd4bf; border:1px solid rgba(45,212,191,.24); background:rgba(45,212,191,.09); border-radius:8px; margin-top:12px; }
+.studio-exam-section-group-title { font-weight:700; padding:10px 12px; color:#2dd4bf; border:1px solid rgba(45,212,191,.24); background:rgba(20,184,166,.09); border-radius:8px; margin-top:12px; }
 .studio-exam-section-group-title.is-unassigned { color:inherit; border-color:rgba(143,143,155,.2); background:rgba(143,143,155,.09); }
 /* Phase 24A.6b: keep Starred and Filter Sections directly adjacent, never split across wrap lines. */
 .studio-question-filter-pair { display:inline-flex; align-items:flex-end; gap:8px; max-width:100%; flex-wrap:nowrap; }
@@ -17703,3 +17723,67 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-saved-recompression-list { max-height: 180px; overflow-y: auto; margin: 9px 0 10px; padding: 9px 12px 9px 32px; border:1px solid rgba(196,181,253,.32); border-radius:9px; background:rgba(0,0,0,.17); }
 .studio-saved-recompression-list li { margin:3px 0; }
 .studio-saved-recompression-prompt [data-saved-recompression="continue"] { background:#6b4eae; }
+
+
+/* Phase 24A.6p — visible dot-to-ripple sonar; transient, no saved image edits. */
+.review-mode-sonar { pointer-events: none; }
+.review-mode-sonar-point { color: var(--review-sonar-color, #14b8a6); }
+.review-mode-sonar-wave {
+  transform-box: fill-box;
+  transform-origin: center;
+  /* Keep the ring's 2.8px stroke visible even when the ripple is point-sized. */
+  vector-effect: non-scaling-stroke;
+  animation: review-sonar-wave 1.5s ease-out infinite;
+  opacity: 0;
+}
+/* Multi-target Review has one 1.8s slot per endpoint. Last wave fades
+   before the next endpoint begins; single-target cadence stays unchanged. */
+.review-mode-sonar.is-review-hover.is-multi-sequence .review-mode-sonar-wave { animation-duration: 1.8s; }
+.review-mode-sonar.is-review-hover .wave-one { animation-delay: 0s; }
+.review-mode-sonar.is-review-hover .wave-two { animation-delay: .5s; }
+.review-mode-sonar.is-review-hover .wave-three { animation-delay: 1s; }
+.review-mode-sonar.is-mini-quiz .review-mode-sonar-wave { animation-duration: 3s; }
+.review-mode-sonar.is-mini-quiz .wave-one { animation-delay: 0s; }
+.review-mode-sonar.is-mini-quiz .wave-two { animation-delay: .25s; }
+.review-mode-sonar.is-mini-quiz .wave-three { animation-delay: .5s; }
+@keyframes review-sonar-wave {
+  0% { transform: scale(.02); opacity: 1; }
+  42% { transform: scale(1); opacity: 0; }
+  43%, 100% { transform: scale(1); opacity: 0; }
+}
+.review-mode-sonar-rgb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  color: inherit;
+  font-weight: 650;
+  font-size: .88rem;
+}
+.review-mode-sonar-rgb-row > span:first-child { flex: 1; }
+.review-mode-sonar-color-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(20,184,166,.6);
+  border-radius: 8px;
+  background: rgba(20,184,166,.09);
+  padding: 4px 7px;
+  color: #e4fffa;
+  cursor: pointer;
+  font-size: .78rem;
+  font-weight: 800;
+}
+.review-mode-sonar-color-button input[type="color"] {
+  cursor: pointer;
+  width: 29px;
+  height: 26px;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+.review-mode-sonar-color-button:focus-within { outline: 2px solid #14b8a6; outline-offset: 2px; }
+.review-mode-sonar-rgb-row output { font-size: .76rem; font-variant-numeric: tabular-nums; opacity: .85; }
+@media (prefers-reduced-motion: reduce) {
+  .review-mode-sonar-wave { animation: none; opacity: 1; transform: scale(.02); }
+}

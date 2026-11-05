@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a6j_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a6s_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a6j_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a6s_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -903,6 +903,7 @@ MODIFICATION RULES FOR THIS APP
                     <div class="studio-saved-image-quick-filters" data-study-quick-filters="diagram" role="group" aria-label="Saved Image quick filters">
                       <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pinned" aria-pressed="false">Pinned</button>
                       <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pending" aria-pressed="false">Pending</button>
+                      <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="in-progress" aria-pressed="false">In Progress</button>
                     </div>
                     <div id="diagramCreatorSearchCount" class="studio-review-search-count" aria-live="polite"></div>
                     <div id="diagramCreatorImageGrid" class="studio-diagram-library-grid"></div>
@@ -937,6 +938,7 @@ MODIFICATION RULES FOR THIS APP
                   <div class="studio-saved-image-quick-filters" data-study-quick-filters="review" role="group" aria-label="Saved Image quick filters">
                       <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pinned" aria-pressed="false">Pinned</button>
                       <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="pending" aria-pressed="false">Pending</button>
+                      <button type="button" class="studio-saved-image-quick-filter" data-study-quick-filter="in-progress" aria-pressed="false">In Progress</button>
                     </div>
                     <div id="reviewModeSearchCount" class="studio-review-search-count" aria-live="polite"></div>
                   <div id="reviewModeImageGrid" class="studio-review-image-grid"></div>
@@ -2241,6 +2243,18 @@ MODIFICATION RULES FOR THIS APP
         </span>
       </label>
       <label class="review-mode-switch-row">
+        <span>Connector Sonar <small>(Review hover/tap · Mini Quiz every 3 seconds)</small></span>
+        <span class="review-mode-toggle-control">
+          <input id="reviewModeConnectorSonarToggle" type="checkbox" role="switch" aria-label="Enable connector endpoint sonar in Review Mode and Mini Quiz" checked>
+          <span class="review-mode-toggle-track" aria-hidden="true"></span>
+        </span>
+      </label>
+      <label class="review-mode-sonar-rgb-row" for="reviewModeConnectorSonarColor">
+        <span>Sonar Color</span>
+        <span class="review-mode-sonar-color-button" title="Select RGB sonar color"><span>RGB</span><input id="reviewModeConnectorSonarColor" type="color" value="#14b8a6" aria-label="Select connector sonar RGB color"></span>
+        <output id="reviewModeConnectorSonarColorValue" for="reviewModeConnectorSonarColor">#14B8A6</output>
+      </label>
+      <label class="review-mode-switch-row">
         <span>Focus</span>
         <span class="review-mode-toggle-control">
           <input id="reviewModeFocusToggle" type="checkbox" role="switch" aria-label="Focus on the current review label">
@@ -2614,6 +2628,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a6j_1"></script>
+  <script src="script.js?v=24a6s_1"></script>
 </body>
 </html>

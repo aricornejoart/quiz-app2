@@ -461,6 +461,10 @@ MODIFICATION RULES FOR THIS APP
                 showDrawData: false,
                 showConnectors: true,
                 showConnectorContrast: true,
+                connectorSonarEnabled: true,
+                connectorSonarColor: '#14b8a6',
+                connectorSonarHoverIndex: -1,
+                connectorSonarTouchIndex: -1,
                 focusMode: false,
                 twoLevelFocus: false,
                 normalFocusZoom: 200,
@@ -856,6 +860,9 @@ MODIFICATION RULES FOR THIS APP
         reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
         reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
         reviewModeShowConnectorContrastToggle: document.getElementById('reviewModeShowConnectorContrastToggle'),
+        reviewModeConnectorSonarToggle: document.getElementById('reviewModeConnectorSonarToggle'),
+        reviewModeConnectorSonarColor: document.getElementById('reviewModeConnectorSonarColor'),
+        reviewModeConnectorSonarColorValue: document.getElementById('reviewModeConnectorSonarColorValue'),
         reviewModeFocusToggle: document.getElementById('reviewModeFocusToggle'),
         reviewModeTwoLevelFocusToggle: document.getElementById('reviewModeTwoLevelFocusToggle'),
         reviewModeNormalFocusZoom: document.getElementById('reviewModeNormalFocusZoom'),
@@ -3802,7 +3809,17 @@ MODIFICATION RULES FOR THIS APP
         svg.setAttribute('preserveAspectRatio', 'none');
         svg.setAttribute('shape-rendering', 'geometricPrecision');
         svg.dataset.vectorConnectorLayer = 'true';
-        svg.innerHTML = buildDiagramConnectorSvgMarkup(safeLabels, width, height, screenScale, options);
+        const connectorMarkup = buildDiagramConnectorSvgMarkup(safeLabels, width, height, screenScale, options);
+        // Only Review Mode opts in: keep its live sonar node attached during
+        // connector redraws so zoom, label position, and option refreshes do
+        // not restart the CSS animation at frame zero.
+        const sonar = options.preserveReviewSonar ? svg.querySelector('[data-review-connector-sonar]') : null;
+        if (sonar) {
+            svg.querySelectorAll('[data-diagram-connector-index]').forEach(node => node.remove());
+            sonar.insertAdjacentHTML('beforebegin', connectorMarkup);
+        } else {
+            svg.innerHTML = connectorMarkup;
+        }
         svg.classList.remove('hidden');
     }
 
@@ -7649,20 +7666,25 @@ MODIFICATION RULES FOR THIS APP
             firstAt, nextAt, eligible,
             mastered: data.everMastered && !overdue && !!data.stages.d4 && getSavedImageMasteryStatus(entry) };
     }
-    // Phase 23F.41.69 — Pinned / Pending are metadata-only Saved Image filters.
-    // Pending is actionable, never completed or resting. A first Day 1 pass
-    // qualifies; after Day 1 was completed, a newly opened review at 0/2
-    // also qualifies. An expired cycle with established history needs restart.
+    // Phase 24A.6k — an active study cycle is the only source of Pending and
+    // In Progress. Expired/reset and never-started cycles are not assignments.
+    // MASTERED remains In Progress until its cycle expires or is reset.
+    function isSavedImageStudyInProgress(entry, now = new Date()) {
+        const progress = getSavedImageSpacedReviewStatus(entry, now);
+        return !!progress.data.startedOn && !progress.overdue;
+    }
     function isSavedImageStudyPending(entry, now = new Date()) {
         const progress = getSavedImageSpacedReviewStatus(entry, now);
         const { data, today, current } = progress;
-        if (!data.startedOn || !current) return false;
+        if (!data.startedOn || progress.overdue || !current || !progress.inWindow) return false;
+        // Once today's 2/2 is completed, the next scheduled stage is not due.
         if (Object.values(data.stages).some(record =>
             record?.secondAt && getSpacedReviewLocalDay(record.secondAt) === today)) return false;
-        if (progress.overdue) return !!data.stages.d1 || data.everMastered;
-        if (!progress.inWindow) return false; // rest day, skipped week, future stage
-        if (progress.firstAt) return true;
-        return !!data.stages.d1;
+        // A second same-day pass is actionable only after six elapsed hours.
+        if (progress.firstAt) return !!(progress.nextAt &&
+            progress.nextAt.getTime() <= now.getTime() &&
+            getSpacedReviewLocalDay(progress.nextAt) === today);
+        return true; // Active 0/2 review within its required window.
     }
     function getSavedImageStudyFilterRank(entry, now = new Date()) {
         const progress = getSavedImageSpacedReviewStatus(entry, now);
@@ -7673,8 +7695,43 @@ MODIFICATION RULES FOR THIS APP
         if (!filters) return true;
         if (filters.querySelector('[data-study-quick-filter="pinned"]')?.getAttribute('aria-pressed') === 'true' && !getSavedImagePinnedCount(entry)) return false;
         if (filters.querySelector('[data-study-quick-filter="pending"]')?.getAttribute('aria-pressed') === 'true' && !isSavedImageStudyPending(entry)) return false;
+        if (filters.querySelector('[data-study-quick-filter="in-progress"]')?.getAttribute('aria-pressed') === 'true' && !isSavedImageStudyInProgress(entry)) return false;
         return true;
     }
+    // Refresh only at real eligibility boundaries: midnight or the end of a
+    // six-hour gap. Background tabs also refresh on becoming visible again.
+    let savedImageQuickFilterRefreshTimer = null;
+    function hasActiveSavedImageStudyQuickFilter() {
+        return !!document.querySelector('[data-study-quick-filter="pending"][aria-pressed="true"], [data-study-quick-filter="in-progress"][aria-pressed="true"]');
+    }
+    function refreshActiveSavedImageStudyQuickFilters() {
+        if (!hasActiveSavedImageStudyQuickFilter()) return;
+        renderDiagramCreatorSavedImages();
+        renderReviewModeLibrary();
+    }
+    function scheduleSavedImageQuickFilterRefresh() {
+        clearTimeout(savedImageQuickFilterRefreshTimer);
+        savedImageQuickFilterRefreshTimer = null;
+        if (!hasActiveSavedImageStudyQuickFilter()) return;
+        const now = new Date();
+        const nextMidnight = new Date(now);
+        nextMidnight.setHours(24, 0, 0, 0);
+        let nextRefreshAt = nextMidnight.getTime();
+        if (document.querySelector('[data-study-quick-filter="pending"][aria-pressed="true"]')) {
+            for (const entry of getStudioSavedImageLibraryForPicker()) {
+                const progress = getSavedImageSpacedReviewStatus(entry, now);
+                if (!progress.data.startedOn || progress.overdue || !progress.inWindow || !progress.firstAt || !progress.nextAt) continue;
+                if (getSpacedReviewLocalDay(progress.nextAt) !== progress.today) continue;
+                const dueAt = progress.nextAt.getTime();
+                if (dueAt > now.getTime() && dueAt < nextRefreshAt) nextRefreshAt = dueAt;
+            }
+        }
+        savedImageQuickFilterRefreshTimer = setTimeout(refreshActiveSavedImageStudyQuickFilters,
+            Math.max(100, Math.min(2147483647, nextRefreshAt - now.getTime() + 150)));
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshActiveSavedImageStudyQuickFilters();
+    });
     function isSavedImagePendingQuickFilterOn(prefix) {
         return document.querySelector(`[data-study-quick-filters="${prefix}"] [data-study-quick-filter="pending"]`)?.getAttribute('aria-pressed') === 'true';
     }
@@ -7709,7 +7766,8 @@ MODIFICATION RULES FOR THIS APP
         const { data, current, today } = progress;
         const status = progress.mastered ? 'MASTERED' : 'LEARNING';
         const pending = progress.stages.filter(stage => !data.stages[stage.id]);
-        const currentStage = current || { label: 'Day 1' };
+        const inactiveCycle = !data.startedOn || progress.initialMiss;
+        const currentStage = inactiveCycle ? { label: 'Day 1' } : (current || { label: 'Day 1' });
         // Phase 23F.41.68: after 2/2, the scheduler advances internally,
         // but the Progress popup keeps TODAY'S completed milestone visible
         // through local midnight. No changes to the saved study schedule.
@@ -7723,14 +7781,12 @@ MODIFICATION RULES FOR THIS APP
                 : completedToday?.id === 'w2'
                     ? { label: 'Week 3 (Rest Week)', rest: true }
                     : current;
-        const nextStage = completedToday ? completedTodayNext : !data.startedOn ? { label: 'Day 2' } :
-            (data.startedOn && current && !progress.overdue && today < current.start) ? current :
-            pending.length > 1 ? pending[1] : null;
-        const rest = !completedToday && !!(data.startedOn && current && !progress.overdue && today < current.start);
-        const currentName = completedToday ? completedToday.label.replace(/ · Mastery milestone$/, '') :
-            progress.initialMiss ? 'Restart Day 1' : rest
+        const nextStage = inactiveCycle ? { label: 'Day 2' } : completedToday ? completedTodayNext :
+            (current && today < current.start) ? current : pending.length > 1 ? pending[1] : null;
+        const rest = !inactiveCycle && !completedToday && !!(current && today < current.start);
+        const currentName = inactiveCycle ? 'Day 1' : completedToday ? completedToday.label.replace(/ · Mastery milestone$/, '') : rest
             ? (current.id === 'w4' ? 'Rest week' : 'Rest day') : currentStage.label.replace(/ · Mastery milestone$/, '');
-        const count = completedToday ? 2 : (progress.firstAt && progress.eligible ? 1 : 0);
+        const count = inactiveCycle ? 0 : completedToday ? 2 : (progress.firstAt && progress.eligible ? 1 : 0);
         // Phase 23F.41.66: display a computed local retry time, never a fixed
         // clock example. The second quiz must still happen on the SAME day.
         // If the 6-hour threshold falls after midnight, do not imply that
@@ -8095,6 +8151,45 @@ MODIFICATION RULES FOR THIS APP
         return JSON.stringify(getStudioSavedImageAngles(entry).map(angle => [
             normalizeSheetText(angle.id), normalizeDiagramLabels(angle.labels || [])
         ]));
+    }
+
+    // Phase 24A.6r: connector line thickness is presentation-only. Preserve
+    // VALID study history when it is the sole authored change; all other
+    // label/connector edits continue to invalidate their existing signatures.
+    function getSavedImageThicknessOnlyProgressReplacement(original, updated) {
+        const beforeAngles = getStudioSavedImageAngles(original);
+        const afterAngles = getStudioSavedImageAngles(updated);
+        if (!beforeAngles.length || beforeAngles.length !== afterAngles.length) return null;
+        const withoutThickness = angles => JSON.stringify(angles.map(angle => [
+            normalizeSheetText(angle.id), normalizeDiagramLabels(angle.labels || []).map(label => {
+                if (!label.connector) return label;
+                const { thickness, ...connector } = label.connector;
+                return { ...label, connector };
+            })
+        ]));
+        if (withoutThickness(beforeAngles) !== withoutThickness(afterAngles)) return null;
+        const previousSignature = getSavedImageUniqueMasterySignature(original);
+        const nextSignature = getSavedImageUniqueMasterySignature(updated);
+        if (previousSignature === nextSignature) return null;
+        const previousCertificates = normalizeSavedImageMasteredAngles(original.masteredAnglesById || {});
+        const certificates = {};
+        beforeAngles.forEach((angle, index) => {
+            const id = normalizeSheetText(angle.id);
+            if (previousCertificates[id] === getSavedImageAngleMasterySignature(angle)) {
+                certificates[id] = getSavedImageAngleMasterySignature(afterAngles[index]);
+            }
+        });
+        const previousUnique = normalizeSavedImageMasteredUniqueLabels(original.masteredUniqueLabels || {});
+        const previousSchedule = normalizeSavedImageSpacedReview(original.spacedReview || {});
+        return {
+            masteredAnglesById: certificates,
+            masteredUniqueLabels: previousUnique.signature === previousSignature
+                ? { ...previousUnique, signature: nextSignature }
+                : { signature: '', keys: [] },
+            spacedReview: previousSchedule.signature === previousSignature
+                ? { ...previousSchedule, signature: nextSignature }
+                : { reminderEnabled: previousSchedule.reminderEnabled }
+        };
     }
 
     function getSavedImageMasteryForReplacement(original, updated) {
@@ -8832,14 +8927,18 @@ MODIFICATION RULES FOR THIS APP
         const original = normalizeStudioSavedImageEntry(originalEntry);
         if (!original) return null;
         const stableId = getStudioSavedImageSyncKey(original) || normalizeSheetText(original.id) || createSavedImageId();
+        const thicknessOnlyProgress = getSavedImageThicknessOnlyProgressReplacement(original, replacementEntry);
         const replacement = normalizeStudioSavedImageEntry({
             ...replacementEntry,
             pinnedLabelsByAngle: replacementEntry.pinnedLabelsByAngle ?? original.pinnedLabelsByAngle,
-            masteredAnglesById: getSavedImageMasteryForReplacement(original, replacementEntry),
-            masteredUniqueLabels: getSavedImageUniqueMasteryForReplacement(original, replacementEntry),
-            spacedReview: getSavedImageMasteryAuthoredSignature(original) === getSavedImageMasteryAuthoredSignature(replacementEntry)
-                ? (replacementEntry.spacedReview ?? original.spacedReview)
-                : { reminderEnabled: normalizeSavedImageSpacedReview(original.spacedReview).reminderEnabled },
+            masteredAnglesById: thicknessOnlyProgress?.masteredAnglesById
+                ?? getSavedImageMasteryForReplacement(original, replacementEntry),
+            masteredUniqueLabels: thicknessOnlyProgress?.masteredUniqueLabels
+                ?? getSavedImageUniqueMasteryForReplacement(original, replacementEntry),
+            spacedReview: thicknessOnlyProgress?.spacedReview
+                ?? (getSavedImageMasteryAuthoredSignature(original) === getSavedImageMasteryAuthoredSignature(replacementEntry)
+                    ? (replacementEntry.spacedReview ?? original.spacedReview)
+                    : { reminderEnabled: normalizeSavedImageSpacedReview(original.spacedReview).reminderEnabled }),
             id: stableId,
             createdAt: original.createdAt,
             updatedAt: new Date().toISOString()
@@ -10520,6 +10619,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function renderDiagramCreatorSavedImages() {
+        scheduleSavedImageQuickFilterRefresh();
         autoLoadCleanupKeepSelections();
         closeSavedImageStudyProgressPopup();
         if (!elements.diagramCreatorImageGrid) return;
@@ -12325,6 +12425,10 @@ MODIFICATION RULES FOR THIS APP
                 angles: draft.savedSingleEntry ? [] : savedAngles,
                 createdAt: originalEntry?.createdAt
             };
+            // The multi-angle path writes to Supabase BEFORE local replacement.
+            // Carry valid thickness-only study history into that remote write too.
+            if (originalEntry) Object.assign(nextEntry,
+                getSavedImageThicknessOnlyProgressReplacement(originalEntry, nextEntry) || {});
             // F.37 confirmed replacement: update the remote Saved Image record
             // before replacing the local index or deleting any prior canonical asset.
             // A remote write failure leaves the prior image live and staged uploads
@@ -12554,6 +12658,10 @@ MODIFICATION RULES FOR THIS APP
         review.showDrawData = review.showDrawData === true;
         review.showConnectors = review.showConnectors !== false;
         review.showConnectorContrast = review.showConnectorContrast !== false;
+        review.connectorSonarEnabled = review.connectorSonarEnabled !== false;
+        review.connectorSonarColor = normalizeEditorHexColor(review.connectorSonarColor || '#14b8a6', '#14b8a6');
+        review.connectorSonarHoverIndex = Number.isInteger(review.connectorSonarHoverIndex) ? review.connectorSonarHoverIndex : -1;
+        review.connectorSonarTouchIndex = Number.isInteger(review.connectorSonarTouchIndex) ? review.connectorSonarTouchIndex : -1;
         review.focusMode = review.focusMode === true;
         review.twoLevelFocus = review.twoLevelFocus === true;
         review.normalFocusZoom = Math.min(700, Math.max(100, Math.round((Number(review.normalFocusZoom) || 200) / 25) * 25));
@@ -12669,6 +12777,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function renderReviewModeLibrary() {
+        scheduleSavedImageQuickFilterRefresh();
         autoLoadCleanupKeepSelections();
         closeSavedImageStudyProgressPopup();
         if (!elements.reviewModeImageGrid) return;
@@ -13772,6 +13881,10 @@ MODIFICATION RULES FOR THIS APP
         if (angles.length < 2) return;
         storeReviewModeAngleUiState();
         review.activeAngleIndex = (review.activeAngleIndex + (direction < 0 ? -1 : 1) + angles.length) % angles.length;
+        review.connectorSonarHoverIndex = -1;
+        review.connectorSonarTouchIndex = -1;
+        if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
+        reviewModeSonarTouchTimeoutId = 0;
         restoreReviewModeAngleUiState();
         resetReviewModeZoom();
         const measure = window.__studyBunnyReviewPerf === true;
@@ -15069,6 +15182,156 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    // Phase 24A.6q: sonar excludes region brackets. Multi-target connectors
+    // use a single animated endpoint, rotating in saved target order. Neither
+    // the existing connector geometry nor saved diagram data is modified.
+    let reviewModeSonarTouchTimeoutId = 0;
+    let reviewModeSonarSequence = null;
+    function stopReviewModeSonarSequence() {
+        if (reviewModeSonarSequence?.timeoutId) window.clearTimeout(reviewModeSonarSequence.timeoutId);
+        reviewModeSonarSequence = null;
+    }
+    function renderReviewModeConnectorSonar() {
+        const svg = elements.reviewModeConnectorLayer;
+        if (!svg) {
+            stopReviewModeSonarSequence();
+            return;
+        }
+        const existing = svg.querySelector('[data-review-connector-sonar]');
+        const clear = () => {
+            existing?.remove();
+            stopReviewModeSonarSequence();
+        };
+        const review = getReviewModeState();
+        if (!review.overlayOpen || !review.connectorSonarEnabled || !review.showConnectors ||
+            !isReviewModeActiveAngleOverlayReady() || svg.classList.contains('hidden') ||
+            (review.visualAidOnly && review.showVisualAid && !review.miniQuiz.active)) {
+            clear();
+            return;
+        }
+        const miniActive = review.miniQuiz.active;
+        if (miniActive && review.miniQuiz.complete) {
+            clear();
+            return;
+        }
+        const index = miniActive
+            ? getReviewModeMiniQuizActiveLabelIndex(review)
+            : (review.connectorSonarHoverIndex >= 0 ? review.connectorSonarHoverIndex : review.connectorSonarTouchIndex);
+        if (index < 0 || !Number.isInteger(index)) {
+            clear();
+            return;
+        }
+        if (!miniActive && review.pinnedLabelsOnly &&
+            !getReviewModePinnedIndexSet(getActiveReviewModeEntry(), review.activeAngleIndex).has(index)) {
+            clear();
+            return;
+        }
+        const label = getReviewModeDisplayLabels(getActiveReviewModeEntry())[index];
+        // Brackets identify a region, not a single landmark. Leave them unanimated.
+        if (!label?.connector || getDiagramConnectorStyle(label.connector) === 'bracket') {
+            clear();
+            return;
+        }
+        const image = elements.reviewModeImage;
+        const width = Math.max(1, image?.naturalWidth || 1);
+        const height = Math.max(1, image?.naturalHeight || 1);
+        const scale = Math.max(.0001, (image?.offsetWidth || elements.reviewModeImageStage?.offsetWidth || width) / width);
+        const geometry = getDiagramConnectorSvgGeometry(label.connector, label, width, height, scale);
+        if (!geometry || geometry.isBracket) {
+            clear();
+            return;
+        }
+        const radius = (68 / scale).toFixed(3);
+        const strokeWidth = (2.8).toFixed(3); // vector-effect preserves 2.8 visible CSS pixels at every zoom
+        const color = normalizeEditorHexColor(review.connectorSonarColor || '#14b8a6', '#14b8a6');
+        const targets = geometry.endpoints || [geometry.anchor];
+        if (!targets.length || !targets[0]) {
+            clear();
+            return;
+        }
+        // A complete pulse occupies one endpoint's time slot. Rotation happens
+        // only after that slot, so multiple landmarks never animate together.
+        const multiple = targets.length > 1;
+        if (!multiple) {
+            stopReviewModeSonarSequence();
+        } else {
+            const previous = reviewModeSonarSequence;
+            if (!previous || previous.connector !== label.connector || previous.index !== index ||
+                previous.angleIndex !== review.activeAngleIndex || previous.miniActive !== miniActive ||
+                previous.count !== targets.length) {
+                stopReviewModeSonarSequence();
+                reviewModeSonarSequence = {
+                    connector: label.connector, index, angleIndex: review.activeAngleIndex,
+                    miniActive, count: targets.length, currentIndex: 0, timeoutId: 0
+                };
+            }
+            if (!reviewModeSonarSequence.timeoutId) {
+                const sequence = reviewModeSonarSequence;
+                sequence.timeoutId = window.setTimeout(() => {
+                    if (reviewModeSonarSequence !== sequence) return;
+                    sequence.timeoutId = 0;
+                    sequence.currentIndex = (sequence.currentIndex + 1) % sequence.count;
+                    renderReviewModeConnectorSonar();
+                }, miniActive ? 3000 : 1800);
+            }
+        }
+        const targetIndex = multiple ? reviewModeSonarSequence.currentIndex : 0;
+        const target = targets[targetIndex];
+        const cx = target.x.toFixed(3);
+        const cy = target.y.toFixed(3);
+        const desiredClass = `review-mode-sonar${miniActive ? ' is-mini-quiz' : ' is-review-hover'}${multiple ? ' is-multi-sequence' : ''}`;
+        // Reuse the same DOM/CSS animations during ordinary re-renders. Only
+        // an intentional endpoint transition restarts the three ripple clocks.
+        const sameSonar = existing && existing.dataset?.reviewConnectorSonar === String(index) &&
+            existing.dataset?.sonarAngleIndex === String(review.activeAngleIndex) &&
+            existing.className?.baseVal === desiredClass &&
+            existing.querySelectorAll?.('.review-mode-sonar-wave').length === 3;
+        if (sameSonar) {
+            existing.style.color = color;
+            const point = existing.querySelector('.review-mode-sonar-point');
+            point?.style.setProperty('--review-sonar-color', color);
+            const changedEndpoint = existing.dataset.sonarEndpointIndex !== String(targetIndex);
+            existing.dataset.sonarEndpointIndex = String(targetIndex);
+            existing.querySelectorAll('.review-mode-sonar-wave').forEach(wave => {
+                if (wave.getAttribute('cx') !== cx) wave.setAttribute('cx', cx);
+                if (wave.getAttribute('cy') !== cy) wave.setAttribute('cy', cy);
+                if (wave.getAttribute('r') !== radius) wave.setAttribute('r', radius);
+                if (wave.getAttribute('stroke-width') !== strokeWidth) wave.setAttribute('stroke-width', strokeWidth);
+                if (changedEndpoint) wave.getAnimations?.().forEach(animation => { animation.currentTime = 0; });
+            });
+            return;
+        }
+        existing?.remove();
+        const markers = `<g class="review-mode-sonar-point" style="--review-sonar-color:${color}">
+                <circle class="review-mode-sonar-wave wave-one" cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" />
+                <circle class="review-mode-sonar-wave wave-two" cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" />
+                <circle class="review-mode-sonar-wave wave-three" cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" />
+            </g>`;
+        svg.insertAdjacentHTML('beforeend', `<g data-review-connector-sonar="${index}" data-sonar-endpoint-index="${targetIndex}" data-sonar-angle-index="${review.activeAngleIndex}" class="${desiredClass}" style="color:${color}" aria-hidden="true">${markers}</g>`);
+    }
+
+    function setReviewModeSonarHover(index = -1) {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || review.connectorSonarHoverIndex === index) return;
+        review.connectorSonarHoverIndex = index;
+        renderReviewModeConnectorSonar();
+    }
+
+    function activateReviewModeSonarTouch(index) {
+        const review = getReviewModeState();
+        if (review.miniQuiz.active || !review.overlayOpen || !Number.isInteger(index) || index < 0) return;
+        if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
+        review.connectorSonarTouchIndex = index;
+        renderReviewModeConnectorSonar();
+        // Touch has no leave/hover; keep the endpoint visible briefly without
+        // creating an indefinitely animated landmark after the tap.
+        reviewModeSonarTouchTimeoutId = window.setTimeout(() => {
+            reviewModeSonarTouchTimeoutId = 0;
+            review.connectorSonarTouchIndex = -1;
+            renderReviewModeConnectorSonar();
+        }, 4500);
+    }
+
     function renderReviewModeConnectors() {
         const review = getReviewModeState();
         if (!isReviewModeActiveAngleOverlayReady()) {
@@ -15091,7 +15354,8 @@ MODIFICATION RULES FOR THIS APP
                 : labels.map((label, index) => index === activeIndex ? label : ({ ...label, connector: null }));
         }
         const connectorOptions = review.showConnectorContrast ? { outlineColor: '#ffffff', outlineExtraWidth: 2 } : {};
-        renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, labels, elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors, connectorOptions);
+        renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, labels, elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors, { ...connectorOptions, preserveReviewSonar: true });
+        renderReviewModeConnectorSonar();
     }
 
     function setReviewModeTemporaryLabelPosition(index, x, y) {
@@ -16407,6 +16671,12 @@ MODIFICATION RULES FOR THIS APP
         }
         if (elements.reviewModeIncludeDescriptionsToggle) elements.reviewModeIncludeDescriptionsToggle.checked = review.includeLabelDescriptions;
         if (elements.reviewModeShowConnectorsToggle) elements.reviewModeShowConnectorsToggle.checked = review.showConnectors;
+        if (elements.reviewModeConnectorSonarToggle) elements.reviewModeConnectorSonarToggle.checked = review.connectorSonarEnabled;
+        if (elements.reviewModeConnectorSonarColor) {
+            elements.reviewModeConnectorSonarColor.value = review.connectorSonarColor;
+            elements.reviewModeConnectorSonarColor.disabled = !review.connectorSonarEnabled;
+        }
+        if (elements.reviewModeConnectorSonarColorValue) elements.reviewModeConnectorSonarColorValue.textContent = review.connectorSonarColor.toUpperCase();
         if (elements.reviewModeShowConnectorContrastToggle) {
             elements.reviewModeShowConnectorContrastToggle.checked = review.showConnectorContrast;
             elements.reviewModeShowConnectorContrastToggle.disabled = !review.showConnectors;
@@ -16492,6 +16762,10 @@ MODIFICATION RULES FOR THIS APP
         review.activeAngleIndex = 0;
         review.overlayOpen = true;
         review.optionsOpen = false;
+        review.connectorSonarHoverIndex = -1;
+        review.connectorSonarTouchIndex = -1;
+        if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
+        reviewModeSonarTouchTimeoutId = 0;
         review.showAngleControls = true;
         review.showAllNames = false;
         review.soloLabels = true;
@@ -16592,6 +16866,10 @@ MODIFICATION RULES FOR THIS APP
         review.activeAngleIndex = 0;
         review.overlayOpen = false;
         review.optionsOpen = false;
+        review.connectorSonarHoverIndex = -1;
+        review.connectorSonarTouchIndex = -1;
+        if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
+        reviewModeSonarTouchTimeoutId = 0;
         review.pinSelectedLabelIndex = -1;
         review.revealedLabels = new Set();
         review.revealedLabelsByAngle = {};
@@ -52607,6 +52885,23 @@ if (elements.reviewModeShowConnectorContrastToggle) {
     });
 }
 
+if (elements.reviewModeConnectorSonarToggle) {
+    elements.reviewModeConnectorSonarToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.connectorSonarEnabled = elements.reviewModeConnectorSonarToggle.checked;
+        renderReviewModeConnectorSonar();
+        syncReviewModeControls();
+    });
+}
+if (elements.reviewModeConnectorSonarColor) {
+    elements.reviewModeConnectorSonarColor.addEventListener('input', () => {
+        const review = getReviewModeState();
+        review.connectorSonarColor = normalizeEditorHexColor(elements.reviewModeConnectorSonarColor.value, '#14b8a6');
+        if (elements.reviewModeConnectorSonarColorValue) elements.reviewModeConnectorSonarColorValue.textContent = review.connectorSonarColor.toUpperCase();
+        renderReviewModeConnectorSonar();
+    });
+}
+
 if (elements.reviewModeFocusToggle) {
     elements.reviewModeFocusToggle.addEventListener('change', () => {
         setReviewModeFocusMode(elements.reviewModeFocusToggle.checked);
@@ -52878,6 +53173,18 @@ if (elements.reviewModeVisualAidLabelLayer) {
 }
 
 if (elements.reviewModeLabelLayer) {
+    elements.reviewModeLabelLayer.addEventListener('pointerover', event => {
+        if (event.pointerType === 'touch') return;
+        const marker = event.target.closest?.('[data-review-label-index]');
+        if (!marker) return;
+        setReviewModeSonarHover(Number(marker.dataset.reviewLabelIndex));
+    });
+    elements.reviewModeLabelLayer.addEventListener('pointerout', event => {
+        if (event.pointerType === 'touch') return;
+        const marker = event.target.closest?.('[data-review-label-index]');
+        if (!marker || marker.contains(event.relatedTarget)) return;
+        setReviewModeSonarHover(-1);
+    });
     elements.reviewModeLabelLayer.addEventListener('pointerdown', event => {
         const visualPrompt = event.target.closest('.review-mode-mini-visual-prompt-wrap');
         if (visualPrompt) {
@@ -52895,6 +53202,12 @@ if (elements.reviewModeLabelLayer) {
     elements.reviewModeLabelLayer.addEventListener('pointerup', event => {
         if (reviewModeMiniVisualPromptDrag) return endReviewModeMiniVisualPromptDrag(event);
         endReviewModeLabelDrag(event);
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+            const marker = event.target.closest?.('[data-review-label-index]');
+            if (marker && Date.now() >= getReviewModeState().suppressLabelClickUntil) {
+                activateReviewModeSonarTouch(Number(marker.dataset.reviewLabelIndex));
+            }
+        }
     });
     elements.reviewModeLabelLayer.addEventListener('pointercancel', event => {
         if (reviewModeMiniVisualPromptDrag) return endReviewModeMiniVisualPromptDrag(event);
