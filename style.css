@@ -17825,3 +17825,68 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 @media (prefers-reduced-motion: reduce) {
   .review-mode-sonar-wave { animation: none; opacity: 1; transform: scale(.02); }
 }
+
+
+/* Phase 24A.6v — iPhone Saved Image card actions, in separate reachable rows. */
+@media (max-width: 620px) {
+  .studio-review-image-card > .studio-saved-image-card-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
+  }
+  .studio-review-image-card > .studio-saved-image-card-controls > .studio-saved-image-reset-pinned,
+  .studio-review-image-card > .studio-saved-image-card-controls > .studio-study-progress-button {
+    display: block;
+    width: 100%;
+    flex: 0 0 auto;
+    margin: 0;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-inline: 5px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Phase 24A.6w — on touch phones keep the original X–label–check
+   arrangement. Only the label text wraps; answers remain side-by-side with
+   independent 44px touch targets, even after Focus or rotation. */
+@media (max-width: 920px) and (pointer: coarse) {
+  .review-mode-label-layer .review-mode-label-marker {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    max-width: min(340px, calc(100vw - 28px));
+  }
+  .review-mode-mini-label-wrap {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    max-width: calc(100vw - 24px);
+    gap: 6px;
+    pointer-events: auto;
+  }
+  .review-mode-mini-label-wrap > .review-mode-mini-label-marker {
+    min-width: 0;
+    max-width: min(340px, calc(100vw - 128px));
+    box-sizing: border-box;
+    line-height: 1.25;
+  }
+  .review-mode-mini-label-wrap > .review-mode-mini-answer {
+    min-width: 44px;
+    min-height: 44px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+  .review-mode-label-layer .review-mode-label-marker.has-description {
+    max-height: min(48dvh, 370px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+}

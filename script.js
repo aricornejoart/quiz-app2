@@ -12642,6 +12642,16 @@ MODIFICATION RULES FOR THIS APP
     let reviewModeMiniQuizRapidTimerId = null;
     const REVIEW_MODE_MINI_QUIZ_RAPID_DELAY_MS = 850;
 
+    // Phase 24A.6v: a phone held vertically needs less Focus magnification.
+    // This is a view preference only; saved diagram coordinates never change.
+    function getReviewModeDefaultFocusZoom() {
+        return window.matchMedia?.('(max-width: 620px) and (orientation: portrait) and (pointer: coarse)')?.matches ? 150 : 200;
+    }
+
+    function isReviewModeTouchPhone() {
+        return window.matchMedia?.('(max-width: 920px) and (pointer: coarse)')?.matches === true;
+    }
+
     function normalizeReviewModeMiniQuizMode(value = 'progress') {
         const mode = normalizeSheetText(value).toLowerCase();
         return ['progress', 'retention', 'mastery', 'mastery-check'].includes(mode) ? mode : 'normal';
@@ -13131,6 +13141,7 @@ MODIFICATION RULES FOR THIS APP
         const top = event.clientY - drag.viewportRect.top - drag.offsetY;
         dock.style.left = `${Math.max(margin, Math.min(drag.viewportRect.width - drag.dockWidth - margin, left))}px`;
         dock.style.top = `${Math.max(margin, Math.min(drag.viewportRect.height - drag.dockHeight - margin, top))}px`;
+        scheduleReviewModeTouchLabelFit();
         event.preventDefault();
         event.stopPropagation();
     }
@@ -13258,7 +13269,10 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeShortcutMovementBtn.title = `Allow Label Movement ${review.allowLabelMovement ? 'On' : 'Off'} (hold 250 ms to move)`;
         }
         if (elements.reviewModeShowShortcutDockToggle) elements.reviewModeShowShortcutDockToggle.checked = review.shortcutDockVisible;
-        window.requestAnimationFrame(applyReviewModeShortcutDockPosition);
+        window.requestAnimationFrame(() => {
+            applyReviewModeShortcutDockPosition();
+            scheduleReviewModeTouchLabelFit();
+        });
     }
 
     function setReviewModeShortcutDockVisible(visible) {
@@ -13357,6 +13371,7 @@ MODIFICATION RULES FOR THIS APP
         dock.classList.remove('is-dragging');
         try { elements.reviewModeShortcutGrip?.releasePointerCapture?.(event.pointerId); } catch (_) {}
         syncReviewModeShortcutDock();
+        scheduleReviewModeTouchLabelFit();
         event.preventDefault();
         event.stopPropagation();
     }
@@ -13436,11 +13451,15 @@ MODIFICATION RULES FOR THIS APP
             reviewModeZoomResetTimer = window.setTimeout(() => {
                 stage.classList.remove('is-zoom-resetting');
                 reviewModeZoomResetTimer = null;
+                // Measure after the animated Focus transform has reached its
+                // final size, not only during the first transition frame.
+                scheduleReviewModeTouchLabelFit();
             }, 190);
         }
         syncReviewModeZoomUi();
         applyReviewModeFocusLabelScale(review);
         scheduleReviewModeVectorConnectorRefresh();
+        scheduleReviewModeTouchLabelFit();
     }
 
     function getReviewModeFocusLabelIndex(review = getReviewModeState()) {
@@ -13530,10 +13549,12 @@ MODIFICATION RULES FOR THIS APP
     function applyReviewModeFocusLabelScale(review = getReviewModeState()) {
         const layer = elements.reviewModeLabelLayer;
         if (!layer) return;
-        // Only automatic Focus compensates label magnification. Manual zoom is untouched.
-        const inverse = review.focusMode ? 1 / Math.max(1, Number(review.zoomScale) || 1) : 1;
+        // Automatic Focus compensates for magnification. On touch phones,
+        // manual zoom must also preserve readable, tappable on-screen labels.
+        const compensate = review.focusMode || (isReviewModeTouchPhone() && Number(review.zoomScale) > 1.01);
+        const inverse = compensate ? 1 / Math.max(1, Number(review.zoomScale) || 1) : 1;
         layer.style.setProperty('--review-focus-label-inverse', String(inverse));
-        layer.classList.toggle('is-focus-zoomed', review.focusMode);
+        layer.classList.toggle('is-focus-zoomed', compensate);
     }
 
     function restoreReviewModeFocusFloatingLabel(review = getReviewModeState()) {
@@ -13975,6 +13996,7 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeOptionsBtn.textContent = review.optionsOpen ? 'Hide Options' : 'Show Options';
             elements.reviewModeOptionsBtn.setAttribute('aria-expanded', review.optionsOpen ? 'true' : 'false');
         }
+        scheduleReviewModeTouchLabelFit();
     }
 
     function shuffleReviewModeMiniQuizIndexes(indexes = []) {
@@ -15473,13 +15495,17 @@ MODIFICATION RULES FOR THIS APP
             // This is intentionally scoped to revealed Mini Quiz information:
             // regular labels and unrevealed quiz prompts are untouched.
             const hasInformation = review.miniQuiz.active && marker.classList.contains('has-description');
+            const mobileTouch = isReviewModeTouchPhone();
             const viewportWidth = Math.max(1, elements.reviewModeImageViewport?.clientWidth || window.innerWidth);
-            // Compact view puts the X/check in a row BELOW the information card,
-            // leaving room for both the card and the right-side shortcut dock.
-            const compactInformationLayout = hasInformation && viewportWidth <= 800;
-            const usableWidth = hasInformation
-                ? Math.max(108, Math.min(520, viewportWidth - (compactInformationLayout ? 112 : reservedWidth + 32)))
-                : Math.max(72, stageCssWidth - reservedWidth);
+            // Keep the original X–label–check order on phones. Fit the whole
+            // side-by-side group instead of relocating answer buttons.
+            moveTarget.classList.remove('is-mobile-answer-layout');
+            const compactInformationLayout = hasInformation && !mobileTouch && viewportWidth <= 800;
+            const usableWidth = mobileTouch
+                ? Math.max(92, Math.min(340, viewportWidth - reservedWidth - 28))
+                : hasInformation
+                    ? Math.max(108, Math.min(520, viewportWidth - (compactInformationLayout ? 112 : reservedWidth + 32)))
+                    : Math.max(72, stageCssWidth - reservedWidth);
             marker.style.maxWidth = `${usableWidth}px`;
             if (hasInformation) {
                 marker.style.width = `${usableWidth}px`;
@@ -15494,8 +15520,13 @@ MODIFICATION RULES FOR THIS APP
                 marker.classList.toggle('is-stacked-information', !!needsStacking);
                 moveTarget.classList.toggle('is-compact-information-layout', compactInformationLayout);
             } else {
-                marker.style.width = '';
-                marker.style.minWidth = '';
+                // A long revealed name needs a definite text column. Letting
+                // flex shrink-to-fit collapse it to single-character lines is
+                // worse than wrapping normally across a few readable lines.
+                const longPhoneName = mobileTouch && review.miniQuiz.active &&
+                    miniButtons.length > 0 && (marker.textContent || '').trim().length > 20;
+                marker.style.width = longPhoneName ? `${usableWidth}px` : '';
+                marker.style.minWidth = longPhoneName ? 'min(120px, 36vw)' : '';
                 marker.style.borderRadius = '';
                 marker.classList.remove('is-stacked-information');
                 moveTarget.classList.remove('is-compact-information-layout');
@@ -15510,6 +15541,136 @@ MODIFICATION RULES FOR THIS APP
             moveTarget.style.left = `${x}%`;
             moveTarget.style.top = `${y}%`;
         });
+        scheduleReviewModeTouchLabelFit();
+    }
+
+    // Phase 24A.6w: iPhone labels keep the original X–label–check order.
+    // Fit the FULL group inside the visible viewport, and avoid floating UI
+    // (toolbar, shortcut dock, options, Visual Aid controls) as well as edges.
+    // These positions are temporary; saved label coordinates are untouched.
+    let reviewModePhoneFitFrame = 0;
+    function fitReviewModeTouchLabelsToViewport() {
+        if (!isReviewModeTouchPhone() || !getReviewModeState().overlayOpen ||
+            reviewModeLabelHold || reviewModeLabelDrag || reviewModeMiniVisualPromptDrag) return;
+        const layer = elements.reviewModeLabelLayer;
+        const stage = elements.reviewModeImageStage;
+        const viewport = elements.reviewModeImageViewport;
+        const stageRect = stage?.getBoundingClientRect?.();
+        const vp = viewport?.getBoundingClientRect?.();
+        if (!stageRect?.width || !stageRect?.height || !vp?.width || !vp?.height || !layer) return;
+        const overlay = elements.reviewModeOverlay;
+        const toolbar = overlay?.querySelector?.('.review-mode-toolbar');
+        const toolbarRect = toolbar?.getBoundingClientRect?.();
+        const left = vp.left + 12;
+        const right = vp.right - 12;
+        const top = Math.min(vp.bottom - 70, Math.max(vp.top + 12, (toolbarRect?.bottom || vp.top) + 10));
+        const bottom = vp.bottom - 14;
+        const spacing = 10;
+        const review = getReviewModeState();
+        // The toolbar is reserved by the top boundary. Other floating UI may
+        // be dragged anywhere and must be measured at its actual screen position.
+        const obstacles = Array.from(overlay?.querySelectorAll?.(
+            '.review-mode-shortcut-dock, .review-mode-options-panel, .review-mode-visual-aid-bar'
+        ) || []).filter(el => {
+            if (el.classList.contains('hidden') || el.getAttribute('aria-hidden') === 'true' || !el.getClientRects().length) return false;
+            const style = window.getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden';
+        }).map(el => el.getBoundingClientRect()).filter(rect =>
+            rect.width > 0 && rect.height > 0 && rect.right > left && rect.left < right && rect.bottom > top && rect.top < bottom
+        );
+        const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+        const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        function place(rect) {
+            const maxLeft = Math.max(left, right - rect.width);
+            const maxTop = Math.max(top, bottom - rect.height);
+            const xOptions = [clamp(rect.left, left, maxLeft), left, maxLeft];
+            const yOptions = [clamp(rect.top, top, maxTop), top, maxTop];
+            obstacles.forEach(block => {
+                xOptions.push(clamp(block.left - spacing - rect.width, left, maxLeft), clamp(block.right + spacing, left, maxLeft));
+                yOptions.push(clamp(block.top - spacing - rect.height, top, maxTop), clamp(block.bottom + spacing, top, maxTop));
+            });
+            let best = null;
+            for (const x of xOptions) for (const y of yOptions) {
+                const candidate = { left: x, top: y, right: x + rect.width, bottom: y + rect.height };
+                // Full-width label, red X and green check are one hit-test unit.
+                let collisionArea = 0;
+                obstacles.forEach(block => {
+                    if (intersects(candidate, block)) collisionArea +=
+                        (Math.min(candidate.right, block.right) - Math.max(candidate.left, block.left)) *
+                        (Math.min(candidate.bottom, block.bottom) - Math.max(candidate.top, block.top));
+                });
+                const distance = Math.hypot(x - rect.left, y - rect.top);
+                const cost = collisionArea * 10000 + distance;
+                if (!best || cost < best.cost) best = { x, y, cost, collisionArea };
+            }
+            return best;
+        }
+        let changed = false;
+        layer.querySelectorAll('[data-review-label-index]').forEach(marker => {
+            const index = Number(marker.dataset.reviewLabelIndex);
+            if (!Number.isInteger(index) || index < 0) return;
+            const target = marker.closest('.review-mode-mini-label-wrap') || marker;
+            let rect = target.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            let best = place(rect);
+            // When a tall side dock makes the original side-by-side group too
+            // wide, wrap the TEXT more; never move X/check underneath the label.
+            if (best?.collisionArea > 0 && target !== marker) {
+                const dock = obstacles.find(block => block.height > 120 &&
+                    (block.left > (left + right) / 2 || block.right < (left + right) / 2));
+                if (dock) {
+                    const stripWidth = Math.max(dock.left - spacing - left, right - dock.right - spacing);
+                    const oldWidth = rect.width;
+                    const available = Math.max(0, stripWidth - oldWidth);
+                    if (available < 0) {
+                        const scale = rect.width / Math.max(1, target.offsetWidth);
+                        const text = marker;
+                        const oldMax = parseFloat(text.style.maxWidth) || text.offsetWidth;
+                        const newMax = Math.max(105, Math.floor(oldMax + available / Math.max(.1, scale)));
+                        if (newMax < oldMax - 1) {
+                            text.style.maxWidth = `${newMax}px`;
+                            if (text.classList.contains('has-description')) text.style.width = `${newMax}px`;
+                            rect = target.getBoundingClientRect();
+                            best = place(rect);
+                        }
+                    }
+                }
+            }
+            if (!best) return;
+            const dx = best.x - rect.left;
+            const dy = best.y - rect.top;
+            if (Math.abs(dx) < 0.8 && Math.abs(dy) < 0.8) return;
+            const currentX = Number.parseFloat(target.style.left);
+            const currentY = Number.parseFloat(target.style.top);
+            if (!Number.isFinite(currentX) || !Number.isFinite(currentY)) return;
+            // Keep within the stage coordinate system used by connector SVGs.
+            const x = clamp(currentX + dx * 100 / stageRect.width, 0, 100);
+            const y = clamp(currentY + dy * 100 / stageRect.height, 0, 100);
+            if (Math.abs(x - currentX) < .01 && Math.abs(y - currentY) < .01) return;
+            target.style.left = `${x}%`;
+            target.style.top = `${y}%`;
+            review.autoLabelPositions[index] = { x, y };
+            changed = true;
+        });
+        if (changed) scheduleReviewModeVectorConnectorRefresh();
+    }
+
+    function scheduleReviewModeTouchLabelFit() {
+        if (!isReviewModeTouchPhone() || reviewModePhoneFitFrame) return;
+        reviewModePhoneFitFrame = window.requestAnimationFrame(() => {
+            reviewModePhoneFitFrame = 0;
+            fitReviewModeTouchLabelsToViewport();
+        });
+    }
+
+    function syncReviewModeDefaultFocusForOrientation() {
+        const review = getReviewModeState();
+        if (!review.overlayOpen || review.normalFocusZoomIsDefault !== true) return;
+        const next = getReviewModeDefaultFocusZoom();
+        if (review.normalFocusZoom === next) return;
+        review.normalFocusZoom = next;
+        if (review.focusMode && review.focusTier !== 'detail') scheduleReviewModeFocusCurrentLabel({ animate: false });
+        syncReviewModeControls();
     }
 
     const REVIEW_MODE_LABEL_HOLD_TO_MOVE_MS = 250;
@@ -16435,7 +16596,10 @@ MODIFICATION RULES FOR THIS APP
         const review = getReviewModeState();
         review.autoLabelPositions = {};
         renderReviewModeVisualAids();
-        layer.style.setProperty('--review-label-scale', String(REVIEW_MODE_LABEL_BASE_SCALE * review.labelSize));
+        // Cap rendered size on touch phones: large anatomy names must wrap within
+        // the visible screen instead of scaling into unclickable oversized bubbles.
+        const requestedLabelScale = REVIEW_MODE_LABEL_BASE_SCALE * review.labelSize;
+        layer.style.setProperty('--review-label-scale', String(isReviewModeTouchPhone() ? Math.min(1.2, requestedLabelScale) : requestedLabelScale));
         layer.style.setProperty('--review-label-text-scale', String(review.labelSize));
         layer.classList.toggle('allow-label-movement', review.allowLabelMovement);
         if (!isReviewModeActiveAngleOverlayReady()) {
@@ -16854,7 +17018,8 @@ MODIFICATION RULES FOR THIS APP
         review.showConnectorContrast = true;
         review.focusMode = false;
         review.twoLevelFocus = false;
-        review.normalFocusZoom = 200;
+        review.normalFocusZoom = getReviewModeDefaultFocusZoom();
+        review.normalFocusZoomIsDefault = true;
         review.detailFocusZoom = 700;
         review.focusTier = 'normal';
         review.focusTargetKey = '';
@@ -52996,7 +53161,8 @@ for (const [slider, field] of [
 ]) {
     slider?.addEventListener('input', () => {
         const review = getReviewModeState();
-        review[field] = Math.min(700, Math.max(100, Number(slider.value) || (field === 'normalFocusZoom' ? 200 : 300)));
+        review[field] = Math.min(700, Math.max(100, Number(slider.value) || (field === 'normalFocusZoom' ? getReviewModeDefaultFocusZoom() : 300)));
+        if (field === 'normalFocusZoom') review.normalFocusZoomIsDefault = false;
         if (review.detailFocusZoom < review.normalFocusZoom) review.detailFocusZoom = review.normalFocusZoom;
         syncReviewModeControls();
         if (review.focusMode) scheduleReviewModeFocusCurrentLabel({ animate: false });
@@ -53394,10 +53560,10 @@ if (elements.reviewModeLabelLayer) {
 }
 
 window.addEventListener('resize', () => {
-    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => { syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); });
+    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => { syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); });
 });
 window.addEventListener('orientationchange', () => {
-    if (getReviewModeState().overlayOpen) setTimeout(() => { syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); }, 120);
+    if (getReviewModeState().overlayOpen) setTimeout(() => { syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); }, 120);
 });
 
 document.addEventListener('keydown', event => {
