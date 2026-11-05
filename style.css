@@ -17890,3 +17890,25 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
     touch-action: pan-y;
   }
 }
+
+
+/* Phase 24A.6x — natural-size iPhone labels at every zoom level. */
+@media (max-width: 920px) and (pointer: coarse) {
+  .review-mode-mini-label-wrap {
+    max-width: none; /* measured label + two full-size answer controls */
+  }
+  .review-mode-mini-label-wrap > .review-mode-mini-label-marker:not(.has-description) {
+    flex: 0 0 auto;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+    /* The full image stage is transformed on zoom. Avoid also blurring text
+       through a backdrop filter, especially on Mobile Safari. */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .review-mode-mini-label-wrap > .review-mode-mini-answer {
+    flex-shrink: 0;
+  }
+}

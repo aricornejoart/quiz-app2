@@ -12652,6 +12652,18 @@ MODIFICATION RULES FOR THIS APP
         return window.matchMedia?.('(max-width: 920px) and (pointer: coarse)')?.matches === true;
     }
 
+    // Phase 24A.6x: limit automatic Detail Focus only on iPhone-sized
+    // viewports. iPad/desktop Detail Focus and manual pinch zoom stay intact.
+    function isReviewModeIPhoneViewport() {
+        return window.matchMedia?.('(pointer: coarse) and (max-width: 620px)')?.matches === true ||
+            window.matchMedia?.('(pointer: coarse) and (orientation: landscape) and (max-width: 920px) and (max-height: 520px)')?.matches === true;
+    }
+
+    function getReviewModeAppliedDetailFocusZoom(review = getReviewModeState()) {
+        const requested = Math.min(700, Math.max(100, Number(review.detailFocusZoom) || 700));
+        return isReviewModeIPhoneViewport() ? Math.min(400, requested) : requested;
+    }
+
     function normalizeReviewModeMiniQuizMode(value = 'progress') {
         const mode = normalizeSheetText(value).toLowerCase();
         return ['progress', 'retention', 'mastery', 'mastery-check'].includes(mode) ? mode : 'normal';
@@ -13540,7 +13552,7 @@ MODIFICATION RULES FOR THIS APP
             button.classList.toggle('is-active', review.focusMode);
             button.classList.toggle('is-detail', review.focusMode && tier === 'detail');
             button.setAttribute('aria-pressed', review.focusMode ? 'true' : 'false');
-            button.textContent = review.focusMode ? `Focus ${tier === 'detail' ? review.detailFocusZoom : review.normalFocusZoom}%` : 'Focus';
+            button.textContent = review.focusMode ? `Focus ${tier === 'detail' ? getReviewModeAppliedDetailFocusZoom(review) : review.normalFocusZoom}%` : 'Focus';
             button.title = review.twoLevelFocus ? 'Cycle Focus: Off, Normal, Detail' : 'Toggle Focus';
         }
         if (elements.reviewModeFocusToggle) elements.reviewModeFocusToggle.checked = review.focusMode;
@@ -13630,7 +13642,7 @@ MODIFICATION RULES FOR THIS APP
         if (!bounds) return false;
         const connector = normalizeDiagramConnector(target.label.connector);
         const detail = review.focusTier === 'detail';
-        const selectedZoom = (detail ? review.detailFocusZoom : review.normalFocusZoom) / 100;
+        const selectedZoom = (detail ? getReviewModeAppliedDetailFocusZoom(review) : review.normalFocusZoom) / 100;
         // Normal Focus frames the label/connector ensemble; Detail prioritizes the
         // precise anatomical endpoint, even if the original label is far away.
         const centerX = detail && connector ? (connector.anchorX / 100) * bounds.stageWidth : (bounds.minX + bounds.maxX) / 2;
@@ -15472,6 +15484,51 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    // Phase 24A.6x: size a phone label by the actual words, not by the
+    // maximum available width. This avoids both giant empty pills and the
+    // single-character vertical columns caused by flex shrinking at 350-700%.
+    // The text is measured in unzoomed CSS pixels; inverse Focus transforms
+    // keep that box at the same readable size on screen.
+    function sizeReviewModePhoneMiniQuizName(marker, availableWidth) {
+        if (!marker) return;
+        const name = marker.querySelector('.review-mode-label-name');
+        const text = (name?.textContent || marker.textContent || '').trim().replace(/\s+/g, ' ');
+        // Recompute from the base CSS font on every refresh; otherwise a
+        // narrow previous frame can accumulate further 2px reductions.
+        marker.style.fontSize = '';
+        const style = window.getComputedStyle(marker);
+        const fontSize = parseFloat(style.fontSize) || 16;
+        const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) +
+            (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
+        const canvas = sizeReviewModePhoneMiniQuizName.canvas ||
+            (sizeReviewModePhoneMiniQuizName.canvas = document.createElement('canvas'));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.font = `${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+        const measure = value => ctx.measureText(value).width;
+        const longest = Math.max(0, ...text.split(/\s+/).map(measure));
+        // Keep a useful minimum for short labels; preserve complete words.
+        // If a rare unbroken word exceeds the viewport, shrink by at most 2px.
+        const available = Math.max(112, Math.floor(availableWidth));
+        const needsSmallerFont = longest + pad > available;
+        const nextSize = needsSmallerFont ? Math.max(12, fontSize - 2) : fontSize;
+        if (needsSmallerFont) {
+            marker.style.fontSize = `${nextSize}px`;
+            ctx.font = `${style.fontWeight} ${nextSize}px ${style.fontFamily}`;
+        } else {
+            marker.style.fontSize = '';
+        }
+        const naturalWidth = measure(text) + pad + 2;
+        const longestWidth = Math.max(0, ...text.split(/\s+/).map(measure)) + pad + 2;
+        const target = Math.max(Math.min(available, 54), Math.min(available, Math.max(longestWidth, naturalWidth)));
+        marker.style.boxSizing = 'border-box';
+        marker.style.width = `${Math.ceil(target)}px`;
+        marker.style.minWidth = `${Math.ceil(Math.min(target, available))}px`;
+        marker.style.maxWidth = `${Math.ceil(target)}px`;
+        marker.style.overflowWrap = 'normal';
+        marker.style.wordBreak = 'normal';
+    }
+
     function clampReviewModeRenderedLabels() {
         const review = getReviewModeState();
         review.autoLabelPositions = {};
@@ -15520,13 +15577,16 @@ MODIFICATION RULES FOR THIS APP
                 marker.classList.toggle('is-stacked-information', !!needsStacking);
                 moveTarget.classList.toggle('is-compact-information-layout', compactInformationLayout);
             } else {
-                // A long revealed name needs a definite text column. Letting
-                // flex shrink-to-fit collapse it to single-character lines is
-                // worse than wrapping normally across a few readable lines.
-                const longPhoneName = mobileTouch && review.miniQuiz.active &&
-                    miniButtons.length > 0 && (marker.textContent || '').trim().length > 20;
-                marker.style.width = longPhoneName ? `${usableWidth}px` : '';
-                marker.style.minWidth = longPhoneName ? 'min(120px, 36vw)' : '';
+                // Give quiz names their natural measured width, capped by
+                // the *visible* phone viewport, with a non-shrinking text box.
+                // Words wrap normally; never make one-character columns.
+                if (mobileTouch && review.miniQuiz.active && miniButtons.length > 0) {
+                    sizeReviewModePhoneMiniQuizName(marker, usableWidth);
+                } else {
+                    marker.style.width = '';
+                    marker.style.minWidth = '';
+                    marker.style.fontSize = '';
+                }
                 marker.style.borderRadius = '';
                 marker.classList.remove('is-stacked-information');
                 moveTarget.classList.remove('is-compact-information-layout');
@@ -15613,29 +15673,9 @@ MODIFICATION RULES FOR THIS APP
             let rect = target.getBoundingClientRect();
             if (!rect.width || !rect.height) return;
             let best = place(rect);
-            // When a tall side dock makes the original side-by-side group too
-            // wide, wrap the TEXT more; never move X/check underneath the label.
-            if (best?.collisionArea > 0 && target !== marker) {
-                const dock = obstacles.find(block => block.height > 120 &&
-                    (block.left > (left + right) / 2 || block.right < (left + right) / 2));
-                if (dock) {
-                    const stripWidth = Math.max(dock.left - spacing - left, right - dock.right - spacing);
-                    const oldWidth = rect.width;
-                    const available = Math.max(0, stripWidth - oldWidth);
-                    if (available < 0) {
-                        const scale = rect.width / Math.max(1, target.offsetWidth);
-                        const text = marker;
-                        const oldMax = parseFloat(text.style.maxWidth) || text.offsetWidth;
-                        const newMax = Math.max(105, Math.floor(oldMax + available / Math.max(.1, scale)));
-                        if (newMax < oldMax - 1) {
-                            text.style.maxWidth = `${newMax}px`;
-                            if (text.classList.contains('has-description')) text.style.width = `${newMax}px`;
-                            rect = target.getBoundingClientRect();
-                            best = place(rect);
-                        }
-                    }
-                }
-            }
+            // Keep text width and touch-target sizes stable. If an obstacle
+            // forces relocation, move the entire group rather than narrowing
+            // the name to a column of single characters.
             if (!best) return;
             const dx = best.x - rect.left;
             const dy = best.y - rect.top;
