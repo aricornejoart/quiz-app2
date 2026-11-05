@@ -7828,9 +7828,75 @@ MODIFICATION RULES FOR THIS APP
     }
     let activeSavedImageProgressPopup = null;
     let activeSavedImageProgressButton = null;
+    let activeStudyProgressRulesDialog = null;
     let savedImageProgressExitTimer = null;
     let savedImageProgressRefreshTimer = null;
+    // Phase 24A.6u: descriptive, read-only rules. Keep this single source of
+    // UI copy aligned with getSavedImageSpacedReviewStages(), the existing
+    // pass qualification functions, and the active-cycle filters whenever
+    // spaced repetition rules change. No study scoring or writes happen here.
+    function renderStudyProgressRules(isQuiz = false) {
+        return `<h2 id="studyProgressRulesTitle">Spaced Repetition Rules</h2>
+            <section><h3>Required schedule</h3>
+                <p>Day 1, Day 2, Day 4 (mastery milestone), then Day 6. Day 3 and Day 5 are rest days. Day 6 can be completed on Day 6 or Day 7.</p>
+                <p>Afterward: Week 1, Week 2, Week 3 rest, Week 4, two monthly reviews, then quarterly reviews. Each stage has its own scheduled review window.</p>
+            </section>
+            <section><h3>Two successful passes</h3>
+                <p>Every required stage needs <strong>two complete qualifying passes on the same local calendar day, at least six hours apart</strong>. Two passes before six hours do not complete the stage. Even when a window spans several days, its two credited passes must be on one day.</p>
+            </section>
+            <section><h3>What counts as a pass?</h3>
+                ${isQuiz ? `<p>Study the <strong>entire required quiz</strong>, not a starred or filtered subset. Finish the questions successfully using their current study mode. For applicable question types, <strong>Shuffle Answers must be ON</strong>. Missed questions may be corrected under the mode's normal rules; a perfect first attempt is <strong>not</strong> required.</p>` : `<p>A Saved Image must cover <strong>all required regular label names across its angles</strong>; partial coverage does not earn a full pass. The existing Mini Quiz modes and their retry rules still apply. A perfect first attempt is <strong>not</strong> required.</p>`}
+            </section>
+            <section><h3>LEARNING and MASTERED</h3>
+                <p>Day 4 is the mastery milestone. Once the relevant study requirements and label/question coverage are met, MASTERED continues through the later scheduled maintenance reviews. The same two-pass rule applies in both stages.</p>
+            </section>
+            <section><h3>Missed windows and resets</h3>
+                <p>Missing a required stage's window invalidates the current cycle. The next eligible full study pass begins a fresh Day 1 cycle. Inactive or reset Saved Images do not appear in Pending or In Progress until study resumes. Editing qualifying study content may also reset progress under the existing rules.</p>
+            </section>`;
+    }
+    function dismissStudyProgressRulesDialog(restoreFocus = true) {
+        const dialog = activeStudyProgressRulesDialog;
+        if (!dialog) return;
+        activeStudyProgressRulesDialog = null;
+        if (dialog.open) dialog.close();
+        dialog.remove();
+        if (restoreFocus) activeSavedImageProgressPopup?.querySelector('.studio-spaced-review-info-trigger')?.focus({ preventScroll: true });
+    }
+    function openStudyProgressRulesDialog(isQuiz) {
+        dismissStudyProgressRulesDialog(false);
+        const dialog = document.createElement('dialog');
+        dialog.className = 'studio-spaced-review-rules-dialog';
+        dialog.setAttribute('aria-labelledby', 'studyProgressRulesTitle');
+        dialog.innerHTML = `<div class="studio-spaced-review-rules-top"><span class="studio-spaced-review-rules-eyebrow">Study Bunny</span><button type="button" class="studio-spaced-review-rules-close" aria-label="Close spaced repetition rules">×</button></div>${renderStudyProgressRules(isQuiz)}`;
+        dialog.querySelector('.studio-spaced-review-rules-close')?.addEventListener('click', () => dismissStudyProgressRulesDialog());
+        dialog.addEventListener('click', event => {
+            // Closing/removing the nested dialog must not bubble into the
+            // Progress popup's outside-click dismissal handler.
+            event.stopPropagation();
+            if (event.target === dialog) dismissStudyProgressRulesDialog();
+        });
+        dialog.addEventListener('close', () => dismissStudyProgressRulesDialog());
+        document.body.appendChild(dialog);
+        activeStudyProgressRulesDialog = dialog;
+        dialog.showModal();
+        dialog.querySelector('.studio-spaced-review-rules-close')?.focus({ preventScroll: true });
+    }
+    function mountStudyProgressRulesButton(popup, panelId) {
+        if (!popup || popup.querySelector('.studio-spaced-review-info-trigger')) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'studio-spaced-review-info-trigger';
+        button.textContent = 'i';
+        button.title = 'Spaced repetition rules';
+        button.setAttribute('aria-label', 'Show spaced repetition rules');
+        button.setAttribute('aria-haspopup', 'dialog');
+        button.addEventListener('click', () => openStudyProgressRulesDialog(panelId.startsWith('quiz:')));
+        const heading = popup.querySelector('.studio-spaced-review-status');
+        if (heading) heading.appendChild(button);
+        else popup.insertBefore(button, popup.firstChild);
+    }
     function closeSavedImageStudyProgressPopup() {
+        dismissStudyProgressRulesDialog(false);
         clearTimeout(savedImageProgressRefreshTimer);
         savedImageProgressRefreshTimer = null;
         clearTimeout(savedImageProgressExitTimer);
@@ -7990,6 +8056,7 @@ MODIFICATION RULES FOR THIS APP
                 }).catch(()=>{ if(popup.isConnected) holder.innerHTML='<p class="exam-post-quiz-warning">Report unavailable. Check the Phase 24A.5z SQL migration.</p>'; });
             }
         }
+        mountStudyProgressRulesButton(popup, panelId);
         document.body.appendChild(popup);
         const rect = button.getBoundingClientRect();
         const width = Math.min(320, Math.max(220, window.innerWidth - 24));
@@ -8027,6 +8094,7 @@ MODIFICATION RULES FOR THIS APP
             const template = document.createElement('template');
             template.innerHTML = freshMarkup;
             activeSavedImageProgressPopup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || '';
+            mountStudyProgressRulesButton(activeSavedImageProgressPopup, panelId);
             if (panelId.startsWith('quiz:')) {
                 const quizId=panelId.slice(5);
                 if (normalizeSheetText(state.auth.managedQuizzes.find(q=>q.id===quizId)?.quizType)==='exam') {
@@ -8045,6 +8113,7 @@ MODIFICATION RULES FOR THIS APP
     // (mouse/trackpad/hover-capable stylus) or clicking away closes it. Touch
     // scrolling must never make a newly tapped popup disappear by accident.
     document.addEventListener('pointermove', event => {
+        if (activeStudyProgressRulesDialog?.open) return;
         if (!activeSavedImageProgressPopup || event.pointerType === 'touch') return;
         if (!activeSavedImageProgressButton?.isConnected) { closeSavedImageStudyProgressPopup(); return; }
         const inRect = (rect, padding = 9) => event.clientX >= rect.left - padding &&
@@ -8061,16 +8130,19 @@ MODIFICATION RULES FOR THIS APP
         }
     });
     document.addEventListener('click', event => {
-        if (!activeSavedImageProgressPopup) return;
+        if (activeStudyProgressRulesDialog?.open || !activeSavedImageProgressPopup) return;
         if (event.target.closest?.('[data-study-progress]')) return;
         if (activeSavedImageProgressPopup.contains(event.target)) return;
         closeSavedImageStudyProgressPopup();
     });
     document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') closeSavedImageStudyProgressPopup();
+        if (event.key === 'Escape' && !activeStudyProgressRulesDialog?.open) closeSavedImageStudyProgressPopup();
     });
     window.addEventListener('resize', closeSavedImageStudyProgressPopup);
-    window.addEventListener('scroll', closeSavedImageStudyProgressPopup, true);
+    window.addEventListener('scroll', event => {
+        if (activeStudyProgressRulesDialog?.open && activeStudyProgressRulesDialog.contains(event.target)) return;
+        closeSavedImageStudyProgressPopup();
+    }, true);
     function recordSavedImageSpacedReviewPass(entry, correctKeys, now = new Date()) {
         const required = getSavedImageUniqueLabelKeys(entry);
         if (!required.size || !correctKeys.size) return entry.spacedReview;

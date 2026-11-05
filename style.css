@@ -17174,6 +17174,44 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-spaced-review-fill { display: block; height: 100%; border-radius: inherit; background: #2dd4bf; }
 .studio-spaced-review-popover:has(.studio-spaced-review-status.is-mastered) .studio-spaced-review-fill { background: #facc15; }
 
+/* Phase 24A.6u — read-only rules dialog; no changes to study logic. */
+.studio-spaced-review-popover .studio-spaced-review-status {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.studio-spaced-review-info-trigger {
+  display: inline-grid; place-items: center; flex: 0 0 auto;
+  width: 25px; height: 25px; border-radius: 50%;
+  border: 1px solid rgba(45,212,191,.74); background: rgba(45,212,191,.12);
+  color: #5eead4; font-size: .9rem; font-weight: 850; line-height: 1;
+  cursor: pointer; touch-action: manipulation;
+}
+.studio-spaced-review-info-trigger:hover,
+.studio-spaced-review-info-trigger:focus-visible { background: rgba(45,212,191,.29); border-color: #5eead4; color: #fff; }
+.studio-spaced-review-info-trigger:focus-visible,
+.studio-spaced-review-rules-close:focus-visible { outline: 2px solid #5eead4; outline-offset: 2px; }
+.studio-spaced-review-rules-dialog {
+  box-sizing: border-box; width: min(470px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+  max-height: min(82dvh, 660px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 20px 21px; border: 1px solid rgba(45,212,191,.65); border-radius: 14px;
+  background: #101b29; color: #f2f5fb; box-shadow: 0 24px 68px rgba(0,0,0,.65);
+  font-size: .87rem; line-height: 1.52;
+}
+.studio-spaced-review-rules-dialog::backdrop { background: rgba(4,9,20,.73); }
+.studio-spaced-review-rules-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.studio-spaced-review-rules-eyebrow { color: #5eead4; font-size: .73rem; font-weight: 800; letter-spacing: .035em; }
+.studio-spaced-review-rules-close {
+  display: grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px;
+  border-radius: 9px; border: 1px solid rgba(255,255,255,.24); background: #25324a;
+  color: #fff; font-size: 24px; cursor: pointer; touch-action: manipulation;
+}
+.studio-spaced-review-rules-close:hover { background: #344765; }
+.studio-spaced-review-rules-dialog h2 { font-size: 1.14rem; line-height: 1.3; margin: 7px 0 17px; }
+.studio-spaced-review-rules-dialog section + section { margin-top: 15px; border-top: 1px solid rgba(255,255,255,.12); padding-top: 13px; }
+.studio-spaced-review-rules-dialog h3 { color: #5eead4; font-size: .91rem; margin: 0 0 6px; }
+.studio-spaced-review-rules-dialog p { margin: 0 0 8px; }
+.studio-spaced-review-rules-dialog p:last-child { margin-bottom: 0; }
+@media(max-width:480px){ .studio-spaced-review-rules-dialog { padding: 15px 16px; } }
+
 /* Phase 23F.41.66 — calculated six-hour retry time alongside current stage. */
 .studio-spaced-review-popover .studio-spaced-review-bar-heading { flex-wrap: wrap; column-gap: 7px; row-gap: 4px; }
 .studio-spaced-review-popover .studio-spaced-review-heading-text { white-space: nowrap; }
