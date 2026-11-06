@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a6y_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a6z_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a6y_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a6z_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -2096,7 +2096,7 @@ MODIFICATION RULES FOR THIS APP
   <div id="reviewModeOverlay" class="review-mode-overlay hidden" aria-hidden="true">
     <div class="review-mode-toolbar" aria-label="Review image controls">
       <button id="reviewModeCloseBtn" class="review-mode-toolbar-btn review-mode-close-btn" type="button" aria-label="Exit reviewed image">✕</button>
-      <button id="reviewModeOptionsBtn" class="review-mode-toolbar-btn review-mode-options-btn" type="button" aria-expanded="false" aria-controls="reviewModeOptionsPanel">Show Options</button>
+      <button id="reviewModeOptionsBtn" class="review-mode-toolbar-btn review-mode-icon-btn review-mode-options-btn" type="button" aria-label="Show Options" title="Show Options" aria-expanded="false" aria-controls="reviewModeOptionsPanel"><svg class="review-mode-toolbar-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l-1.91 1.91a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-6v-1.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-1.91-1.91A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H2v-4h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l1.91-1.91A1.65 1.65 0 0 0 8 5.6a1.65 1.65 0 0 0 1-1.51V3h6v1.09A1.65 1.65 0 0 0 16 5.6a1.65 1.65 0 0 0 1.82-.33l1.91 1.91A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H22v4h-1.09A1.65 1.65 0 0 0 19.4 15Z"/></svg></button>
       <div id="reviewModeAngleNavigation" class="review-mode-angle-navigation hidden" aria-hidden="true">
         <button id="reviewModePrevAngleBtn" type="button" class="review-mode-angle-btn" aria-label="Previous angle">‹</button>
         <div id="reviewModeAngleIndicator" class="review-mode-angle-indicator" aria-live="polite"></div>
@@ -2115,8 +2115,8 @@ MODIFICATION RULES FOR THIS APP
         </button>
         <button id="reviewModeStartQuizBtn" class="review-mode-toolbar-btn review-mode-start-quiz-btn" type="button" aria-label="Start Mini Quiz" title="Start Mini Quiz">Start Quiz</button>
         <div id="reviewModeMiniQuizControls" class="review-mode-mini-quiz-controls hidden" aria-hidden="true">
-          <button id="reviewModeMiniQuizRestartBtn" type="button">Restart Quiz</button>
-          <button id="reviewModeMiniQuizEndBtn" type="button">End Quiz</button>
+          <button id="reviewModeMiniQuizRestartBtn" class="review-mode-toolbar-btn review-mode-icon-btn review-mode-restart-btn" type="button" aria-label="Restart Mini Quiz" title="Restart Mini Quiz"><svg class="review-mode-toolbar-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 6.4"/><path d="M3 4v7h7"/></svg></button>
+          <button id="reviewModeMiniQuizEndBtn" type="button" aria-label="End Mini Quiz"><span class="review-mode-end-full">End Quiz</span><span class="review-mode-end-short" aria-hidden="true">End</span></button>
         </div>
       </div>
     </div>
@@ -2628,6 +2628,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a6y_1"></script>
+  <script src="script.js?v=24a6z_1"></script>
 </body>
 </html>

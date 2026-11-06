@@ -17939,3 +17939,58 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .review-mode-label-layer.is-screen-space.is-angle-dragging {
   opacity: .24;
 }
+
+/* Phase 24A.6z — icon-only Review Options and Mini Quiz Restart on all devices.
+   Keep SVGs crisp and the same chrome/hit size as the Close button. */
+.review-mode-toolbar .review-mode-icon-btn,
+.review-mode-toolbar .review-mode-mini-quiz-controls button.review-mode-icon-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 42px;
+  min-height: 42px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 13px;
+  background: rgba(20, 17, 43, 0.88);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+.review-mode-toolbar .review-mode-toolbar-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 21px;
+  height: 21px;
+  pointer-events: none;
+}
+.review-mode-toolbar .review-mode-icon-btn:focus-visible {
+  outline: 2px solid #5eead4;
+  outline-offset: 2px;
+}
+.review-mode-toolbar .review-mode-icon-btn:hover,
+.review-mode-toolbar .review-mode-icon-btn[aria-expanded="true"] {
+  border-color: rgba(250, 204, 21, 0.72);
+}
+.review-mode-overlay .review-mode-end-short { display: none; }
+/* iPhone-only compact chrome: never suppress the zoom readout or angle name.
+   Flex wrapping remains natural if the full toolbar needs two rows. */
+.review-mode-overlay.review-mode-iphone-toolbar #reviewModeResetZoomBtn { display: none !important; }
+.review-mode-overlay.review-mode-iphone-toolbar .review-mode-end-full { display: none; }
+.review-mode-overlay.review-mode-iphone-toolbar .review-mode-end-short { display: inline; }
+.review-mode-overlay.review-mode-iphone-toolbar .review-mode-toolbar { gap: 5px; }
+.review-mode-overlay.review-mode-iphone-toolbar .review-mode-quiz-actions { gap: 4px; }
+@media (max-width: 620px) {
+  .review-mode-toolbar .review-mode-icon-btn,
+  .review-mode-toolbar .review-mode-mini-quiz-controls button.review-mode-icon-btn {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    flex-basis: 40px;
+    padding: 7px;
+  }
+}

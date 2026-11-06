@@ -12642,10 +12642,10 @@ MODIFICATION RULES FOR THIS APP
     let reviewModeMiniQuizRapidTimerId = null;
     const REVIEW_MODE_MINI_QUIZ_RAPID_DELAY_MS = 850;
 
-    // Phase 24A.6v: a phone held vertically needs less Focus magnification.
-    // This is a view preference only; saved diagram coordinates never change.
+    // Phase 24A.6z: restore the normal 200% Focus default in both iPhone
+    // orientations. Focus changes affect the view, never saved diagram geometry.
     function getReviewModeDefaultFocusZoom() {
-        return window.matchMedia?.('(max-width: 620px) and (orientation: portrait) and (pointer: coarse)')?.matches ? 150 : 200;
+        return 200;
     }
 
     function isReviewModeTouchPhone() {
@@ -12662,6 +12662,18 @@ MODIFICATION RULES FOR THIS APP
     function getReviewModeAppliedDetailFocusZoom(review = getReviewModeState()) {
         const requested = Math.min(700, Math.max(100, Number(review.detailFocusZoom) || 700));
         return isReviewModeIPhoneViewport() ? Math.min(400, requested) : requested;
+    }
+
+    // The compact toolbar is an iPhone presentation only; iPads retain their
+    // Reset Zoom button and full End Quiz text even at split-screen widths.
+    function isReviewModeIPhoneToolbar() {
+        return isIPhoneDevice();
+    }
+
+    function syncReviewModeIPhoneToolbar() {
+        const isIPhone = isReviewModeIPhoneToolbar();
+        elements.reviewModeOverlay?.classList.toggle('review-mode-iphone-toolbar', isIPhone);
+        return isIPhone;
     }
 
     function normalizeReviewModeMiniQuizMode(value = 'progress') {
@@ -13426,7 +13438,9 @@ MODIFICATION RULES FOR THIS APP
     function syncReviewModeZoomUi() {
         const review = getReviewModeState();
         const isZoomed = review.zoomScale > REVIEW_MODE_MIN_ZOOM + 0.01 || Math.abs(review.zoomX) > 0.5 || Math.abs(review.zoomY) > 0.5;
-        const showReset = isZoomed || review.focusMode;
+        // On iPhone only, free the toolbar slot without removing pinch/Focus
+        // zoom or the always-visible live percentage indicator.
+        const showReset = (isZoomed || review.focusMode) && !syncReviewModeIPhoneToolbar();
         elements.reviewModeImageViewport?.classList.toggle('is-zoomed', isZoomed);
         elements.reviewModeResetZoomBtn?.classList.toggle('hidden', !showReset);
         elements.reviewModeResetZoomBtn?.setAttribute('aria-hidden', showReset ? 'false' : 'true');
@@ -14055,7 +14069,9 @@ MODIFICATION RULES FOR THIS APP
         elements.reviewModeOptionsPanel?.classList.toggle('hidden', !review.optionsOpen);
         elements.reviewModeOptionsPanel?.setAttribute('aria-hidden', review.optionsOpen ? 'false' : 'true');
         if (elements.reviewModeOptionsBtn) {
-            elements.reviewModeOptionsBtn.textContent = review.optionsOpen ? 'Hide Options' : 'Show Options';
+            const name = review.optionsOpen ? 'Hide Options' : 'Show Options';
+            elements.reviewModeOptionsBtn.setAttribute('aria-label', name);
+            elements.reviewModeOptionsBtn.setAttribute('title', name);
             elements.reviewModeOptionsBtn.setAttribute('aria-expanded', review.optionsOpen ? 'true' : 'false');
         }
         scheduleReviewModeTouchLabelFit();
@@ -17166,6 +17182,7 @@ MODIFICATION RULES FOR THIS APP
         resetReviewModeAngleLoading({ clearCache: true });
         elements.reviewModeOverlay.classList.remove('hidden');
         elements.reviewModeOverlay.setAttribute('aria-hidden', 'false');
+        syncReviewModeIPhoneToolbar();
         document.body.classList.add('review-mode-image-open');
         clearReviewModeOverlayLayers();
         syncReviewModeControls();
@@ -53652,10 +53669,10 @@ if (elements.reviewModeLabelLayer) {
 }
 
 window.addEventListener('resize', () => {
-    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => { syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); });
+    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => { syncReviewModeIPhoneToolbar(); syncReviewModeZoomUi(); syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); });
 });
 window.addEventListener('orientationchange', () => {
-    if (getReviewModeState().overlayOpen) setTimeout(() => { syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); }, 120);
+    if (getReviewModeState().overlayOpen) setTimeout(() => { syncReviewModeIPhoneToolbar(); syncReviewModeZoomUi(); syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); }, 120);
 });
 
 document.addEventListener('keydown', event => {
