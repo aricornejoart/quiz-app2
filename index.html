@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a6z_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7b_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a6z_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a7b_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -921,7 +921,13 @@ MODIFICATION RULES FOR THIS APP
                 <section class="creator-subsection quiz-studio-panel studio-review-mode-panel">
                   <div class="creator-subsection-title">Review Mode</div>
                   <div class="creator-note">Search all nondeleted Saved Images, then open one as a full-screen interactive anatomy review.</div>
-                  <div class="studio-review-filter-panel" aria-label="Review Mode image filters">
+                  <button id="reviewModeFilterDisclosureBtn" type="button" class="studio-review-filter-disclosure" aria-controls="reviewModeFilterPanel" aria-expanded="false" hidden>
+                    <svg class="studio-review-filter-disclosure-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/><circle cx="8" cy="7" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
+                    <span>Search &amp; Filters</span>
+                    <span id="reviewModeFilterActiveCount" class="studio-review-filter-active-count" hidden></span>
+                    <svg class="studio-review-filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <div id="reviewModeFilterPanel" class="studio-review-filter-panel" aria-label="Review Mode image filters">
                     <label class="studio-review-filter-wide"><span>Search everything</span><input id="reviewModeSearchInput" type="search" autocomplete="off" placeholder="Search diagram names, subjects, tags, or label names"></label>
                     <label><span>Diagram name</span><input id="reviewModeDiagramNameFilter" type="search" autocomplete="off" placeholder="Long Bone Anatomy"></label>
                     <label><span>Class</span><select id="reviewModeClassFilter"><option value="">All classes</option></select></label>
@@ -2628,6 +2634,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a6z_1"></script>
+  <script src="script.js?v=24a7b_1"></script>
 </body>
 </html>

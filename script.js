@@ -702,6 +702,7 @@ MODIFICATION RULES FOR THIS APP
         closeQuizStudioBtn: document.getElementById('closeQuizStudioBtn'),
         quizStudioSectionButtons: Array.from(document.querySelectorAll('[data-studio-section-target]')),
         quizStudioSections: Array.from(document.querySelectorAll('[data-studio-section]')),
+        quizStudioReviewModeSection: document.getElementById('quizStudioReviewModeSection'),
         creatorStatus: document.getElementById('creatorStatus'),
         studioRecentQuizList: document.getElementById('studioRecentQuizList'),
         studioRecentFolderList: document.getElementById('studioRecentFolderList'),
@@ -789,6 +790,9 @@ MODIFICATION RULES FOR THIS APP
         diagramCreatorPageNextBtn: document.getElementById('diagramCreatorPageNextBtn'),
         diagramCreatorPageStatus: document.getElementById('diagramCreatorPageStatus'),
         diagramCreatorShowAllBtn: document.getElementById('diagramCreatorShowAllBtn'),
+        reviewModeFilterDisclosureBtn: document.getElementById('reviewModeFilterDisclosureBtn'),
+        reviewModeFilterPanel: document.getElementById('reviewModeFilterPanel'),
+        reviewModeFilterActiveCount: document.getElementById('reviewModeFilterActiveCount'),
         reviewModeSearchInput: document.getElementById('reviewModeSearchInput'),
         reviewModeDiagramNameFilter: document.getElementById('reviewModeDiagramNameFilter'),
         reviewModeClassFilter: document.getElementById('reviewModeClassFilter'),
@@ -12672,7 +12676,9 @@ MODIFICATION RULES FOR THIS APP
 
     function syncReviewModeIPhoneToolbar() {
         const isIPhone = isReviewModeIPhoneToolbar();
+        const isPortrait = isIPhone && (window.matchMedia?.('(orientation: portrait)')?.matches ?? window.innerHeight >= window.innerWidth);
         elements.reviewModeOverlay?.classList.toggle('review-mode-iphone-toolbar', isIPhone);
+        elements.reviewModeOverlay?.classList.toggle('review-mode-iphone-portrait-toolbar', isPortrait);
         return isIPhone;
     }
 
@@ -12818,6 +12824,29 @@ MODIFICATION RULES FOR THIS APP
         return review;
     }
 
+    // Phase 24A.7b: only the iPhone Review Mode search panel is collapsible.
+    // These UI flags are deliberately independent of the actual saved-image filters.
+    let reviewModeFiltersExpanded = false;
+    function syncReviewModeFilterDisclosure({ reset = false } = {}) {
+        const button = elements.reviewModeFilterDisclosureBtn;
+        const panel = elements.reviewModeFilterPanel;
+        if (!button || !panel) return;
+        if (reset) reviewModeFiltersExpanded = false;
+        const phone = isIPhoneDevice();
+        button.hidden = !phone;
+        panel.hidden = phone && !reviewModeFiltersExpanded;
+        panel.setAttribute('aria-hidden', panel.hidden ? 'true' : 'false');
+        button.setAttribute('aria-expanded', phone && reviewModeFiltersExpanded ? 'true' : 'false');
+        button.classList.toggle('is-expanded', phone && reviewModeFiltersExpanded);
+        elements.quizStudioReviewModeSection?.classList.toggle('studio-review-filter-iphone', phone);
+        const badge = elements.reviewModeFilterActiveCount;
+        if (badge) {
+            const count = Object.values(getReviewModeFiltersFromDom()).filter(Boolean).length;
+            badge.textContent = count ? `${count} active` : '';
+            badge.hidden = !phone || count === 0;
+        }
+    }
+
     function getReviewModeFiltersFromDom() {
         return {
             search: normalizeSheetText(elements.reviewModeSearchInput?.value || '').toLowerCase(),
@@ -12883,6 +12912,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function renderReviewModeLibrary() {
+        syncReviewModeFilterDisclosure();
         scheduleSavedImageQuickFilterRefresh();
         autoLoadCleanupKeepSelections();
         closeSavedImageStudyProgressPopup();
@@ -13102,7 +13132,14 @@ MODIFICATION RULES FOR THIS APP
         const show = hasMultipleAngles && review.showAngleControls;
         elements.reviewModeAngleNavigation?.classList.toggle('hidden', !show);
         elements.reviewModeAngleNavigation?.setAttribute('aria-hidden', show ? 'false' : 'true');
-        if (elements.reviewModeAngleIndicator) elements.reviewModeAngleIndicator.textContent = hasMultipleAngles ? `${review.activeAngleIndex + 1} / ${angles.length} · ${angle?.name || `Angle ${review.activeAngleIndex + 1}`}` : '';
+        if (elements.reviewModeAngleIndicator) {
+            const fullName = hasMultipleAngles ? `${review.activeAngleIndex + 1} / ${angles.length} · ${angle?.name || `Angle ${review.activeAngleIndex + 1}`}` : '';
+            const portraitPhone = elements.reviewModeOverlay?.classList.contains('review-mode-iphone-portrait-toolbar');
+            elements.reviewModeAngleIndicator.textContent = hasMultipleAngles && portraitPhone
+                ? `${review.activeAngleIndex + 1}/${angles.length}` : fullName;
+            elements.reviewModeAngleIndicator.setAttribute('aria-label', fullName);
+            elements.reviewModeAngleIndicator.title = fullName;
+        }
         if (elements.reviewModePrevAngleBtn) elements.reviewModePrevAngleBtn.disabled = !show || review.miniQuiz.active;
         if (elements.reviewModeNextAngleBtn) elements.reviewModeNextAngleBtn.disabled = !show || review.miniQuiz.active;
     }
@@ -13409,6 +13446,10 @@ MODIFICATION RULES FOR THIS APP
     const REVIEW_MODE_FOCUS_PADDING_RATIO = 0.22;
     const REVIEW_MODE_FOCUS_MIN_PADDING = 36;
     let reviewModeZoomResetTimer = null;
+    // Phase 24A.7a: temporary, screen-space zoom feedback on iPhone portrait.
+    // Never add or remove an item from the flex toolbar when it shows/hides.
+    let reviewModePortraitZoomHideTimer = null;
+    let reviewModeLastShownZoomScale = null;
     let reviewModeFocusFrameId = 0;
     let reviewModeVectorRefreshFrameId = 0;
 
@@ -13435,19 +13476,75 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    function clearReviewModePortraitZoomBadge({ resetTracking = false } = {}) {
+        if (reviewModePortraitZoomHideTimer) window.clearTimeout(reviewModePortraitZoomHideTimer);
+        reviewModePortraitZoomHideTimer = null;
+        elements.reviewModeZoomPercent?.classList.remove('is-zoom-toast-visible');
+        if (resetTracking) reviewModeLastShownZoomScale = null;
+    }
+
+    function positionReviewModePortraitZoomBadge() {
+        const overlay = elements.reviewModeOverlay;
+        const badge = elements.reviewModeZoomPercent;
+        if (!overlay?.classList.contains('review-mode-iphone-portrait-toolbar') ||
+            !badge?.classList.contains('is-zoom-toast-visible')) return;
+        const toolbar = overlay.querySelector('.review-mode-toolbar');
+        const close = elements.reviewModeCloseBtn;
+        if (!toolbar || !close) return;
+        const toolbarRect = toolbar.getBoundingClientRect();
+        const closeRect = close.getBoundingClientRect();
+        badge.style.left = `${Math.round(closeRect.left - toolbarRect.left)}px`;
+        badge.style.top = `${Math.round(closeRect.bottom - toolbarRect.top + 6)}px`;
+        const probe = badge.getBoundingClientRect();
+        const overlaps = Array.from(toolbar.querySelectorAll('button')).some(button => {
+            if (button === close || button.classList.contains('hidden') ||
+                button.closest('.hidden') || !button.getClientRects().length) return false;
+            const r = button.getBoundingClientRect();
+            return probe.left < r.right + 4 && probe.right + 4 > r.left &&
+                probe.top < r.bottom + 4 && probe.bottom + 4 > r.top;
+        });
+        // Only in the exceptional narrow/wrapped layout: protect all buttons
+        // before honoring the preferred position directly underneath Close.
+        if (overlaps) badge.style.top = `${Math.round(toolbarRect.height + 6)}px`;
+    }
+
     function syncReviewModeZoomUi() {
         const review = getReviewModeState();
         const isZoomed = review.zoomScale > REVIEW_MODE_MIN_ZOOM + 0.01 || Math.abs(review.zoomX) > 0.5 || Math.abs(review.zoomY) > 0.5;
-        // On iPhone only, free the toolbar slot without removing pinch/Focus
-        // zoom or the always-visible live percentage indicator.
         const showReset = (isZoomed || review.focusMode) && !syncReviewModeIPhoneToolbar();
         elements.reviewModeImageViewport?.classList.toggle('is-zoomed', isZoomed);
         elements.reviewModeResetZoomBtn?.classList.toggle('hidden', !showReset);
         elements.reviewModeResetZoomBtn?.setAttribute('aria-hidden', showReset ? 'false' : 'true');
-        if (elements.reviewModeZoomPercent) {
-            elements.reviewModeZoomPercent.textContent = `${Math.round(review.zoomScale * 100)}%`;
-            elements.reviewModeZoomPercent.setAttribute('aria-label', `Current review zoom ${Math.round(review.zoomScale * 100)} percent`);
+        const badge = elements.reviewModeZoomPercent;
+        if (!badge) return;
+        const scale = Number(review.zoomScale) || 1;
+        badge.textContent = `${Math.round(scale * 100)}%`;
+        badge.setAttribute('aria-label', `Current review zoom ${Math.round(scale * 100)} percent`);
+        const portrait = review.overlayOpen && elements.reviewModeOverlay?.classList.contains('review-mode-iphone-portrait-toolbar');
+        const changed = reviewModeLastShownZoomScale != null && Math.abs(reviewModeLastShownZoomScale - scale) > 0.0001;
+        reviewModeLastShownZoomScale = scale;
+        if (!portrait) {
+            clearReviewModePortraitZoomBadge();
+            badge.setAttribute('aria-hidden', 'false');
+            badge.style.removeProperty('top');
+            badge.style.removeProperty('left');
+            return;
         }
+        if (changed) {
+            clearReviewModePortraitZoomBadge();
+            badge.classList.add('is-zoom-toast-visible');
+            positionReviewModePortraitZoomBadge();
+            reviewModePortraitZoomHideTimer = window.setTimeout(() => {
+                reviewModePortraitZoomHideTimer = null;
+                badge.classList.remove('is-zoom-toast-visible');
+                badge.setAttribute('aria-hidden', 'true');
+                scheduleReviewModeTouchLabelFit();
+            }, 2000);
+            scheduleReviewModeTouchLabelFit();
+        } else if (badge.classList.contains('is-zoom-toast-visible')) {
+            positionReviewModePortraitZoomBadge();
+        }
+        badge.setAttribute('aria-hidden', badge.classList.contains('is-zoom-toast-visible') ? 'false' : 'true');
     }
 
     function scheduleReviewModeVectorConnectorRefresh() {
@@ -15689,7 +15786,10 @@ MODIFICATION RULES FOR THIS APP
         const toolbarRect = toolbar?.getBoundingClientRect?.();
         const left = vp.left + 12;
         const right = vp.right - 12;
-        const top = Math.min(vp.bottom - 70, Math.max(vp.top + 12, (toolbarRect?.bottom || vp.top) + 10));
+        const visiblePortraitZoom = elements.reviewModeZoomPercent?.classList.contains('is-zoom-toast-visible') &&
+            overlay?.classList.contains('review-mode-iphone-portrait-toolbar');
+        const zoomBottom = visiblePortraitZoom ? elements.reviewModeZoomPercent.getBoundingClientRect().bottom : 0;
+        const top = Math.min(vp.bottom - 70, Math.max(vp.top + 12, Math.max(toolbarRect?.bottom || vp.top, zoomBottom) + 10));
         const bottom = vp.bottom - 14;
         const spacing = 10;
         const review = getReviewModeState();
@@ -17182,6 +17282,7 @@ MODIFICATION RULES FOR THIS APP
         resetReviewModeAngleLoading({ clearCache: true });
         elements.reviewModeOverlay.classList.remove('hidden');
         elements.reviewModeOverlay.setAttribute('aria-hidden', 'false');
+        clearReviewModePortraitZoomBadge({ resetTracking: true });
         syncReviewModeIPhoneToolbar();
         document.body.classList.add('review-mode-image-open');
         clearReviewModeOverlayLayers();
@@ -17210,6 +17311,7 @@ MODIFICATION RULES FOR THIS APP
         review.activeAngleIndex = 0;
         review.overlayOpen = false;
         review.optionsOpen = false;
+        clearReviewModePortraitZoomBadge({ resetTracking: true });
         review.connectorSonarHoverIndex = -1;
         review.connectorSonarTouchIndex = -1;
         if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
@@ -36729,6 +36831,7 @@ if (elements.importBackupFile) {
             button.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
         if (nextSection === 'review-mode') {
+            syncReviewModeFilterDisclosure({ reset: true });
             await syncStudioSavedImagesFromSupabase({ force: true, reason: 'open-review-mode' });
             renderReviewModeLibrary();
         } else if (nextSection === 'diagram-creator') {
@@ -52874,6 +52977,16 @@ window.addEventListener('resize', () => {
     });
 });
 
+elements.reviewModeFilterDisclosureBtn?.addEventListener('click', () => {
+    if (!isIPhoneDevice()) return;
+    reviewModeFiltersExpanded = !reviewModeFiltersExpanded;
+    syncReviewModeFilterDisclosure();
+});
+window.addEventListener('resize', () => {
+    if (state.auth.currentStudioSection === 'review-mode') syncReviewModeFilterDisclosure();
+});
+syncReviewModeFilterDisclosure({ reset: true });
+
 const reviewModeFilterElements = [
     elements.reviewModeSearchInput,
     elements.reviewModeDiagramNameFilter,
@@ -53669,10 +53782,10 @@ if (elements.reviewModeLabelLayer) {
 }
 
 window.addEventListener('resize', () => {
-    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => { syncReviewModeIPhoneToolbar(); syncReviewModeZoomUi(); syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); });
+    if (getReviewModeState().overlayOpen) requestAnimationFrame(() => { syncReviewModeIPhoneToolbar(); syncReviewModeAngleNavigation(); syncReviewModeZoomUi(); syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); });
 });
 window.addEventListener('orientationchange', () => {
-    if (getReviewModeState().overlayOpen) setTimeout(() => { syncReviewModeIPhoneToolbar(); syncReviewModeZoomUi(); syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); }, 120);
+    if (getReviewModeState().overlayOpen) setTimeout(() => { syncReviewModeIPhoneToolbar(); syncReviewModeAngleNavigation(); syncReviewModeZoomUi(); syncReviewModeDefaultFocusForOrientation(); syncReviewModeImageStage(); applyReviewModeShortcutDockPosition(); scheduleReviewModeTouchLabelFit(); }, 120);
 });
 
 document.addEventListener('keydown', event => {

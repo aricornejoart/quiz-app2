@@ -17994,3 +17994,75 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
     padding: 7px;
   }
 }
+
+
+/* Phase 24A.7a — iPhone portrait keeps only the angle counter (1/5) between
+   arrows. Zoom feedback is a two-second non-interactive badge placed beneath
+   Close (or below the toolbar if another visible button occupies that area).
+   It is absolutely positioned, so no flex-row reflow accompanies the toast. */
+.review-mode-overlay.review-mode-iphone-portrait-toolbar #reviewModeAngleIndicator {
+  max-width: none;
+  white-space: nowrap;
+}
+.review-mode-overlay.review-mode-iphone-portrait-toolbar #reviewModeZoomPercent {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 46px;
+  min-width: 40px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+.review-mode-overlay.review-mode-iphone-portrait-toolbar #reviewModeZoomPercent.is-zoom-toast-visible {
+  opacity: 1;
+  visibility: visible;
+}
+/* Mini Quiz dimming cannot make the momentary zoom feedback unreadable. */
+.review-mode-overlay.review-mode-iphone-portrait-toolbar.review-mode-mini-quiz-chrome-dimmed #reviewModeZoomPercent.is-zoom-toast-visible {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-mode-overlay.review-mode-iphone-portrait-toolbar #reviewModeZoomPercent { transition: none; }
+}
+
+
+/* Phase 24A.7b — iPhone-only collapsible Review Mode search panel. */
+#reviewModeFilterPanel[hidden],
+#reviewModeFilterDisclosureBtn[hidden],
+#reviewModeFilterActiveCount[hidden] { display: none !important; }
+.studio-review-filter-disclosure {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(124, 108, 255, .38);
+  border-radius: 12px;
+  background: rgba(37, 31, 74, .78);
+  color: rgba(250, 247, 255, .96);
+  font: inherit;
+  font-size: .89rem;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: left;
+}
+.studio-review-filter-disclosure:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
+.studio-review-filter-disclosure-icon { height: 18px; width: 18px; flex: 0 0 18px; }
+.studio-review-filter-chevron { height: 18px; width: 18px; flex: 0 0 18px; margin-left: auto; transition: transform .15s ease; }
+.studio-review-filter-disclosure.is-expanded .studio-review-filter-chevron { transform: rotate(180deg); }
+.studio-review-filter-active-count {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 153, 181, .48);
+  background: rgba(124, 108, 255, .2);
+  color: #e6dbff;
+  font-size: .7rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.studio-review-filter-iphone #reviewModeFilterPanel:not([hidden]) { margin-top: 7px; }
+@media (prefers-reduced-motion: reduce) { .studio-review-filter-chevron { transition: none; } }
