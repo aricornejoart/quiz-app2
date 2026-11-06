@@ -13445,6 +13445,46 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    // Phase 24A.6y: the image/connector canvas can zoom by 700%, but HTML
+    // labels and answer buttons must be painted at final CSS pixel resolution.
+    // Keep the *same* interactive DOM layer and its stage-percent coordinates,
+    // outside the scaled stage. This preserves event listeners, saved geometry,
+    // pointer capture, and connector alignment without inverse-scale rasterization.
+    let reviewModeScreenLabelAnimationFrame = 0;
+    function syncReviewModeScreenSpaceLabels() {
+        const layer = elements.reviewModeLabelLayer;
+        const viewport = elements.reviewModeImageViewport;
+        const stage = elements.reviewModeImageStage;
+        if (!layer || !viewport || !stage) return;
+        if (layer.parentElement !== viewport) viewport.appendChild(layer);
+        layer.classList.add('is-screen-space');
+        const stageRect = stage.getBoundingClientRect();
+        const viewportRect = viewport.getBoundingClientRect();
+        if (!(stageRect.width > 0 && stageRect.height > 0 && viewportRect.width > 0)) return;
+        // Snap the layer origin to device pixels, retaining subpixel precision
+        // internally for percentage-based connector and label positions.
+        const ratio = Math.max(1, Number(window.devicePixelRatio) || 1);
+        const snap = value => Math.round(value * ratio) / ratio;
+        layer.style.left = `${snap(stageRect.left - viewportRect.left)}px`;
+        layer.style.top = `${snap(stageRect.top - viewportRect.top)}px`;
+        layer.style.width = `${stageRect.width}px`;
+        layer.style.height = `${stageRect.height}px`;
+    }
+
+    function trackReviewModeScreenLabelsDuringZoom() {
+        if (reviewModeScreenLabelAnimationFrame) window.cancelAnimationFrame(reviewModeScreenLabelAnimationFrame);
+        const started = window.performance.now();
+        const tick = now => {
+            reviewModeScreenLabelAnimationFrame = 0;
+            if (!getReviewModeState().overlayOpen) return;
+            syncReviewModeScreenSpaceLabels();
+            // The stage's existing 160ms CSS Focus transition is still active.
+            // Follow its real displayed rectangle instead of jumping the labels.
+            if (now - started < 220) reviewModeScreenLabelAnimationFrame = window.requestAnimationFrame(tick);
+        };
+        reviewModeScreenLabelAnimationFrame = window.requestAnimationFrame(tick);
+    }
+
     function applyReviewModeZoomTransform({ animate = false } = {}) {
         const review = getReviewModeState();
         const stage = elements.reviewModeImageStage;
@@ -13459,6 +13499,8 @@ MODIFICATION RULES FOR THIS APP
         }
         stage.classList.toggle('is-zoom-resetting', !!animate);
         stage.style.transform = `translate3d(${next.x}px, ${next.y}px, 0) scale(${next.scale})`;
+        syncReviewModeScreenSpaceLabels();
+        if (animate) trackReviewModeScreenLabelsDuringZoom();
         if (animate) {
             reviewModeZoomResetTimer = window.setTimeout(() => {
                 stage.classList.remove('is-zoom-resetting');
@@ -13505,8 +13547,12 @@ MODIFICATION RULES FOR THIS APP
         const centerY = (label.y / 100) * stageHeight;
         const marker = elements.reviewModeLabelLayer?.querySelector?.(`[data-review-label-index="${labelIndex}"]`);
         const labelNode = marker?.closest?.('.review-mode-mini-label-wrap') || marker;
-        const halfLabelWidth = Math.max(16, Number(labelNode?.offsetWidth || 0) / 2);
-        const halfLabelHeight = Math.max(16, Number(labelNode?.offsetHeight || 0) / 2);
+        // HTML overlays now occupy screen pixels, not scaled stage pixels.
+        // Focus bounds still use the unscaled diagram's coordinate system.
+        const screenToStage = elements.reviewModeLabelLayer?.classList.contains('is-screen-space')
+            ? 1 / Math.max(.0001, Number(getReviewModeState().zoomScale) || 1) : 1;
+        const halfLabelWidth = Math.max(16 * screenToStage, Number(labelNode?.offsetWidth || 0) * screenToStage / 2);
+        const halfLabelHeight = Math.max(16 * screenToStage, Number(labelNode?.offsetHeight || 0) * screenToStage / 2);
         let minX = centerX - halfLabelWidth;
         let maxX = centerX + halfLabelWidth;
         let minY = centerY - halfLabelHeight;
@@ -13563,7 +13609,8 @@ MODIFICATION RULES FOR THIS APP
         if (!layer) return;
         // Automatic Focus compensates for magnification. On touch phones,
         // manual zoom must also preserve readable, tappable on-screen labels.
-        const compensate = review.focusMode || (isReviewModeTouchPhone() && Number(review.zoomScale) > 1.01);
+        const inScreenSpace = layer.classList.contains('is-screen-space');
+        const compensate = !inScreenSpace && (review.focusMode || (isReviewModeTouchPhone() && Number(review.zoomScale) > 1.01));
         const inverse = compensate ? 1 / Math.max(1, Number(review.zoomScale) || 1) : 1;
         layer.style.setProperty('--review-focus-label-inverse', String(inverse));
         layer.classList.toggle('is-focus-zoomed', compensate);
@@ -13802,9 +13849,11 @@ MODIFICATION RULES FOR THIS APP
             reviewModeAngleTransitionTimer = null;
         }
         elements.reviewModeImageStage?.classList.toggle('is-angle-switching', !!active);
+        elements.reviewModeLabelLayer?.classList.toggle('is-angle-switching', !!active);
         if (active) {
             reviewModeAngleTransitionTimer = window.setTimeout(() => {
                 elements.reviewModeImageStage?.classList.remove('is-angle-switching');
+                elements.reviewModeLabelLayer?.classList.remove('is-angle-switching');
                 reviewModeAngleTransitionTimer = null;
             }, 700);
         }
@@ -13815,6 +13864,7 @@ MODIFICATION RULES FOR THIS APP
         invalidateReviewModeAngleOverlayCommit();
         setReviewModeAngleTransition(false);
         elements.reviewModeImageStage?.classList.remove('is-angle-dragging');
+        elements.reviewModeLabelLayer?.classList.remove('is-angle-dragging');
         if (clearCache) reviewModeAnglePreloadCache.clear();
     }
 
@@ -52548,6 +52598,7 @@ function cancelReviewModeLabelDragForGesture() {
 function cancelReviewModeAngleSwipe() {
     reviewModeAngleSwipe = null;
     elements.reviewModeImageStage?.classList.remove('is-angle-dragging');
+    elements.reviewModeLabelLayer?.classList.remove('is-angle-dragging');
 }
 
 function beginReviewModePinch() {
@@ -52731,6 +52782,7 @@ if (elements.reviewModeImageViewport) {
         if (!reviewModeAngleSwipe.horizontalIntent && absX >= 16 && absX >= absY * 1.25) {
             reviewModeAngleSwipe.horizontalIntent = true;
             elements.reviewModeImageStage?.classList.add('is-angle-dragging');
+            elements.reviewModeLabelLayer?.classList.add('is-angle-dragging');
         }
         if (reviewModeAngleSwipe.horizontalIntent && event.cancelable) event.preventDefault();
     }, { capture: true, passive: false });

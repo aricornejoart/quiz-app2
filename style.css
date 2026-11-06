@@ -17912,3 +17912,30 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
     flex-shrink: 0;
   }
 }
+
+
+/* Phase 24A.6y: render interactive Review/Mini Quiz HTML in unscaled screen
+   space. The actual diagram, vector connectors, and sonars still zoom normally.
+   This prevents Safari from upsampling labels and buttons and counter-scaling
+   them (which rasterized text/icons softly at 400% or 700%). */
+.review-mode-label-layer.is-screen-space {
+  position: absolute;
+  inset: auto;
+  display: block;
+  pointer-events: none;
+  transform: none;
+  will-change: auto;
+  transition: none;
+  z-index: 5;
+}
+.review-mode-label-layer.is-screen-space .review-mode-label-marker {
+  /* Use native text painting rather than a backdrop-filtered compositing layer. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.review-mode-label-layer.is-screen-space.is-angle-switching {
+  opacity: 0;
+}
+.review-mode-label-layer.is-screen-space.is-angle-dragging {
+  opacity: .24;
+}
