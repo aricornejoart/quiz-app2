@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7e_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7f_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a7e_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a7f_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1780,7 +1780,7 @@ MODIFICATION RULES FOR THIS APP
                     <div id="flashcardHandwrittenWorkspace" class="studio-handwritten-workspace hidden">
                       <div class="studio-handwritten-toolbar">
                         <strong id="flashcardHandwrittenCardNumber" class="studio-handwritten-toolbar-card-number">Card 1 / 1</strong>
-                        <button type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn active" data-handwritten-tool="pen" aria-label="Pen" title="Pen (B)">
+                        <button type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn active" data-handwritten-tool="pen" aria-label="Pen" title="Pen (B); tap again for pen settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="flashcardHandwrittenSizePopover">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
                         </button>
                         <button type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn" data-handwritten-tool="eraser" aria-label="Eraser" title="Eraser (E)">
@@ -1791,7 +1791,7 @@ MODIFICATION RULES FOR THIS APP
                         </button>
                         <button id="flashcardHandwrittenUndoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Undo" title="Undo">↶</button>
                         <button id="flashcardHandwrittenRedoBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-symbol-btn" aria-label="Redo" title="Redo">↷</button>
-                        <button id="flashcardHandwrittenSizeBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn studio-handwritten-size-trigger" aria-label="Stroke thickness" title="Stroke thickness">
+                        <button id="flashcardHandwrittenSizeBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-icon-btn studio-handwritten-size-trigger" aria-label="Stroke thickness" title="Stroke thickness" aria-haspopup="dialog" aria-expanded="false" aria-controls="flashcardHandwrittenSizePopover">
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"></path></svg>
                         </button>
                         <button id="flashcardHandwrittenClearBtn" type="button" class="auth-action-btn auth-secondary-btn studio-handwritten-clear-btn" title="Clear handwriting on this side" aria-label="Clear handwriting on this side">Clear</button>
@@ -1841,6 +1841,10 @@ MODIFICATION RULES FOR THIS APP
                         <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Stroke thickness">
                           <div class="studio-handwritten-popover-title"><strong id="flashcardHandwrittenSizeLabel">Pen thickness</strong><span id="flashcardHandwrittenSizeValue">1.1 mm</span></div>
                           <input id="flashcardHandwrittenBrushSize" type="range" min="0.5" max="8" step="0.1" value="1.1" aria-label="Stroke thickness in millimeters">
+                          <label id="flashcardHandwrittenPressureOption" class="studio-handwritten-pen-pressure-option" for="flashcardHandwrittenDisablePressureSensitivity">
+                            <span>Disable Pressure Sensitivity</span>
+                            <span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenDisablePressureSensitivity" type="checkbox" role="switch" aria-label="Disable Pressure Sensitivity"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span>
+                          </label>
                         </div>
                         <div id="flashcardHandwrittenColorPopover" class="studio-handwritten-floating-popover studio-handwritten-color-popover hidden" role="dialog" aria-label="Choose brush color">
                           <input id="flashcardHandwrittenBrushColor" type="color" value="#111827" aria-label="Choose color">
@@ -2659,6 +2663,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a7e_1"></script>
+  <script src="script.js?v=24a7f_1"></script>
 </body>
 </html>

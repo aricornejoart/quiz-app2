@@ -325,6 +325,7 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardPenColor: '#111827',
             handwrittenFlashcardBrushSize: 4,
             handwrittenFlashcardPenSizeMm: 1.1,
+            handwrittenFlashcardDisablePressureSensitivity: false,
             handwrittenFlashcardEraserSizeMm: 5,
             handwrittenFlashcardToolPrefsUserId: '',
             handwrittenFlashcardFocusMode: false,
@@ -1105,6 +1106,9 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenSizeLabel: document.getElementById('flashcardHandwrittenSizeLabel'),
         flashcardHandwrittenSizeValue: document.getElementById('flashcardHandwrittenSizeValue'),
         flashcardHandwrittenBrushSize: document.getElementById('flashcardHandwrittenBrushSize'),
+        flashcardHandwrittenDisablePressureSensitivity: document.getElementById('flashcardHandwrittenDisablePressureSensitivity'),
+        flashcardHandwrittenPressureOption: document.getElementById('flashcardHandwrittenPressureOption'),
+        flashcardHandwrittenPenToolBtn: document.querySelector('[data-handwritten-tool="pen"]'),
         flashcardHandwrittenBrushColor: document.getElementById('flashcardHandwrittenBrushColor'),
         flashcardHandwrittenColorPopover: document.getElementById('flashcardHandwrittenColorPopover'),
         flashcardHandwrittenColorPopoverActionBtn: document.getElementById('flashcardHandwrittenColorPopoverActionBtn'),
@@ -34991,10 +34995,12 @@ if (elements.importBackupFile) {
         const owner = normalizeSheetText(state.auth.user?.id) || 'anonymous';
         if (state.auth.handwrittenFlashcardToolPrefsUserId === owner) return;
         state.auth.handwrittenFlashcardToolPrefsUserId = owner;
+        state.auth.handwrittenFlashcardDisablePressureSensitivity = false;
         try {
             const raw = window.localStorage?.getItem(getHandwrittenToolPrefsStorageKey(owner));
             const stored = raw ? JSON.parse(raw) : {};
             state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(stored.penSizeMm, 1.1);
+            state.auth.handwrittenFlashcardDisablePressureSensitivity = stored.disablePressureSensitivity === true;
             state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(stored.eraserSizeMm, 5, 1, 12);
             state.auth.handwrittenFlashcardSelectionType = stored.selectionType === 'lasso' ? 'lasso' : 'rectangle';
             state.auth.handwrittenFlashcardDiagramBothSides = stored.diagramBothSides !== false;
@@ -35013,6 +35019,7 @@ if (elements.importBackupFile) {
         try {
             window.localStorage?.setItem(getHandwrittenToolPrefsStorageKey(), JSON.stringify({
                 penSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardPenSizeMm, 1.1),
+                disablePressureSensitivity: !!state.auth.handwrittenFlashcardDisablePressureSensitivity,
                 eraserSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12),
                 penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827'),
                 selectionType: state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle',
@@ -35064,7 +35071,7 @@ if (elements.importBackupFile) {
         if (tool === 'pen') {
             const rawPressure = Number(event?.pressure);
             const pressure = Number.isFinite(rawPressure) && rawPressure > 0 ? Math.max(.05, Math.min(1, rawPressure)) : .5;
-            return Math.max(.8, handwrittenMmToStrokeSize(state.auth.handwrittenFlashcardPenSizeMm) * (.35 + pressure * .85));
+            return Math.max(.8, handwrittenMmToStrokeSize(state.auth.handwrittenFlashcardPenSizeMm) * (.35 + (state.auth.handwrittenFlashcardDisablePressureSensitivity ? .5 : pressure) * .85));
         }
         return 0;
     }
@@ -35124,6 +35131,8 @@ if (elements.importBackupFile) {
         }
         if (elements.flashcardHandwrittenSizeLabel) elements.flashcardHandwrittenSizeLabel.textContent = eraser ? 'Eraser size' : 'Pen thickness';
         if (elements.flashcardHandwrittenSizeValue) elements.flashcardHandwrittenSizeValue.textContent = `${value.toFixed(1)} mm`;
+        elements.flashcardHandwrittenPressureOption?.classList.toggle('hidden', !sizeToolActive || eraser);
+        if (elements.flashcardHandwrittenDisablePressureSensitivity) elements.flashcardHandwrittenDisablePressureSensitivity.checked = !!state.auth.handwrittenFlashcardDisablePressureSensitivity;
         if (elements.flashcardHandwrittenSizeBtn) {
             elements.flashcardHandwrittenSizeBtn.disabled = !sizeToolActive;
             elements.flashcardHandwrittenSizeBtn.title = !sizeToolActive ? 'Choose Pen or Eraser to change thickness' : (eraser ? 'Eraser size' : 'Pen thickness');
@@ -35176,9 +35185,15 @@ if (elements.importBackupFile) {
             closeHandwrittenSettingsPopover();
         }, 160);
     }
+    function closeHandwrittenSizePopover() {
+        elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        elements.flashcardHandwrittenPenToolBtn?.setAttribute('aria-expanded', 'false');
+        elements.flashcardHandwrittenSizeBtn?.setAttribute('aria-expanded', 'false');
+    }
+
     function closeHandwrittenFloatingPopovers() {
         closeHandwrittenSettingsPopover();
-        elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        closeHandwrittenSizePopover();
         elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         state.auth.handwrittenFlashcardColorPopoverMode = '';
@@ -35192,13 +35207,14 @@ if (elements.importBackupFile) {
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         syncHandwrittenSizeControls();
         elements.flashcardHandwrittenSizePopover.classList.remove('hidden');
+        anchor?.setAttribute('aria-expanded', 'true');
         requestAnimationFrame(() => positionHandwrittenFloatingPopover(elements.flashcardHandwrittenSizePopover, anchor));
     }
 
     function openHandwrittenColorPopover(mode = 'add', color = state.auth.handwrittenFlashcardPenColor, anchor = elements.flashcardHandwrittenSaveColorBtn) {
         if (!elements.flashcardHandwrittenColorPopover || !elements.flashcardHandwrittenBrushColor) return;
         closeHandwrittenSettingsPopover();
-        elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        closeHandwrittenSizePopover();
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
         const normalized = normalizeEditorHexColor(color || state.auth.handwrittenFlashcardPenColor || '#111827', '#111827').toLowerCase();
         state.auth.handwrittenFlashcardColorPopoverMode = mode === 'edit' ? 'edit' : 'add';
@@ -35225,7 +35241,7 @@ if (elements.importBackupFile) {
     function openHandwrittenSelectionPopover(anchor = elements.flashcardHandwrittenSelectionToolBtn) {
         if (!elements.flashcardHandwrittenSelectionPopover || !anchor) return;
         closeHandwrittenSettingsPopover();
-        elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
+        closeHandwrittenSizePopover();
         elements.flashcardHandwrittenColorPopover?.classList.add('hidden');
         syncHandwrittenSelectionControls();
         elements.flashcardHandwrittenSelectionPopover.classList.remove('hidden');
@@ -35665,10 +35681,12 @@ if (elements.importBackupFile) {
         }
     }
 
-    function getHandwrittenCanvasPoint(event) {
+    function getHandwrittenCanvasPoint(event, disablePressureSensitivity = false) {
         const canvas = elements.flashcardHandwrittenCanvas;
         const rect = canvas.getBoundingClientRect();
-        return { x: Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width))), y: Math.max(0,Math.min(1,(event.clientY-rect.top)/Math.max(1,rect.height))), p: Math.max(.05,Math.min(1, Number(event.pressure)||.5)) };
+        // Keep a constant stored pressure for NEW pen points only. The renderer
+        // and saved stroke schema stay untouched, so existing ink never changes.
+        return { x: Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width))), y: Math.max(0,Math.min(1,(event.clientY-rect.top)/Math.max(1,rect.height))), p: disablePressureSensitivity ? .5 : Math.max(.05,Math.min(1, Number(event.pressure)||.5)) };
     }
 
     function findNearestHandwritingStroke(strokes, point, threshold=.045) {
@@ -35733,7 +35751,9 @@ if (elements.importBackupFile) {
         event.preventDefault();
         event.stopPropagation();
         elements.flashcardHandwrittenCanvas?.setPointerCapture?.(event.pointerId);
-        const point=getHandwrittenCanvasPoint(event); const strokes=getHandwrittenSideStrokesFromEditorState(side); const tool=state.auth.handwrittenFlashcardTool;
+        const tool=state.auth.handwrittenFlashcardTool;
+        const disablePressureSensitivity=tool==='pen' && !!state.auth.handwrittenFlashcardDisablePressureSensitivity;
+        const point=getHandwrittenCanvasPoint(event, disablePressureSensitivity); const strokes=getHandwrittenSideStrokesFromEditorState(side);
         if (tool==='eraser') {
             pushHandwrittenUndo(side);
             const erased=eraseHandwritingAtPoint(strokes,point,getHandwrittenEraserThreshold());
@@ -35760,7 +35780,7 @@ if (elements.importBackupFile) {
         clearHandwrittenSelection({ redraw:false });
         pushHandwrittenUndo(side);
         const stroke={color:normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor||'#111827','#111827'),size:handwrittenMmToStrokeSize(state.auth.handwrittenFlashcardPenSizeMm),points:[point]};
-        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes}; drawHandwrittenEditorCanvas(side);
+        strokes.push(stroke); setHandwrittenSideState(side,{strokes}); state.auth.handwrittenFlashcardPointer={tool:'pen',pointerId:event.pointerId,side,stroke,strokes,disablePressureSensitivity}; drawHandwrittenEditorCanvas(side);
     }
     function handleHandwrittenPointerMove(event) {
         if (normalizeSheetText(event.pointerType).toLowerCase() === 'touch') {
@@ -35771,7 +35791,7 @@ if (elements.importBackupFile) {
         const drag=state.auth.handwrittenFlashcardPointer; if(!drag||drag.pointerId!==event.pointerId) return; event.preventDefault(); event.stopPropagation();
         const side=getHandwrittenSideKey(drag.side || state.auth.handwrittenFlashcardSide);
         if (side !== getHandwrittenSideKey()) return;
-        const point=getHandwrittenCanvasPoint(event);
+        const point=getHandwrittenCanvasPoint(event, drag.tool==='pen' && !!drag.disablePressureSensitivity);
         if(drag.tool==='pen'){drag.stroke.points.push(point);setHandwrittenSideState(side,{strokes:drag.strokes});drawHandwrittenEditorCanvas(side);}
         else if(drag.tool==='eraser'){const strokes=getHandwrittenSideStrokesFromEditorState(side);const erased=eraseHandwritingAtPoint(strokes,point,getHandwrittenEraserThreshold());setHandwrittenSideState(side,{strokes:erased});drawHandwrittenEditorCanvas(side);}
         else if(drag.tool==='select-rect'){drag.current=point;renderHandwrittenSelectionOverlay(side);}
@@ -57693,6 +57713,11 @@ elements.questionImage.onclick = function () {
         event.preventDefault();
         const nextTool = btn.dataset.handwrittenTool || 'pen';
         state.auth.handwrittenFlashcardPointer = null;
+        if (nextTool === 'pen' && state.auth.handwrittenFlashcardTool === 'pen') {
+            if (elements.flashcardHandwrittenSizePopover?.classList.contains('hidden')) openHandwrittenSizePopover(btn);
+            else closeHandwrittenSizePopover();
+            return;
+        }
         if (nextTool === 'select' && state.auth.handwrittenFlashcardTool === 'select') {
             if (elements.flashcardHandwrittenSelectionPopover?.classList.contains('hidden')) openHandwrittenSelectionPopover(btn);
             else elements.flashcardHandwrittenSelectionPopover.classList.add('hidden');
@@ -57728,7 +57753,12 @@ elements.questionImage.onclick = function () {
     elements.flashcardHandwrittenSizeBtn?.addEventListener('click', event => {
         event.preventDefault();
         if (elements.flashcardHandwrittenSizePopover?.classList.contains('hidden')) openHandwrittenSizePopover(event.currentTarget);
-        else elements.flashcardHandwrittenSizePopover.classList.add('hidden');
+        else closeHandwrittenSizePopover();
+    });
+    elements.flashcardHandwrittenDisablePressureSensitivity?.addEventListener('change', () => {
+        state.auth.handwrittenFlashcardDisablePressureSensitivity = !!elements.flashcardHandwrittenDisablePressureSensitivity.checked;
+        persistHandwrittenToolPrefs();
+        refreshHandwrittenToolSizeIndicator();
     });
     elements.flashcardHandwrittenBrushSize?.addEventListener('input',()=>{
         const value = Number(elements.flashcardHandwrittenBrushSize.value);
@@ -58100,11 +58130,12 @@ elements.questionImage.onclick = function () {
     // propagation so tapping anywhere else on the screen always dismisses open popovers.
     document.addEventListener('pointerdown', event => {
         if (!state.auth.handwrittenFlashcardEnabled) return;
-        const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSelectionPopover,#flashcardHandwrittenSettingsPopover,#flashcardHandwrittenSettingsBtn,#flashcardHandwrittenSizeBtn,#flashcardHandwrittenSelectionToolBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color],[data-handwritten-selection-type]');
+        const inside = event.target?.closest?.('#flashcardHandwrittenSizePopover,#flashcardHandwrittenColorPopover,#flashcardHandwrittenSelectionPopover,#flashcardHandwrittenSettingsPopover,#flashcardHandwrittenSettingsBtn,#flashcardHandwrittenSizeBtn,[data-handwritten-tool="pen"],#flashcardHandwrittenSelectionToolBtn,#flashcardHandwrittenSaveColorBtn,[data-handwritten-color],[data-handwritten-selection-type]');
         if (!inside) closeHandwrittenFloatingPopovers();
     }, { capture: true, passive: true });
     window.addEventListener('keydown',event=>{
         if(!state.auth.handwrittenFlashcardEnabled||!state.auth.handwrittenFlashcardSetupApplied||elements.flashcardHandwrittenWorkspace?.classList.contains('hidden'))return;
+        if (event.key === 'Escape' && !elements.flashcardHandwrittenSizePopover?.classList.contains('hidden')) { event.preventDefault(); closeHandwrittenSizePopover(); return; }
         if (event.key === 'Escape' && !elements.flashcardHandwrittenSettingsPopover?.classList.contains('hidden')) { event.preventDefault(); closeHandwrittenSettingsPopover(); return; }
         const tag=event.target?.tagName?.toLowerCase(); if(event.target?.isContentEditable||['input','textarea','select'].includes(tag))return;
         const key=event.key.toLowerCase();
