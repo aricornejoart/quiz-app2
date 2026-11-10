@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7b_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7e_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a7b_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a7e_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -2570,6 +2570,31 @@ MODIFICATION RULES FOR THIS APP
           <div id="studioImageEditorLabelList" class="studio-image-editor-label-list"></div>
         </div>
       </div>
+      <!-- Phase 24A.7c: global Label Type manager, separate from diagram geometry. -->
+      <div id="studioLabelTypeOverlay" class="studio-label-type-overlay hidden" role="presentation" hidden>
+        <div class="studio-label-type-dialog" role="dialog" aria-modal="true" aria-labelledby="studioLabelTypeHeading">
+          <div class="studio-label-type-heading"><h3 id="studioLabelTypeHeading">Label Type</h3><button type="button" data-label-type-close aria-label="Close Label Types">✕</button></div>
+          <div data-label-type-select-pane class="studio-label-type-content">
+            <label for="studioLabelTypeSelect">Assign Label Type</label>
+            <select id="studioLabelTypeSelect"><option value="">Default — existing ? / label number</option></select>
+            <div class="studio-label-type-preview"><strong>Mini Quiz question</strong><p id="studioLabelTypeQuestionPreview">Existing Mini Quiz behavior</p></div>
+            <div class="studio-label-type-actions"><button type="button" data-label-type-action="create">+ Create New</button><button type="button" data-label-type-edit data-label-type-action="edit">Edit</button><button type="button" data-label-type-delete data-label-type-action="delete">Delete</button></div>
+            <button class="studio-label-type-primary" data-label-type-select-confirm data-label-type-action="apply" type="button">Apply to Label</button>
+          </div>
+          <div id="studioLabelTypeForm" class="studio-label-type-content" hidden>
+            <label for="studioLabelTypeName">Label Type name</label><input id="studioLabelTypeName" maxlength="80" autocomplete="off" type="text" placeholder="Layer">
+            <label for="studioLabelTypeQuestion">One Mini Quiz question for this type</label><textarea id="studioLabelTypeQuestion" maxlength="200" rows="3" placeholder="What is the following layer?"></textarea>
+            <div class="studio-label-type-actions"><button type="button" data-label-type-action="cancel-form">Cancel</button><button type="button" class="studio-label-type-primary" data-label-type-action="save">Save Type</button></div>
+          </div>
+          <div id="studioLabelTypeWarning" class="studio-label-type-content" hidden>
+            <strong>Update across all Saved Images?</strong>
+            <p id="studioLabelTypeWarningMessage"></p>
+            <label class="studio-label-type-warning-checkbox"><input type="checkbox" id="studioLabelTypeWarningSkip"> Don't ask again for this session</label>
+            <div class="studio-label-type-actions"><button type="button" data-label-type-action="cancel-confirm">Cancel</button><button type="button" class="studio-label-type-primary" data-label-type-action="confirm">Confirm</button></div>
+          </div>
+          <div id="studioLabelTypeStatus" class="studio-label-type-status" role="status" aria-live="polite"></div>
+        </div>
+      </div>
       <div id="studioImageEditorMetadataPanel" class="studio-image-editor-metadata-panel hidden" aria-label="Diagram details" aria-hidden="true" hidden>
         <div class="studio-image-editor-metadata-heading">
           <div>
@@ -2634,6 +2659,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a7b_1"></script>
+  <script src="script.js?v=24a7e_1"></script>
 </body>
 </html>

@@ -18066,3 +18066,65 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 }
 .studio-review-filter-iphone #reviewModeFilterPanel:not([hidden]) { margin-top: 7px; }
 @media (prefers-reduced-motion: reduce) { .studio-review-filter-chevron { transition: none; } }
+
+/* Phase 24A.7c — only Saved Image/Diagram Creator label rows get the tag icon. */
+.studio-image-editor-label-row.has-label-type { grid-template-columns: minmax(0,1fr) repeat(7,30px); }
+.studio-image-editor-label-row.has-label-type.is-numbered-label-row { grid-template-columns: auto minmax(0,1fr) repeat(7,30px); }
+.studio-image-editor-label-row.has-label-type:not(.is-numbered-label-row) input[type="text"] { grid-column:1/-8; grid-row:1; }
+.studio-image-editor-label-row.has-label-type.is-numbered-label-row input[type="text"] { grid-column:2/-8; grid-row:1; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-type { grid-column:-8; grid-row:1; box-sizing:border-box; width:30px; min-width:30px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-draw { grid-column:-7; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-connector { grid-column:-6; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-connector-delete { grid-column:-5; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-detail-focus { grid-column:-4; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-visibility { grid-column:-3; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-delete-icon { grid-column:-2; }
+.studio-image-editor-label-row.has-label-type .studio-image-editor-label-type.is-custom { color:#c4b5fd; border-color:#a78bfa; }
+@container (max-width:352px) {
+  .studio-image-editor-label-row.has-label-type,
+  .studio-image-editor-label-row.has-label-type.is-numbered-label-row { grid-template-columns: repeat(7,minmax(0,1fr)); }
+  .studio-image-editor-label-row.has-label-type:not(.is-numbered-label-row) input[type="text"] { grid-column:1/-1; grid-row:1; }
+  .studio-image-editor-label-row.has-label-type.is-numbered-label-row input[type="text"] { grid-column:2/-1; grid-row:1; }
+  .studio-image-editor-label-row.has-label-type .studio-image-editor-label-type { grid-column:1; grid-row:2; justify-self:center; }
+  .studio-image-editor-label-row.has-label-type .studio-image-editor-label-draw { grid-column:2; grid-row:2; }
+  .studio-image-editor-label-row.has-label-type .studio-image-editor-label-connector { grid-column:3; grid-row:2; }
+  .studio-image-editor-label-row.has-label-type .studio-image-editor-label-connector-delete { grid-column:4; grid-row:2; }
+  .studio-image-editor-label-row.has-label-type .studio-image-editor-label-detail-focus { grid-column:5; grid-row:2; }
+  .studio-image-editor-label-row.has-label-type .studio-image-editor-label-visibility { grid-column:6; grid-row:2; }
+  .studio-image-editor-label-row.has-label-type .studio-image-editor-label-delete-icon { grid-column:7; grid-row:2; }
+}
+.studio-label-type-overlay { position:fixed; inset:0; z-index:11000; background:rgba(7,6,19,.82); display:flex; align-items:center; justify-content:center; padding:16px; }
+.studio-label-type-overlay[hidden], .studio-label-type-content[hidden] { display:none !important; }
+.studio-label-type-dialog { background:#201a31; color:#f5f1ff; border:1px solid rgba(192,174,236,.55); border-radius:16px; width:min(95vw,440px); max-height:90dvh; overflow:auto; box-shadow:0 20px 70px rgba(0,0,0,.55); padding:20px; }
+.studio-label-type-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:15px; }
+.studio-label-type-heading h3 { font-size:1.12rem; margin:0; }
+.studio-label-type-heading button { background:#352b4d; color:#fff; border:1px solid #78668e; border-radius:9px; min-width:40px; min-height:40px; cursor:pointer; }
+.studio-label-type-content { display:flex; flex-direction:column; gap:10px; }
+.studio-label-type-content label { font-weight:650; font-size:.9rem; }
+.studio-label-type-content select,.studio-label-type-content input[type="text"],.studio-label-type-content textarea { width:100%; min-height:43px; border:1px solid #73658f; background:#302944; color:#fff; border-radius:9px; padding:9px 10px; font:inherit; }
+.studio-label-type-content textarea { resize:vertical; min-height:80px; }
+.studio-label-type-preview { border-radius:10px; background:rgba(176,149,245,.12); padding:10px 12px; }
+.studio-label-type-preview strong { font-size:.8rem; color:#cfc4ed; }
+.studio-label-type-preview p { margin:6px 0 0; overflow-wrap:break-word; }
+.studio-label-type-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.studio-label-type-actions button,.studio-label-type-primary { border:1px solid #78668e; background:#352b4d; color:#fff; padding:10px 12px; border-radius:9px; min-height:42px; cursor:pointer; }
+.studio-label-type-actions button:disabled { opacity:.4; cursor:not-allowed; }
+.studio-label-type-primary { background:#6554b8; border-color:#aa98f5; font-weight:700; }
+.studio-label-type-warning-checkbox { display:flex; align-items:center; gap:9px; font-size:.88rem; }
+.studio-label-type-warning-checkbox input { width:19px; height:19px; }
+.studio-label-type-status { color:#facc15; min-height:18px; margin-top:12px; font-size:.85rem; line-height:1.35; }
+
+/* Phase 24A.7d: custom Mini Quiz questions occupy their actual text width.
+   Do not change Review Mode or the X/check tap targets. The per-label width
+   comes from measured glyphs; this only removes padded dead space. */
+.review-mode-mini-label-wrap:not(.review-mode-mini-typed-wrap) > .review-mode-mini-label-marker:not(.has-description) {
+  padding: calc(4px * var(--review-label-scale)) calc(6px * var(--review-label-scale));
+}
+.review-mode-mini-label-wrap > .review-mode-mini-label-marker.has-question-prompt {
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 0 0 auto;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}

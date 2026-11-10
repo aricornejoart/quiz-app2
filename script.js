@@ -137,6 +137,10 @@ MODIFICATION RULES FOR THIS APP
     const VISUAL_AID_PRESET_TABLE = 'user_visual_aid_presets';
     const VISUAL_AID_PRESET_MAX = 24;
     const STUDIO_LABEL_SET_TABLE = 'user_label_sets';
+    const STUDIO_LABEL_TYPES_TABLE = 'user_label_types';
+    const STUDIO_LABEL_TYPES_CACHE_PREFIX = 'studyBunnyLabelTypesV1:';
+    const STUDIO_LABEL_TYPES_MAX = 150;
+    const STUDIO_LABEL_TYPE_NAME_MAX = 80;
     const STUDIO_SHARED_LABEL_TABLE = 'user_shared_label_information';
     const STUDIO_LABEL_SET_LIMIT = 80;
     const DIAGRAM_VISUAL_AID_MAX_BALLS = 16;
@@ -540,6 +544,8 @@ MODIFICATION RULES FOR THIS APP
             visualAidPresets: [],
             visualAidPresetSync: { loadedUserId: '', tableUnavailable: false, inFlight: null },
             labelSets: [],
+            labelTypes: [],
+            labelTypesSync: { userId: '', loadedAt: 0, inFlight: null },
             sharedLabelInformation: [],
             labelLibrarySync: { loadedUserId: '', setTableUnavailable: false, infoTableUnavailable: false, infoLoaded: false, infoReconcile: null, inFlight: null, lastLoadedAt: 0 },
             imageEditor: {
@@ -3551,6 +3557,7 @@ MODIFICATION RULES FOR THIS APP
                 label: displayMathChemTextForEditor(normalizeSheetText(label?.label || label?.text || getDiagramLabelName(index))) || getDiagramLabelName(index),
                 description,
                 questionPrompt: normalizeDiagramLabelQuestionPrompt(label?.questionPrompt || ''),
+                ...(normalizeSheetText(label?.labelTypeId || '').trim() ? { labelTypeId: normalizeSheetText(label?.labelTypeId).slice(0, 100) } : {}),
                 // Phase 23F.41.34: per-angle/per-label focus preference; never shared by label name.
                 ...(label?.detailFocus === true ? { detailFocus: true } : {}),
                 ...(infoCategories.length ? { infoCategories } : {}),
@@ -7500,8 +7507,13 @@ MODIFICATION RULES FOR THIS APP
         return result;
     }
 
+    // Label Type is question-presentation metadata, never part of mastery or spaced-review identity.
+    function getDiagramLabelsStudySignature(labels = []) {
+        return normalizeDiagramLabels(labels).map(({ labelTypeId, ...authored }) => authored);
+    }
+
     function getSavedImageAngleMasterySignature(angle) {
-        const data = JSON.stringify(normalizeDiagramLabels(angle?.labels || []));
+        const data = JSON.stringify(getDiagramLabelsStudySignature(angle?.labels || []));
         let hash = 2166136261;
         for (let i = 0; i < data.length; i += 1) {
             hash ^= data.charCodeAt(i);
@@ -7849,7 +7861,7 @@ MODIFICATION RULES FOR THIS APP
                 <p>Every required stage needs <strong>two complete qualifying passes on the same local calendar day, at least six hours apart</strong>. Two passes before six hours do not complete the stage. Even when a window spans several days, its two credited passes must be on one day.</p>
             </section>
             <section><h3>What counts as a pass?</h3>
-                ${isQuiz ? `<p>Study the <strong>entire required quiz</strong>, not a starred or filtered subset. Finish the questions successfully using their current study mode. For applicable question types, <strong>Shuffle Answers must be ON</strong>. Missed questions may be corrected under the mode's normal rules; a perfect first attempt is <strong>not</strong> required.</p>` : `<p>A Saved Image must cover <strong>all required regular label names across its angles</strong>; partial coverage does not earn a full pass. The existing Mini Quiz modes and their retry rules still apply. A perfect first attempt is <strong>not</strong> required.</p>`}
+                ${isQuiz ? `<p>Study the <strong>entire required quiz</strong>, not a starred or filtered subset. Finish the questions successfully using their current study mode. For applicable question types, <strong>Shuffle Answers must be ON</strong>. Missed questions may be corrected under the mode's normal rules; a perfect first attempt is <strong>not</strong> required.</p>` : `<p>A Saved Image must cover <strong>all required structure identifications across its angles</strong>; partial coverage does not earn a full pass. When enabled, <strong>Identify structure for category</strong> questions can substitute for ordinary name-identification questions. Category-information questions that already name the structure do not provide identification credit. The existing Mini Quiz modes and their retry rules still apply. A perfect first attempt is <strong>not</strong> required.</p>`}
             </section>
             <section><h3>LEARNING and MASTERED</h3>
                 <p>Day 4 is the mastery milestone. Once the relevant study requirements and label/question coverage are met, MASTERED continues through the later scheduled maintenance reviews. The same two-pass rule applies in both stages.</p>
@@ -8225,7 +8237,7 @@ MODIFICATION RULES FOR THIS APP
         // Deliberately exclude pin state, image metadata, zoom, review settings, and
         // label-size preferences; include every authored label/connector/info field.
         return JSON.stringify(getStudioSavedImageAngles(entry).map(angle => [
-            normalizeSheetText(angle.id), normalizeDiagramLabels(angle.labels || [])
+            normalizeSheetText(angle.id), getDiagramLabelsStudySignature(angle.labels || [])
         ]));
     }
 
@@ -8237,7 +8249,7 @@ MODIFICATION RULES FOR THIS APP
         const afterAngles = getStudioSavedImageAngles(updated);
         if (!beforeAngles.length || beforeAngles.length !== afterAngles.length) return null;
         const withoutThickness = angles => JSON.stringify(angles.map(angle => [
-            normalizeSheetText(angle.id), normalizeDiagramLabels(angle.labels || []).map(label => {
+            normalizeSheetText(angle.id), getDiagramLabelsStudySignature(angle.labels || []).map(label => {
                 if (!label.connector) return label;
                 const { thickness, ...connector } = label.connector;
                 return { ...label, connector };
@@ -13619,12 +13631,14 @@ MODIFICATION RULES FOR THIS APP
                 // Measure after the animated Focus transform has reached its
                 // final size, not only during the first transition frame.
                 scheduleReviewModeTouchLabelFit();
+                scheduleReviewModeConnectorEndpointProtection();
             }, 190);
         }
         syncReviewModeZoomUi();
         applyReviewModeFocusLabelScale(review);
         scheduleReviewModeVectorConnectorRefresh();
         scheduleReviewModeTouchLabelFit();
+        if (!isReviewModeTouchPhone() && !animate) scheduleReviewModeConnectorEndpointProtection();
     }
 
     function getReviewModeFocusLabelIndex(review = getReviewModeState()) {
@@ -13810,6 +13824,7 @@ MODIFICATION RULES FOR THIS APP
         review.zoomY = -(centerY - (bounds.stageHeight / 2)) * review.zoomScale;
         applyReviewModeZoomTransform({ animate });
         keepReviewModeFocusedLabelVisible(review, target, bounds, viewport);
+        scheduleReviewModeConnectorEndpointProtection();
         syncReviewModeFocusPresentation(review);
         return true;
     }
@@ -14750,6 +14765,17 @@ MODIFICATION RULES FOR THIS APP
         syncReviewModePinButton();
     }
 
+    // Phase 24A.7e: when the optional Identify Structure for Category option is
+    // ON, its label-info prompt replaces the regular name question but asks the
+    // learner to identify that very same anatomical structure. Count that target
+    // as ordinary label-identification coverage, not as an extra required type.
+    // Plain category-info questions (which supply the structure name) are NOT
+    // identity questions and remain optional for spaced repetition.
+    function isReviewModeMiniQuizIdentityTarget(target) {
+        return target?.kind === 'label'
+            || (target?.kind === 'label-info' && target.identifyStructureForCategory === true);
+    }
+
     function commitSavedImageMiniQuizMastery(review = getReviewModeState()) {
         const mini = review.miniQuiz;
         const entry = getStudioSavedImageLibraryForPicker().find(item => item.id === review.activeEntryId);
@@ -14757,36 +14783,39 @@ MODIFICATION RULES FOR THIS APP
         const angles = getStudioSavedImageAngles(entry);
         const mastered = normalizeSavedImageMasteredAngles(entry.masteredAnglesById || {});
         const correct = new Set(mini.masteryCorrectRegularTargets || []);
-        // Only completed Mini Quizzes whose regular label questions were ALL
-        // correctly answered can add unique-name credit. Progress Try Again
-        // satisfies this once every missed regular label is corrected.
-        const regularTargets = mini.targets.map((target, index) => ({ target, index }))
-            .filter(({ target }) => target.kind === 'label');
-        const allRegularCorrect = !review.pinnedLabelsOnly && regularTargets.length > 0
-            && regularTargets.every(({ index }) => correct.has(index));
+        // A structure-and-category question is a harder substitute for the
+        // regular name question, so it earns the same identification coverage.
+        // Every generated identity question must ultimately be answered correctly
+        // under the selected Mini Quiz mode's existing retry rules. Category
+        // information-only questions are still optional for spaced-repetition.
+        const identityTargets = mini.targets.map((target, index) => ({ target, index }))
+            .filter(({ target }) => isReviewModeMiniQuizIdentityTarget(target));
+        const allIdentityCorrect = !review.pinnedLabelsOnly && identityTargets.length > 0
+            && identityTargets.every(({ index }) => correct.has(index));
         const credited = getSavedImageCreditedUniqueLabelKeys(entry);
-        if (allRegularCorrect) {
-            regularTargets.forEach(({ target }) => {
+        if (allIdentityCorrect) {
+            identityTargets.forEach(({ target }) => {
                 const label = normalizeDiagramLabels(angles[target.angleIndex]?.labels || [])[target.labelIndex];
                 const key = normalizeReviewModeMiniQuizLabelKey(label?.label || '');
                 if (key) credited.add(key);
             });
         }
-        // A full successful question set must cover EVERY regular label instance
-        // in an angle. Category-only prompts, visual aids, duplicate filtering,
-        // and pinned-only quizzes cannot accidentally certify missing labels.
+        // Full-angle certification still requires coverage of every label.
+        // Only prompts that actually test structure identity can contribute;
+        // category-information-only prompts, visual aids, duplicate-filtered
+        // omissions, and pinned-only subsets cannot certify missing labels.
         angles.forEach((angle, angleIndex) => {
             const labels = normalizeDiagramLabels(angle.labels || []);
             if (!labels.length) return;
             const covered = new Set(mini.targets.flatMap((target, index) =>
-                target.kind === 'label' && target.angleIndex === angleIndex && correct.has(index)
+                isReviewModeMiniQuizIdentityTarget(target) && target.angleIndex === angleIndex && correct.has(index)
                     ? [target.labelIndex] : []));
             if (!review.pinnedLabelsOnly && covered.size === labels.length && labels.every((_, index) => covered.has(index))) {
                 mastered[normalizeSheetText(angle.id)] = getSavedImageAngleMasterySignature(angle);
             }
         });
         const passKeys = new Set();
-        if (allRegularCorrect) regularTargets.forEach(({ target }) => {
+        if (allIdentityCorrect) identityTargets.forEach(({ target }) => {
             const label = normalizeDiagramLabels(angles[target.angleIndex]?.labels || [])[target.labelIndex];
             const key = normalizeReviewModeMiniQuizLabelKey(label?.label || '');
             if (key) passKeys.add(key);
@@ -14794,7 +14823,7 @@ MODIFICATION RULES FOR THIS APP
         replaceStudioSavedImageLibraryEntry(entry, {
             ...entry, masteredAnglesById: mastered,
             masteredUniqueLabels: { signature: getSavedImageUniqueMasterySignature(entry), keys: [...credited] },
-            spacedReview: allRegularCorrect ? recordSavedImageSpacedReviewPass(entry, passKeys) : entry.spacedReview
+            spacedReview: allIdentityCorrect ? recordSavedImageSpacedReviewPass(entry, passKeys) : entry.spacedReview
         });
     }
 
@@ -14870,6 +14899,7 @@ MODIFICATION RULES FOR THIS APP
             mode: review.miniQuizMode,
             scope: quizScope,
             targets,
+            labelTypeQuestionsSnapshot: Object.fromEntries(getActiveStudioLabelTypes().map(type => [type.id, type.question])),
             queue: quizQueue,
             position: 0,
             roundMissed: [],
@@ -15184,15 +15214,20 @@ MODIFICATION RULES FOR THIS APP
         if (!mini.active || mini.complete || mini.roundCheckpoint || !mini.answerRevealed || activeIndex < 0) return;
 
         const answeredTarget = mini.targets[activeIndex];
-        if (answeredTarget?.kind === 'label') {
+        if (isReviewModeMiniQuizIdentityTarget(answeredTarget)) {
             if (answerKnown) addReviewModeMiniQuizIndex(mini.masteryCorrectRegularTargets, activeIndex);
             else {
                 removeReviewModeMiniQuizIndex(mini.masteryCorrectRegularTargets, activeIndex);
-                const angleId = normalizeSheetText(answeredTarget.angleId);
-                if (!mini.masteryWrongAngleIds.includes(angleId)) mini.masteryWrongAngleIds.push(angleId);
-                const angles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {});
-                const label = normalizeDiagramLabels(angles[answeredTarget.angleIndex]?.labels || [])[answeredTarget.labelIndex];
-                revokeSavedImageMiniQuizMasteryForAngle(angleId, label?.label || '');
+                // Keep existing revocation behavior ONLY for ordinary name
+                // questions. Opting into harder category identification must
+                // not introduce new penalties for previous mastery progress.
+                if (answeredTarget.kind === 'label') {
+                    const angleId = normalizeSheetText(answeredTarget.angleId);
+                    if (!mini.masteryWrongAngleIds.includes(angleId)) mini.masteryWrongAngleIds.push(angleId);
+                    const angles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {});
+                    const label = normalizeDiagramLabels(angles[answeredTarget.angleIndex]?.labels || [])[answeredTarget.labelIndex];
+                    revokeSavedImageMiniQuizMasteryForAngle(angleId, label?.label || '');
+                }
             }
         }
 
@@ -15652,43 +15687,70 @@ MODIFICATION RULES FOR THIS APP
     // single-character vertical columns caused by flex shrinking at 350-700%.
     // The text is measured in unzoomed CSS pixels; inverse Focus transforms
     // keep that box at the same readable size on screen.
+    // Phase 24A.7d: content-sized Mini Quiz question/answer pills. The word
+    // widths and the *actual* CSS padding/borders determine the box size;
+    // shrinking an available viewport must never introduce empty fixed-width
+    // space or individual-letter columns. No saved label data is modified.
     function sizeReviewModePhoneMiniQuizName(marker, availableWidth) {
         if (!marker) return;
         const name = marker.querySelector('.review-mode-label-name');
         const text = (name?.textContent || marker.textContent || '').trim().replace(/\s+/g, ' ');
-        // Recompute from the base CSS font on every refresh; otherwise a
-        // narrow previous frame can accumulate further 2px reductions.
-        marker.style.fontSize = '';
+        marker.style.fontSize = ''; // Never accumulate reductions across zooms.
+        if (!text) return;
         const style = window.getComputedStyle(marker);
-        const fontSize = parseFloat(style.fontSize) || 16;
+        const initialSize = parseFloat(style.fontSize) || 16;
         const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) +
             (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
         const canvas = sizeReviewModePhoneMiniQuizName.canvas ||
             (sizeReviewModePhoneMiniQuizName.canvas = document.createElement('canvas'));
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        ctx.font = `${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+        const available = Math.max(80, Math.floor(Number(availableWidth) || 80));
+        let fontSize = initialSize;
         const measure = value => ctx.measureText(value).width;
-        const longest = Math.max(0, ...text.split(/\s+/).map(measure));
-        // Keep a useful minimum for short labels; preserve complete words.
-        // If a rare unbroken word exceeds the viewport, shrink by at most 2px.
-        const available = Math.max(112, Math.floor(availableWidth));
-        const needsSmallerFont = longest + pad > available;
-        const nextSize = needsSmallerFont ? Math.max(12, fontSize - 2) : fontSize;
-        if (needsSmallerFont) {
-            marker.style.fontSize = `${nextSize}px`;
-            ctx.font = `${style.fontWeight} ${nextSize}px ${style.fontFamily}`;
-        } else {
-            marker.style.fontSize = '';
+        const setMeasureFont = () => { ctx.font = `${style.fontWeight} ${fontSize}px ${style.fontFamily}`; };
+        setMeasureFont();
+        const words = text.split(' ');
+        const widest = () => Math.max(0, ...words.map(measure));
+        if (widest() + pad + 2 > available) {
+            fontSize = Math.max(12, initialSize - 2);
+            marker.style.fontSize = `${fontSize}px`;
+            setMeasureFont();
         }
-        const naturalWidth = measure(text) + pad + 2;
-        const longestWidth = Math.max(0, ...text.split(/\s+/).map(measure)) + pad + 2;
-        const target = Math.max(Math.min(available, 54), Math.min(available, Math.max(longestWidth, naturalWidth)));
+        const natural = measure(text) + pad + 2;
+        const widestLine = widest();
+        const maxInner = Math.max(1, available - pad - 2);
+        let innerWidth = Math.min(maxInner, natural - pad - 2);
+        // For longer question prompts, find the smallest width that permits
+        // two or three whole-word lines. This avoids a mostly empty last line
+        // while keeping the label short and readable on iPhone and desktop.
+        if (natural > available && words.length > 1 && widestLine <= maxInner) {
+            const limit = text.length > 85 ? 3 : 2;
+            const countLines = maxLine => {
+                let lines = 1, line = '';
+                for (const word of words) {
+                    const next = line ? `${line} ${word}` : word;
+                    if (line && measure(next) > maxLine + .5) { lines++; line = word; }
+                    else line = next;
+                }
+                return lines;
+            };
+            if (countLines(maxInner) <= limit) {
+                let lo = widestLine, hi = maxInner;
+                for (let attempt = 0; attempt < 12; attempt++) {
+                    const mid = (lo + hi) / 2;
+                    if (countLines(mid) <= limit) hi = mid;
+                    else lo = mid;
+                }
+                innerWidth = Math.min(maxInner, Math.max(widestLine, hi + 1));
+            } else innerWidth = maxInner;
+        }
+        const target = Math.min(available, Math.max(Math.min(available, widestLine + pad + 2), innerWidth + pad + 2));
         marker.style.boxSizing = 'border-box';
         marker.style.width = `${Math.ceil(target)}px`;
-        marker.style.minWidth = `${Math.ceil(Math.min(target, available))}px`;
+        marker.style.minWidth = '0px';
         marker.style.maxWidth = `${Math.ceil(target)}px`;
-        marker.style.overflowWrap = 'normal';
+        marker.style.overflowWrap = widestLine + pad + 2 > available ? 'break-word' : 'normal';
         marker.style.wordBreak = 'normal';
     }
 
@@ -15743,7 +15805,8 @@ MODIFICATION RULES FOR THIS APP
                 // Give quiz names their natural measured width, capped by
                 // the *visible* phone viewport, with a non-shrinking text box.
                 // Words wrap normally; never make one-character columns.
-                if (mobileTouch && review.miniQuiz.active && miniButtons.length > 0) {
+                if (review.miniQuiz.active && (marker.classList.contains('has-question-prompt') ||
+                    (mobileTouch && miniButtons.length > 0))) {
                     sizeReviewModePhoneMiniQuizName(marker, usableWidth);
                 } else {
                     marker.style.width = '';
@@ -15765,6 +15828,7 @@ MODIFICATION RULES FOR THIS APP
             moveTarget.style.top = `${y}%`;
         });
         scheduleReviewModeTouchLabelFit();
+        if (!isReviewModeTouchPhone()) scheduleReviewModeConnectorEndpointProtection();
     }
 
     // Phase 24A.6w: iPhone labels keep the original X–label–check order.
@@ -15859,6 +15923,133 @@ MODIFICATION RULES FOR THIS APP
             changed = true;
         });
         if (changed) scheduleReviewModeVectorConnectorRefresh();
+        scheduleReviewModeConnectorEndpointProtection();
+    }
+
+    // Phase 24A.7d: only reposition a Mini Quiz label if its *actual rendered*
+    // rectangle hides the connector's anatomical tip or final ~30 screen px.
+    // The safe area is a conditional collision check, not an always-on margin.
+    // Every movement is transient and is fed to the SVG connector renderer via
+    // autoLabelPositions, never saved to a Saved Image or mastery fingerprint.
+    let reviewModeEndpointFitFrame = 0;
+    function protectReviewModeMiniQuizConnectorEndpoints() {
+        const review = getReviewModeState();
+        if (!review.overlayOpen || !review.miniQuiz.active || review.miniQuiz.complete ||
+            !review.showConnectors || reviewModeLabelHold || reviewModeLabelDrag ||
+            reviewModeMiniVisualPromptDrag) return;
+        const index = getReviewModeMiniQuizActiveLabelIndex(review);
+        const stage = elements.reviewModeImageStage;
+        const layer = elements.reviewModeLabelLayer;
+        const viewport = elements.reviewModeImageViewport;
+        const marker = layer?.querySelector?.(`[data-review-label-index="${index}"]`);
+        const target = marker?.closest('.review-mode-mini-label-wrap') || marker;
+        const stageRect = stage?.getBoundingClientRect?.();
+        const viewportRect = viewport?.getBoundingClientRect?.();
+        if (!target || !stageRect?.width || !stageRect?.height || !viewportRect?.width || !viewportRect?.height) return;
+        const label = getReviewModeDisplayLabels(getActiveReviewModeEntry())[index];
+        const connector = normalizeDiagramConnector(label?.connector);
+        if (!connector) return;
+        const endpoints = connector.style === 'multi' && connector.targets?.length
+            ? connector.targets
+            : connector.style === 'bracket'
+                ? [{ x: connector.bracketStartX, y: connector.bracketStartY },
+                   { x: connector.bracketEndX, y: connector.bracketEndY },
+                   { x: connector.anchorX, y: connector.anchorY }]
+                : [{ x: connector.anchorX, y: connector.anchorY }];
+        const tips = endpoints.map(point => ({
+            x: stageRect.left + stageRect.width * point.x / 100,
+            y: stageRect.top + stageRect.height * point.y / 100
+        })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+        if (!tips.length) return;
+        const original = target.getBoundingClientRect();
+        if (!(original.width > 0 && original.height > 0)) return;
+        const radius = 19, corridor = 32, clearance = 7;
+        const rectDistance = (point, rect) => Math.hypot(
+            Math.max(rect.left - point.x, 0, point.x - rect.right),
+            Math.max(rect.top - point.y, 0, point.y - rect.bottom));
+        // The final segment begins at the tip and travels toward the label.
+        // This conservative corridor supplements the precise endpoint circle.
+        const zones = tips.map(tip => {
+            const centerX = (original.left + original.right) / 2;
+            const centerY = (original.top + original.bottom) / 2;
+            const length = Math.max(1, Math.hypot(centerX - tip.x, centerY - tip.y));
+            const dx = (centerX - tip.x) / length, dy = (centerY - tip.y) / length;
+            const samples = [0, 8, 16, 24, corridor].map(length => ({
+                x: tip.x + dx * length, y: tip.y + dy * length
+            }));
+            return { tip, samples,
+                left: Math.min(...samples.map(p => p.x)) - radius,
+                right: Math.max(...samples.map(p => p.x)) + radius,
+                top: Math.min(...samples.map(p => p.y)) - radius,
+                bottom: Math.max(...samples.map(p => p.y)) + radius };
+        });
+        const collides = rect => tips.some(tip => {
+            if (rectDistance(tip, rect) < radius) return true;
+            // Re-evaluate the final segment's direction for the candidate
+            // position: the connector itself is re-routed after movement.
+            const centerX = (rect.left + rect.right) / 2;
+            const centerY = (rect.top + rect.bottom) / 2;
+            const length = Math.max(1, Math.hypot(centerX - tip.x, centerY - tip.y));
+            const dx = (centerX - tip.x) / length, dy = (centerY - tip.y) / length;
+            return [8, 16, 24, corridor].some(d =>
+                rectDistance({ x: tip.x + dx * d, y: tip.y + dy * d }, rect) < clearance);
+        });
+        // No collision: leave both the label and its connector *exactly* alone.
+        if (!collides(original)) return;
+        const overlay = elements.reviewModeOverlay;
+        const toolbarBottom = overlay?.querySelector?.('.review-mode-toolbar')?.getBoundingClientRect?.().bottom || viewportRect.top;
+        const minLeft = viewportRect.left + 12, maxRight = viewportRect.right - 12;
+        const minTop = Math.max(viewportRect.top + 12, toolbarBottom + 10);
+        const maxBottom = viewportRect.bottom - 14;
+        if (original.width > maxRight - minLeft || original.height > maxBottom - minTop) return;
+        const obstacles = Array.from(overlay?.querySelectorAll?.(
+            '.review-mode-shortcut-dock, .review-mode-options-panel, .review-mode-visual-aid-bar'
+        ) || []).filter(el => !el.classList.contains('hidden') && el.getClientRects().length &&
+            window.getComputedStyle(el).visibility !== 'hidden' && window.getComputedStyle(el).display !== 'none')
+            .map(el => el.getBoundingClientRect());
+        const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const pad = 3; // Small clearance beyond the collision-zone boundary.
+        const dxs = [0, minLeft - original.left, maxRight - original.right];
+        const dys = [0, minTop - original.top, maxBottom - original.bottom];
+        zones.forEach(zone => {
+            // Candidate distances include the 32px final segment, which can
+            // change direction as the group moves; test all against its new
+            // direction to avoid repeated nudges and visual jitter.
+            for (const extra of [0, 12, 28, 44]) {
+                dxs.push(zone.left - pad - extra - original.right,
+                    zone.right + pad + extra - original.left);
+                dys.push(zone.top - pad - extra - original.bottom,
+                    zone.bottom + pad + extra - original.top);
+            }
+        });
+        let winner = null;
+        for (const dx of dxs) for (const dy of dys) {
+            const rect = { left: original.left + dx, right: original.right + dx,
+                top: original.top + dy, bottom: original.bottom + dy };
+            if (rect.left < minLeft - .5 || rect.right > maxRight + .5 ||
+                rect.top < minTop - .5 || rect.bottom > maxBottom + .5 ||
+                collides(rect) || obstacles.some(block => intersects(rect, block))) continue;
+            const distance = Math.hypot(dx, dy);
+            if (!winner || distance < winner.distance) winner = { dx, dy, distance };
+        }
+        if (!winner || winner.distance < .8) return;
+        const x = Number.parseFloat(target.style.left), y = Number.parseFloat(target.style.top);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const nextX = Math.min(100, Math.max(0, x + winner.dx * 100 / stageRect.width));
+        const nextY = Math.min(100, Math.max(0, y + winner.dy * 100 / stageRect.height));
+        if (Math.abs(nextX - x) < .01 && Math.abs(nextY - y) < .01) return;
+        target.style.left = `${nextX}%`;
+        target.style.top = `${nextY}%`;
+        review.autoLabelPositions[index] = { x: nextX, y: nextY };
+        scheduleReviewModeVectorConnectorRefresh();
+    }
+
+    function scheduleReviewModeConnectorEndpointProtection() {
+        if (reviewModeEndpointFitFrame) return;
+        reviewModeEndpointFitFrame = window.requestAnimationFrame(() => {
+            reviewModeEndpointFitFrame = 0;
+            protectReviewModeMiniQuizConnectorEndpoints();
+        });
     }
 
     function scheduleReviewModeTouchLabelFit() {
@@ -16917,7 +17108,7 @@ MODIFICATION RULES FOR THIS APP
                         ? '<span class="review-mode-mini-typed-feedback is-incorrect">Incorrect — try again.</span>'
                         : (typedResult === 'empty' ? '<span class="review-mode-mini-typed-feedback is-incorrect">Enter an answer first.</span>' : '');
                     typedBody = `
-                      ${normalizeDiagramLabelQuestionPrompt(item.questionPrompt).trim() ? `<span class="review-mode-mini-visual-question">${renderMathChemTextToHtml(normalizeDiagramLabelQuestionPrompt(item.questionPrompt).trim())}</span>` : ''}
+                      ${getReviewModeLabelTypePrompt(item, review.miniQuiz) ? `<span class="review-mode-mini-visual-question">${renderMathChemTextToHtml(getReviewModeLabelTypePrompt(item, review.miniQuiz))}</span>` : ''}
                       <div class="review-mode-mini-typed-entry">
                         <input class="review-mode-mini-typed-input" data-review-mini-typed-input type="text" value="${inputValue}" placeholder="Type answer…" autocomplete="off" autocapitalize="none" enterkeyhint="done" spellcheck="false" aria-label="Type the label name">
                         <button type="button" class="review-mode-mini-typed-check" data-review-mini-typed-check>Check</button>
@@ -16938,7 +17129,7 @@ MODIFICATION RULES FOR THIS APP
                     <div class="review-mode-label-marker review-mode-mini-label-marker review-mode-mini-typed-card${isRevealed ? ' is-name-visible' : ' is-mini-glowing'}${showDescription ? ' has-description' : ''}" data-review-label-index="${index}" aria-live="polite">${typedBody}</div>
                   </div>`;
             } else {
-                const prompt = normalizeDiagramLabelQuestionPrompt(item.questionPrompt).trim();
+                const prompt = getReviewModeLabelTypePrompt(item, review.miniQuiz);
                 const nameHtml = isRevealed ? renderMathChemTextToHtml(item.label) : (prompt ? renderMathChemTextToHtml(prompt) : (review.showLabelNumbers ? String(index + 1) : '?'));
                 const descriptionHtml = renderReviewModeLabelInformation(item, showDescription);
                 layer.innerHTML = `
@@ -18702,6 +18893,283 @@ MODIFICATION RULES FOR THIS APP
     function getImageEditorLabelInfoDirtyKeys(editor = state.auth.imageEditor) {
         if (!(editor?.labelInfoDirtyKeys instanceof Set)) editor.labelInfoDirtyKeys = new Set();
         return editor.labelInfoDirtyKeys;
+    }
+
+    // Phase 24A.7c — account-wide reusable Mini Quiz label types.
+    // Only a type ID is stored on the label. The canonical prompt lives in one
+    // user-scoped Supabase row; tombstones make deletion safe across devices.
+    function normalizeStudioLabelType(record = {}) {
+        const id = normalizeSheetText(record.id || record.type_id || '').slice(0, 100);
+        const name = normalizeSheetText(record.name || '').trim().slice(0, STUDIO_LABEL_TYPE_NAME_MAX);
+        const question = normalizeDiagramLabelQuestionPrompt(record.question || '').trim();
+        const updatedAt = Math.max(0, Number(record.updatedAt) || Date.parse(record.updated_at || '') || 0);
+        const deletedAt = normalizeSheetText(record.deletedAt || record.deleted_at || '');
+        return id && name && question ? { id, name, question, updatedAt, deletedAt } : null;
+    }
+    function normalizeStudioLabelTypes(records = []) {
+        const byId = new Map();
+        (Array.isArray(records) ? records : []).forEach(raw => {
+            const item = normalizeStudioLabelType(raw);
+            if (item && (!byId.has(item.id) || item.updatedAt >= byId.get(item.id).updatedAt)) byId.set(item.id, item);
+        });
+        return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }
+    function readCachedStudioLabelTypes(userId = state.auth.user?.id) {
+        try {
+            return normalizeStudioLabelTypes(JSON.parse(window.localStorage?.getItem(STUDIO_LABEL_TYPES_CACHE_PREFIX + (normalizeSheetText(userId) || 'anonymous')) || '[]'));
+        } catch (_) { return []; }
+    }
+    function setCachedStudioLabelTypes(records, userId = state.auth.user?.id) {
+        const normalized = normalizeStudioLabelTypes(records);
+        if (normalizeSheetText(userId) === normalizeSheetText(state.auth.user?.id)) state.auth.labelTypes = normalized;
+        try { window.localStorage?.setItem(STUDIO_LABEL_TYPES_CACHE_PREFIX + (normalizeSheetText(userId) || 'anonymous'), JSON.stringify(normalized)); }
+        catch (error) { console.warn('Could not cache label types:', error); }
+        return normalized;
+    }
+    function getActiveStudioLabelTypes() {
+        return (state.auth.labelTypes || []).filter(type => !type.deletedAt);
+    }
+    function getStudioLabelTypeById(id) {
+        return getActiveStudioLabelTypes().find(type => type.id === normalizeSheetText(id)) || null;
+    }
+    async function loadStudioLabelTypesForUser({ force = false } = {}) {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        const sync = state.auth.labelTypesSync;
+        if (sync.userId !== userId) {
+            sync.userId = userId; sync.loadedAt = 0; sync.inFlight = null;
+            state.auth.labelTypes = readCachedStudioLabelTypes(userId);
+        }
+        if (!userId || !state.auth.client) return state.auth.labelTypes;
+        if (sync.inFlight) return sync.inFlight;
+        if (!force && Date.now() - sync.loadedAt < 120000) return state.auth.labelTypes;
+        const task = (async () => {
+            const { data, error } = await state.auth.client.from(STUDIO_LABEL_TYPES_TABLE)
+                .select('type_id,name,question,deleted_at,updated_at').eq('user_id', userId);
+            if (error) throw error;
+            if (normalizeSheetText(state.auth.user?.id) === userId) {
+                // Remote is authoritative: local writes occur only after server confirmation.
+                setCachedStudioLabelTypes(data || [], userId);
+                sync.loadedAt = Date.now();
+            }
+            return state.auth.labelTypes;
+        })().finally(() => { if (sync.inFlight === task) sync.inFlight = null; });
+        sync.inFlight = task;
+        return task;
+    }
+    async function saveStudioLabelType(record) {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        if (!userId || !state.auth.client) throw new Error('Sign in to manage globally shared Label Types.');
+        const item = normalizeStudioLabelType(record);
+        if (!item) throw new Error('Provide a type name and one Mini Quiz question.');
+        const row = { user_id: userId, type_id: item.id, name: item.name, question: item.question,
+            deleted_at: item.deletedAt || null, updated_at: new Date().toISOString() };
+        const { error } = await state.auth.client.from(STUDIO_LABEL_TYPES_TABLE)
+            .upsert(row, { onConflict: 'user_id,type_id' });
+        if (error) throw new Error(isStudioLabelLibraryTableMissing(error, STUDIO_LABEL_TYPES_TABLE)
+            ? 'The Label Types Supabase migration must be run before types can be saved across devices.'
+            : (error.message || 'Could not save Label Type.'));
+        if (normalizeSheetText(state.auth.user?.id) !== userId) throw new Error('Account changed before saving.');
+        const next = normalizeStudioLabelType({ ...item, updatedAt: Date.parse(row.updated_at) });
+        setCachedStudioLabelTypes([...state.auth.labelTypes.filter(type => type.id !== item.id), next], userId);
+        state.auth.labelTypesSync.loadedAt = Date.now();
+        return next;
+    }
+    function getReviewModeLabelTypePrompt(label = {}, mini = null) {
+        const id = normalizeSheetText(label.labelTypeId || '');
+        const snapshot = mini?.labelTypeQuestionsSnapshot;
+        const question = id && snapshot && typeof snapshot === 'object'
+            ? normalizeDiagramLabelQuestionPrompt(snapshot[id] || '').trim()
+            : getStudioLabelTypeById(id)?.question || '';
+        // Existing optional per-label questions remain intact for Default.
+        return question || normalizeDiagramLabelQuestionPrompt(label.questionPrompt || '').trim();
+    }
+
+    // Session-only warning suppression; not persisted to localStorage or Supabase.
+    const studioLabelTypeWarningSuppressed = new Set();
+    const studioLabelTypeModal = { index: -1, view: 'select', selected: '', busy: false, onConfirm: null };
+    function studioLabelTypeModalNodes() {
+        return {
+            overlay: document.getElementById('studioLabelTypeOverlay'),
+            selector: document.getElementById('studioLabelTypeSelect'),
+            summary: document.getElementById('studioLabelTypeQuestionPreview'),
+            form: document.getElementById('studioLabelTypeForm'),
+            name: document.getElementById('studioLabelTypeName'),
+            question: document.getElementById('studioLabelTypeQuestion'),
+            status: document.getElementById('studioLabelTypeStatus'),
+            warning: document.getElementById('studioLabelTypeWarning'),
+            warningMessage: document.getElementById('studioLabelTypeWarningMessage'),
+            warningSkip: document.getElementById('studioLabelTypeWarningSkip')
+        };
+    }
+    function renderStudioLabelTypeModal() {
+        const n = studioLabelTypeModalNodes();
+        if (!n.overlay || n.overlay.hidden) return;
+        const editing = studioLabelTypeModal.view === 'edit' || studioLabelTypeModal.view === 'create';
+        const confirming = studioLabelTypeModal.view === 'confirm';
+        n.selector.innerHTML = '<option value="">Default — existing ? / label number</option>' +
+            getActiveStudioLabelTypes().map(type => `<option value="${escapeHtml(type.id)}">${escapeHtml(type.name)}</option>`).join('');
+        n.selector.value = getStudioLabelTypeById(studioLabelTypeModal.selected) ? studioLabelTypeModal.selected : '';
+        n.summary.textContent = getStudioLabelTypeById(n.selector.value)?.question || 'Existing Mini Quiz behavior';
+        n.overlay.querySelector('[data-label-type-select-pane]').hidden = editing || confirming;
+        n.form.hidden = !editing;
+        n.warning.hidden = !confirming;
+        n.overlay.querySelector('[data-label-type-edit]').disabled = !n.selector.value;
+        n.overlay.querySelector('[data-label-type-delete]').disabled = !n.selector.value;
+        n.overlay.querySelector('[data-label-type-select-confirm]').disabled = studioLabelTypeModal.busy;
+        n.status.textContent = '';
+    }
+    async function openStudioLabelTypeModal(index) {
+        const editor = state.auth.imageEditor;
+        if (!editor?.open || !editor.labels?.[index]) return;
+        const n = studioLabelTypeModalNodes();
+        studioLabelTypeModal.index = index;
+        studioLabelTypeModal.selected = normalizeSheetText(editor.labels[index].labelTypeId || '');
+        studioLabelTypeModal.view = 'select';
+        studioLabelTypeModal.busy = false;
+        n.overlay.hidden = false;
+        n.overlay.classList.remove('hidden');
+        renderStudioLabelTypeModal();
+        try { await loadStudioLabelTypesForUser({ force: true }); if (!n.overlay.hidden) renderStudioLabelTypeModal(); }
+        catch (error) { n.status.textContent = 'Global types unavailable: ' + (error.message || 'Connection error') + '. Run the included SQL migration if needed.'; }
+    }
+    function closeStudioLabelTypeModal() {
+        const n = studioLabelTypeModalNodes();
+        if (studioLabelTypeModal.busy) return;
+        if (n.overlay) { n.overlay.hidden = true; n.overlay.classList.add('hidden'); }
+        studioLabelTypeModal.index = -1;
+        studioLabelTypeModal.view = 'select';
+        studioLabelTypeModal.onConfirm = null;
+    }
+    function confirmStudioLabelTypeAction(kind, message, callback) {
+        const n = studioLabelTypeModalNodes();
+        if (studioLabelTypeWarningSuppressed.has(kind)) return callback();
+        studioLabelTypeModal.view = 'confirm';
+        studioLabelTypeModal.onConfirm = { kind, callback };
+        n.warningMessage.textContent = message;
+        n.warningSkip.checked = false;
+        renderStudioLabelTypeModal();
+    }
+    async function commitStudioLabelTypeChange() {
+        const n = studioLabelTypeModalNodes();
+        const name = normalizeSheetText(n.name.value).trim().slice(0, STUDIO_LABEL_TYPE_NAME_MAX);
+        const question = normalizeDiagramLabelQuestionPrompt(n.question.value).trim();
+        if (!name || !question) { n.status.textContent = 'A type name and Mini Quiz question are required.'; return; }
+        if (getActiveStudioLabelTypes().some(type => type.id !== studioLabelTypeModal.selected && type.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+            n.status.textContent = 'A Label Type already uses this name.'; return;
+        }
+        const isNew = studioLabelTypeModal.view === 'create';
+        const record = { id: isNew ? (window.crypto?.randomUUID?.() || `labeltype-${Date.now()}-${Math.random().toString(36).slice(2)}`) : studioLabelTypeModal.selected,
+            name, question };
+        const save = async () => {
+            studioLabelTypeModal.busy = true;
+            try {
+                const saved = await saveStudioLabelType(record);
+                studioLabelTypeModal.selected = saved.id;
+                studioLabelTypeModal.view = 'select';
+                renderStudioLabelTypeModal();
+                n.status.textContent = isNew ? 'Type created. Select Apply to assign it to this label.' : 'Updated globally. Existing spaced-repetition progress is unchanged.';
+            } catch (error) {
+                studioLabelTypeModal.view = isNew ? 'create' : 'edit';
+                renderStudioLabelTypeModal();
+                n.name.value = name; n.question.value = question;
+                n.status.textContent = error.message || 'Could not save Label Type.';
+            } finally {
+                studioLabelTypeModal.busy = false;
+                const apply = n.overlay.querySelector('[data-label-type-select-confirm]');
+                if (apply) apply.disabled = false;
+            }
+        };
+        if (isNew) return save();
+        return confirmStudioLabelTypeAction('edit',
+            'This edits the type name and question for every label using this type in every Saved Image. No spaced-repetition progress will be reset.', save);
+    }
+    async function deleteStudioLabelType() {
+        const n = studioLabelTypeModalNodes();
+        const type = getStudioLabelTypeById(studioLabelTypeModal.selected);
+        if (!type) return;
+        const remove = async () => {
+            studioLabelTypeModal.busy = true;
+            try {
+                await saveStudioLabelType({ ...type, deletedAt: new Date().toISOString() });
+                // Other Saved Images need no bulk payload rewrite: the deleted
+                // permanent ID resolves to Default everywhere via the tombstone.
+                const editor = state.auth.imageEditor;
+                if (editor?.labels) editor.labels.forEach(label => { if (label.labelTypeId === type.id) delete label.labelTypeId; });
+                studioLabelTypeModal.selected = '';
+                studioLabelTypeModal.view = 'select';
+                renderStudioLabelTypeModal();
+                renderImageEditorLabelList();
+                n.status.textContent = 'Type deleted. All assignments now behave as Default; progress is preserved.';
+            } catch (error) {
+                studioLabelTypeModal.view = 'select'; renderStudioLabelTypeModal();
+                n.status.textContent = error.message || 'Could not delete Label Type.';
+            } finally {
+                studioLabelTypeModal.busy = false;
+                const apply = n.overlay.querySelector('[data-label-type-select-confirm]');
+                if (apply) apply.disabled = false;
+            }
+        };
+        return confirmStudioLabelTypeAction('delete',
+            'Delete this global Label Type? Every label using it in every Saved Image will behave as Default (? or number). Labels and spaced-repetition progress will not be deleted.', remove);
+    }
+    function bindStudioLabelTypeModalEvents() {
+        const n = studioLabelTypeModalNodes();
+        if (!n.overlay || n.overlay.dataset.bound === 'true') return;
+        n.overlay.dataset.bound = 'true';
+        document.addEventListener('click', event => {
+            const button = event.target.closest?.('[data-image-editor-label-type]');
+            const row = button?.closest?.('[data-image-editor-label-row]');
+            if (!row) return;
+            event.preventDefault();
+            openStudioLabelTypeModal(Number(row.dataset.imageEditorLabelIndex));
+        });
+        n.overlay.addEventListener('change', event => {
+            if (event.target !== n.selector) return;
+            studioLabelTypeModal.selected = n.selector.value;
+            renderStudioLabelTypeModal();
+        });
+        n.overlay.addEventListener('click', async event => {
+            if (studioLabelTypeModal.busy) return;
+            const button = event.target.closest('button');
+            if (event.target === n.overlay || button?.matches('[data-label-type-close]')) return closeStudioLabelTypeModal();
+            if (!button) return;
+            const action = button.dataset.labelTypeAction;
+            if (action === 'apply') {
+                const editor = state.auth.imageEditor;
+                const label = editor?.labels?.[studioLabelTypeModal.index];
+                if (label) {
+                    const id = getStudioLabelTypeById(n.selector.value)?.id || '';
+                    if (id) label.labelTypeId = id;
+                    else delete label.labelTypeId;
+                    renderImageEditorLabelList();
+                    setImageEditorStatus(`Label Type: ${getStudioLabelTypeById(id)?.name || 'Default'}. Save the diagram to keep this assignment.`);
+                }
+                closeStudioLabelTypeModal();
+            } else if (action === 'create' || action === 'edit') {
+                studioLabelTypeModal.view = action;
+                renderStudioLabelTypeModal();
+                const type = getStudioLabelTypeById(studioLabelTypeModal.selected);
+                n.name.value = action === 'edit' ? type?.name || '' : '';
+                n.question.value = action === 'edit' ? type?.question || '' : '';
+                n.name.focus();
+            } else if (action === 'save') await commitStudioLabelTypeChange();
+            else if (action === 'delete') await deleteStudioLabelType();
+            else if (action === 'confirm') {
+                const pending = studioLabelTypeModal.onConfirm;
+                if (!pending) return;
+                studioLabelTypeModal.onConfirm = null;
+                if (n.warningSkip.checked) studioLabelTypeWarningSuppressed.add(pending.kind);
+                await pending.callback();
+            } else if (action === 'cancel-confirm') {
+                studioLabelTypeModal.view = 'select'; studioLabelTypeModal.onConfirm = null;
+                renderStudioLabelTypeModal();
+            } else if (action === 'cancel-form') {
+                studioLabelTypeModal.view = 'select'; renderStudioLabelTypeModal();
+            }
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !n.overlay.hidden) { event.stopPropagation(); closeStudioLabelTypeModal(); }
+        }, true);
     }
 
     // Phase 23F.41.13 — named label sets and canonical shared information.
@@ -23157,9 +23625,10 @@ MODIFICATION RULES FOR THIS APP
               </div>
             ` : '';
             return `
-            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isConnectorActive ? 'is-connector-selected' : ''} ${isConnectorStylePickerOpen ? 'is-connector-style-open' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''} ${hasDetailFocusButton ? 'has-detail-focus' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
+            <div class="studio-image-editor-label-row ${isDrawActive ? 'is-draw-selected' : ''} ${isConnectorActive ? 'is-connector-selected' : ''} ${isConnectorStylePickerOpen ? 'is-connector-style-open' : ''} ${isNumberedLabelTarget ? 'is-numbered-label-row' : ''} ${hasDetailFocusButton ? 'has-detail-focus has-label-type' : ''}" data-image-editor-label-row data-image-editor-label-index="${index}">
               ${isNumberedLabelTarget ? `<span class="studio-image-editor-label-number" aria-hidden="true">${index + 1}.</span>` : ''}
               <input type="text" value="${labelText}" data-image-editor-label-text autocomplete="off" autocapitalize="sentences" aria-label="Label ${index + 1} answer" placeholder="Label answer">
+              ${hasDetailFocusButton ? `              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-type ${getStudioLabelTypeById(item.labelTypeId) ? 'is-custom' : ''}" data-image-editor-label-type title="Label Type: ${escapeHtml(getStudioLabelTypeById(item.labelTypeId)?.name || 'Default')}" aria-label="Choose Label Type for label ${index + 1}" aria-haspopup="dialog" aria-controls="studioLabelTypeOverlay"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M20 13l-7 7a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 2.4 11V4a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1"/></svg></button>` : ''}
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-draw ${isDrawActive ? 'active' : ''}" data-image-editor-label-draw aria-pressed="${isDrawActive ? 'true' : 'false'}" title="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}" aria-label="${isDrawActive ? 'Drawing active for' : 'Draw for'} label ${labelText}"><span aria-hidden="true">🖌</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector ${isConnectorActive ? 'active' : ''} ${hasConnector ? 'has-connector' : ''}" data-image-editor-label-connector aria-pressed="${isConnectorActive ? 'true' : 'false'}" aria-expanded="${isConnectorStylePickerOpen ? 'true' : 'false'}" aria-haspopup="menu" title="${isConnectorActive ? 'Choose connector style for' : (hasConnector ? 'Edit connector for' : 'Place No Ball Angled connector for')} label ${labelText}" aria-label="${isConnectorActive ? 'Choose connector style for' : (hasConnector ? 'Edit connector for' : 'Place No Ball Angled connector for')} label ${labelText}"><span class="studio-image-editor-label-connector-icon" aria-hidden="true">🔗</span></button>
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-editor-label-icon studio-image-editor-label-connector-delete" data-image-editor-label-connector-delete title="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" aria-label="${hasConnector ? 'Delete connector for' : 'No connector to delete for'} label ${labelText}" ${hasConnector ? '' : 'disabled'}><span aria-hidden="true">✕</span></button>
@@ -36831,6 +37300,7 @@ if (elements.importBackupFile) {
             button.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
         if (nextSection === 'review-mode') {
+            await loadStudioLabelTypesForUser({ force: true }).catch(error => console.warn('Could not refresh Label Types:', error));
             syncReviewModeFilterDisclosure({ reset: true });
             await syncStudioSavedImagesFromSupabase({ force: true, reason: 'open-review-mode' });
             renderReviewModeLibrary();
@@ -38279,10 +38749,11 @@ if (elements.openQuizStudioBtn) {
         try {
             savedImageBackupStatus('Reading active Saved Images, labels and image ownership...');
             // Read whole payloads, not the paged UI or cached thumbnails.
-            const [savedImages,labelSets,labelInformation,visualAidPresets,folders,classes,assets]=await Promise.all([
+            const [savedImages,labelSets,labelInformation,labelTypes,visualAidPresets,folders,classes,assets]=await Promise.all([
                 cleanupReadAll('saved_images','*',q=>q.eq('user_id',userId).is('deleted_at',null)),
                 cleanupReadAll('user_label_sets','*',q=>q.eq('user_id',userId)),
                 cleanupReadAll('user_shared_label_information','*',q=>q.eq('user_id',userId)),
+                cleanupReadAll('user_label_types','*',q=>q.eq('user_id',userId)),
                 cleanupReadAll('user_visual_aid_presets','*',q=>q.eq('user_id',userId)),
                 cleanupReadAll('folders','*',q=>q.eq('user_id',userId)),
                 cleanupReadAll('classes','*',q=>q.eq('user_id',userId)),
@@ -38410,10 +38881,11 @@ if (elements.openQuizStudioBtn) {
             // strokes, visual aids, label coordinate metadata and timestamps.
             const payload={format:'study-bunny-saved-images-complete-tar',version:1,
                 created_at:new Date().toISOString(), user_id:userId,
-                counts:{saved_images:savedImages.length,label_sets:labelSets.length,label_information:labelInformation.length,media_files:files.length},
-                saved_images:savedImages,label_sets:labelSets,shared_label_information:labelInformation,
+                counts:{saved_images:savedImages.length,label_sets:labelSets.length,label_information:labelInformation.length,label_types:labelTypes.length,media_files:files.length},
+                saved_images:savedImages,label_sets:labelSets,shared_label_information:labelInformation,label_types:labelTypes,
                 missing_thumbnail_media:missingThumbnails, // source payloads are preserved verbatim in TAR
                 local_label_sets:readLocalStudioLabelLibrary('sets',userId),
+                local_label_types:readCachedStudioLabelTypes(userId),
                 local_shared_label_information:readLocalStudioLabelLibrary('info',userId),
                 visual_aid_presets:visualAidPresets,folders,classes,media_files:files};
             addSavedImageTarEntry(archiveParts,'saved_images_and_label_library.json',JSON.stringify(payload,null,2));
@@ -38422,7 +38894,7 @@ if (elements.openQuizStudioBtn) {
                 (missingThumbnails.length
                     ? `WARNING: ${new Set(missingThumbnails.map(x=>x.media_id)).size} unavailable cached thumbnail file(s) were NOT included. Their references are preserved in the original payload JSON and listed under missing_thumbnail_media. Every affected angle had a separate backed-up primary image. On restoration those obsolete thumbnail pointers are cleared so the app can display its primary image instead.\n\n`
                     : '')+
-                'saved_images_and_label_library.json preserves full active Saved Image payloads (including angles, labels, connectors, drawing strokes, visual aids, metadata), shared label library, label sets, visual aid presets, classes and folders.\\n'+
+                'saved_images_and_label_library.json preserves full active Saved Image payloads (including angles, labels, connectors, drawing strokes, visual aids, metadata), shared label library, Label Types, label sets, visual aid presets, classes and folders.\\n'+
                 'media/ contains original physical file bytes for all recognized private media assets associated with those Saved Images. Check SHA-256 entries in JSON for integrity.\n'+
                 'Any external HTTP image URL inside Saved Image payloads remains an external link, not a downloaded file. Inline data URLs remain within the JSON.\n'+
                 'This archive does not export quiz questions or unreferenced historical Storage files. Use Backup > Restore Saved Images + Label Library TAR in Phase 24A.5f or later, signed in to the same account.\n'+
@@ -38487,6 +38959,8 @@ if (elements.openQuizStudioBtn) {
         }
         if(payload.counts?.saved_images!==payload.saved_images.length || payload.counts?.media_files!==payload.media_files.length)
             throw new Error('Archive item counts do not match.');
+        if (payload.label_types !== undefined && (!Array.isArray(payload.label_types) || payload.counts?.label_types !== payload.label_types.length))
+            throw new Error('Archive Label Type count is invalid.');
         const ids=new Set();
         for(let index=0;index<payload.media_files.length;index++){
             const media=payload.media_files[index];
@@ -38515,7 +38989,8 @@ if (elements.openQuizStudioBtn) {
                 throw new Error('Invalid or cross-account Saved Image record in archive.');
         }
         for(const [field,rows] of [['label_sets',payload.label_sets],['shared_label_information',payload.shared_label_information],
-            ['visual_aid_presets',payload.visual_aid_presets],['folders',payload.folders],['classes',payload.classes]]){
+            ['visual_aid_presets',payload.visual_aid_presets],['folders',payload.folders],['classes',payload.classes],
+            ['label_types',payload.label_types || []]]){
             if(rows.some(row=>row.user_id!==userId))throw new Error(`Cross-account ${field} record in archive.`);
         }
         savedImagesTarRestoreState.file=file;
@@ -38596,6 +39071,7 @@ if (elements.openQuizStudioBtn) {
             const folders=await restoreMissingArchivedTableRows('folders',payload.folders,'id');
             const labelSets=await restoreMissingArchivedTableRows('user_label_sets',payload.label_sets,'set_key');
             const info=await restoreMissingArchivedTableRows('user_shared_label_information',payload.shared_label_information,'label_key');
+            const labelTypes=payload.label_types?.length ? await restoreMissingArchivedTableRows('user_label_types',payload.label_types,'type_id') : 0;
             const presets=await restoreMissingArchivedTableRows('user_visual_aid_presets',payload.visual_aid_presets,'preset_key');
             // Preserve any label sets/information that existed ONLY on the
             // original Mac. Never overwrite keys in the current local library.
@@ -38605,6 +39081,9 @@ if (elements.openQuizStudioBtn) {
             const localInfo=readLocalStudioLabelLibrary('info',userId);
             const localInfoKeys=new Set(localInfo.map(row=>row.key));
             const additionalInfo=normalizeStudioSharedLabelRecords(payload.local_shared_label_information||[]).filter(row=>!localInfoKeys.has(row.key));
+            // Type definitions are cloud-authored; the archive includes both remote rows
+            // and a local diagnostic snapshot. Never overwrite an existing type ID.
+            if (labelTypes) await loadStudioLabelTypesForUser({ force: true });
             if(additionalSets.length)writeLocalStudioLabelLibrary('sets',[...localSets,...additionalSets]);
             if(additionalInfo.length)writeLocalStudioLabelLibrary('info',[...localInfo,...additionalInfo]);
             const existingSaved=await cleanupReadAll('saved_images','id,deleted_at',q=>q.eq('user_id',userId));
@@ -38627,7 +39106,7 @@ if (elements.openQuizStudioBtn) {
                 diagrams++;
             }
             stateBag.verified=false;
-            savedImagesTarRestoreStatus(`Restore completed: ${diagrams} diagrams restored, ${already} already active and untouched; ${uploads} physical files uploaded, ${tracked} tracking records recreated; ${labelSets} cloud label sets, ${info} shared information entries, ${additionalSets.length} local label sets, ${additionalInfo.length} local info entries and ${presets} Visual Aid presets restored. Refresh Study Bunny and inspect the diagrams.`);
+            savedImagesTarRestoreStatus(`Restore completed: ${diagrams} diagrams restored, ${already} already active and untouched; ${uploads} physical files uploaded, ${tracked} tracking records recreated; ${labelSets} cloud label sets, ${info} shared information entries, ${labelTypes} global Label Types, ${additionalSets.length} local label sets, ${additionalInfo.length} local info entries and ${presets} Visual Aid presets restored. Refresh Study Bunny and inspect the diagrams.`);
         }catch(error){
             savedImagesTarRestoreStatus(`Restore stopped safely: ${error.message}. Existing data was not removed. Some restored files or rows may have been added; preview this archive again before retrying.`,true);
             throw error;
@@ -39188,6 +39667,7 @@ if (elements.openQuizStudioBtn) {
             syncImageEditorColorPresetsFromAuth();
             loadVisualAidPresetsForUser();
             loadStudioLabelLibraryForUser();
+            loadStudioLabelTypesForUser().catch(error => console.warn('Label Types sync:', error));
             updateAuthUI();
             if (state.sourceQuestions.length) {
                 syncQuestionStarButton();
@@ -39200,6 +39680,7 @@ if (elements.openQuizStudioBtn) {
             syncImageEditorColorPresetsFromAuth();
             loadVisualAidPresetsForUser();
             loadStudioLabelLibraryForUser();
+            loadStudioLabelTypesForUser().catch(error => console.warn('Label Types sync:', error));
             await loadAuthProfile(state.auth.user.id);
             await syncStudioSavedImagesFromSupabase({ force: !sameSignedInUser, reason: 'auth-session' });
             await refreshStudioManagementData({ force: !sameSignedInUser });
@@ -39215,6 +39696,9 @@ if (elements.openQuizStudioBtn) {
             state.auth.diagramColorPresetUpdatedAt = 0;
             state.auth.visualAidPresets = [];
             state.auth.labelSets = [];
+            state.auth.labelTypes = [];
+            state.auth.labelTypesSync = { userId: '', loadedAt: 0, inFlight: null };
+            studioLabelTypeWarningSuppressed.clear();
             state.auth.sharedLabelInformation = [];
             state.auth.labelLibrarySync = { loadedUserId: '', setTableUnavailable: false, infoTableUnavailable: false, infoLoaded: false, infoReconcile: null, inFlight: null, lastLoadedAt: 0 };
             state.auth.visualAidPresetSync.loadedUserId = '';
@@ -55707,6 +56191,7 @@ elements.studioImageEditorAddLabelBtn?.addEventListener('click', addImageEditorL
 elements.studioImageEditorRemoveLastLabelBtn?.addEventListener('click', removeLastImageEditorLabel);
 bindImageEditorLabelTransferEvents();
 bindImageEditorConnectorInputFocusEvents();
+bindStudioLabelTypeModalEvents();
 elements.studioImageEditorLabelList?.addEventListener('input', event => {
     const row = event.target.closest('[data-image-editor-label-row]');
     const editor = state.auth.imageEditor;
