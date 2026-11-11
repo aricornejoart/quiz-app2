@@ -18209,3 +18209,10 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-image-editor-pressure-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #f4f4f5; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
 .studio-image-editor-pressure-row input[type="checkbox"] { width: 19px; height: 19px; flex: 0 0 auto; accent-color: #facc15; cursor: pointer; }
 .studio-image-editor-pressure-hint { color: rgba(255,255,255,.68); font-size: .72rem; line-height: 1.35; margin-top: 8px; max-width: 224px; }
+
+/* Phase 24A.7k: touch navigation uses transforms, never browser page gestures. */
+.studio-image-editor-canvas-wrap.is-touch-navigating,
+.studio-image-editor-canvas-wrap.is-touch-navigating .studio-image-editor-canvas {
+  touch-action: none;
+  cursor: grabbing !important;
+}

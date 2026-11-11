@@ -21293,6 +21293,250 @@ MODIFICATION RULES FOR THIS APP
 
     let imageEditorZoomWindowEventsBound = false;
 
+    // Phase 24A.7k: iPad/touch two-finger navigation. A single finger retains the
+    // existing editor tools; once a second finger joins, discard the first
+    // touch's incomplete edit and navigate the existing canvas/vector layers.
+    // This intentionally never redraws the bitmap during gesture frames.
+    function bindImageEditorTouchNavigation() {
+        const wrap = elements.studioImageEditorCanvasWrap;
+        if (!wrap || wrap.dataset.diagramTouchNavigationBound === 'true') return;
+        wrap.dataset.diagramTouchNavigationBound = 'true';
+        const touches = new Map();
+        const blockedTouches = new Set(); // Finger/palm contacts while the Pencil is active.
+        let owner = null;
+        let before = null;
+        let navigating = false;
+        let suppressUntilRelease = false;
+        let pencilId = null;
+        let gestureAnchor = null;
+        let pendingFrame = 0;
+        const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
+        const validOwner = () => {
+            const current = state.auth.imageEditor;
+            return !!(current?.open && current.baseCanvas && isImageEditorStandaloneDiagramTarget(current)
+                && current === owner && elements.studioImageEditorCanvasWrap === wrap);
+        };
+        const clearFrame = () => {
+            if (pendingFrame) window.cancelAnimationFrame(pendingFrame);
+            pendingFrame = 0;
+        };
+        const forget = () => {
+            clearFrame();
+            touches.clear();
+            blockedTouches.clear();
+            owner = null;
+            before = null;
+            navigating = false;
+            suppressUntilRelease = false;
+            gestureAnchor = null;
+            wrap.classList.remove('is-touch-navigating');
+        };
+        const captureBeforeFirstTouch = (editor, event) => {
+            // Only the touched label and the active connector label can change.
+            // Avoid cloning hundreds of labels or painted points on each tap.
+            const labelIndices = new Set();
+            if (['labels', 'connector'].includes(editor.mode)) {
+                const point = getImageEditorCanvasPoint(event);
+                const hit = point ? findImageEditorLabelIndexAtPoint(point) : -1;
+                if (hit >= 0) labelIndices.add(hit);
+                if (Number.isInteger(editor.activeConnectorLabelIndex) && editor.activeConnectorLabelIndex >= 0) {
+                    labelIndices.add(editor.activeConnectorLabelIndex);
+                }
+            }
+            const aidIndex = editor.mode === 'visual-aid' ? (editor.visualAids || [])
+                .findIndex(aid => aid.id === editor.activeVisualAidId) : -1;
+            return {
+            historyLength: editor.history?.length || 0,
+            strokeLength: editor.drawStrokes?.length || 0,
+            drawSaveDirty: editor.drawSaveDirty,
+            labels: [...labelIndices].map(index => [index, clone(editor.labels?.[index])]),
+            visualAid: aidIndex >= 0 ? [aidIndex, clone(editor.visualAids[aidIndex])] : null,
+            fields: Object.fromEntries([
+                'dragStart', 'draftShape', 'draggingLabelIndex', 'draggingConnectorAnchor',
+                'activeDrawStroke', 'activeVisualAidDraftPath', 'visualAidCurveDrag',
+                'visualAidCurveSelectedAnchorId', 'visualAidCurveHover', 'visualAidCurveAddMode',
+                'visualAidLazyBrushPoint', 'visualAidLazyBrushRawPoint',
+                'quickReplacePressedIndex', 'quickReplacePressedPoint',
+                'pendingBracketStart', 'pendingBracketPreview', 'pendingMultiTargets',
+                'activeConnectorLabelIndex', 'quickMultiAnchorLabelIndex',
+                'ghostActiveLabelIndex', 'hoveredLabelIndex', 'activeVisualAidId',
+                'isDrawing'
+            ].map(key => [key, clone(editor[key])]))
+            };
+        };
+        const discardFirstTouchEdit = () => {
+            const editor = owner;
+            if (!editor || !before) return;
+            // Only repaint the high-resolution bitmap if a brush or draft
+            // actually touched it. Label/connector edits are SVG-only; a pure
+            // pinch should never cause even a one-time full bitmap redraw.
+            const bitmapChanged = editor.drawStrokes?.length !== before.strokeLength
+                || !!editor.activeDrawStroke || !!editor.draftShape;
+            const visualAidChanged = editor.mode === 'visual-aid'
+                && (editor.isDrawing || !!editor.visualAidCurveDrag || !!editor.activeVisualAidDraftPath);
+            const vectorsChanged = (editor.history?.length || 0) !== before.historyLength
+                || ['ghostActiveLabelIndex', 'hoveredLabelIndex', 'pendingBracketStart',
+                    'pendingBracketPreview', 'pendingMultiTargets', 'draggingConnectorAnchor',
+                    'draggingLabelIndex'].some(key => JSON.stringify(editor[key]) !== JSON.stringify(before.fields[key]));
+            // Clear before releasing capture: lostpointercapture must not save a
+            // partial stroke or finalize an interrupted connector/drag.
+            editor.activeDrawStroke = null;
+            editor.isDrawing = false;
+            editor.visualAidCurveDrag = null;
+            editor.isPanning = false;
+            editor.panPointerId = null;
+            for (const [index, label] of before.labels) {
+                if (editor.labels?.[index]) editor.labels[index] = label;
+            }
+            if (before.visualAid && editor.visualAids?.[before.visualAid[0]]) {
+                editor.visualAids[before.visualAid[0]] = before.visualAid[1];
+            }
+            if (Array.isArray(editor.drawStrokes)) editor.drawStrokes.length = before.strokeLength;
+            if (Array.isArray(editor.history)) editor.history.length = before.historyLength;
+            editor.drawSaveDirty = before.drawSaveDirty;
+            Object.entries(before.fields).forEach(([key, value]) => { editor[key] = value; });
+            if (bitmapChanged) renderImageEditorCanvas();
+            else if (vectorsChanged) renderImageEditorVectorOverlays();
+            if (visualAidChanged) renderImageEditorVisualAidLayer();
+            updateImageEditorCanvasPointerState();
+            for (const id of touches.keys()) {
+                try {
+                    if (elements.studioImageEditorCanvas?.hasPointerCapture?.(id)) {
+                        elements.studioImageEditorCanvas.releasePointerCapture(id);
+                    }
+                } catch (_) { /* Safari may already have released capture. */ }
+            }
+        };
+        const pair = () => Array.from(touches.values()).slice(0, 2);
+        const rebase = () => {
+            if (!validOwner() || touches.size !== 2) { gestureAnchor = null; return; }
+            const [a, b] = pair();
+            const rect = wrap.getBoundingClientRect();
+            const midX = (a.x + b.x) / 2;
+            const midY = (a.y + b.y) / 2;
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const scale = Math.max(IMAGE_EDITOR_MIN_ZOOM, owner.zoomScale || 1);
+            gestureAnchor = {
+                distance: Math.max(8, Math.hypot(a.x - b.x, a.y - b.y)),
+                scale,
+                x: (midX - centerX - owner.zoomX) / scale,
+                y: (midY - centerY - owner.zoomY) / scale
+            };
+        };
+        const applyFrame = () => {
+            pendingFrame = 0;
+            if (!navigating || !validOwner()) return;
+            const editor = owner;
+            const canvas = elements.studioImageEditorCanvas;
+            if (!canvas) return;
+            // Same fast transform-only path as Mac trackpad panning. SVG bounds
+            // follow the transformed canvas; saved label/stroke coordinates stay put.
+            canvas.style.transform = `translate3d(${editor.zoomX}px, ${editor.zoomY}px, 0) scale(${editor.zoomScale})`;
+            syncImageEditorVectorOverlayBounds();
+            if (elements.studioImageEditorZoomValue) {
+                elements.studioImageEditorZoomValue.textContent = `${Math.round(editor.zoomScale * 100)}%`;
+            }
+        };
+        const scheduleFrame = () => {
+            if (!pendingFrame) pendingFrame = window.requestAnimationFrame(applyFrame);
+        };
+        const move = () => {
+            if (!gestureAnchor || touches.size !== 2 || !validOwner()) return;
+            const [a, b] = pair();
+            const rect = wrap.getBoundingClientRect();
+            const midX = (a.x + b.x) / 2;
+            const midY = (a.y + b.y) / 2;
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const distance = Math.max(8, Math.hypot(a.x - b.x, a.y - b.y));
+            const scale = Math.min(IMAGE_EDITOR_MAX_ZOOM, Math.max(IMAGE_EDITOR_MIN_ZOOM,
+                gestureAnchor.scale * (distance / gestureAnchor.distance)));
+            const next = clampImageEditorZoomPan(scale,
+                midX - centerX - gestureAnchor.x * scale,
+                midY - centerY - gestureAnchor.y * scale);
+            owner.zoomScale = next.scale;
+            owner.zoomX = next.x;
+            owner.zoomY = next.y;
+            scheduleFrame();
+        };
+        const stopEvent = event => {
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+        };
+        wrap.addEventListener('pointerdown', event => {
+            if (event.pointerType === 'pen') {
+                if (touches.size || suppressUntilRelease) { stopEvent(event); return; }
+                pencilId = event.pointerId;
+                return;
+            }
+            if (event.pointerType !== 'touch') return;
+            const editor = state.auth.imageEditor;
+            if (!editor?.open || !editor.baseCanvas || !isImageEditorStandaloneDiagramTarget(editor)) return;
+            if (pencilId !== null || (suppressUntilRelease
+                && event.target?.closest?.('button, input, textarea, select, [contenteditable="true"]'))) {
+                blockedTouches.add(event.pointerId);
+                stopEvent(event);
+                return; // Palm rejection or another contact during navigation.
+            }
+            if (event.target?.closest?.('button, input, textarea, select, [contenteditable="true"]')) return;
+            if (owner && owner !== editor) forget();
+            if (!owner) {
+                owner = editor;
+                before = captureBeforeFirstTouch(editor, event);
+            }
+            touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (touches.size >= 2) {
+                if (!navigating) {
+                    navigating = true;
+                    suppressUntilRelease = true;
+                    discardFirstTouchEdit();
+                    wrap.classList.add('is-touch-navigating');
+                }
+                rebase();
+                try { wrap.setPointerCapture?.(event.pointerId); } catch (_) { /* Safari fallback. */ }
+                stopEvent(event);
+            }
+        }, true);
+        wrap.addEventListener('pointermove', event => {
+            if (event.pointerType === 'touch' && blockedTouches.has(event.pointerId)) {
+                stopEvent(event);
+                return;
+            }
+            if (event.pointerType !== 'touch' || !touches.has(event.pointerId)) return;
+            touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (!suppressUntilRelease) return;
+            stopEvent(event);
+            if (touches.size === 2) move();
+        }, true);
+        const end = event => {
+            if (event.pointerType === 'pen' && event.pointerId === pencilId) { pencilId = null; return; }
+            if (event.pointerType === 'touch' && blockedTouches.delete(event.pointerId)) {
+                stopEvent(event);
+                return;
+            }
+            if (event.pointerType !== 'touch' || !touches.has(event.pointerId)) return;
+            const wasNavigating = suppressUntilRelease;
+            touches.delete(event.pointerId);
+            if (wasNavigating) stopEvent(event);
+            if (navigating && validOwner()) {
+                if (touches.size === 2) rebase();
+                else gestureAnchor = null; // No one-finger edit after a pinch.
+                if (!touches.size) {
+                    clearFrame();
+                    applyImageEditorZoomTransform(); // Full UI sync only on release.
+                    forget();
+                }
+            } else if (!touches.size) forget();
+        };
+        wrap.addEventListener('pointerup', end, true);
+        wrap.addEventListener('pointercancel', end, true);
+        // Releases outside the editor can occur when Safari declines capture.
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+        window.addEventListener('blur', () => { pencilId = null; forget(); });
+    }
+
     function bindImageEditorZoomAndThicknessEvents() {
         const bindOnce = (element, key, eventName, handler, options) => {
             if (!element || element.dataset[key] === 'true') return;
@@ -21303,6 +21547,7 @@ MODIFICATION RULES FOR THIS APP
         bindOnce(elements.studioImageEditorZoomOutBtn, 'zoomClickBound', 'click', () => changeImageEditorZoom(-IMAGE_EDITOR_ZOOM_STEP));
         bindOnce(elements.studioImageEditorZoomInBtn, 'zoomClickBound', 'click', () => changeImageEditorZoom(IMAGE_EDITOR_ZOOM_STEP));
         bindOnce(elements.studioImageEditorZoomResetBtn, 'zoomClickBound', 'click', () => resetImageEditorZoom({ animate: true }));
+        bindImageEditorTouchNavigation();
 
         const thicknessInput = elements.studioImageEditorLineThicknessInput;
         if (thicknessInput && thicknessInput.dataset.connectorThicknessBound !== 'true') {
