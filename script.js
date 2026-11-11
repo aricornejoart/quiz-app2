@@ -325,7 +325,7 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardPenColor: '#111827',
             handwrittenFlashcardBrushSize: 4,
             handwrittenFlashcardPenSizeMm: 1.1,
-            handwrittenFlashcardDisablePressureSensitivity: false,
+            handwrittenFlashcardDisablePressureSensitivity: true,
             handwrittenFlashcardEraserSizeMm: 5,
             handwrittenFlashcardToolPrefsUserId: '',
             handwrittenFlashcardFocusMode: false,
@@ -464,10 +464,15 @@ MODIFICATION RULES FOR THIS APP
                 pinSelectedLabelIndex: -1,
                 allowLabelMovement: false,
                 showDrawData: false,
+                reflectionSweepEnabled: true,
                 showConnectors: true,
                 showConnectorContrast: true,
                 connectorSonarEnabled: true,
                 connectorSonarColor: '#14b8a6',
+                connectorGlowRegular: false,
+                connectorGlowBracket: true,
+                connectorGlowColor: '#14b8a6',
+                connectorGlowSpeed: 1,
                 connectorSonarHoverIndex: -1,
                 connectorSonarTouchIndex: -1,
                 focusMode: false,
@@ -577,6 +582,8 @@ MODIFICATION RULES FOR THIS APP
                 panStartX: 0,
                 panStartY: 0,
                 drawTool: 'paintbrush',
+                drawPressureSensitivityEnabled: true,
+                drawPenSettingsArmed: false,
                 drawSize: 14,
                 paintTransparency: 0.65,
                 activeDrawLabelIndex: null,
@@ -840,6 +847,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeImageStage: document.getElementById('reviewModeImageStage'),
         reviewModeImage: document.getElementById('reviewModeImage'),
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
+        reviewModeReflection: document.getElementById('reviewModeReflection'),
         reviewModeConnectorLayer: document.getElementById('reviewModeConnectorLayer'),
         reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
         reviewModeVisualAidLabelLayer: document.getElementById('reviewModeVisualAidLabelLayer'),
@@ -867,6 +875,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeAllowLabelMovementToggle: document.getElementById('reviewModeAllowLabelMovementToggle'),
         reviewModeLabelNumberToggle: document.getElementById('reviewModeLabelNumberToggle'),
         reviewModeShowDrawDataToggle: document.getElementById('reviewModeShowDrawDataToggle'),
+        reviewModeReflectionSweepToggle: document.getElementById('reviewModeReflectionSweepToggle'),
         reviewModeDisableNamesOnClickToggle: document.getElementById('reviewModeDisableNamesOnClickToggle'),
         reviewModeIncludeDescriptionsToggle: document.getElementById('reviewModeIncludeDescriptionsToggle'),
         reviewModeShowConnectorsToggle: document.getElementById('reviewModeShowConnectorsToggle'),
@@ -874,6 +883,12 @@ MODIFICATION RULES FOR THIS APP
         reviewModeConnectorSonarToggle: document.getElementById('reviewModeConnectorSonarToggle'),
         reviewModeConnectorSonarColor: document.getElementById('reviewModeConnectorSonarColor'),
         reviewModeConnectorSonarColorValue: document.getElementById('reviewModeConnectorSonarColorValue'),
+        reviewModeConnectorGlowRegularToggle: document.getElementById('reviewModeConnectorGlowRegularToggle'),
+        reviewModeConnectorGlowBracketToggle: document.getElementById('reviewModeConnectorGlowBracketToggle'),
+        reviewModeConnectorGlowColor: document.getElementById('reviewModeConnectorGlowColor'),
+        reviewModeConnectorGlowColorValue: document.getElementById('reviewModeConnectorGlowColorValue'),
+        reviewModeConnectorGlowSpeed: document.getElementById('reviewModeConnectorGlowSpeed'),
+        reviewModeConnectorGlowSpeedValue: document.getElementById('reviewModeConnectorGlowSpeedValue'),
         reviewModeFocusToggle: document.getElementById('reviewModeFocusToggle'),
         reviewModeTwoLevelFocusToggle: document.getElementById('reviewModeTwoLevelFocusToggle'),
         reviewModeNormalFocusZoom: document.getElementById('reviewModeNormalFocusZoom'),
@@ -1241,6 +1256,9 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorColorPresetList: document.getElementById('studioImageEditorColorPresetList'),
         studioImageEditorAddColorPresetBtn: document.getElementById('studioImageEditorAddColorPresetBtn'),
         studioImageEditorDrawToolButtons: Array.from(document.querySelectorAll('[data-image-editor-draw-tool]')),
+        studioImageEditorPaintbrushBtn: document.getElementById('studioImageEditorPaintbrushBtn'),
+        studioImageEditorPenPressurePopover: document.getElementById('studioImageEditorPenPressurePopover'),
+        studioImageEditorPressureSensitivityEnabled: document.getElementById('studioImageEditorPressureSensitivityEnabled'),
         studioImageEditorDrawSizeInput: document.getElementById('studioImageEditorDrawSizeInput'),
         studioImageEditorDrawSizeValue: document.getElementById('studioImageEditorDrawSizeValue'),
         studioImageEditorPaintTransparencyInput: document.getElementById('studioImageEditorPaintTransparencyInput'),
@@ -3675,6 +3693,8 @@ MODIFICATION RULES FOR THIS APP
                 anchor: primary,
                 junction,
                 endpoints: targets,
+                // Each branch includes the common stem: the lights begin together.
+                glowPaths: targets.map(target => `M ${point(labelPoint.x)} ${point(labelPoint.y)} L ${point(bend.x)} ${point(bend.y)} L ${point(junction.x)} ${point(junction.y)} L ${point(target.x)} ${point(target.y)}`),
                 color: normalizedConnector.color || '#000000',
                 thickness: Math.min(24, Math.max(0.25, Number(normalizedConnector.thickness) || 7)) / scale,
                 screenScale: scale,
@@ -3706,6 +3726,12 @@ MODIFICATION RULES FOR THIS APP
             return {
                 path: bracketPath,
                 buildPath: () => bracketPath,
+                // Travel label -> bracket midpoint -> both end caps, without a
+                // separate end-flash or a sonar ripple for region brackets.
+                glowPaths: [
+                    `${leaderPath} L ${point(start.x)} ${point(start.y)} L ${point(capStart.x)} ${point(capStart.y)}`,
+                    `${leaderPath} L ${point(end.x)} ${point(end.y)} L ${point(capEnd.x)} ${point(capEnd.y)}`
+                ],
                 anchor,
                 color: normalizedConnector.color || '#000000',
                 thickness: Math.min(24, Math.max(0.25, Number(normalizedConnector.thickness) || 7)) / scale,
@@ -3829,9 +3855,11 @@ MODIFICATION RULES FOR THIS APP
         // connector redraws so zoom, label position, and option refreshes do
         // not restart the CSS animation at frame zero.
         const sonar = options.preserveReviewSonar ? svg.querySelector('[data-review-connector-sonar]') : null;
-        if (sonar) {
+        const glow = options.preserveReviewSonar ? svg.querySelector('[data-review-connector-glow]') : null;
+        if (sonar || glow) {
             svg.querySelectorAll('[data-diagram-connector-index]').forEach(node => node.remove());
-            sonar.insertAdjacentHTML('beforebegin', connectorMarkup);
+            if (glow) glow.insertAdjacentHTML('beforebegin', connectorMarkup);
+            else sonar.insertAdjacentHTML('beforebegin', connectorMarkup);
         } else {
             svg.innerHTML = connectorMarkup;
         }
@@ -12784,10 +12812,15 @@ MODIFICATION RULES FOR THIS APP
         review.allowLabelMovement = review.allowLabelMovement === true;
         review.showLabelNumbers = review.showLabelNumbers === true;
         review.showDrawData = review.showDrawData === true;
+        review.reflectionSweepEnabled = review.reflectionSweepEnabled !== false;
         review.showConnectors = review.showConnectors !== false;
         review.showConnectorContrast = review.showConnectorContrast !== false;
         review.connectorSonarEnabled = review.connectorSonarEnabled !== false;
         review.connectorSonarColor = normalizeEditorHexColor(review.connectorSonarColor || '#14b8a6', '#14b8a6');
+        review.connectorGlowRegular = review.connectorGlowRegular === true;
+        review.connectorGlowBracket = review.connectorGlowBracket !== false;
+        review.connectorGlowColor = normalizeEditorHexColor(review.connectorGlowColor || '#14b8a6', '#14b8a6');
+        review.connectorGlowSpeed = getReviewModeGlowSpeedMultiplier(review.connectorGlowSpeed);
         review.connectorSonarHoverIndex = Number.isInteger(review.connectorSonarHoverIndex) ? review.connectorSonarHoverIndex : -1;
         review.connectorSonarTouchIndex = Number.isInteger(review.connectorSonarTouchIndex) ? review.connectorSonarTouchIndex : -1;
         review.focusMode = review.focusMode === true;
@@ -13943,6 +13976,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.reviewModeLabelLayer) elements.reviewModeLabelLayer.innerHTML = '';
         if (elements.reviewModeVisualAidLabelLayer) { elements.reviewModeVisualAidLabelLayer.innerHTML = ''; elements.reviewModeVisualAidLabelLayer.setAttribute('aria-hidden','true'); }
         if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
+        clearReviewModeReflection();
         if (elements.reviewModeVisualAidLayer) elements.reviewModeVisualAidLayer.innerHTML = '';
         if (elements.reviewModeDrawCanvas) {
             const ctx = elements.reviewModeDrawCanvas.getContext('2d');
@@ -15490,6 +15524,88 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    // Phase 24A.7h: 1x preserves Phase G Fast (1.8s); 2x is twice that
+    // travel speed (0.9s). Legacy categorical values are accepted in case an
+    // already-open session still holds them. The slider remains session-only.
+    function getReviewModeGlowSpeedMultiplier(value = 1) {
+        if (value === 'slow') return .45;
+        if (value === 'normal') return 1.8 / 2.8;
+        if (value === 'fast') return 1;
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? Math.max(.45, Math.min(2, Math.round(numeric * 20) / 20)) : 1;
+    }
+    function getReviewModeGlowCycleSeconds(speed = 1) {
+        return Math.round(1800 / getReviewModeGlowSpeedMultiplier(speed)) / 1000;
+    }
+
+    function renderReviewModeConnectorGlow() {
+        const svg = elements.reviewModeConnectorLayer;
+        if (!svg) return;
+        const existing = svg.querySelector('[data-review-connector-glow]');
+        const clear = () => existing?.remove();
+        const review = getReviewModeState();
+        if (!review.overlayOpen || !review.showConnectors || !isReviewModeActiveAngleOverlayReady() ||
+            svg.classList.contains('hidden') || (review.visualAidOnly && review.showVisualAid && !review.miniQuiz.active) ||
+            (review.miniQuiz.active && review.miniQuiz.complete)) { clear(); return; }
+        const miniActive = review.miniQuiz.active;
+        const index = miniActive ? getReviewModeMiniQuizActiveLabelIndex(review)
+            : (review.connectorSonarHoverIndex >= 0 ? review.connectorSonarHoverIndex : review.connectorSonarTouchIndex);
+        if (!Number.isInteger(index) || index < 0 || (!miniActive && review.pinnedLabelsOnly &&
+            !getReviewModePinnedIndexSet(getActiveReviewModeEntry(), review.activeAngleIndex).has(index))) { clear(); return; }
+        const label = getReviewModeDisplayLabels(getActiveReviewModeEntry())[index];
+        if (!label?.connector) { clear(); return; }
+        const isBracket = getDiagramConnectorStyle(label.connector) === 'bracket';
+        if (!(isBracket ? review.connectorGlowBracket : review.connectorGlowRegular)) { clear(); return; }
+        const image = elements.reviewModeImage;
+        const width = Math.max(1, image?.naturalWidth || 1);
+        const height = Math.max(1, image?.naturalHeight || 1);
+        const scale = Math.max(.0001, (image?.offsetWidth || elements.reviewModeImageStage?.offsetWidth || width) / width);
+        const geometry = getDiagramConnectorSvgGeometry(label.connector, label, width, height, scale);
+        const paths = geometry?.glowPaths || (geometry?.path ? [geometry.path] : []);
+        if (!paths.length) { clear(); return; }
+        const color = normalizeEditorHexColor(review.connectorGlowColor || '#14b8a6', '#14b8a6');
+        const seconds = getReviewModeGlowCycleSeconds(review.connectorGlowSpeed);
+        // Reuse the animated DOM when the exact geometry hasn't changed. This
+        // avoids restarting travel when labels or settings merely re-render.
+        const sameGlow = existing && existing.dataset.reviewConnectorGlow === String(index) &&
+            existing.dataset.glowAngleIndex === String(review.activeAngleIndex) &&
+            existing.dataset.glowScale === String(scale) &&
+            existing.querySelectorAll('.review-mode-glow-head').length === paths.length &&
+            [...existing.querySelectorAll('.review-mode-glow-head')].every((node, i) => node.getAttribute('d') === paths[i]);
+        if (sameGlow) {
+            existing.style.color = color;
+            existing.style.setProperty('--review-glow-cycle', `${seconds}s`);
+            return;
+        }
+        clear();
+        // Four short aligned dashes: a fading COLOR tail behind a white halo
+        // and the small solid WHITE leading tip. All use the same path and
+        // animation clock, with no per-frame JavaScript or SVG filters.
+        const markup = paths.map(path => `<g class="review-mode-glow-branch">
+            <path d="${path}" class="review-mode-glow-path review-mode-glow-far" />
+            <path d="${path}" class="review-mode-glow-path review-mode-glow-near" />
+            <path d="${path}" class="review-mode-glow-path review-mode-glow-halo" />
+            <path d="${path}" class="review-mode-glow-path review-mode-glow-head" />
+        </g>`).join('');
+        svg.insertAdjacentHTML('beforeend', `<g class="review-mode-glow" data-review-connector-glow="${index}" data-glow-angle-index="${review.activeAngleIndex}" data-glow-scale="${scale}" style="color:${color};--review-glow-cycle:${seconds}s" aria-hidden="true">${markup}</g>`);
+        // SVG pathLength normalization differs between CSS engines. Measure
+        // once at activation (never per frame), then use one non-repeating dash
+        // for each light and each piece of its trailing fade. All geometry
+        // is taken from the exact rendered connector paths.
+        const glow = svg.querySelector('[data-review-connector-glow]');
+        glow?.querySelectorAll('.review-mode-glow-branch').forEach(branch => {
+            const head = branch.querySelector('.review-mode-glow-head');
+            const length = Math.max(.01, head.getTotalLength() * scale);
+            for (const [name, sizePx] of [['far', 24], ['near', 10], ['halo', 4.8], ['head', 2.8]]) {
+                const path = branch.querySelector(`.review-mode-glow-${name}`);
+                const segment = Math.min(length, sizePx);
+                path.style.strokeDasharray = `${segment}px ${length + segment + 2}px`;
+                path.style.setProperty('--glow-from', `${segment}px`);
+                path.style.setProperty('--glow-to', `${segment - length}px`);
+            }
+        });
+    }
+
     // Phase 24A.6q: sonar excludes region brackets. Multi-target connectors
     // use a single animated endpoint, rotating in saved target order. Neither
     // the existing connector geometry nor saved diagram data is modified.
@@ -15557,6 +15673,9 @@ MODIFICATION RULES FOR THIS APP
             clear();
             return;
         }
+        // Phase 24A.7h: Sonar runs its ORIGINAL three-wave animation and
+        // sequential multi-target rotation whether Glow is on or off. Glow
+        // follows the same geometry but never overrides the Sonar wave clock.
         // A complete pulse occupies one endpoint's time slot. Rotation happens
         // only after that slot, so multiple landmarks never animate together.
         const multiple = targets.length > 1;
@@ -15622,6 +15741,8 @@ MODIFICATION RULES FOR THIS APP
         const review = getReviewModeState();
         if (review.miniQuiz.active || review.connectorSonarHoverIndex === index) return;
         review.connectorSonarHoverIndex = index;
+        refreshReviewModeReflection();
+        if (review.connectorGlowRegular || review.connectorGlowBracket) renderReviewModeConnectorGlow();
         renderReviewModeConnectorSonar();
     }
 
@@ -15630,12 +15751,16 @@ MODIFICATION RULES FOR THIS APP
         if (review.miniQuiz.active || !review.overlayOpen || !Number.isInteger(index) || index < 0) return;
         if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
         review.connectorSonarTouchIndex = index;
+        refreshReviewModeReflection();
+        if (review.connectorGlowRegular || review.connectorGlowBracket) renderReviewModeConnectorGlow();
         renderReviewModeConnectorSonar();
         // Touch has no leave/hover; keep the endpoint visible briefly without
         // creating an indefinitely animated landmark after the tap.
         reviewModeSonarTouchTimeoutId = window.setTimeout(() => {
             reviewModeSonarTouchTimeoutId = 0;
             review.connectorSonarTouchIndex = -1;
+            refreshReviewModeReflection();
+            if (review.connectorGlowRegular || review.connectorGlowBracket) renderReviewModeConnectorGlow();
             renderReviewModeConnectorSonar();
         }, 4500);
     }
@@ -15663,6 +15788,7 @@ MODIFICATION RULES FOR THIS APP
         }
         const connectorOptions = review.showConnectorContrast ? { outlineColor: '#ffffff', outlineExtraWidth: 2 } : {};
         renderDiagramConnectorSvgLayer(elements.reviewModeConnectorLayer, labels, elements.reviewModeImage, elements.reviewModeImageStage, review.showConnectors, { ...connectorOptions, preserveReviewSonar: true });
+        renderReviewModeConnectorGlow();
         renderReviewModeConnectorSonar();
     }
 
@@ -16869,6 +16995,91 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    // Phase 24A.7i: the moving white reflection is a transient display mask
+    // of the active label's ORIGINAL paint/highlighter/eraser geometry. No
+    // overlay pixels, color or cached mask are saved back into Saved Images.
+    // The single mask is refreshed only when the label or source changes;
+    // its white gradient moves on the compositor with NO JS frame loop.
+    function clearReviewModeReflection() {
+        const overlay = elements.reviewModeReflection;
+        if (!overlay) return;
+        overlay.classList.add('hidden');
+        overlay.style.maskImage = '';
+        overlay.style.webkitMaskImage = '';
+        delete overlay.dataset.maskKey;
+    }
+
+    function renderReviewModeReflection(entry, angle, width, height) {
+        const overlay = elements.reviewModeReflection;
+        if (!overlay) return;
+        const review = getReviewModeState();
+        const miniActive = review.miniQuiz.active;
+        const visible = review.overlayOpen && review.reflectionSweepEnabled &&
+            isReviewModeActiveAngleOverlayReady() && !(review.visualAidOnly && review.showVisualAid && !miniActive) &&
+            !(miniActive && review.miniQuiz.complete);
+        const index = !visible ? -1 : miniActive ? getReviewModeMiniQuizActiveLabelIndex(review)
+            : (review.connectorSonarHoverIndex >= 0 ? review.connectorSonarHoverIndex : review.connectorSonarTouchIndex);
+        if (!entry || !angle || index < 0 || !Number.isInteger(index) ||
+            (!miniActive && review.pinnedLabelsOnly &&
+                !getReviewModePinnedIndexSet(entry, review.activeAngleIndex).has(index))) {
+            clearReviewModeReflection();
+            return;
+        }
+        // This is intentionally NOT dependent on Sonar, Glow or drawing-color
+        // switches. Mini Quiz inherits the same effect independently.
+        const raw = Array.isArray(angle.drawStrokes) ? angle.drawStrokes : [];
+        if (!raw.some(stroke => Math.max(0, Number(stroke?.labelIndex) || 0) === index &&
+            normalizeImageEditorDrawTool(stroke?.tool) !== 'eraser' && stroke?.points?.length)) {
+            clearReviewModeReflection();
+            return;
+        }
+        const labels = normalizeDiagramLabels(angle.labels || []);
+        if (!labels[index]) { clearReviewModeReflection(); return; }
+        const image = elements.reviewModeImage;
+        const key = [review.activeEntryId, review.activeAngleIndex, index, width, height,
+            image?.currentSrc || image?.src || ''].join('::');
+        if (overlay.dataset.maskKey !== key) {
+            const mask = document.createElement('canvas');
+            mask.width = width;
+            mask.height = height;
+            const context = mask.getContext('2d');
+            if (!context) { clearReviewModeReflection(); return; }
+            context.save();
+            context.lineJoin = 'round';
+            context.lineCap = 'round';
+            for (const stroke of raw) {
+                if (Math.max(0, Number(stroke?.labelIndex) || 0) !== index || !stroke?.points?.length) continue;
+                const tool = normalizeImageEditorDrawTool(stroke.tool);
+                if (tool !== 'eraser' && Number(stroke.transparency) === 0) continue;
+                context.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+                context.fillStyle = '#ffffff';
+                context.strokeStyle = '#ffffff';
+                drawImageEditorStrokePath(context, stroke);
+            }
+            context.restore();
+            const maskUrl = `url("${mask.toDataURL('image/png')}")`;
+            overlay.style.maskImage = maskUrl;
+            overlay.style.webkitMaskImage = maskUrl;
+            overlay.dataset.maskKey = key;
+        }
+        // The existing Sonar cycles: Review 1.5s, multi Review 1.8s,
+        // Mini Quiz 3s. Match its cadence even if the rings are switched off.
+        const connectorTargets = labels[index]?.connector?.targets;
+        const isMulti = Array.isArray(connectorTargets) && connectorTargets.length > 1;
+        overlay.style.setProperty('--review-reflection-cycle', `${miniActive ? 3 : isMulti ? 1.8 : 1.5}s`);
+        overlay.classList.remove('hidden');
+    }
+
+    function refreshReviewModeReflection() {
+        // A hover/tap should never repaint the expensive full drawing canvas.
+        const image = elements.reviewModeImage;
+        if (!image) return;
+        const entry = getActiveReviewModeEntry();
+        const angle = getActiveReviewModeAngle(entry);
+        const dims = getImageEditorStrokeOverlayDimensions(image.naturalWidth, image.naturalHeight);
+        renderReviewModeReflection(entry, angle, dims.width, dims.height);
+    }
+
     function renderReviewModeDrawData({ skipVisualAidRefresh = false } = {}) {
         const entry = getActiveReviewModeEntry();
         const angle = getActiveReviewModeAngle(entry);
@@ -16880,6 +17091,7 @@ MODIFICATION RULES FOR THIS APP
         if (canvas.width !== width) canvas.width = width;
         if (canvas.height !== height) canvas.height = height;
         const review = getReviewModeState();
+        renderReviewModeReflection(entry, angle, width, height);
         // Canvas changes are expensive at full image resolution. When no label
         // drawings are requested, an already-clear canvas needs no repaint.
         if (!review.showDrawData && canvas.dataset.reviewEmptyDraw === 'true' && !resized) return;
@@ -17302,6 +17514,7 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeLabelNumberToggle.disabled = false;
         }
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
+        if (elements.reviewModeReflectionSweepToggle) elements.reviewModeReflectionSweepToggle.checked = review.reflectionSweepEnabled;
         if (elements.reviewModeDisableNamesOnClickToggle) {
             elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
             elements.reviewModeDisableNamesOnClickToggle.disabled = miniActive;
@@ -17314,6 +17527,15 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeConnectorSonarColor.disabled = !review.connectorSonarEnabled;
         }
         if (elements.reviewModeConnectorSonarColorValue) elements.reviewModeConnectorSonarColorValue.textContent = review.connectorSonarColor.toUpperCase();
+        if (elements.reviewModeConnectorGlowRegularToggle) elements.reviewModeConnectorGlowRegularToggle.checked = review.connectorGlowRegular;
+        if (elements.reviewModeConnectorGlowBracketToggle) elements.reviewModeConnectorGlowBracketToggle.checked = review.connectorGlowBracket;
+        if (elements.reviewModeConnectorGlowColor) elements.reviewModeConnectorGlowColor.value = review.connectorGlowColor;
+        if (elements.reviewModeConnectorGlowColorValue) elements.reviewModeConnectorGlowColorValue.textContent = review.connectorGlowColor.toUpperCase();
+        if (elements.reviewModeConnectorGlowSpeed) {
+            elements.reviewModeConnectorGlowSpeed.value = String(review.connectorGlowSpeed);
+            elements.reviewModeConnectorGlowSpeed.setAttribute('aria-valuetext', `${review.connectorGlowSpeed.toFixed(2)} times original Fast speed`);
+        }
+        if (elements.reviewModeConnectorGlowSpeedValue) elements.reviewModeConnectorGlowSpeedValue.textContent = `${review.connectorGlowSpeed.toFixed(2)}×`;
         if (elements.reviewModeShowConnectorContrastToggle) {
             elements.reviewModeShowConnectorContrastToggle.checked = review.showConnectorContrast;
             elements.reviewModeShowConnectorContrastToggle.disabled = !review.showConnectors;
@@ -17415,6 +17637,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModeLabelDrag = null;
         review.showLabelNumbers = false;
         review.showDrawData = false;
+        review.reflectionSweepEnabled = true;
         review.showConnectors = true;
         review.showConnectorContrast = true;
         review.focusMode = false;
@@ -18329,6 +18552,9 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorLineThicknessToggle = document.getElementById('studioImageEditorLineThicknessToggle');
         elements.studioImageEditorLineThicknessPopover = document.getElementById('studioImageEditorLineThicknessPopover');
         elements.studioImageEditorDrawToolButtons = Array.from(document.querySelectorAll('[data-image-editor-draw-tool]'));
+        elements.studioImageEditorPaintbrushBtn = document.getElementById('studioImageEditorPaintbrushBtn');
+        elements.studioImageEditorPenPressurePopover = document.getElementById('studioImageEditorPenPressurePopover');
+        elements.studioImageEditorPressureSensitivityEnabled = document.getElementById('studioImageEditorPressureSensitivityEnabled');
         elements.studioImageEditorDrawSizeInput = document.getElementById('studioImageEditorDrawSizeInput');
         elements.studioImageEditorDrawSizeValue = document.getElementById('studioImageEditorDrawSizeValue');
         elements.studioImageEditorDrawSizeToggle = document.getElementById('studioImageEditorDrawSizeToggle');
@@ -18437,7 +18663,7 @@ MODIFICATION RULES FOR THIS APP
                         <div class="studio-image-editor-slider-popover studio-image-editor-color-control" data-image-editor-popover="color"><button type="button" id="studioImageEditorColorToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle studio-image-editor-color-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorColorPopover">RGB <span id="studioImageEditorCurrentColorSwatch" class="studio-image-editor-current-color-swatch" aria-hidden="true"></span></button><div id="studioImageEditorColorPopover" class="studio-image-editor-popover-panel studio-image-editor-color-popover hidden" role="dialog" aria-label="Connector and drawing colors"><label class="studio-image-editor-color-picker-row" title="Connector and drawing RGB color"><span>Color</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Connector and drawing RGB color"></label><div class="studio-image-editor-color-presets-heading">Saved colors</div><div id="studioImageEditorColorPresetList" class="studio-image-editor-color-preset-list" aria-label="Saved color presets"></div><button type="button" id="studioImageEditorAddColorPresetBtn" class="studio-image-editor-color-preset-add" aria-label="Save current color preset" title="Save current color">+</button></div></div>
                         <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">2</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness"><label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="0.25" max="24" step="0.25" value="2" aria-label="Connector thickness"></label></div></div>
                         <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
-                          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Draw / paintbrush tool" aria-label="Draw / paintbrush tool">🖌️</button>
+                          <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap"><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button><div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings"><label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><input type="checkbox" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"></label><div class="studio-image-editor-pressure-hint">ON by default. Apple Pencil pressure varies new stroke thickness.</div></div></div>
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
                         </div>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size"><label class="studio-image-editor-range-control" title="Paintbrush and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Paintbrush and eraser size"></label></div></div>
@@ -20782,6 +21008,8 @@ MODIFICATION RULES FOR THIS APP
             panStartX: 0,
             panStartY: 0,
             drawTool: 'paintbrush',
+            drawPressureSensitivityEnabled: true,
+            drawPenSettingsArmed: false,
             drawSize: 14,
             paintTransparency: 0.65,
             activeDrawLabelIndex: null,
@@ -21252,9 +21480,15 @@ MODIFICATION RULES FOR THIS APP
         if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
         const rect = canvas.getBoundingClientRect();
         if (!rect.width || !rect.height) return null;
+        const pointerType = normalizeSheetText(event?.pointerType || source?.pointerType);
+        const rawPressure = Number(event?.pressure);
         return {
             x: Math.max(0, Math.min(canvas.width, ((clientX - rect.left) / rect.width) * canvas.width)),
-            y: Math.max(0, Math.min(canvas.height, ((clientY - rect.top) / rect.height) * canvas.height))
+            y: Math.max(0, Math.min(canvas.height, ((clientY - rect.top) / rect.height) * canvas.height)),
+            // PointerEvent.pressure is meaningful on a Pencil. Mouse input and
+            // touch continue to use the historical fixed-width brush path.
+            ...(pointerType === 'pen'
+                ? { p: Number.isFinite(rawPressure) && rawPressure > 0 ? Math.max(.05, Math.min(1, rawPressure)) : .5 } : {})
         };
     }
 
@@ -21306,6 +21540,57 @@ MODIFICATION RULES FOR THIS APP
         return Math.round(getImageEditorPaintTransparency() * 100);
     }
 
+    // Phase 24A.7j: pen pressure is an account-scoped local tool preference,
+    // not a Saved Image or database field. Missing preference defaults ON.
+    function getDiagramCreatorPenPressureStorageKey() {
+        const owner = normalizeSheetText(state.auth.user?.id) || 'anonymous';
+        return `studyBunnyDiagramCreatorPenPressureV1:${owner}`;
+    }
+
+    function loadDiagramCreatorPenPressurePreference() {
+        try { return window.localStorage?.getItem(getDiagramCreatorPenPressureStorageKey()) !== 'off'; }
+        catch (_) { return true; }
+    }
+
+    function saveDiagramCreatorPenPressurePreference(enabled) {
+        try { window.localStorage?.setItem(getDiagramCreatorPenPressureStorageKey(), enabled ? 'on' : 'off'); }
+        catch (_) { /* Drawing remains usable when local storage is unavailable. */ }
+    }
+
+    function closeDiagramCreatorPenPressurePopover() {
+        const panel = elements.studioImageEditorPenPressurePopover;
+        panel?.classList.add('hidden');
+        panel?.style.removeProperty('position');
+        panel?.style.removeProperty('left');
+        panel?.style.removeProperty('top');
+        panel?.style.removeProperty('z-index');
+        elements.studioImageEditorPaintbrushBtn?.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleDiagramCreatorPenPressurePopover() {
+        const toggle = elements.studioImageEditorPaintbrushBtn;
+        const panel = elements.studioImageEditorPenPressurePopover;
+        if (!toggle || !panel || !isImageEditorLabelDrawActive()) return;
+        const opening = panel.classList.contains('hidden');
+        closeImageEditorSliderPopovers();
+        if (!opening) return;
+        if (elements.studioImageEditorPressureSensitivityEnabled) {
+            elements.studioImageEditorPressureSensitivityEnabled.checked = state.auth.imageEditor?.drawPressureSensitivityEnabled !== false;
+        }
+        // Fixed positioning avoids clipping in the iPad/mobile editor toolbar.
+        panel.classList.remove('hidden');
+        panel.style.position = 'fixed';
+        panel.style.zIndex = '2147483000';
+        const rect = toggle.getBoundingClientRect();
+        const width = panel.getBoundingClientRect().width || 230;
+        const height = panel.getBoundingClientRect().height || 95;
+        const margin = 8;
+        panel.style.left = `${Math.round(Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin)))}px`;
+        const below = rect.bottom + 6;
+        panel.style.top = `${Math.round(below + height + margin > window.innerHeight ? Math.max(margin, rect.top - height - 6) : below)}px`;
+        toggle.setAttribute('aria-expanded', 'true');
+    }
+
     function normalizeImageEditorDrawTool(value) {
         const normalized = normalizeSheetText(value);
         return ['paintbrush', 'highlighter', 'eraser'].includes(normalized) ? normalized : 'paintbrush';
@@ -21319,7 +21604,17 @@ MODIFICATION RULES FOR THIS APP
         const nextTool = normalizeImageEditorDrawTool(value);
         const isSameActiveTool = isImageEditorLabelDrawActive()
             && normalizeImageEditorDrawTool(editor.drawTool) === nextTool;
+        if (isSameActiveTool && nextTool === 'paintbrush') {
+            if (!editor.drawPenSettingsArmed) {
+                editor.drawPenSettingsArmed = true;
+                setImageEditorStatus('Tap the Pen again to open pressure settings.');
+                return;
+            }
+            toggleDiagramCreatorPenPressurePopover();
+            return;
+        }
         closeImageEditorSliderPopovers();
+        editor.drawPenSettingsArmed = nextTool === 'paintbrush';
         if (isSameActiveTool) {
             editor.activeDrawLabelIndex = null;
             editor.activeDrawStroke = null;
@@ -21715,9 +22010,11 @@ MODIFICATION RULES FOR THIS APP
             color: normalizeEditorHexColor(stroke?.color || '#000000', '#000000'),
             size: Math.min(60, Math.max(2, Number(stroke?.size) || 14)),
             transparency: Math.min(1, Math.max(0, Number.isFinite(Number(stroke?.transparency)) ? Number(stroke?.transparency) : 0.65)),
+            ...(stroke?.pressureSensitive === true && normalizeImageEditorDrawTool(stroke?.tool) === 'paintbrush' ? { pressureSensitive: true } : {}),
             points: (Array.isArray(stroke?.points) ? stroke.points : []).map(point => ({
                 x: Number(point?.x) || 0,
-                y: Number(point?.y) || 0
+                y: Number(point?.y) || 0,
+                ...(stroke?.pressureSensitive === true && Number.isFinite(Number(point?.p)) ? { p: Math.max(.05, Math.min(1, Number(point.p))) } : {})
             }))
         })).filter(stroke => stroke.points.length);
     }
@@ -21921,7 +22218,9 @@ MODIFICATION RULES FOR THIS APP
         const finalPoint = canUseFinalPoint ? getImageEditorCanvasPoint(event) : null;
         const points = Array.isArray(stroke.points) ? stroke.points : (stroke.points = []);
         const previousPoint = points[points.length - 1];
-        if (finalPoint && (!previousPoint || Math.hypot(finalPoint.x - previousPoint.x, finalPoint.y - previousPoint.y) >= 0.5)) points.push(finalPoint);
+        if (finalPoint && (!previousPoint || Math.hypot(finalPoint.x - previousPoint.x, finalPoint.y - previousPoint.y) >= 0.5)) {
+            points.push({ x: finalPoint.x, y: finalPoint.y, ...(stroke.pressureSensitive === true ? { p: finalPoint.p ?? previousPoint?.p ?? .5 } : {}) });
+        }
         editor.activeDrawStroke = null;
         editor.isDrawing = false;
         editor.dragStart = null;
@@ -22031,6 +22330,34 @@ MODIFICATION RULES FOR THIS APP
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.lineWidth = size;
+        if (stroke?.pressureSensitive === true && normalizeImageEditorDrawTool(stroke?.tool) === 'paintbrush') {
+            // One filled ribbon per stroke: variable widths without a JS frame
+            // loop or per-point Canvas stroke calls. Historical strokes and all
+            // eraser strokes take the byte-identical constant-width path below.
+            const widths = points.map(point => size * (.35 + 1.3 * Math.max(.05, Math.min(1, Number(point.p) || .5))));
+            if (points.length === 1) { drawImageEditorDot(ctx, points[0], widths[0]); return; }
+            const left = [], right = [];
+            for (let i = 0; i < points.length; i += 1) {
+                const before = points[Math.max(0, i - 1)];
+                const after = points[Math.min(points.length - 1, i + 1)];
+                const dx = after.x - before.x;
+                const dy = after.y - before.y;
+                const length = Math.hypot(dx, dy) || 1;
+                const nx = -dy / length * widths[i] / 2;
+                const ny = dx / length * widths[i] / 2;
+                left.push({ x: points[i].x + nx, y: points[i].y + ny });
+                right.push({ x: points[i].x - nx, y: points[i].y - ny });
+            }
+            ctx.beginPath();
+            ctx.moveTo(left[0].x, left[0].y);
+            for (let i = 1; i < left.length; i += 1) ctx.lineTo(left[i].x, left[i].y);
+            for (let i = right.length - 1; i >= 0; i -= 1) ctx.lineTo(right[i].x, right[i].y);
+            ctx.closePath();
+            ctx.fill();
+            drawImageEditorDot(ctx, points[0], widths[0]);
+            drawImageEditorDot(ctx, points[points.length - 1], widths[widths.length - 1]);
+            return;
+        }
         if (points.length === 1) {
             drawImageEditorDot(ctx, points[0], size);
             return;
@@ -22171,13 +22498,15 @@ MODIFICATION RULES FOR THIS APP
         pushImageEditorHistory();
         editor.drawSize = getImageEditorDrawSize();
         editor.paintTransparency = getImageEditorPaintTransparency();
+        const pressureSensitive = tool === 'paintbrush' && editor.drawPressureSensitivityEnabled !== false && Number.isFinite(point.p);
         const stroke = {
             labelIndex: editor.activeDrawLabelIndex,
             tool,
             color: getEditorArrowColor(editor.mode),
             size: editor.drawSize,
             transparency: editor.paintTransparency,
-            points: [point]
+            ...(pressureSensitive ? { pressureSensitive: true } : {}),
+            points: [{ x: point.x, y: point.y, ...(pressureSensitive ? { p: point.p } : {}) }]
         };
         editor.activeDrawStroke = stroke;
         editor.drawStrokes.push(stroke);
@@ -22188,7 +22517,10 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         const stroke = editor?.activeDrawStroke;
         if (!stroke || !point) return;
-        stroke.points.push(point);
+        const last = stroke.points[stroke.points.length - 1];
+        const rawPressure = Number.isFinite(point.p) ? point.p : (last?.p || .5);
+        const smoothedPressure = last?.p !== undefined ? last.p * .55 + rawPressure * .45 : rawPressure;
+        stroke.points.push({ x: point.x, y: point.y, ...(stroke.pressureSensitive === true ? { p: Math.round(smoothedPressure * 1000) / 1000 } : {}) });
         renderImageEditorCanvas();
     }
 
@@ -24659,6 +24991,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function closeImageEditorSliderPopovers() {
+        closeDiagramCreatorPenPressurePopover();
         const popovers = [
             [elements.studioImageEditorColorToggle, elements.studioImageEditorColorPopover],
             [elements.studioImageEditorLineThicknessToggle, elements.studioImageEditorLineThicknessPopover],
@@ -24697,6 +25030,8 @@ MODIFICATION RULES FOR THIS APP
         const drawActive = isImageEditorLabelDrawActive();
         const connectorActive = isImageEditorConnectorMode(editor);
         const activeTool = normalizeImageEditorDrawTool(editor?.drawTool || 'paintbrush');
+        if (elements.studioImageEditorPressureSensitivityEnabled) elements.studioImageEditorPressureSensitivityEnabled.checked = editor?.drawPressureSensitivityEnabled !== false;
+        if (!drawActive || activeTool !== 'paintbrush') closeDiagramCreatorPenPressurePopover();
         updateImageEditorCurrentColorSwatch(editor?.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000');
         const drawToolbar = elements.studioImageEditorDrawToolButtons?.[0]?.closest('.studio-image-editor-draw-toolbar');
         drawToolbar?.classList.toggle('is-draw-ready', drawActive);
@@ -25295,7 +25630,7 @@ MODIFICATION RULES FOR THIS APP
         }).filter(Boolean);
         editor.drawStrokes = cloneImageEditorDrawStrokes(editor.drawStrokes || []).map(stroke => ({
             ...stroke,
-            points: stroke.points.map(point => ({ x: point.x - x, y: point.y - y }))
+            points: stroke.points.map(point => ({ ...point, x: point.x - x, y: point.y - y }))
         }));
         editor.baseCanvas = nextCanvas;
         editor.imageDirty = true;
@@ -26215,6 +26550,12 @@ MODIFICATION RULES FOR THIS APP
                 toggleImageEditorDrawTool(button.dataset.imageEditorDrawTool);
             });
         });
+        elements.studioImageEditorPressureSensitivityEnabled?.addEventListener('change', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.drawPressureSensitivityEnabled = !!elements.studioImageEditorPressureSensitivityEnabled.checked;
+            saveDiagramCreatorPenPressurePreference(editor.drawPressureSensitivityEnabled);
+        });
         elements.studioImageEditorDrawSizeInput?.addEventListener('input', () => {
             const editor = state.auth.imageEditor;
             if (!editor) return;
@@ -26414,6 +26755,8 @@ MODIFICATION RULES FOR THIS APP
         editor.isPanning = false;
         editor.panPointerId = null;
         editor.drawTool = 'paintbrush';
+        editor.drawPenSettingsArmed = false;
+        editor.drawPressureSensitivityEnabled = loadDiagramCreatorPenPressurePreference();
         editor.drawSize = getImageEditorDrawSize();
         editor.paintTransparency = getImageEditorPaintTransparency();
         editor.activeDrawLabelIndex = null;
@@ -34995,12 +35338,15 @@ if (elements.importBackupFile) {
         const owner = normalizeSheetText(state.auth.user?.id) || 'anonymous';
         if (state.auth.handwrittenFlashcardToolPrefsUserId === owner) return;
         state.auth.handwrittenFlashcardToolPrefsUserId = owner;
-        state.auth.handwrittenFlashcardDisablePressureSensitivity = false;
+        state.auth.handwrittenFlashcardDisablePressureSensitivity = true;
         try {
             const raw = window.localStorage?.getItem(getHandwrittenToolPrefsStorageKey(owner));
             const stored = raw ? JSON.parse(raw) : {};
             state.auth.handwrittenFlashcardPenSizeMm = clampHandwrittenToolMm(stored.penSizeMm, 1.1);
-            state.auth.handwrittenFlashcardDisablePressureSensitivity = stored.disablePressureSensitivity === true;
+            // Prior releases stored the old OFF default as false. First use in
+            // Phase G adopts the new ON default; subsequent explicit choices persist.
+            state.auth.handwrittenFlashcardDisablePressureSensitivity = stored.pressurePreferenceVersion === 2
+                ? stored.disablePressureSensitivity !== false : true;
             state.auth.handwrittenFlashcardEraserSizeMm = clampHandwrittenToolMm(stored.eraserSizeMm, 5, 1, 12);
             state.auth.handwrittenFlashcardSelectionType = stored.selectionType === 'lasso' ? 'lasso' : 'rectangle';
             state.auth.handwrittenFlashcardDiagramBothSides = stored.diagramBothSides !== false;
@@ -35020,6 +35366,7 @@ if (elements.importBackupFile) {
             window.localStorage?.setItem(getHandwrittenToolPrefsStorageKey(), JSON.stringify({
                 penSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardPenSizeMm, 1.1),
                 disablePressureSensitivity: !!state.auth.handwrittenFlashcardDisablePressureSensitivity,
+                pressurePreferenceVersion: 2,
                 eraserSizeMm: clampHandwrittenToolMm(state.auth.handwrittenFlashcardEraserSizeMm, 5, 1, 12),
                 penColor: normalizeEditorHexColor(state.auth.handwrittenFlashcardPenColor || '#111827', '#111827'),
                 selectionType: state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle',
@@ -53803,6 +54150,15 @@ if (elements.reviewModeLabelNumberToggle) {
     });
 }
 
+if (elements.reviewModeReflectionSweepToggle) {
+    elements.reviewModeReflectionSweepToggle.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review.reflectionSweepEnabled = elements.reviewModeReflectionSweepToggle.checked;
+        renderReviewModeDrawData({ skipVisualAidRefresh: true });
+        syncReviewModeControls();
+    });
+}
+
 if (elements.reviewModeShowDrawDataToggle) {
     elements.reviewModeShowDrawDataToggle.addEventListener('change', () => {
         const review = getReviewModeState();
@@ -53862,6 +54218,38 @@ if (elements.reviewModeConnectorSonarColor) {
         review.connectorSonarColor = normalizeEditorHexColor(elements.reviewModeConnectorSonarColor.value, '#14b8a6');
         if (elements.reviewModeConnectorSonarColorValue) elements.reviewModeConnectorSonarColorValue.textContent = review.connectorSonarColor.toUpperCase();
         renderReviewModeConnectorSonar();
+    });
+}
+
+for (const [toggle, field] of [
+    [elements.reviewModeConnectorGlowRegularToggle, 'connectorGlowRegular'],
+    [elements.reviewModeConnectorGlowBracketToggle, 'connectorGlowBracket']
+]) {
+    toggle?.addEventListener('change', () => {
+        const review = getReviewModeState();
+        review[field] = toggle.checked;
+        renderReviewModeConnectorGlow();
+        renderReviewModeConnectorSonar();
+        syncReviewModeControls();
+    });
+}
+if (elements.reviewModeConnectorGlowColor) {
+    elements.reviewModeConnectorGlowColor.addEventListener('input', () => {
+        const review = getReviewModeState();
+        review.connectorGlowColor = normalizeEditorHexColor(elements.reviewModeConnectorGlowColor.value, '#14b8a6');
+        if (elements.reviewModeConnectorGlowColorValue) elements.reviewModeConnectorGlowColorValue.textContent = review.connectorGlowColor.toUpperCase();
+        renderReviewModeConnectorGlow();
+    });
+}
+if (elements.reviewModeConnectorGlowSpeed) {
+    elements.reviewModeConnectorGlowSpeed.addEventListener('input', () => {
+        const review = getReviewModeState();
+        review.connectorGlowSpeed = getReviewModeGlowSpeedMultiplier(elements.reviewModeConnectorGlowSpeed.value);
+        elements.reviewModeConnectorGlowSpeed.setAttribute('aria-valuetext', `${review.connectorGlowSpeed.toFixed(2)} times original Fast speed`);
+        if (elements.reviewModeConnectorGlowSpeedValue) elements.reviewModeConnectorGlowSpeedValue.textContent = `${review.connectorGlowSpeed.toFixed(2)}×`;
+        // Only changes a CSS animation duration on the existing Glow overlay;
+        // the original Sonar animation and endpoint rotation are untouched.
+        renderReviewModeConnectorGlow();
     });
 }
 
@@ -58247,10 +58635,26 @@ document.addEventListener('click', event => {
     panel.style.left = `${Math.round(left)}px`;
     toggle.classList.add('is-open');
     toggle.setAttribute('aria-expanded', 'true');
+    document.getElementById('studioImageEditorPaintbrushBtn')?.setAttribute('aria-expanded', 'false');
+}, true);
+
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const panel = document.getElementById('studioImageEditorPenPressurePopover');
+    if (!panel || panel.classList.contains('hidden')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    panel.classList.add('hidden');
+    panel.style.removeProperty('position');
+    panel.style.removeProperty('top');
+    panel.style.removeProperty('left');
+    panel.style.removeProperty('z-index');
+    document.getElementById('studioImageEditorPaintbrushBtn')?.setAttribute('aria-expanded', 'false');
 }, true);
 
 document.addEventListener('click', event => {
     if (event.target?.closest?.('.studio-image-editor-slider-popover')) return;
+    document.getElementById('studioImageEditorPaintbrushBtn')?.setAttribute('aria-expanded', 'false');
     document.querySelectorAll('.studio-image-editor-popover-panel').forEach(item => {
         item.classList.add('hidden');
         item.style.removeProperty('position');
