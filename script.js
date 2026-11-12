@@ -832,6 +832,7 @@ MODIFICATION RULES FOR THIS APP
         reviewModePinBtn: document.getElementById('reviewModePinBtn'),
         reviewModeStartQuizBtn: document.getElementById('reviewModeStartQuizBtn'),
         reviewModeOptionsPanel: document.getElementById('reviewModeOptionsPanel'),
+        reviewModeResetDefaultsBtn: document.getElementById('reviewModeResetDefaultsBtn'),
         reviewModeActiveTitle: document.getElementById('reviewModeActiveTitle'),
         reviewModeImageViewport: document.getElementById('reviewModeImageViewport'),
         reviewModeAngleNavigation: document.getElementById('reviewModeAngleNavigation'),
@@ -12801,6 +12802,141 @@ MODIFICATION RULES FOR THIS APP
         return mini;
     }
 
+    // Phase 24A.7T: Review/Mini Quiz preferences are local, owner-scoped UI choices.
+    // Never persist question state, pins themselves, revealed answers, zoom/pan,
+    // drawing geometry, retention credits, or session-specific Visual Aid progress.
+    const REVIEW_MODE_PREFERENCES_STORAGE_PREFIX = 'studyBunnyReviewOptionsV1:';
+    function getReviewModePreferenceDefaults() {
+        return {
+            showAngleControls: true,
+            shortcutDockVisible: true,
+            showVisualAid: false,
+            visualAidLabels: true,
+            visualAidOnly: false,
+            visualAidDisplayFullPath: false,
+            showAllNames: false,
+            soloLabels: true,
+            pinnedLabelsOnly: false,
+            pinAllSharedLabels: false,
+            allowLabelMovement: false,
+            showLabelNumbers: false,
+            reflectionSweepEnabled: true,
+            showDrawData: false,
+            disableLabelNamesOnClick: false,
+            includeLabelDescriptions: true,
+            showConnectors: true,
+            showConnectorContrast: true,
+            connectorSonarEnabled: true,
+            connectorSonarColor: '#14b8a6',
+            connectorGlowRegular: false,
+            connectorGlowBracket: true,
+            connectorGlowColor: '#14b8a6',
+            connectorGlowSpeed: 1,
+            focusMode: false,
+            twoLevelFocus: false,
+            normalFocusZoom: getReviewModeDefaultFocusZoom(),
+            detailFocusZoom: 700,
+            miniQuizScope: 'all',
+            miniQuizVisualAidPolicy: 'exclude',
+            miniQuizCurrentVisualAidOnly: false,
+            randomizeMiniQuiz: true,
+            allowDuplicateMiniQuiz: false,
+            quizLabelInformation: false,
+            identifyStructureForCategory: false,
+            typedMiniQuiz: false,
+            rapidMiniQuiz: false,
+            spellUntilCorrectMiniQuiz: false,
+            miniQuizMode: 'progress'
+        };
+    }
+
+    function getReviewModePreferenceStorageKey() {
+        const owner = normalizeSheetText(state.auth.user?.id || '');
+        return owner ? `${REVIEW_MODE_PREFERENCES_STORAGE_PREFIX}${encodeURIComponent(owner)}` : '';
+    }
+
+    function sanitizeReviewModePreferences(saved = {}) {
+        const defaults = getReviewModePreferenceDefaults();
+        const source = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+        const prefs = { ...defaults };
+        Object.keys(defaults).forEach(key => {
+            if (!Object.prototype.hasOwnProperty.call(source, key)) return;
+            if (typeof defaults[key] === 'boolean') {
+                if (typeof source[key] === 'boolean') prefs[key] = source[key];
+            }
+        });
+        for (const name of ['connectorSonarColor', 'connectorGlowColor']) {
+            if (typeof source[name] === 'string' && /^#[\da-fA-F]{6}$/.test(source[name])) {
+                prefs[name] = normalizeEditorHexColor(source[name], defaults[name]);
+            }
+        }
+        if (Number.isFinite(source.connectorGlowSpeed)) prefs.connectorGlowSpeed = getReviewModeGlowSpeedMultiplier(source.connectorGlowSpeed);
+        for (const name of ['normalFocusZoom', 'detailFocusZoom']) {
+            if (Number.isFinite(source[name])) prefs[name] = Math.max(100, Math.min(700, Math.round(source[name] / 25) * 25));
+        }
+        prefs.detailFocusZoom = Math.max(prefs.normalFocusZoom, prefs.detailFocusZoom);
+        prefs.miniQuizScope = source.miniQuizScope === 'current' ? 'current' : 'all';
+        prefs.miniQuizVisualAidPolicy = ['include', 'exclude', 'only'].includes(source.miniQuizVisualAidPolicy) ? source.miniQuizVisualAidPolicy : 'exclude';
+        prefs.miniQuizMode = ['normal', 'progress', 'retention', 'mastery-check', 'mastery'].includes(source.miniQuizMode) ? source.miniQuizMode : 'progress';
+        // Existing Mini Quiz constraints take precedence over malformed old preferences.
+        if (!prefs.quizLabelInformation) prefs.identifyStructureForCategory = false;
+        if (prefs.quizLabelInformation) prefs.typedMiniQuiz = false;
+        if (!prefs.typedMiniQuiz) {
+            prefs.rapidMiniQuiz = false;
+            prefs.spellUntilCorrectMiniQuiz = false;
+        }
+        if (prefs.spellUntilCorrectMiniQuiz) prefs.miniQuizMode = 'normal';
+        if (prefs.miniQuizVisualAidPolicy === 'exclude') prefs.miniQuizCurrentVisualAidOnly = false;
+        return prefs;
+    }
+
+    function readReviewModePreferences() {
+        const key = getReviewModePreferenceStorageKey();
+        if (!key) return null;
+        try {
+            const raw = window.localStorage?.getItem(key);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed?.version === 1 ? sanitizeReviewModePreferences(parsed.preferences) : null;
+        } catch (_) { return null; }
+    }
+
+    function saveReviewModePreferences() {
+        const key = getReviewModePreferenceStorageKey();
+        if (!key) return;
+        const review = getReviewModeState();
+        if (!review.overlayOpen) return;
+        const defaults = getReviewModePreferenceDefaults();
+        const snapshot = {};
+        for (const field of Object.keys(defaults)) snapshot[field] = review[field];
+        try {
+            window.localStorage?.setItem(key, JSON.stringify({ version: 1, preferences: sanitizeReviewModePreferences(snapshot) }));
+        } catch (_) { /* UI continues normally with storage disabled or full. */ }
+    }
+
+    function resetReviewModePreferencesToDefaults() {
+        const review = getReviewModeState();
+        if (!review.overlayOpen || review.miniQuiz.active) return;
+        // Cancel visual playback and Focus without changing saved diagrams or quiz progress.
+        stopReviewModeVisualAidAnimation();
+        if (review.focusMode) setReviewModeFocusMode(false, { animate: false });
+        Object.assign(review, getReviewModePreferenceDefaults());
+        review.normalFocusZoomIsDefault = true;
+        review.focusTargetKey = '';
+        review.focusTier = 'normal';
+        review.visualAidProgress = 0;
+        review.visualAidStartedAt = 0;
+        review.visualAidSpeed = null;
+        cancelReviewModeLabelDragForGesture();
+        enforceReviewModeSoloLabels(review);
+        const key = getReviewModePreferenceStorageKey();
+        try { if (key) window.localStorage?.removeItem(key); } catch (_) {}
+        renderReviewModeLabels();
+        syncReviewModeControls();
+        // Keep the settings panel open so users can see and adjust the defaults.
+        setReviewModeOptionsOpen(true);
+    }
+
     function getReviewModeState() {
         if (!state.auth.reviewMode || typeof state.auth.reviewMode !== 'object') {
             state.auth.reviewMode = {};
@@ -13398,6 +13534,7 @@ MODIFICATION RULES FOR THIS APP
         const review = getReviewModeState();
         review.shortcutDockVisible = !!visible;
         syncReviewModeShortcutDock();
+        saveReviewModePreferences();
     }
 
     function toggleReviewModeColor() {
@@ -13405,6 +13542,7 @@ MODIFICATION RULES FOR THIS APP
         review.showDrawData = !review.showDrawData;
         renderReviewModeDrawData();
         syncReviewModeControls();
+        saveReviewModePreferences();
     }
 
     function toggleReviewModeLines() {
@@ -13412,6 +13550,7 @@ MODIFICATION RULES FOR THIS APP
         review.showConnectors = !review.showConnectors;
         renderReviewModeConnectors();
         syncReviewModeControls();
+        saveReviewModePreferences();
     }
 
     function toggleReviewModeAllInformation() {
@@ -13429,6 +13568,7 @@ MODIFICATION RULES FOR THIS APP
         }
         renderReviewModeLabels();
         syncReviewModeControls();
+        saveReviewModePreferences();
     }
 
     function beginReviewModeShortcutDockDrag(event) {
@@ -13910,6 +14050,7 @@ MODIFICATION RULES FOR THIS APP
         }
         syncReviewModeFocusPresentation(review);
         syncReviewModeControls();
+        saveReviewModePreferences();
     }
 
     function cycleReviewModeFocusMode() {
@@ -17428,6 +17569,11 @@ MODIFICATION RULES FOR THIS APP
     function syncReviewModeControls() {
         const review = getReviewModeState();
         const miniActive = review.miniQuiz.active;
+        if (elements.reviewModeResetDefaultsBtn) {
+            elements.reviewModeResetDefaultsBtn.disabled = miniActive;
+            elements.reviewModeResetDefaultsBtn.title = miniActive
+                ? 'End Mini Quiz before restoring options.' : 'Restore the original Review and Mini Quiz options.';
+        }
         const hasMultipleAngles = getReviewModePreparedAngles(getActiveReviewModeEntry() || {}).length > 1;
         if (elements.reviewModeMiniQuizScope) {
             elements.reviewModeMiniQuizScope.classList.toggle('hidden', !hasMultipleAngles);
@@ -17630,46 +17776,21 @@ MODIFICATION RULES FOR THIS APP
         review.connectorSonarTouchIndex = -1;
         if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
         reviewModeSonarTouchTimeoutId = 0;
-        review.showAngleControls = true;
-        review.showAllNames = false;
-        review.soloLabels = true;
-        review.pinnedLabelsOnly = false;
-        review.pinAllSharedLabels = false;
+        // Apply the original official defaults, then the owner's last choices.
+        // The saved record contains options only, never a prior quiz/session.
+        Object.assign(review, getReviewModePreferenceDefaults(), readReviewModePreferences() || {});
+        review.normalFocusZoomIsDefault = review.normalFocusZoom === getReviewModeDefaultFocusZoom();
         review.pinSelectedLabelIndex = -1;
-        review.allowLabelMovement = false;
         review.autoLabelPositions = {};
         cancelReviewModeLabelHold();
         reviewModeLabelDrag = null;
-        review.showLabelNumbers = false;
-        review.showDrawData = false;
-        review.reflectionSweepEnabled = true;
-        review.showConnectors = true;
-        review.showConnectorContrast = true;
-        review.focusMode = false;
-        review.twoLevelFocus = false;
-        review.normalFocusZoom = getReviewModeDefaultFocusZoom();
-        review.normalFocusZoomIsDefault = true;
-        review.detailFocusZoom = 700;
         review.focusTier = 'normal';
         review.focusTargetKey = '';
         review.focusFloatingLabel = null;
         review.focusLabelIndex = -1;
         review.focusRestoreZoom = null;
-        review.disableLabelNamesOnClick = false;
-        review.includeLabelDescriptions = true;
-        review.randomizeMiniQuiz = true;
-        review.allowDuplicateMiniQuiz = false;
-        review.quizLabelInformation = false;
-        review.identifyStructureForCategory = false;
-        review.typedMiniQuiz = false;
-        review.rapidMiniQuiz = false;
-        review.spellUntilCorrectMiniQuiz = false;
-        review.miniQuizScope = 'all';
-        review.miniQuizVisualAidPolicy = 'exclude';
-        review.miniQuizCurrentVisualAidOnly = false;
-        review.miniQuizMode = 'progress';
         review.miniQuizFocusRestore = null;
-        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: 'progress', scope: 'all', targets: [] }, 'progress');
+        review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: review.miniQuizScope, targets: [] }, review.miniQuizMode);
         // Start from the author-saved size of angle one, not the previous study session.
         review.labelSizeOverridesByAngle = {};
         review.labelSize = normalizeDiagramLabelSize(getStudioSavedImageAngles(entry)[0]?.labelSize);
@@ -17799,6 +17920,7 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeAllowLabelMovementToggle.checked = review.allowLabelMovement;
         }
         syncReviewModeShortcutDock();
+        saveReviewModePreferences();
     }
 
     let reviewModeLabelSizeLayoutFrameId = 0;
@@ -54533,6 +54655,19 @@ if (elements.reviewModeVisualAidLayer) {
         review.visualAidSelectedId = normalizeSheetText(hit.dataset.reviewVisualAidId || '');
         review.visualAidStartedAt = 0;
         renderReviewModeVisualAids();
+    });
+}
+
+if (elements.reviewModeResetDefaultsBtn) {
+    elements.reviewModeResetDefaultsBtn.addEventListener('click', resetReviewModePreferencesToDefaults);
+}
+if (elements.reviewModeOptionsPanel) {
+    elements.reviewModeOptionsPanel.addEventListener('change', event => {
+        if (event.target?.matches('input, select')) saveReviewModePreferences();
+    });
+    // Colors and sliders visibly update on input; save their last selected value.
+    elements.reviewModeOptionsPanel.addEventListener('input', event => {
+        if (event.target?.matches('input[type="color"], input[type="range"]')) saveReviewModePreferences();
     });
 }
 
