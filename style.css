@@ -18173,9 +18173,8 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   .review-mode-glow { display: none; }
 }
 
-/* Phase 24A.7i — WHITE-ONLY transient reflection on existing label paint strokes.
-   Static alpha mask clips a compositor-transformed, edge-faded white band.
-   No underlying colored/gray fill, blur filters or JavaScript frame callbacks. */
+/* Phase 24A.7S: fixed diagonal WHITE-ONLY reflection uses the cached active-label
+   alpha mask; drawing/eraser geometry is unchanged and uncolored. */
 .review-mode-reflection {
   position: absolute; inset: 0; width: 100%; height: 100%;
   z-index: 2; pointer-events: none; overflow: hidden;
@@ -18184,24 +18183,37 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   contain: layout paint;
 }
 .review-mode-reflection.hidden { display: none !important; }
+.review-mode-reflection-track {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  will-change: transform, opacity;
+  animation: review-mode-white-reflection 2s linear infinite;
+}
+/* Beam width is relative to the diagram, not the track's own travel distance. */
+.review-mode-reflection-shape {
+  position: absolute; left: 0; top: 0;
+  width: 10%; height: 100%;
+}
 .review-mode-reflection-beam {
-  position: absolute; inset: 0 auto 0 0; width: 38%; height: 100%;
+  position: absolute; inset: 0; width: 100%; height: 100%;
   background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.12) 21%,
     rgba(255,255,255,.7) 44%, #fff 51%, rgba(255,255,255,.7) 58%,
     rgba(255,255,255,.12) 79%, transparent 100%);
-  will-change: transform, opacity;
-  animation: review-mode-white-reflection var(--review-reflection-cycle, 1.5s) linear infinite;
+  transform: skewX(-12deg);
 }
+/* 2-second cycle: light crosses in 1.5 seconds and remains invisible
+   for the final 0.5 seconds. Every pass starts exactly 2 seconds apart. */
 @keyframes review-mode-white-reflection {
-  0% { transform: translateX(-110%); opacity: 0; }
-  2% { opacity: 1; }
-  32% { transform: translateX(275%); opacity: 1; }
-  34%, 100% { transform: translateX(275%); opacity: 0; }
+  0% { transform: translateX(-15%); opacity: 0; }
+  0.5% { opacity: 1; }
+  75% { transform: translateX(125%); opacity: 1; }
+  75.5% { transform: translateX(125%); opacity: 0; }
+  100% { transform: translateX(-15%); opacity: 0; }
 }
+.review-mode-reflection-settings { border-top: 1px solid rgba(148,163,184,.18); border-bottom: 1px solid rgba(148,163,184,.18); padding: 5px 0; }
 .review-mode-image-stage.is-angle-switching .review-mode-reflection { opacity: 0; }
 .review-mode-image-stage.is-angle-dragging .review-mode-reflection { opacity: .24; }
 @media (prefers-reduced-motion: reduce) {
-  .review-mode-reflection-beam { animation: none; opacity: 0; }
+  .review-mode-reflection-track { animation: none !important; opacity: 0; }
 }
 
 /* Phase 24A.7j: touch-friendly pen pressure settings; no extra toolbar icon. */

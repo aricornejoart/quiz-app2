@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7o_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7s_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a7o_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a7s_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -2217,13 +2217,15 @@ MODIFICATION RULES FOR THIS APP
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
-      <label class="review-mode-switch-row">
-        <span>White Reflection Sweep <small>(uses Sonar timing even when Sonar is off)</small></span>
-        <span class="review-mode-toggle-control">
-          <input id="reviewModeReflectionSweepToggle" type="checkbox" role="switch" aria-label="Show the white reflection sweeping across the selected label drawing" checked>
-          <span class="review-mode-toggle-track" aria-hidden="true"></span>
-        </span>
-      </label>
+      <div class="review-mode-reflection-settings" aria-label="White Reflection settings">
+        <label class="review-mode-switch-row">
+          <span>White Reflection Sweep <small>(works independently of Sonar)</small></span>
+          <span class="review-mode-toggle-control">
+            <input id="reviewModeReflectionSweepToggle" type="checkbox" role="switch" aria-label="Enable white reflection on the active label drawing" checked>
+            <span class="review-mode-toggle-track" aria-hidden="true"></span>
+          </span>
+        </label>
+      </div>
       <label class="review-mode-switch-row">
         <span>Show label drawings</span>
         <span class="review-mode-toggle-control">
@@ -2484,7 +2486,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="reviewModeImageStage" class="review-mode-image-stage">
         <img id="reviewModeImage" class="review-mode-image" alt="Saved diagram review">
         <canvas id="reviewModeDrawCanvas" class="review-mode-draw-canvas" aria-hidden="true"></canvas>
-        <div id="reviewModeReflection" class="review-mode-reflection hidden" aria-hidden="true"><div class="review-mode-reflection-beam"></div></div>
+        <div id="reviewModeReflection" class="review-mode-reflection hidden" aria-hidden="true"><div class="review-mode-reflection-track"><div class="review-mode-reflection-shape"><div class="review-mode-reflection-beam"></div></div></div></div>
         <svg id="reviewModeVisualAidLayer" class="review-mode-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg>
         <svg id="reviewModeConnectorLayer" class="review-mode-connector-layer" aria-hidden="true" focusable="false"></svg>
         <div id="reviewModeLabelLayer" class="review-mode-label-layer" aria-label="Interactive diagram labels"></div>
@@ -2723,6 +2725,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a7o_1"></script>
+  <script src="script.js?v=24a7s_1"></script>
 </body>
 </html>

@@ -17004,11 +17004,10 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
-    // Phase 24A.7i: the moving white reflection is a transient display mask
-    // of the active label's ORIGINAL paint/highlighter/eraser geometry. No
-    // overlay pixels, color or cached mask are saved back into Saved Images.
-    // The single mask is refreshed only when the label or source changes;
-    // its white gradient moves on the compositor with NO JS frame loop.
+    // Phase 24A.7S: fixed white-only diagonal reflection (10% of stage width).
+    // 2.0-second repeat cycle: 1.5 seconds left-to-right, 0.5 seconds hidden.
+    // The shape/animation are static CSS; the original drawing alpha mask is
+    // cached separately and no JavaScript per-frame rendering is introduced.
     function clearReviewModeReflection() {
         const overlay = elements.reviewModeReflection;
         if (!overlay) return;
@@ -17071,11 +17070,8 @@ MODIFICATION RULES FOR THIS APP
             overlay.style.webkitMaskImage = maskUrl;
             overlay.dataset.maskKey = key;
         }
-        // The existing Sonar cycles: Review 1.5s, multi Review 1.8s,
-        // Mini Quiz 3s. Match its cadence even if the rings are switched off.
-        const connectorTargets = labels[index]?.connector?.targets;
-        const isMulti = Array.isArray(connectorTargets) && connectorTargets.length > 1;
-        overlay.style.setProperty('--review-reflection-cycle', `${miniActive ? 3 : isMulti ? 1.8 : 1.5}s`);
+        // The single diagonal beam uses fixed 10% width and a 2s CSS cycle.
+        // Its cached alpha mask is independent of Sonar, Glow and drawing color.
         overlay.classList.remove('hidden');
     }
 
