@@ -18238,3 +18238,13 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-image-editor-pressure-readings { margin-top:5px; color:#f4f4f5; font-variant-numeric:tabular-nums; font-size:11px; }
 .studio-image-draw-clear { padding:6px 8px; font-size:12px; line-height:1.3; }
 .studio-image-draw-clear:disabled { opacity:.4; cursor:not-allowed; }
+
+/* Phase 24A.7O: accessible Pen pressure toggle, default ON. */
+.studio-image-editor-pressure-switch { position: relative; flex: 0 0 auto; display: inline-flex; width: 46px; height: 27px; align-items: center; }
+.studio-image-editor-pressure-switch input[type="checkbox"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.studio-image-editor-pressure-switch-track { position: relative; display: block; width: 46px; height: 27px; border-radius: 99px; background: #71717a; transition: background-color 130ms ease; }
+.studio-image-editor-pressure-switch-track::after { content: ""; position: absolute; width: 21px; height: 21px; left: 3px; top: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0004; transition: transform 130ms ease; }
+.studio-image-editor-pressure-switch input:checked + .studio-image-editor-pressure-switch-track { background: #119b93; }
+.studio-image-editor-pressure-switch input:checked + .studio-image-editor-pressure-switch-track::after { transform: translateX(19px); }
+.studio-image-editor-pressure-switch input:focus-visible + .studio-image-editor-pressure-switch-track { outline: 2px solid #facc15; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .studio-image-editor-pressure-switch-track, .studio-image-editor-pressure-switch-track::after { transition: none; } }

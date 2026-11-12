@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7n_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7o_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a7n_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a7o_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -2551,7 +2551,7 @@ MODIFICATION RULES FOR THIS APP
             <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap">
               <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button>
               <div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings">
-                <label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><input type="checkbox" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"></label>
+                <label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label>
                 <div class="studio-image-editor-pressure-hint">ON by default. Pressure changes width only, never opacity. Existing strokes stay unchanged.</div>
                 <div class="studio-image-editor-pressure-graph-wrap">
                   <div class="studio-image-editor-pressure-head"><span>Pressure response curve</span><output id="studioImageEditorPressureCurveValue">Fine (1.60)</output></div>
@@ -2723,6 +2723,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a7n_1"></script>
+  <script src="script.js?v=24a7o_1"></script>
 </body>
 </html>

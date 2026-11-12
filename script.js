@@ -18681,7 +18681,7 @@ MODIFICATION RULES FOR THIS APP
                         <div class="studio-image-editor-slider-popover studio-image-editor-color-control" data-image-editor-popover="color"><button type="button" id="studioImageEditorColorToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle studio-image-editor-color-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorColorPopover">RGB <span id="studioImageEditorCurrentColorSwatch" class="studio-image-editor-current-color-swatch" aria-hidden="true"></span></button><div id="studioImageEditorColorPopover" class="studio-image-editor-popover-panel studio-image-editor-color-popover hidden" role="dialog" aria-label="Connector and drawing colors"><label class="studio-image-editor-color-picker-row" title="Connector and drawing RGB color"><span>Color</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Connector and drawing RGB color"></label><div class="studio-image-editor-color-presets-heading">Saved colors</div><div id="studioImageEditorColorPresetList" class="studio-image-editor-color-preset-list" aria-label="Saved color presets"></div><button type="button" id="studioImageEditorAddColorPresetBtn" class="studio-image-editor-color-preset-add" aria-label="Save current color preset" title="Save current color">+</button></div></div>
                         <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">2</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness"><label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="0.25" max="24" step="0.25" value="2" aria-label="Connector thickness"></label></div></div>
                         <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
-                          <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap"><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button><div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings"><label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><input type="checkbox" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"></label><div class="studio-image-editor-pressure-hint">ON by default. Pressure changes width only, never opacity. Existing strokes stay unchanged.</div><div class="studio-image-editor-pressure-graph-wrap"><div class="studio-image-editor-pressure-head"><span>Pressure response curve</span><output id="studioImageEditorPressureCurveValue">Fine (1.60)</output></div><svg id="studioImageEditorPressureGraph" viewBox="0 0 270 142" role="img" aria-label="Input pressure versus output stroke width"><path d="M30 8 V116 H258" stroke="currentColor" opacity=".4" stroke-width="1" fill="none"/><path d="M30 116 L258 8" stroke="currentColor" stroke-dasharray="4 5" opacity=".3" fill="none"/><path id="studioImageEditorPressureCurvePath" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round"/><text x="144" y="138" text-anchor="middle" font-size="11" fill="currentColor">Applied pressure →</text><text x="8" y="63" font-size="10" fill="currentColor" transform="rotate(-90 8 63)">Width</text></svg><label class="studio-image-editor-pressure-range">Response <input id="studioImageEditorPressureCurveInput" type="range" min="0.55" max="3" step="0.05" value="1.6" aria-label="Pressure curve response: higher values give thinner lines for light touches"></label><button type="button" id="studioImageEditorPressureCurveReset" class="auth-action-btn auth-secondary-btn studio-image-editor-pressure-reset">Reset curve</button></div><div class="studio-image-editor-pressure-test"><strong>Live Pressure Test</strong><div id="studioImageEditorPressureTestPad" class="studio-image-editor-pressure-test-pad" role="img" aria-label="Press here with Apple Pencil or Cintiq pen to measure pressure">Touch here with your stylus</div><div class="studio-image-editor-pressure-meter"><div id="studioImageEditorPressureTestBar"></div></div><div class="studio-image-editor-pressure-readings"><output id="studioImageEditorPressureTestValue">Waiting for stylus</output><output id="studioImageEditorPressureTestWidth">—</output></div><div class="studio-image-editor-pressure-hint">The test never draws on or changes your diagram. If your browser reports fixed pressure, the curve cannot create missing hardware data.</div></div></div></div>
+                          <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap"><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button><div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings"><label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label><div class="studio-image-editor-pressure-hint">ON by default. Pressure changes width only, never opacity. Existing strokes stay unchanged.</div><div class="studio-image-editor-pressure-graph-wrap"><div class="studio-image-editor-pressure-head"><span>Pressure response curve</span><output id="studioImageEditorPressureCurveValue">Fine (1.60)</output></div><svg id="studioImageEditorPressureGraph" viewBox="0 0 270 142" role="img" aria-label="Input pressure versus output stroke width"><path d="M30 8 V116 H258" stroke="currentColor" opacity=".4" stroke-width="1" fill="none"/><path d="M30 116 L258 8" stroke="currentColor" stroke-dasharray="4 5" opacity=".3" fill="none"/><path id="studioImageEditorPressureCurvePath" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round"/><text x="144" y="138" text-anchor="middle" font-size="11" fill="currentColor">Applied pressure →</text><text x="8" y="63" font-size="10" fill="currentColor" transform="rotate(-90 8 63)">Width</text></svg><label class="studio-image-editor-pressure-range">Response <input id="studioImageEditorPressureCurveInput" type="range" min="0.55" max="3" step="0.05" value="1.6" aria-label="Pressure curve response: higher values give thinner lines for light touches"></label><button type="button" id="studioImageEditorPressureCurveReset" class="auth-action-btn auth-secondary-btn studio-image-editor-pressure-reset">Reset curve</button></div><div class="studio-image-editor-pressure-test"><strong>Live Pressure Test</strong><div id="studioImageEditorPressureTestPad" class="studio-image-editor-pressure-test-pad" role="img" aria-label="Press here with Apple Pencil or Cintiq pen to measure pressure">Touch here with your stylus</div><div class="studio-image-editor-pressure-meter"><div id="studioImageEditorPressureTestBar"></div></div><div class="studio-image-editor-pressure-readings"><output id="studioImageEditorPressureTestValue">Waiting for stylus</output><output id="studioImageEditorPressureTestWidth">—</output></div><div class="studio-image-editor-pressure-hint">The test never draws on or changes your diagram. If your browser reports fixed pressure, the curve cannot create missing hardware data.</div></div></div></div>
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-clear" id="studioImageEditorClearDrawBtn" title="Clear drawing strokes for selected label (undo available)" aria-label="Clear drawing for selected label">Clear</button>
                         </div>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size"><label class="studio-image-editor-range-control" title="Paintbrush and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Paintbrush and eraser size"></label></div></div>
@@ -21012,6 +21012,7 @@ MODIFICATION RULES FOR THIS APP
             isDrawing: false,
             dragStart: null,
             history: [],
+            drawUndoActiveLabelIndex: null,
             arrowColor: '#000000',
             lineThickness: 2,
             zoomScale: 1,
@@ -21032,6 +21033,7 @@ MODIFICATION RULES FOR THIS APP
             paintTransparency: 0.65,
             activeDrawLabelIndex: null,
             activeDrawStroke: null,
+            drawEraserPreview: null,
             drawStrokes: [],
             drawSaveTimerId: null,
             drawSaveStatusTimerId: null,
@@ -22538,9 +22540,7 @@ MODIFICATION RULES FOR THIS APP
             points.push({ x: finalPoint.x, y: finalPoint.y, ...(stroke.pressureSensitive === true ? { p: finalPoint.p ?? previousPoint?.p ?? .5 } : {}) });
         }
         editor.activeDrawStroke = null;
-        if (editor.drawPreviewFrameId != null) window.cancelAnimationFrame(editor.drawPreviewFrameId);
-        editor.drawPreviewFrameId = null;
-        editor.drawPreviewBackdrop = null;
+        releaseImageEditorDrawingPreviewCaches(editor);
         editor.isDrawing = false;
         editor.dragStart = null;
         editor.draggingLabelIndex = null;
@@ -22724,71 +22724,47 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        const strokeMaskCanvas = document.createElement('canvas');
-        strokeMaskCanvas.width = canvas.width;
-        strokeMaskCanvas.height = canvas.height;
-        const maskCtx = strokeMaskCanvas.getContext('2d');
-        if (!maskCtx) {
+        // One opaque stroke raster is sufficient for both the destination-out
+        // alpha mask and source-over ink pass. Previously this created two
+        // full-resolution temporary canvases per stroke on every full repaint.
+        const strokeCanvas = document.createElement('canvas');
+        strokeCanvas.width = canvas.width;
+        strokeCanvas.height = canvas.height;
+        const strokeCtx = strokeCanvas.getContext('2d');
+        if (!strokeCtx) {
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = alpha;
             drawImageEditorStrokePath(ctx, stroke);
             ctx.restore();
             return;
         }
-        maskCtx.save();
-        maskCtx.lineCap = 'round';
-        maskCtx.lineJoin = 'round';
-        maskCtx.lineWidth = ctx.lineWidth;
-        maskCtx.strokeStyle = '#ffffff';
-        maskCtx.fillStyle = '#ffffff';
-        maskCtx.globalCompositeOperation = 'source-over';
-        maskCtx.globalAlpha = 1;
-        drawImageEditorStrokePath(maskCtx, stroke);
-        maskCtx.restore();
-
-        const strokeColorCanvas = document.createElement('canvas');
-        strokeColorCanvas.width = canvas.width;
-        strokeColorCanvas.height = canvas.height;
-        const colorCtx = strokeColorCanvas.getContext('2d');
-        if (!colorCtx) {
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = alpha;
-            drawImageEditorStrokePath(ctx, stroke);
-            ctx.restore();
-            return;
-        }
-        colorCtx.save();
-        colorCtx.lineCap = 'round';
-        colorCtx.lineJoin = 'round';
-        colorCtx.lineWidth = ctx.lineWidth;
-        colorCtx.strokeStyle = ctx.strokeStyle;
-        colorCtx.fillStyle = ctx.fillStyle;
-        colorCtx.globalCompositeOperation = 'source-over';
-        colorCtx.globalAlpha = 1;
-        drawImageEditorStrokePath(colorCtx, stroke);
-        colorCtx.restore();
-
+        strokeCtx.save();
+        strokeCtx.strokeStyle = ctx.strokeStyle;
+        strokeCtx.fillStyle = ctx.fillStyle;
+        drawImageEditorStrokePath(strokeCtx, stroke);
+        strokeCtx.restore();
         ctx.globalCompositeOperation = 'destination-out';
         ctx.globalAlpha = 1;
-        ctx.drawImage(strokeMaskCanvas, 0, 0);
+        ctx.drawImage(strokeCanvas, 0, 0);
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = alpha;
-        ctx.drawImage(strokeColorCanvas, 0, 0);
+        ctx.drawImage(strokeCanvas, 0, 0);
         ctx.restore();
     }
 
-    function drawImageEditorDrawLayer(ctx, canvas = elements.studioImageEditorCanvas, { respectLayerVisibility = true } = {}) {
+    function drawImageEditorDrawLayer(ctx, canvas = elements.studioImageEditorCanvas, { respectLayerVisibility = true, minLabelIndex = -Infinity, maxLabelIndex = Infinity } = {}) {
         const editor = state.auth.imageEditor;
         const strokes = cloneImageEditorDrawStrokes(editor?.drawStrokes || []);
         if ((respectLayerVisibility && editor?.labelsLayerVisible === false) || !canvas || !strokes.length) return;
         const labels = normalizeImageEditorLabels(editor?.labels || []);
-        const maxLabelIndex = Math.max(labels.length - 1, 0);
+        const lastLabelIndex = Math.max(labels.length - 1, 0);
         const singleLabelIndex = respectLayerVisibility && isImageEditorSingleLabelViewEnabled(editor)
             ? getImageEditorSingleLabelViewIndex(editor) : -1;
         const grouped = new Map();
         strokes.forEach(stroke => {
-            const labelIndex = Math.min(maxLabelIndex, Math.max(0, Number(stroke.labelIndex) || 0));
+            const labelIndex = Math.min(lastLabelIndex, Math.max(0, Number(stroke.labelIndex) || 0));
             if (singleLabelIndex >= 0 && labelIndex !== singleLabelIndex) return;
+            if (labelIndex < minLabelIndex || labelIndex > maxLabelIndex) return;
             if (!isImageEditorLabelDrawVisible(labelIndex)) return;
             if (!grouped.has(labelIndex)) grouped.set(labelIndex, []);
             grouped.get(labelIndex).push(stroke);
@@ -22816,17 +22792,43 @@ MODIFICATION RULES FOR THIS APP
         return outputCanvas;
     }
 
+    const IMAGE_EDITOR_DRAW_UNDO_LIMIT = 15;
+
+    function releaseImageEditorDrawingPreviewCaches(editor = state.auth.imageEditor) {
+        if (!editor) return;
+        if (editor.drawPreviewFrameId != null) window.cancelAnimationFrame(editor.drawPreviewFrameId);
+        editor.drawPreviewFrameId = null;
+        editor.drawPreviewBackdrop = null;
+        editor.drawPreviewStrokeCanvas = null;
+        editor.drawEraserPreview = null;
+    }
+
+    // Drawing Undo is ephemeral and belongs only to the active Draw label.
+    // Keep unrelated label/connector editing Undo records intact.
+    function syncImageEditorDrawingUndoSession(editor = state.auth.imageEditor, force = false) {
+        if (!editor) return;
+        const activeIndex = editor.open && editor.mode === 'labels' && editor.labelsEnabled
+            && Number.isInteger(editor.activeDrawLabelIndex) ? editor.activeDrawLabelIndex : null;
+        if (!force && editor.drawUndoActiveLabelIndex === activeIndex) return;
+        if (Array.isArray(editor.history)) editor.history = editor.history.filter(entry => !entry?.drawingUndo);
+        editor.drawUndoActiveLabelIndex = activeIndex;
+        releaseImageEditorDrawingPreviewCaches(editor);
+    }
+
     function pushImageEditorDrawingHistory() {
         const editor = state.auth.imageEditor;
         if (!editor) return;
-        // Strokes do not change baseCanvas. Use existing labelsOnly undo record
-        // rather than serializing the entire source image as PNG for each stroke.
+        syncImageEditorDrawingUndoSession(editor);
+        // Keep only drawing vectors; no base-image snapshots or unrelated
+        // label/Visual Aid state is necessary to undo a drawing action.
         editor.history.push({
             labelsOnly: true,
-            labels: normalizeImageEditorLabels(editor.labels || []),
-            drawStrokes: cloneImageEditorDrawStrokes(editor.drawStrokes || [])
+            drawingUndo: true,
+            drawingLabelIndex: editor.activeDrawLabelIndex,
+            drawStrokes: cloneImageEditorDrawStrokes((editor.drawStrokes || []).filter(stroke => Number(stroke.labelIndex) === editor.activeDrawLabelIndex))
         });
-        if (editor.history.length > 20) editor.history.shift();
+        const drawingIndices = editor.history.map((entry, index) => entry?.drawingUndo ? index : -1).filter(index => index >= 0);
+        if (drawingIndices.length > IMAGE_EDITOR_DRAW_UNDO_LIMIT) editor.history.splice(drawingIndices[0], 1);
     }
 
     function clearImageEditorSelectedLabelDrawing() {
@@ -22836,7 +22838,7 @@ MODIFICATION RULES FOR THIS APP
         const index = editor.activeDrawLabelIndex;
         const count = (editor.drawStrokes || []).filter(stroke => Number(stroke.labelIndex) === index).length;
         if (!count) { setImageEditorStatus('There are no drawing strokes to clear for this label.'); return; }
-        if (!window.confirm(`Clear all ${count} drawing stroke${count === 1 ? '' : 's'} for this label only? You can Undo this action.`)) return;
+        // Immediate, undoable clear — no interruption for routine drawing cleanup.
         pushImageEditorDrawingHistory();
         editor.drawStrokes = editor.drawStrokes.filter(stroke => Number(stroke.labelIndex) !== index);
         editor.drawSaveDirty = true;
@@ -22845,44 +22847,105 @@ MODIFICATION RULES FOR THIS APP
         setImageEditorStatus(`Cleared ${count} stroke${count === 1 ? '' : 's'} for this label. Other labels are unchanged; Undo is available.`);
     }
 
+    function createImageEditorEraserPreview(editor) {
+        const canvas = elements.studioImageEditorCanvas;
+        const baseCanvas = editor?.baseCanvas;
+        const index = editor?.activeDrawLabelIndex;
+        if (!canvas || !baseCanvas || !Number.isInteger(index)) return null;
+        const makeLayer = () => {
+            const layer = document.createElement('canvas');
+            layer.width = canvas.width;
+            layer.height = canvas.height;
+            return layer;
+        };
+        // In Solo Labels, avoid allocating a duplicate full-size background.
+        // The original base image can be reused as-is for this entire stroke.
+        const hasLower = editor.labelsLayerVisible !== false && (editor.drawStrokes || []).some(stroke =>
+            Number(stroke.labelIndex) < index && isImageEditorLabelDrawVisible(Number(stroke.labelIndex))
+            && (!isImageEditorSingleLabelViewEnabled(editor) || getImageEditorSingleLabelViewIndex(editor) === Number(stroke.labelIndex)));
+        const background = hasLower ? makeLayer() : baseCanvas;
+        if (hasLower) {
+            const backdropCtx = background.getContext('2d');
+            if (!backdropCtx) return null;
+            backdropCtx.drawImage(baseCanvas, 0, 0);
+            // Paint completed lower-index labels once per eraser gesture.
+            drawImageEditorDrawLayer(backdropCtx, background, { maxLabelIndex: index - 1 });
+        }
+        const activeLayer = makeLayer();
+        const activeCtx = activeLayer.getContext('2d');
+        if (!activeCtx) return null;
+        drawImageEditorDrawLayer(activeCtx, activeLayer, { minLabelIndex: index, maxLabelIndex: index });
+        let foreground = null;
+        if (editor.labelsLayerVisible !== false && (editor.drawStrokes || []).some(stroke =>
+            Number(stroke.labelIndex) > index && isImageEditorLabelDrawVisible(Number(stroke.labelIndex))
+            && (!isImageEditorSingleLabelViewEnabled(editor) || getImageEditorSingleLabelViewIndex(editor) === Number(stroke.labelIndex)))) {
+            foreground = makeLayer();
+            drawImageEditorDrawLayer(foreground.getContext('2d'), foreground, { minLabelIndex: index + 1 });
+        }
+        return { background, activeLayer, foreground, appliedPointCount: 0 };
+    }
+
+    function renderImageEditorEraserPreview(editor, stroke) {
+        const preview = editor?.drawEraserPreview;
+        const canvas = elements.studioImageEditorCanvas;
+        const ctx = canvas?.getContext('2d');
+        const ink = preview?.activeLayer?.getContext('2d');
+        if (!preview || !ctx || !ink || !stroke || editor.activeDrawStroke !== stroke) return false;
+        const points = stroke.points || [];
+        if (preview.appliedPointCount < points.length) {
+            // Apply only the new segment(s), not the entire eraser gesture.
+            const start = Math.max(0, preview.appliedPointCount - 1);
+            ink.save();
+            ink.globalCompositeOperation = 'destination-out';
+            ink.globalAlpha = 1;
+            drawImageEditorStrokePath(ink, { tool: 'eraser', size: stroke.size, points: points.slice(start) });
+            ink.restore();
+            preview.appliedPointCount = points.length;
+        }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(preview.background, 0, 0);
+        ctx.drawImage(preview.activeLayer, 0, 0);
+        if (preview.foreground) ctx.drawImage(preview.foreground, 0, 0);
+        return true;
+    }
+
     function scheduleImageEditorStrokePreview() {
         const editor = state.auth.imageEditor;
-        if (!editor?.activeDrawStroke || !editor.drawPreviewBackdrop) return;
+        if (!editor?.activeDrawStroke || (!editor.drawPreviewBackdrop && !editor.drawEraserPreview)) return;
         if (editor.drawPreviewFrameId != null) return;
         editor.drawPreviewFrameId = window.requestAnimationFrame(() => {
             editor.drawPreviewFrameId = null;
-            if (state.auth.imageEditor !== editor || !editor.activeDrawStroke || !editor.drawPreviewBackdrop) return;
+            if (state.auth.imageEditor !== editor || !editor.activeDrawStroke) return;
             const canvas = elements.studioImageEditorCanvas;
             const ctx = canvas?.getContext('2d');
             if (!ctx) return;
-            // Reuse pre-stroke bitmap: no existing drawings, labels, or base
-            // artwork need repainting or cloning for each Pencil sample.
+            if (normalizeImageEditorDrawTool(editor.activeDrawStroke.tool) === 'eraser') {
+                // The Pencil moves only update the cached active-label layer.
+                // If a canvas context becomes unavailable, fall back safely.
+                if (!renderImageEditorEraserPreview(editor, editor.activeDrawStroke)) renderImageEditorCanvas();
+                return;
+            }
+            if (!editor.drawPreviewBackdrop) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(editor.drawPreviewBackdrop, 0, 0);
-            if (normalizeImageEditorDrawTool(editor.activeDrawStroke.tool) !== 'eraser') {
-                let overlay = editor.drawPreviewStrokeCanvas;
-                if (!overlay || overlay.width !== canvas.width || overlay.height !== canvas.height) {
-                    overlay = document.createElement('canvas');
-                    overlay.width = canvas.width;
-                    overlay.height = canvas.height;
-                    editor.drawPreviewStrokeCanvas = overlay;
-                }
-                const ink = overlay.getContext('2d');
-                ink.clearRect(0, 0, overlay.width, overlay.height);
-                ink.save();
-                ink.strokeStyle = normalizeEditorHexColor(editor.activeDrawStroke.color, '#000000');
-                ink.fillStyle = ink.strokeStyle;
-                drawImageEditorStrokePath(ink, editor.activeDrawStroke);
-                ink.restore();
-                ctx.save();
-                ctx.globalAlpha = getImageEditorPaintTransparencyFromStroke(editor.activeDrawStroke);
-                ctx.drawImage(overlay, 0, 0);
-                ctx.restore();
-            } else {
-                // Eraser needs exact per-label compositing to preserve the
-                // underlying image; use original renderer until stroke end.
-                renderImageEditorCanvas();
+            let overlay = editor.drawPreviewStrokeCanvas;
+            if (!overlay || overlay.width !== canvas.width || overlay.height !== canvas.height) {
+                overlay = document.createElement('canvas');
+                overlay.width = canvas.width;
+                overlay.height = canvas.height;
+                editor.drawPreviewStrokeCanvas = overlay;
             }
+            const ink = overlay.getContext('2d');
+            ink.clearRect(0, 0, overlay.width, overlay.height);
+            ink.save();
+            ink.strokeStyle = normalizeEditorHexColor(editor.activeDrawStroke.color, '#000000');
+            ink.fillStyle = ink.strokeStyle;
+            drawImageEditorStrokePath(ink, editor.activeDrawStroke);
+            ink.restore();
+            ctx.save();
+            ctx.globalAlpha = getImageEditorPaintTransparencyFromStroke(editor.activeDrawStroke);
+            ctx.drawImage(overlay, 0, 0);
+            ctx.restore();
         });
     }
 
@@ -22891,8 +22954,14 @@ MODIFICATION RULES FOR THIS APP
         if (!editor || !point || !isImageEditorLabelDrawActive()) return;
         const tool = normalizeImageEditorDrawTool(editor.drawTool);
         pushImageEditorDrawingHistory();
-        // Snapshot completed image once before adding the new stroke.
-        if (normalizeImageEditorDrawTool(editor.drawTool) !== 'eraser') {
+        // Snapshot completed drawing once before adding the new stroke.
+        if (tool === 'eraser') {
+            try { editor.drawEraserPreview = createImageEditorEraserPreview(editor); }
+            catch (error) {
+                editor.drawEraserPreview = null; // Original exact renderer remains available.
+                console.warn('Eraser preview cache unavailable; using original compositor.', error);
+            }
+        } else {
             const visible = elements.studioImageEditorCanvas;
             const snapshot = document.createElement('canvas');
             snapshot.width = visible.width;
@@ -22914,7 +22983,7 @@ MODIFICATION RULES FOR THIS APP
         };
         editor.activeDrawStroke = stroke;
         editor.drawStrokes.push(stroke);
-        if (tool === 'eraser') renderImageEditorCanvas();
+        if (tool === 'eraser' && !editor.drawEraserPreview) renderImageEditorCanvas();
         else scheduleImageEditorStrokePreview();
     }
 
@@ -22926,7 +22995,7 @@ MODIFICATION RULES FOR THIS APP
         const rawPressure = Number.isFinite(point.p) ? point.p : (last?.p || .5);
         const smoothedPressure = last?.p !== undefined ? last.p * .55 + rawPressure * .45 : rawPressure;
         stroke.points.push({ x: point.x, y: point.y, ...(stroke.pressureSensitive === true ? { p: Math.round(smoothedPressure * 1000) / 1000 } : {}) });
-        if (normalizeImageEditorDrawTool(stroke.tool) === 'eraser') renderImageEditorCanvas();
+        if (normalizeImageEditorDrawTool(stroke.tool) === 'eraser' && !editor.drawEraserPreview) renderImageEditorCanvas();
         else scheduleImageEditorStrokePreview();
     }
 
@@ -25838,7 +25907,8 @@ MODIFICATION RULES FOR THIS APP
 
     function renderImageEditorCanvas() {
         const editor = state.auth.imageEditor;
-        if (editor && !editor.activeDrawStroke) editor.drawPreviewBackdrop = null;
+        syncImageEditorDrawingUndoSession(editor);
+        if (editor && !editor.activeDrawStroke) releaseImageEditorDrawingPreviewCaches(editor);
         const canvas = elements.studioImageEditorCanvas;
         const baseCanvas = editor?.baseCanvas;
         if (!canvas || !baseCanvas) return;
@@ -26066,6 +26136,18 @@ MODIFICATION RULES FOR THIS APP
             const image = await loadImageElement(previous);
             paintImageIntoBaseCanvas(image, { preserveViewport: true });
         } else if (previous?.labelsOnly) {
+            if (previous.drawingUndo) {
+                // Restore only that label; strokes for unrelated labels stay intact.
+                const labelIndex = Number(previous.drawingLabelIndex);
+                editor.drawStrokes = (editor.drawStrokes || []).filter(stroke => Number(stroke.labelIndex) !== labelIndex)
+                    .concat(cloneImageEditorDrawStrokes(previous.drawStrokes || []));
+                editor.drawSaveDirty = true;
+                scheduleImageEditorDrawingCommit({ silent: true });
+                refreshImageEditorLabelUi();
+                renderImageEditorCanvas();
+                setImageEditorStatus('');
+                return;
+            }
             editor.labels = normalizeImageEditorLabels(previous.labels || editor.labels || []);
             editor.visualAids = normalizeDiagramVisualAids(previous.visualAids || editor.visualAids || []);
             editor.drawStrokes = cloneImageEditorDrawStrokes(previous.drawStrokes || editor.drawStrokes || []);
@@ -27309,6 +27391,7 @@ MODIFICATION RULES FOR THIS APP
     }
 
     function closeStudioImageEditor() {
+        syncImageEditorDrawingUndoSession(state.auth.imageEditor, true);
         closeImageEditorLayerVisibilityPopover();
         hideImageEditorLabelSuggestions();
         clearImageEditorDrawingSaveTimers(state.auth.imageEditor);
