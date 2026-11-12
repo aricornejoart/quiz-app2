@@ -18282,3 +18282,17 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-image-editor-pressure-switch input:checked + .studio-image-editor-pressure-switch-track::after { transform: translateX(19px); }
 .studio-image-editor-pressure-switch input:focus-visible + .studio-image-editor-pressure-switch-track { outline: 2px solid #facc15; outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .studio-image-editor-pressure-switch-track, .studio-image-editor-pressure-switch-track::after { transition: none; } }
+
+/* Phase 24A.7U — Quiz quick filters and pin icon parity. */
+.studio-manage-quick-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.studio-manage-quick-filters .studio-saved-image-quick-filter { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; border-radius:999px; padding:8px 12px; font-size:14px; }
+.studio-manage-quick-filters .studio-saved-image-quick-filter svg { flex:none; }
+.question-star-btn:not(.starred) { opacity:.78; filter:grayscale(1); }
+.studio-question-list-star { font-size:13px; }
+@media (max-width:640px) { .studio-manage-quick-filters { flex:1 1 100%; } .studio-manage-quick-filters .studio-saved-image-quick-filter { flex:1; justify-content:center; } }
+
+.studio-manage-navigation-tabs { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.question-star-btn svg { width:21px; height:21px; }
+.question-star-btn.starred svg { fill:rgba(255,212,90,.22); }
+.studio-question-list-star svg {width:15px; height:15px;}
+.studio-question-starred-filter-btn svg {width:15px; height:15px; vertical-align:-3px; margin-right:3px;}

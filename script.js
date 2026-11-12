@@ -293,7 +293,12 @@ MODIFICATION RULES FOR THIS APP
             studioQuizFolderFilterId: '',
             studioQuizClassFilterId: '',
             studioQuizManageView: 'recent',
-            studioQuizProgressFilter: 'all',
+            studioQuizQuickFilters: { pinned: false, pending: false, inProgress: false },
+            studioQuizPinnedIds: new Set(),
+            studioQuizPinnedLoadedUser: '',
+            studioQuizPinnedLoadPromise: null,
+            studioQuizPinnedGeneration: 0,
+            studioQuizPinnedLoadingGeneration: -1,
             studioQuizPage: 1,
             studioClassQuickAddOpenId: '',
             studioFolderSearchQuery: '',
@@ -957,7 +962,7 @@ MODIFICATION RULES FOR THIS APP
         studioQuizManageTabs: Array.from(document.querySelectorAll('[data-studio-manage-view]')),
         studioQuizSearchInput: document.getElementById('studioQuizSearchInput'),
         studioQuizClassFilterSelect: document.getElementById('studioQuizClassFilterSelect'),
-        studioQuizProgressFilterSelect: document.getElementById('studioQuizProgressFilterSelect'),
+        studioQuizQuickFilters: document.getElementById('studioQuizQuickFilters'),
         studioQuizFolderFilterSelect: document.getElementById('studioQuizFolderFilterSelect'),
         studioQuizClearFiltersBtn: document.getElementById('studioQuizClearFiltersBtn'),
         studioQuizFilterStatus: document.getElementById('studioQuizFilterStatus'),
@@ -7517,7 +7522,7 @@ MODIFICATION RULES FOR THIS APP
         return `saved_img_live_${Math.abs(hash).toString(36)}`;
     }
 
-    // Phase 23F.41.24: pins live in Saved Image JSON, not raster media or quiz stars.
+    // Phase 23F.41.24: pins live in Saved Image JSON, not raster media or quiz pins.
     // Keep an angle/label-index plus a name fingerprint to avoid reusing a pin on
     // a different label after authoring removes or reorders labels.
     function normalizeSavedImagePinnedLabels(value = {}) {
@@ -7903,7 +7908,7 @@ MODIFICATION RULES FOR THIS APP
                 <p>Every required stage needs <strong>two complete qualifying passes on the same local calendar day, at least six hours apart</strong>. Two passes before six hours do not complete the stage. Even when a window spans several days, its two credited passes must be on one day.</p>
             </section>
             <section><h3>What counts as a pass?</h3>
-                ${isQuiz ? `<p>Study the <strong>entire required quiz</strong>, not a starred or filtered subset. Finish the questions successfully using their current study mode. For applicable question types, <strong>Shuffle Answers must be ON</strong>. Missed questions may be corrected under the mode's normal rules; a perfect first attempt is <strong>not</strong> required.</p>` : `<p>A Saved Image must cover <strong>all required structure identifications across its angles</strong>; partial coverage does not earn a full pass. When enabled, <strong>Identify structure for category</strong> questions can substitute for ordinary name-identification questions. Category-information questions that already name the structure do not provide identification credit. The existing Mini Quiz modes and their retry rules still apply. A perfect first attempt is <strong>not</strong> required.</p>`}
+                ${isQuiz ? `<p>Study the <strong>entire required quiz</strong>, not a pinned or filtered subset. Finish the questions successfully using their current study mode. For applicable question types, <strong>Shuffle Answers must be ON</strong>. Missed questions may be corrected under the mode's normal rules; a perfect first attempt is <strong>not</strong> required.</p>` : `<p>A Saved Image must cover <strong>all required structure identifications across its angles</strong>; partial coverage does not earn a full pass. When enabled, <strong>Identify structure for category</strong> questions can substitute for ordinary name-identification questions. Category-information questions that already name the structure do not provide identification credit. The existing Mini Quiz modes and their retry rules still apply. A perfect first attempt is <strong>not</strong> required.</p>`}
             </section>
             <section><h3>LEARNING and MASTERED</h3>
                 <p>Day 4 is the mastery milestone. Once the relevant study requirements and label/question coverage are met, MASTERED continues through the later scheduled maintenance reviews. The same two-pass rule applies in both stages.</p>
@@ -28894,6 +28899,36 @@ MODIFICATION RULES FOR THIS APP
         return normalizeSheetText(state.auth.studioQuizSearchQuery || elements.studioQuizSearchInput?.value || '').toLowerCase();
     }
 
+    let managedQuizQuickFilterTimer = null;
+    function scheduleManagedQuizQuickFilterRefresh() {
+        clearTimeout(managedQuizQuickFilterTimer);
+        managedQuizQuickFilterTimer = null;
+        const filters = state.auth.studioQuizQuickFilters || {};
+        if (!filters.pending && !filters.inProgress) return;
+        const now = new Date();
+        const midnight = new Date(now);
+        midnight.setHours(24, 0, 0, 0);
+        let nextAt = midnight.getTime();
+        if (filters.pending) {
+            (state.auth.managedQuizzes || []).forEach(quiz => {
+                const progress = getQuizSpacedStatus(quiz, now);
+                if (!progress.valid || !progress.data.startedOn || progress.overdue || !progress.inWindow || !progress.nextAt) return;
+                const dueAt = progress.nextAt.getTime();
+                if (dueAt > now.getTime() && dueAt < nextAt) nextAt = dueAt;
+            });
+        }
+        managedQuizQuickFilterTimer = setTimeout(() => {
+            managedQuizQuickFilterTimer = null;
+            if (state.auth.currentStudioSection === 'manage') renderQuizManagementList();
+            else scheduleManagedQuizQuickFilterRefresh();
+        }, Math.max(150, Math.min(2147483647, nextAt - now.getTime() + 150)));
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' &&
+            (state.auth.studioQuizQuickFilters?.pending || state.auth.studioQuizQuickFilters?.inProgress) &&
+            state.auth.currentStudioSection === 'manage') renderQuizManagementList();
+    });
+
     function getStudioQuizFolderFilterId() {
         return normalizeSheetText(state.auth.studioQuizFolderFilterId || elements.studioQuizFolderFilterSelect?.value || '');
     }
@@ -28968,22 +29003,83 @@ MODIFICATION RULES FOR THIS APP
     const STUDIO_QUIZZES_PER_PAGE = 10;
     const STUDIO_RECENT_DAYS = 30;
 
-    function getStudioQuizProgressFilter() {
-        const value = normalizeSheetText(state.auth.studioQuizProgressFilter || 'all');
-        return ['all', 'in-progress', 'learning', 'mastered'].includes(value) ? value : 'all';
+    function syncStudioQuizQuickFilters() {
+        const selected = state.auth.studioQuizQuickFilters || {};
+        elements.studioQuizQuickFilters?.querySelectorAll('[data-quiz-quick-filter]').forEach(button => {
+            const name = button.dataset.quizQuickFilter === 'in-progress' ? 'inProgress' : button.dataset.quizQuickFilter;
+            button.setAttribute('aria-pressed', String(!!selected[name]));
+        });
     }
 
-    function matchesStudioQuizProgressFilter(quiz, filter = getStudioQuizProgressFilter()) {
-        if (filter === 'all') return true;
-        // Use the same current ribbon eligibility as the quiz card itself.
-        // A missed review deadline must never leave a stale status match.
-        const ribbon = getQuizSpacedRibbonKind(quiz);
-        if (filter === 'learning' || filter === 'mastered') return ribbon === filter;
-        if (ribbon === 'learning') return true;
-        if (ribbon === 'mastered') return false;
-        const progress = getQuizSpacedStatus(quiz);
-        return !!(progress.valid && progress.data.startedOn && !progress.data.stages.d1 &&
-            progress.firstAt && progress.inWindow && !progress.overdue);
+    // The quiz status must match Saved Images, not the ribbon (which is
+    // intentionally hidden before the first LEARNING stage completes).
+    function isQuizStudyInProgress(quiz, now = new Date()) {
+        const progress = getQuizSpacedStatus(quiz, now);
+        return !!(progress.valid && progress.data.startedOn && !progress.overdue);
+    }
+    function isQuizStudyPending(quiz, now = new Date()) {
+        const progress = getQuizSpacedStatus(quiz, now);
+        const {data, today, current} = progress;
+        if (!progress.valid || !data.startedOn || progress.overdue || !current || !progress.inWindow) return false;
+        if (Object.values(data.stages).some(record =>
+            record?.secondAt && getSpacedReviewLocalDay(record.secondAt) === today)) return false;
+        if (progress.firstAt) return !!(progress.nextAt && progress.nextAt.getTime() <= now.getTime() &&
+            getSpacedReviewLocalDay(progress.nextAt) === today);
+        return true;
+    }
+
+    function invalidateManagedQuizPinnedCache() {
+        state.auth.studioQuizPinnedGeneration = Number(state.auth.studioQuizPinnedGeneration || 0) + 1;
+        state.auth.studioQuizPinnedLoadedUser = '';
+        state.auth.studioQuizPinnedIds = new Set();
+    }
+
+    // One user-scoped batched read for the entire quiz library; never query
+    // each quiz individually. An unknown/failed read is NOT treated as empty.
+    async function loadManagedQuizPinnedIds(options = {}) {
+        const userId = normalizeSheetText(state.auth.user?.id);
+        if (!userId || !state.auth.client) return false;
+        if (!options.force && state.auth.studioQuizPinnedLoadedUser === userId) return true;
+        const generation = Number(state.auth.studioQuizPinnedGeneration || 0);
+        if (state.auth.studioQuizPinnedLoadPromise && state.auth.studioQuizPinnedLoadingGeneration === generation)
+            return state.auth.studioQuizPinnedLoadPromise;
+        let request;
+        request = (async () => {
+            const rows = await fetchAllSupabaseRows(() => state.auth.client.from('user_question_state')
+                .select('question_id').eq('user_id', userId).eq('is_starred', true),
+                {label: 'pinned quiz question state'});
+            if (normalizeSheetText(state.auth.user?.id) !== userId || Number(state.auth.studioQuizPinnedGeneration || 0) !== generation) return false;
+            state.auth.studioQuizPinnedIds = new Set((rows || []).map(row => normalizeSheetText(row.question_id)).filter(Boolean));
+            state.auth.studioQuizPinnedLoadedUser = userId;
+            return true;
+        })().catch(error => {
+            console.error('Could not load pinned quiz question state:', error);
+            if (normalizeSheetText(state.auth.user?.id) === userId && Number(state.auth.studioQuizPinnedGeneration || 0) === generation && state.auth.studioQuizQuickFilters?.pinned) {
+                if (elements.studioQuizList) elements.studioQuizList.innerHTML = createStudioEmptyState('Pinned unavailable', 'Could not verify your pinned questions. Retry the Pinned filter; no pin records have changed.');
+            }
+            return false;
+        }).finally(() => {
+            if (state.auth.studioQuizPinnedLoadPromise === request) {
+                state.auth.studioQuizPinnedLoadPromise = null;
+                state.auth.studioQuizPinnedLoadingGeneration = -1;
+            }
+        });
+        state.auth.studioQuizPinnedLoadingGeneration = generation;
+        state.auth.studioQuizPinnedLoadPromise = request;
+        return request;
+    }
+
+    function matchesStudioQuizQuickFilters(quiz, now = new Date()) {
+        const filters = state.auth.studioQuizQuickFilters || {};
+        if (filters.pinned && !quiz.questionIds?.some(id => state.auth.studioQuizPinnedIds.has(normalizeSheetText(id)))) return false;
+        if (filters.pending && !isQuizStudyPending(quiz, now)) return false;
+        if (filters.inProgress && !isQuizStudyInProgress(quiz, now)) return false;
+        return true;
+    }
+
+    function clearStudioQuizQuickFilters() {
+        state.auth.studioQuizQuickFilters = {pinned: false, pending: false, inProgress: false};
+        syncStudioQuizQuickFilters();
     }
 
     function getFilteredManagedQuizzes() {
@@ -28991,7 +29087,7 @@ MODIFICATION RULES FOR THIS APP
         const folderFilterId = getStudioQuizFolderFilterId();
         const classFilterId = getStudioQuizClassFilterId();
         const manageView = getStudioQuizManageView();
-        const progressFilter = getStudioQuizProgressFilter();
+        const quickFilterNow = new Date();
         // An actual view/open/study/edit activity, or the quiz's persisted
         // creation/update timestamp, can place a quiz in Recent for 30 days.
         // Rendering its card never writes a new activity timestamp.
@@ -29002,7 +29098,7 @@ MODIFICATION RULES FOR THIS APP
                 const activeAt = getStudioActivityTime('quiz', quiz.id, quiz.updatedAt);
                 if (!(activeAt >= recentCutoff && activeAt <= now)) return false;
             }
-            if (!matchesStudioQuizProgressFilter(quiz, progressFilter)) return false;
+            if (!matchesStudioQuizQuickFilters(quiz, quickFilterNow)) return false;
             if (manageView === 'classes' && classFilterId === '__none__' && getQuizClassId(quiz)) return false;
             if (manageView === 'classes' && classFilterId && classFilterId !== '__none__' && getQuizClassId(quiz) !== classFilterId) return false;
             if (folderFilterId === '__none__' && normalizeSheetText(quiz.folderId)) return false;
@@ -29030,7 +29126,9 @@ MODIFICATION RULES FOR THIS APP
         if (manageView === 'classes' && classFilterId) parts.push(`Class: ${className || 'Unknown class'}`);
         if (folderFilterId) parts.push(`Folder: ${folderName || 'Unknown folder'}`);
         if (searchQuery) parts.push(`Search: ${searchQuery}`);
-        if (getStudioQuizProgressFilter() !== 'all') parts.push(`Study Progress: ${getStudioQuizProgressFilter()}`);
+        const quickLabels = [['pinned','Pinned'], ['pending','Pending'], ['inProgress','In Progress']];
+        const selectedQuicks = quickLabels.filter(([key]) => !!state.auth.studioQuizQuickFilters?.[key]).map(([,label]) => label);
+        if (selectedQuicks.length) parts.push(`Filters: ${selectedQuicks.join(' + ')}`);
         const onlyDefaultView = parts.length === 1 && manageView === 'recent' && !searchQuery && !folderFilterId;
         if (onlyDefaultView) {
             elements.studioQuizFilterStatus.classList.add('hidden');
@@ -30127,7 +30225,7 @@ MODIFICATION RULES FOR THIS APP
     async function resetStarredQuestionsForQuiz(quizId = '') {
         const normalizedQuizId = normalizeSheetText(quizId);
         if (!normalizedQuizId || !state.auth.client || !state.auth.user?.id) {
-            setCreatorStatus('Sign in before resetting starred questions.', 'error');
+            setCreatorStatus('Sign in before resetting pinned questions.', 'error');
             return;
         }
 
@@ -30137,11 +30235,11 @@ MODIFICATION RULES FOR THIS APP
             return;
         }
 
-        if (!confirm(`Reset all starred questions for "${managedQuiz.name || 'this quiz'}"?`)) {
+        if (!confirm(`Reset all pinned questions for "${managedQuiz.name || 'this quiz'}"?`)) {
             return;
         }
 
-        setCreatorStatus('Resetting starred questions...');
+        setCreatorStatus('Resetting pinned questions...');
 
         try {
             let questionIds = Array.isArray(managedQuiz.questionIds) ? managedQuiz.questionIds.filter(Boolean) : [];
@@ -30183,10 +30281,12 @@ MODIFICATION RULES FOR THIS APP
             syncQuestionStarButton();
             updateProgress();
 
-            setCreatorStatus('Starred questions reset for this quiz.', 'success');
+            invalidateManagedQuizPinnedCache();
+            renderQuizManagementList();
+            setCreatorStatus('Pinned questions reset for this quiz.', 'success');
         } catch (error) {
-            console.error('Could not reset starred questions:', error);
-            setCreatorStatus(error.message || 'Could not reset starred questions.', 'error');
+            console.error('Could not reset pinned questions:', error);
+            setCreatorStatus(error.message || 'Could not reset pinned questions.', 'error');
         }
     }
 
@@ -30194,7 +30294,7 @@ MODIFICATION RULES FOR THIS APP
     async function switchStarredQuestionsForQuiz(quizId = '') {
         const normalizedQuizId = normalizeSheetText(quizId);
         if (!normalizedQuizId || !state.auth.client || !state.auth.user?.id) {
-            setCreatorStatus('Sign in before switching starred questions.', 'error');
+            setCreatorStatus('Sign in before switching pinned questions.', 'error');
             return;
         }
 
@@ -30220,16 +30320,16 @@ MODIFICATION RULES FOR THIS APP
             if (error) throw error;
             currentStarMap = new Map((data || []).map(row => [normalizeSheetText(row.question_id), !!row.is_starred]));
         } catch (error) {
-            console.error('Could not load starred questions before switching:', error);
-            setCreatorStatus(error.message || 'Could not load starred questions for this quiz.', 'error');
+            console.error('Could not load pinned questions before switching:', error);
+            setCreatorStatus(error.message || 'Could not load pinned questions for this quiz.', 'error');
             return;
         }
 
-        if (!confirm(`Switch starred and unstarred questions for "${managedQuiz.name || 'this quiz'}"? Starred questions will become unstarred, and unstarred questions will become starred.`)) {
+        if (!confirm(`Switch pinned and unpinned questions for "${managedQuiz.name || 'this quiz'}"? Pinned questions will become unpinned, and unpinned questions will become pinned.`)) {
             return;
         }
 
-        setCreatorStatus('Switching starred questions...');
+        setCreatorStatus('Switching pinned questions...');
 
         try {
             const nextStarMap = new Map();
@@ -30264,10 +30364,12 @@ MODIFICATION RULES FOR THIS APP
             updateProgress();
 
             const starredCount = Array.from(nextStarMap.values()).filter(Boolean).length;
-            setCreatorStatus(`Starred status switched. ${starredCount} ${starredCount === 1 ? 'question is' : 'questions are'} now starred.`, 'success');
+            invalidateManagedQuizPinnedCache();
+            renderQuizManagementList();
+            setCreatorStatus(`Pinned status switched. ${starredCount} ${starredCount === 1 ? 'question is' : 'questions are'} now pinned.`, 'success');
         } catch (error) {
-            console.error('Could not switch starred questions:', error);
-            setCreatorStatus(error.message || 'Could not switch starred questions.', 'error');
+            console.error('Could not switch pinned questions:', error);
+            setCreatorStatus(error.message || 'Could not switch pinned questions.', 'error');
         }
     }
 
@@ -30305,7 +30407,7 @@ MODIFICATION RULES FOR THIS APP
     async function deleteStarredQuestionsForQuiz(quizId = '') {
         const normalizedQuizId = normalizeSheetText(quizId);
         if (!normalizedQuizId || !state.auth.client || !state.auth.user?.id) {
-            setCreatorStatus('Sign in before deleting starred questions.', 'error');
+            setCreatorStatus('Sign in before deleting pinned questions.', 'error');
             return;
         }
 
@@ -30319,22 +30421,22 @@ MODIFICATION RULES FOR THIS APP
         try {
             starredQuestionIds = await loadStarredQuestionIdsForQuiz(managedQuiz, normalizedQuizId);
         } catch (error) {
-            console.error('Could not load starred questions before delete:', error);
-            setCreatorStatus(error.message || 'Could not load starred questions for this quiz.', 'error');
+            console.error('Could not load pinned questions before delete:', error);
+            setCreatorStatus(error.message || 'Could not load pinned questions for this quiz.', 'error');
             return;
         }
 
         if (!starredQuestionIds.length) {
-            setCreatorStatus('This quiz has no starred questions to delete.', 'error');
+            setCreatorStatus('This quiz has no pinned questions to delete.', 'error');
             return;
         }
 
-        const countLabel = starredQuestionIds.length === 1 ? '1 starred question' : `${starredQuestionIds.length} starred questions`;
+        const countLabel = starredQuestionIds.length === 1 ? '1 pinned question' : `${starredQuestionIds.length} pinned questions`;
         if (!confirm(`Delete ${countLabel} from "${managedQuiz.name || 'this quiz'}"? This cannot be undone.`)) {
             return;
         }
 
-        setCreatorStatus('Deleting starred questions...');
+        setCreatorStatus('Deleting pinned questions...');
 
         try {
             const mediaRefsToDelete = new Set();
@@ -30354,7 +30456,7 @@ MODIFICATION RULES FOR THIS APP
             // only after Supabase confirms the bulk question deletion.
             const handwritingCacheCleared = await invalidateDeletedFlashcardHandwritingCaches(starredQuestionIds);
             if (!handwritingCacheCleared) {
-                console.warn('Starred questions deleted, but local handwriting-cache cleanup was not confirmed.');
+                console.warn('Pinned questions deleted, but local handwriting-cache cleanup was not confirmed.');
             }
             await deleteSupabaseMediaReferences(mediaRefsToDelete);
 
@@ -30386,8 +30488,8 @@ MODIFICATION RULES FOR THIS APP
                 : `${countLabel} deleted in Supabase, but browser handwriting-cache cleanup could not be verified.`,
                 handwritingCacheCleared ? 'success' : 'error');
         } catch (error) {
-            console.error('Could not delete starred questions:', error);
-            setCreatorStatus(error.message || 'Could not delete starred questions.', 'error');
+            console.error('Could not delete pinned questions:', error);
+            setCreatorStatus(error.message || 'Could not delete pinned questions.', 'error');
         }
     }
 
@@ -30996,20 +31098,20 @@ MODIFICATION RULES FOR THIS APP
                     <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-duplicate-options" aria-expanded="${duplicateOptionsOpen ? 'true' : 'false'}"><span>Duplicate</span><span aria-hidden="true">${duplicateOptionsOpen ? '⌄' : '›'}</span></button>
                     <div class="studio-quiz-actions-submenu${duplicateOptionsOpen ? ' open' : ''}" role="group" aria-label="Duplicate quiz options">
                       <button type="button" role="menuitem" data-action="duplicate-quiz-all">Duplicate Entire Quiz</button>
-                      <button type="button" role="menuitem" data-action="duplicate-quiz-starred">Duplicate Starred Questions Only</button>
-                      <button type="button" role="menuitem" data-action="duplicate-quiz-unstarred">Duplicate Unstarred Questions Only</button>
+                      <button type="button" role="menuitem" data-action="duplicate-quiz-starred">Duplicate Pinned Questions Only</button>
+                      <button type="button" role="menuitem" data-action="duplicate-quiz-unstarred">Duplicate Unpinned Questions Only</button>
                     </div>
                     ${canCreateFlashcards ? `
                     <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-create-flashcards-options" aria-expanded="${createFlashcardsOptionsOpen ? 'true' : 'false'}"><span>Create Flashcards</span><span aria-hidden="true">${createFlashcardsOptionsOpen ? '⌄' : '›'}</span></button>
                     <div class="studio-quiz-actions-submenu${createFlashcardsOptionsOpen ? ' open' : ''}" role="group" aria-label="Create flashcards options">
                       <button type="button" role="menuitem" data-action="create-flashcards-all">Entire Quiz</button>
-                      <button type="button" role="menuitem" data-action="create-flashcards-starred">From Starred Only</button>
+                      <button type="button" role="menuitem" data-action="create-flashcards-starred">From Pinned Only</button>
                     </div>` : ''}
-                    <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-star-options" aria-expanded="${starOptionsOpen ? 'true' : 'false'}"><span>Star Options</span><span aria-hidden="true">${starOptionsOpen ? '⌄' : '›'}</span></button>
-                    <div class="studio-quiz-actions-submenu${starOptionsOpen ? ' open' : ''}" role="group" aria-label="Star options">
-                      <button type="button" role="menuitem" data-action="reset-starred">Reset Starred</button>
-                      <button type="button" role="menuitem" data-action="switch-starred">Switch Starred</button>
-                      <button type="button" role="menuitem" data-action="delete-starred">Delete Starred Questions</button>
+                    <button type="button" role="menuitem" class="studio-quiz-submenu-toggle" data-action="toggle-star-options" aria-expanded="${starOptionsOpen ? 'true' : 'false'}"><span>Pin Options</span><span aria-hidden="true">${starOptionsOpen ? '⌄' : '›'}</span></button>
+                    <div class="studio-quiz-actions-submenu${starOptionsOpen ? ' open' : ''}" role="group" aria-label="Pin options">
+                      <button type="button" role="menuitem" data-action="reset-starred">Reset Pinned</button>
+                      <button type="button" role="menuitem" data-action="switch-starred">Switch Pinned</button>
+                      <button type="button" role="menuitem" data-action="delete-starred">Delete Pinned Questions</button>
                     </div>
                     <button type="button" role="menuitem" data-action="delete-quiz">Delete Quiz</button>
                   </div>
@@ -31110,6 +31212,8 @@ MODIFICATION RULES FOR THIS APP
         autoLoadCleanupKeepSelections();
         if (!elements.studioQuizList) return;
         syncStudioManageTabs();
+        syncStudioQuizQuickFilters();
+        scheduleManagedQuizQuickFilterRefresh();
 
         if (!state.auth.client || !state.auth.user?.id) {
             elements.studioQuizList.innerHTML = createStudioEmptyState('Sign in required', 'Sign in before managing your private Supabase quizzes.', [{ label: 'Open Account', action: 'open-auth' }]);
@@ -31126,16 +31230,21 @@ MODIFICATION RULES FOR THIS APP
         syncStudioManageTabs();
 
         const manageView = getStudioQuizManageView();
+        if (state.auth.studioQuizQuickFilters?.pinned && state.auth.studioQuizPinnedLoadedUser !== normalizeSheetText(state.auth.user?.id)) {
+            elements.studioQuizList.innerHTML = '<div class="studio-list-empty" role="status">Loading pinned quizzes…</div>';
+            loadManagedQuizPinnedIds().then(ok => { if (ok && state.auth.studioQuizQuickFilters?.pinned) renderQuizManagementList(); });
+            return;
+        }
         const quizzesToRender = getFilteredManagedQuizzes().sort(sortStudioActiveItems('quiz'));
         updateStudioQuizFilterStatus(quizzesToRender.length);
         if (!quizzesToRender.length) {
             state.auth.studioQuizPage = 1;
-            if (manageView === 'classes' && getStudioQuizClassFilterId() && getStudioQuizProgressFilter() === 'all' && !getStudioQuizSearchQuery() && !getStudioQuizFolderFilterId()) {
+            if (manageView === 'classes' && getStudioQuizClassFilterId() && !Object.values(state.auth.studioQuizQuickFilters || {}).some(Boolean) && !getStudioQuizSearchQuery() && !getStudioQuizFolderFilterId()) {
                 const emptyClass = renderClassGroupedQuizManagementList([]);
                 if (emptyClass.trim()) { elements.studioQuizList.innerHTML = emptyClass; return; }
             }
             elements.studioQuizList.innerHTML = createStudioEmptyState('No matching quizzes',
-                manageView === 'recent' ? 'No quizzes used or changed in the last 30 days match these filters. Older quizzes are available under All Quizzes.' : 'Clear or change your quiz search/class/folder/progress filters to see more quizzes.',
+                manageView === 'recent' ? 'No quizzes used or changed in the last 30 days match these filters. Older quizzes are available under All Quizzes.' : 'Clear or change your quiz search/class/folder/quick filters to see more quizzes.',
                 manageView === 'recent'
                     ? [{ label: 'View All Quizzes', action: 'open-all-quizzes' }]
                     : [{ label: 'Clear Filters', action: 'clear-quiz-filters' }]);
@@ -31496,6 +31605,7 @@ if (elements.importBackupFile) {
 
     function applyCachedManagedSupabaseQuizzes(entry = null) {
         state.auth.managedQuizzes = clonePlainArrayRows(entry?.managedQuizzes || []);
+        invalidateManagedQuizPinnedCache();
         state.auth.quizChallengeAchievements = cloneQuizChallengeAchievementMap(entry?.quizChallengeAchievements);
         state.auth.quizSpacedReviews = new Map(entry?.quizSpacedReviews || []);
         state.auth.quizSpacedContentRevisions = new Map(entry?.quizSpacedContentRevisions || []);
@@ -35242,7 +35352,7 @@ if (elements.importBackupFile) {
         const active = !!state.auth.studioQuestionStarredOnly;
         elements.studioQuestionStarredOnly.classList.toggle('active', active);
         elements.studioQuestionStarredOnly.setAttribute('aria-pressed', active ? 'true' : 'false');
-        elements.studioQuestionStarredOnly.title = active ? 'Clear starred-only filter' : 'Show only starred questions';
+        elements.studioQuestionStarredOnly.title = active ? 'Clear pinned-only filter' : 'Show only pinned questions';
     }
 
     function setStudioQuestionFocusMode(questionId, options = {}) {
@@ -35460,7 +35570,7 @@ if (elements.importBackupFile) {
                         : (examSectionFilterId
                             ? '<div class="studio-list-empty">No questions match this section filter. Choose All Sections to show every question.</div>'
                             : (starredOnlyFilter && !query
-                                ? '<div class="studio-list-empty">No starred questions in this quiz.</div>'
+                                ? '<div class="studio-list-empty">No pinned questions in this quiz.</div>'
                                 : '<div class="studio-list-empty">No questions match your search.</div>'))));
             elements.studioQuestionList.innerHTML = emptyLabel;
             updateStudioQuestionNavigationUI();
@@ -35537,7 +35647,7 @@ if (elements.importBackupFile) {
                 : `<button type="button" class="studio-question-focus-btn" data-studio-focus-question-id="${escapeHtml(questionRow.id)}">Focus</button>${stringFocusControlHtml}`;
             const isStarredRow = !!questionRow.isStarred;
             const starBadgeHtml = isStarredRow
-                ? '<span class="studio-question-list-star" title="Starred question" aria-label="Starred question">★</span>'
+                ? '<span class="studio-question-list-star" title="Pinned question" aria-label="Pinned question"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg></span>'
                 : '';
             const importIssues = getStoredQuestionImportIssues(questionRow);
             const examTypeBadgeHtml = isStudioExamMode()
@@ -36653,6 +36763,7 @@ if (elements.importBackupFile) {
         elements.handwrittenToolButtons?.forEach(btn => btn.classList.toggle('active', btn.dataset.handwrittenTool === state.auth.handwrittenFlashcardTool));
         syncHandwrittenSelectionControls();
         renderHandwrittenFlashcardColorPresets();
+        scheduleHandwrittenNextCardPreload();
         if (elements.flashcardHandwrittenCanvas) elements.flashcardHandwrittenCanvas.dataset.flashcardSide = side;
         drawHandwrittenEditorCanvas(side);
         requestAnimationFrame(() => {
@@ -36940,7 +37051,96 @@ if (elements.importBackupFile) {
         renderHandwrittenFlashcardWorkspace();
     }
 
+    // Phase U: tiny read-only adjacent-card cache. No speculative writes, no
+    // unbounded image canvases or bulk deck downloads. Existing handwriting
+    // revision validation remains the authority for the stored ink.
+    const handwrittenNextCardPreload = {owner: '', entries: new Map(), timer: null};
+    function clearHandwrittenNextCardPreload() {
+        if (handwrittenNextCardPreload.timer !== null) clearTimeout(handwrittenNextCardPreload.timer);
+        handwrittenNextCardPreload.timer = null;
+        handwrittenNextCardPreload.entries.clear();
+        handwrittenNextCardPreload.owner = '';
+    }
+    function getHandwrittenPreloadOwner() {
+        return `${normalizeSheetText(state.auth.user?.id)}:${normalizeSheetText(state.auth.editingQuizId)}`;
+    }
+    function requestHandwrittenCardPreload(id) {
+        const cardId = normalizeSheetText(id);
+        const owner = getHandwrittenPreloadOwner();
+        if (!cardId || !state.auth.client || !state.auth.handwrittenFlashcardEnabled ||
+            isStudioLocalFlashcardId(cardId) || cardId === STUDIO_PENDING_NEW_FLASHCARD_ID ||
+            !state.auth.user?.id || !state.auth.editingQuizId ||
+            state.auth.studioSaveInFlightPromise || state.auth.studioQuestionDrafts.has(cardId)) return;
+        if (handwrittenNextCardPreload.owner !== owner) {
+            handwrittenNextCardPreload.entries.clear();
+            handwrittenNextCardPreload.owner = owner;
+        }
+        const existing = handwrittenNextCardPreload.entries.get(cardId);
+        if (existing && Date.now() - existing.created <= 30000) return;
+        if (existing) handwrittenNextCardPreload.entries.delete(cardId);
+        const entry = {created: Date.now(), owner, promise: null, value: null};
+        handwrittenNextCardPreload.entries.set(cardId, entry);
+        // Only the upcoming card; retain at most one previously prepared card.
+        while (handwrittenNextCardPreload.entries.size > 2) {
+            handwrittenNextCardPreload.entries.delete(handwrittenNextCardPreload.entries.keys().next().value);
+        }
+        entry.promise = (async () => {
+            const [questionResult, detail] = await Promise.all([
+                state.auth.client.from('questions')
+                    .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, question_type')
+                    .eq('id', cardId).maybeSingle(),
+                loadFlashcardDetailByQuestionId(cardId)
+            ]);
+            if (questionResult.error) throw questionResult.error;
+            if (!questionResult.data || !detail) return null;
+            const term = parseStoredFlashcardSideContent(detail.term_html || '');
+            const definition = parseStoredFlashcardSideContent(detail.definition_html || '');
+            const needsInk = term.contentMode === 'handwritten' || definition.contentMode === 'handwritten';
+            const ink = needsInk ? await loadFlashcardHandwritingDetailByQuestionId(cardId) : null;
+            return {question: questionResult.data, detail, ink};
+        })().then(value => {
+            if (handwrittenNextCardPreload.owner === owner && handwrittenNextCardPreload.entries.get(cardId) === entry) entry.value = value;
+            return value;
+        }).catch(error => {
+            if (handwrittenNextCardPreload.entries.get(cardId) === entry) handwrittenNextCardPreload.entries.delete(cardId);
+            console.warn('Could not preload the next handwritten card; navigation will use normal loading:', error);
+            return null;
+        });
+    }
+    function scheduleHandwrittenNextCardPreload() {
+        if (!state.auth.handwrittenFlashcardEnabled || state.auth.currentStudioSection !== 'editor') return;
+        const rows = getHandwrittenWorkspaceRows();
+        const currentId = normalizeSheetText(getCurrentHandwrittenFlashcardRow()?.id || state.auth.editingQuestionId);
+        const index = rows.findIndex(row => normalizeSheetText(row.id) === currentId);
+        const nextId = normalizeSheetText(rows[index + 1]?.id);
+        if (!nextId || nextId === STUDIO_PENDING_NEW_FLASHCARD_ID) return;
+        if (handwrittenNextCardPreload.timer !== null) clearTimeout(handwrittenNextCardPreload.timer);
+        // Delay to avoid competing with Apple Pencil strokes and foreground paints.
+        handwrittenNextCardPreload.timer = setTimeout(() => {
+            handwrittenNextCardPreload.timer = null;
+            if (state.auth.currentStudioSection !== 'editor' || !state.auth.handwrittenFlashcardEnabled ||
+                state.auth.handwrittenFlashcardPointer || state.auth.studioSaveInFlightPromise ||
+                normalizeSheetText(getCurrentHandwrittenFlashcardRow()?.id) !== currentId) return;
+            requestHandwrittenCardPreload(nextId);
+        }, 250);
+    }
+    async function takeHandwrittenCardPreload(id) {
+        const cardId = normalizeSheetText(id), owner = getHandwrittenPreloadOwner();
+        const entry = handwrittenNextCardPreload.entries.get(cardId);
+        if (!entry || entry.owner !== owner || Date.now() - entry.created > 30000 ||
+            state.auth.studioSaveInFlightPromise || state.auth.studioQuestionDrafts.has(cardId) ||
+            state.auth.handwrittenTouchedCardIds?.has(cardId)) return null;
+        return (await entry.promise) || null;
+    }
+
+    let handwrittenNavigationInFlight = false;
     async function navigateHandwrittenFlashcard(delta=0, absolute=null) {
+        if (handwrittenNavigationInFlight) return;
+        handwrittenNavigationInFlight = true;
+        try { await performHandwrittenFlashcardNavigation(delta, absolute); }
+        finally { handwrittenNavigationInFlight = false; }
+    }
+    async function performHandwrittenFlashcardNavigation(delta=0, absolute=null) {
         const currentRow = getCurrentHandwrittenFlashcardRow();
         const currentIsPending = normalizeSheetText(currentRow?.id) === STUDIO_PENDING_NEW_FLASHCARD_ID;
         const currentHasContent = !!currentRow && (hasHandwrittenFlashcardSideContent(currentRow,'term') || hasHandwrittenFlashcardSideContent(currentRow,'definition'));
@@ -36962,7 +37162,7 @@ if (elements.importBackupFile) {
                 renderHandwrittenFlashcardWorkspace();
                 return;
             }
-            await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true});
+            await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true,fromHandwrittenNav:true});
             state.auth.handwrittenFlashcardSide='term';
             state.auth.handwrittenFlashcardTool='pen';
             clearHandwrittenEditorCanvasPixels();
@@ -36986,7 +37186,7 @@ if (elements.importBackupFile) {
             renderHandwrittenFlashcardWorkspace();
             return;
         }
-        await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true});
+        await loadStudioQuestionIntoEditor(target.id,{force:true,suppressStatus:true,fromHandwrittenNav:true});
         state.auth.handwrittenFlashcardSide='term';
         state.auth.handwrittenFlashcardTool='pen';
         clearHandwrittenEditorCanvasPixels();
@@ -37483,11 +37683,14 @@ if (elements.importBackupFile) {
             cacheCurrentStudioQuestionDraft();
         }
 
-        const { data: questionRow, error: questionError } = await state.auth.client
-            .from('questions')
-            .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, question_type')
-            .eq('id', questionId)
-            .maybeSingle();
+        const preparedCard = options.fromHandwrittenNav ? await takeHandwrittenCardPreload(questionId) : null;
+        const { data: questionRow, error: questionError } = preparedCard?.question
+            ? {data: preparedCard.question, error: null}
+            : await state.auth.client
+                .from('questions')
+                .select('id, prompt_html, prompt_plain, image_url, learning_resources_html, learning_resources_image_url, question_type')
+                .eq('id', questionId)
+                .maybeSingle();
 
         if (questionError) throw questionError;
         if (!questionRow) {
@@ -37542,7 +37745,7 @@ if (elements.importBackupFile) {
         );
 
         if (state.auth.editingQuizType === 'flashcard') {
-            const detailRow = await loadFlashcardDetailByQuestionId(questionId);
+            const detailRow = preparedCard?.detail || await loadFlashcardDetailByQuestionId(questionId);
             if (!detailRow) {
                 throw new Error('Could not load that flashcard into the editor.');
             }
@@ -37572,7 +37775,7 @@ if (elements.importBackupFile) {
                 studioRow.term_image_layout = normalizeFlashcardImageLayout(parsedTermSide.imageLayout, !!normalizeSheetText(detailRow.term_image_url));
                 studioRow.definition_image_layout = normalizeFlashcardImageLayout(parsedDefinitionSide.imageLayout, !!normalizeSheetText(detailRow.definition_image_url));
                 if (state.auth.handwrittenFlashcardEnabled && (parsedTermSide.contentMode === 'handwritten' || parsedDefinitionSide.contentMode === 'handwritten')) {
-                    const handwritingDetail = await loadFlashcardHandwritingDetailByQuestionId(questionId);
+                    const handwritingDetail = preparedCard?.ink || await loadFlashcardHandwritingDetailByQuestionId(questionId);
                     studioRow.term_handwriting = normalizeHandwritingStrokes(handwritingDetail?.term_handwriting || []);
                     studioRow.definition_handwriting = normalizeHandwritingStrokes(handwritingDetail?.definition_handwriting || []);
                     studioRow.flashcard_handwriting_deferred = false;
@@ -38309,6 +38512,7 @@ if (elements.importBackupFile) {
             }
         }
 
+        if (nextSection !== 'editor') clearHandwrittenNextCardPreload();
         state.auth.currentStudioSection = nextSection;
         closeAppPageMenu();
 
@@ -39387,7 +39591,7 @@ if (elements.openQuizStudioBtn) {
         if (!state.auth.client || !state.auth.user?.id) return [];
         try {
             return await fetchBackupRowsInBatches(questionIds, {
-                table: 'user_question_state', filter: 'question_id', orderColumn: 'question_id', label: 'starred question state',
+                table: 'user_question_state', filter: 'question_id', orderColumn: 'question_id', label: 'pinned question state',
                 columns: 'question_id, is_starred'
             });
         } catch (error) {
@@ -40242,7 +40446,7 @@ if (elements.openQuizStudioBtn) {
               <div class="studio-progress-card"><span>Folders</span><strong>${summary.folderCount}</strong></div>
               <div class="studio-progress-card"><span>Quizzes</span><strong>${summary.quizCount}</strong></div>
               <div class="studio-progress-card"><span>Questions</span><strong>${summary.questionCount}</strong></div>
-              <div class="studio-progress-card"><span>Starred</span><strong>${summary.starredCount}</strong></div>
+              <div class="studio-progress-card"><span>Pinned</span><strong>${summary.starredCount}</strong></div>
               <div class="studio-progress-card"><span>Media refs</span><strong>${summary.mediaReferenceCount}</strong></div>
               <div class="studio-progress-card"><span>Media metadata</span><strong>${summary.mediaAssetCount}</strong></div>
             </div>
@@ -40654,7 +40858,7 @@ if (elements.openQuizStudioBtn) {
         setCreatorStatus(`Imported backup as new copies: ${stats.folders} folders, ${stats.quizzes} quizzes, ${stats.questions} questions.`, 'success');
         if (elements.importBackupPreview) {
             elements.importBackupPreview.classList.add('is-success');
-            elements.importBackupPreview.insertAdjacentHTML('beforeend', `<div class="studio-backup-preview-note">Import complete. Restored starred questions: ${stats.starredQuestions || 0}.</div>`);
+            elements.importBackupPreview.insertAdjacentHTML('beforeend', `<div class="studio-backup-preview-note">Import complete. Restored pinned questions: ${stats.starredQuestions || 0}.</div>`);
         }
     }
 
@@ -42745,7 +42949,7 @@ if (elements.openQuizStudioBtn) {
                 const starredIds = new Set(await loadStarredQuestionIdsForQuiz(managedQuiz, normalizedQuizId));
                 selectedQuestionRows = allQuestionRows.filter(row => starredIds.has(normalizeSheetText(row.id)));
                 if (!selectedQuestionRows.length) {
-                    setCreatorStatus('This quiz has no starred questions to convert.', 'error');
+                    setCreatorStatus('This quiz has no pinned questions to convert.', 'error');
                     return;
                 }
             }
@@ -42770,7 +42974,7 @@ if (elements.openQuizStudioBtn) {
 
             const sourceName = normalizeSheetText(sourceQuizRow.name) || 'Untitled Quiz';
             const requestedName = normalizedMode === 'starred'
-                ? `${sourceName} — Starred Flashcards`
+                ? `${sourceName} — Pinned Flashcards`
                 : `${sourceName} — Flashcards`;
             const destinationName = getUniqueManagedQuizName(requestedName);
             const folderId = normalizeSheetText(sourceQuizRow.folder_id) || null;
@@ -42801,7 +43005,7 @@ if (elements.openQuizStudioBtn) {
             setCreatorProgressStatus('Creating flashcards', 'refreshing Quiz Studio');
             await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${createdQuizId}`, loadSelectedQuiz: false });
-            const sourceLabel = normalizedMode === 'starred' ? 'starred questions' : 'entire quiz';
+            const sourceLabel = normalizedMode === 'starred' ? 'pinned questions' : 'entire quiz';
             const createdCount = convertibleCandidates.length;
             const skippedMessage = skippedCount ? ` Skipped ${skippedCount} question${skippedCount === 1 ? '' : 's'} without a usable correct answer.` : '';
             setCreatorStatus(`Created ${createdCount} flashcard${createdCount === 1 ? '' : 's'} from the ${sourceLabel} in “${destinationName}”.${skippedMessage}`, 'success');
@@ -42887,7 +43091,7 @@ if (elements.openQuizStudioBtn) {
             }
 
             if (!sourceQuestions.length && normalizedMode !== 'all') {
-                const emptyLabel = normalizedMode === 'starred' ? 'starred' : 'unstarred';
+                const emptyLabel = normalizedMode === 'starred' ? 'pinned' : 'unpinned';
                 setCreatorStatus(`This quiz has no ${emptyLabel} questions to duplicate.`, 'error');
                 return;
             }
@@ -42895,9 +43099,9 @@ if (elements.openQuizStudioBtn) {
             const nextSortOrder = await getNextQuizSortOrder(quizRow.folder_id || null);
             const baseName = normalizeSheetText(quizRow.name) || 'Untitled Quiz';
             const duplicateName = normalizedMode === 'starred'
-                ? `${baseName} (Starred Copy)`
+                ? `${baseName} (Pinned Copy)`
                 : normalizedMode === 'unstarred'
-                    ? `${baseName} (Unstarred Copy)`
+                    ? `${baseName} (Unpinned Copy)`
                     : `${baseName} (Copy)`;
             const { data: insertedQuiz, error: insertQuizError } = await state.auth.client
                 .from('quizzes')
@@ -42947,11 +43151,11 @@ if (elements.openQuizStudioBtn) {
             await refreshStudioManagementData({ force: true });
             await refreshQuizCatalog({ selectQuizId: `sb:${newQuizId}`, loadSelectedQuiz: false });
             const modeLabel = normalizedMode === 'starred'
-                ? 'starred questions'
+                ? 'pinned questions'
                 : normalizedMode === 'unstarred'
-                    ? 'unstarred questions'
+                    ? 'unpinned questions'
                     : 'entire quiz';
-            setCreatorStatus(`Duplicated ${modeLabel}. Copied questions start unstarred.`, 'success');
+            setCreatorStatus(`Duplicated ${modeLabel}. Copied questions start unpinned.`, 'success');
         } catch (error) {
             console.error(error);
             setCreatorStatus(error.message || 'Could not duplicate the quiz.', 'error');
@@ -44963,7 +45167,7 @@ function saveAutoStarSettings() {
     try {
         localStorage.setItem(CONFIG.autoStarStorageKey, JSON.stringify(serializeAutoStarSettings()));
     } catch (err) {
-        console.warn('Could not save Auto-Star settings:', err);
+        console.warn('Could not save Auto-Pin settings:', err);
     }
 }
 
@@ -45059,7 +45263,7 @@ function advancePastAutoStarredExcludedCurrentQuestion() {
 
     if (!state.questionQueue.length) {
         state.currentIndex = 0;
-        state.emptyQuizMessage = 'All questions in this deck are currently starred and excluded.';
+        state.emptyQuizMessage = 'All questions in this deck are currently pinned and excluded.';
         if (isRetentionMode()) {
             state.retentionFinished = true;
         } else if (isMasteryCheckMode()) {
@@ -45093,11 +45297,11 @@ async function persistAutoStarForQuestion(question, elapsedMs) {
 
         const currentQuestion = state.questionQueue[state.currentIndex];
         if (getAutoStarQuestionKey(currentQuestion) === key && state.questionAnswered) {
-            setFeedback('Auto-starred ★', true);
+            setFeedback('Auto-pinned 📌', true);
         }
     } catch (error) {
         unmarkAutoStarredQuestionExcludedInSession(question);
-        console.error('Could not Auto-Star question:', error);
+        console.error('Could not Auto-Pin question:', error);
     } finally {
         state.autoStar.pendingQuestionKeys.delete(key);
         syncQuestionStarButton();
@@ -45135,7 +45339,7 @@ function saveUnstarOnWrongSettings() {
     try {
         localStorage.setItem(CONFIG.unstarOnWrongStorageKey, JSON.stringify(serializeUnstarOnWrongSettings()));
     } catch (err) {
-        console.warn('Could not save Unstar on Wrong settings:', err);
+        console.warn('Could not save Unpin on Wrong settings:', err);
     }
 }
 
@@ -45178,7 +45382,7 @@ async function persistUnstarOnWrongForQuestion(question) {
 
         const currentQuestion = state.questionQueue[state.currentIndex];
         if (getAutoStarQuestionKey(currentQuestion) === key && state.questionAnswered) {
-            setFeedback('Incorrect — unstarred ★', false);
+            setFeedback('Incorrect — unpinned 📌', false);
         }
     } catch (error) {
         console.error('Could not unstar question after wrong answer:', error);
@@ -45356,7 +45560,7 @@ function getActiveProgressQuizQuestionsForStarReset() {
 async function persistProgressResultStarState(questions = [], isStarred = true) {
     const targets = getUniqueStarEligibleQuestions([questions]);
     if (!state.auth.client || !state.auth.user?.id) {
-        throw new Error('Sign in to change starred questions.');
+        throw new Error('Sign in to change pinned questions.');
     }
     if (!targets.length) return 0;
 
@@ -45413,7 +45617,7 @@ function renderProgressResultStarActions(summary) {
     status.className = 'progress-result-star-status';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    status.innerText = canPersistStars ? '' : 'Sign in to change starred questions.';
+    status.innerText = canPersistStars ? '' : 'Sign in to change pinned questions.';
 
     const runAction = async (button, action) => {
         if (state.progressStarActionInFlight) return;
@@ -45422,7 +45626,7 @@ function renderProgressResultStarActions(summary) {
         const retryButton = summary.querySelector('.progress-mode-retry-btn');
         if (retryButton) retryButton.disabled = true;
         status.classList.remove('error');
-        status.innerText = 'Saving starred questions...';
+        status.innerText = 'Saving pinned questions...';
         try {
             const result = await action();
             status.innerText = result.message;
@@ -45430,7 +45634,7 @@ function renderProgressResultStarActions(summary) {
         } catch (error) {
             console.error('Could not update Progress result stars:', error);
             status.classList.add('error');
-            status.innerText = error?.message || 'Could not update starred questions.';
+            status.innerText = error?.message || 'Could not update pinned questions.';
         } finally {
             state.progressStarActionInFlight = false;
             correctButton.disabled = !canPersistStars || correctQuestions.length === 0;
@@ -45440,39 +45644,39 @@ function renderProgressResultStarActions(summary) {
         }
     };
 
-    const correctButton = createActionButton('★ Star all correct', correctQuestions.length, 'star-correct', event => {
+    const correctButton = createActionButton('📌 Pin all correct', correctQuestions.length, 'star-correct', event => {
         runAction(event.currentTarget, async () => {
             const count = await persistProgressResultStarState(correctQuestions, true);
             return {
-                message: `${count} correct ${count === 1 ? 'question' : 'questions'} starred.`,
-                buttonLabel: `✓ Starred correct (${correctQuestions.length})`
+                message: `${count} correct ${count === 1 ? 'question' : 'questions'} pinned.`,
+                buttonLabel: `✓ Pinned correct (${correctQuestions.length})`
             };
         });
     });
 
-    const incorrectButton = createActionButton('★ Star all incorrect', incorrectQuestions.length, 'star-incorrect', event => {
+    const incorrectButton = createActionButton('📌 Pin all incorrect', incorrectQuestions.length, 'star-incorrect', event => {
         runAction(event.currentTarget, async () => {
             const count = await persistProgressResultStarState(incorrectQuestions, true);
             return {
-                message: `${count} incorrect ${count === 1 ? 'question' : 'questions'} starred.`,
-                buttonLabel: `✓ Starred incorrect (${incorrectQuestions.length})`
+                message: `${count} incorrect ${count === 1 ? 'question' : 'questions'} pinned.`,
+                buttonLabel: `✓ Pinned incorrect (${incorrectQuestions.length})`
             };
         });
     });
 
-    const resetButton = createActionButton('☆ Reset all starred', 0, 'reset-starred', event => {
-        event.currentTarget.innerText = '☆ Reset all starred';
+    const resetButton = createActionButton('📌 Reset all pinned', 0, 'reset-starred', event => {
+        event.currentTarget.innerText = '📌 Reset all pinned';
         runAction(event.currentTarget, async () => {
             const count = await persistProgressResultStarState(resetQuestions, false);
-            correctButton.innerText = `★ Star all correct (${correctQuestions.length})`;
-            incorrectButton.innerText = `★ Star all incorrect (${incorrectQuestions.length})`;
+            correctButton.innerText = `📌 Pin all correct (${correctQuestions.length})`;
+            incorrectButton.innerText = `📌 Pin all incorrect (${incorrectQuestions.length})`;
             return {
-                message: `Starred questions reset for this quiz.`,
-                buttonLabel: '✓ Starred reset'
+                message: `Pinned questions reset for this quiz.`,
+                buttonLabel: '✓ Pinned reset'
             };
         });
     });
-    resetButton.innerText = '☆ Reset all starred';
+    resetButton.innerText = '📌 Reset all pinned';
     resetButton.disabled = !canPersistStars || !resetQuestions.some(question => !!question.isStarred);
 
     actions.appendChild(buttonRow);
@@ -45614,19 +45818,19 @@ function updateStarredQuestionAvailability() {
     }
 
     if (excludeSettingHelp && buildUpActive) {
-        excludeSettingHelp.innerText = 'Unavailable while Build Up is on because starred filters can split a Build Up string.';
+        excludeSettingHelp.innerText = 'Unavailable while Build Up is on because pinned filters can split a Build Up string.';
     } else if (excludeSettingHelp && !canUseStarred) {
-        excludeSettingHelp.innerText = 'Sign in to use starred-question memory.';
+        excludeSettingHelp.innerText = 'Sign in to use pinned-question memory.';
     } else if (excludeSettingHelp) {
-        excludeSettingHelp.innerText = 'Hides starred questions from the active study deck without removing the saved stars.';
+        excludeSettingHelp.innerText = 'Hides pinned questions from the active study deck without removing the saved pins.';
     }
 
     if (onlySettingHelp && buildUpActive) {
-        onlySettingHelp.innerText = 'Unavailable while Build Up is on because starred filters can split a Build Up string.';
+        onlySettingHelp.innerText = 'Unavailable while Build Up is on because pinned filters can split a Build Up string.';
     } else if (onlySettingHelp && !canUseStarred) {
-        onlySettingHelp.innerText = 'Sign in to use starred-question memory.';
+        onlySettingHelp.innerText = 'Sign in to use pinned-question memory.';
     } else if (onlySettingHelp) {
-        onlySettingHelp.innerText = 'Shows only starred questions in the active study deck without removing saved stars.';
+        onlySettingHelp.innerText = 'Shows only pinned questions in the active study deck without removing saved pins.';
     }
 }
 
@@ -45649,9 +45853,9 @@ function updateAutoStarAvailability() {
     }
 
     if (help && !canUseAutoStar) {
-        help.innerText = 'Sign in to use Auto-Star. It saves stars to your Supabase question memory.';
+        help.innerText = 'Sign in to use Auto-Pin. It saves pins to your Supabase question memory.';
     } else if (help) {
-        help.innerText = 'Automatically stars signed-in Supabase questions answered correctly within the selected time. Runs in the background and can be used with Timer Mode.';
+        help.innerText = 'Automatically pins signed-in Supabase questions answered correctly within the selected time. Runs in the background and can be used with Timer Mode.';
     }
 
     syncAutoStarSettingsUI();
@@ -45678,11 +45882,11 @@ function updateUnstarOnWrongAvailability() {
     }
 
     if (help && !canUseUnstar) {
-        help.innerText = 'Sign in to use Unstar on Wrong. It saves changes to your Supabase question memory.';
+        help.innerText = 'Sign in to use Unpin on Wrong. It saves changes to your Supabase question memory.';
     } else if (help && pausedByExclude) {
-        help.innerText = 'Turn off Exclude Starred to review starred questions and let wrong answers unstar them.';
+        help.innerText = 'Turn off Exclude Pinned to review pinned questions and let wrong answers unpin them.';
     } else if (help) {
-        help.innerText = 'When enabled, a starred question is unstarred if you answer it wrong. This can be used with or without Auto-Star.';
+        help.innerText = 'When enabled, a pinned question is unpinned if you answer it wrong. This can be used with or without Auto-Pin.';
     }
 
     syncUnstarOnWrongSettingsUI();
@@ -46311,7 +46515,7 @@ function setFlashcardSwipeFeedback(kind) {
     }
 
     if (kind === 'star-know') {
-        feedback.innerText = '★ Starred';
+        feedback.innerText = '📌 Pinned';
         feedback.classList.add('show', 'star-know');
         return;
     }
@@ -47274,7 +47478,7 @@ async function hydrateStarredQuestionState(questions) {
             question.isStarred = !!starredMap.get(normalizeSheetText(question?.sourceQuestionId));
         });
     } catch (error) {
-        console.error('Failed to hydrate starred question state:', error);
+        console.error('Failed to hydrate pinned question state:', error);
     }
 
     return questionRows;
@@ -47297,6 +47501,7 @@ function getDisplayedStudyQuestion() {
     return state.displayedQuestion || state.questionQueue[state.currentIndex] || null;
 }
 
+const QUESTION_PIN_ICON_HTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg>';
 function syncQuestionStarButton() {
     const button = elements.questionStarBtn;
     if (!button) return;
@@ -47307,19 +47512,19 @@ function syncQuestionStarButton() {
     if (!currentQuestion || !canPersistQuestionStarState(currentQuestion) || isQuizFinished()) {
         button.classList.add('hidden');
         button.disabled = true;
-        button.innerText = '☆';
+        button.innerHTML = QUESTION_PIN_ICON_HTML;
         button.classList.remove('starred');
-        button.setAttribute('aria-label', 'Star question');
-        button.setAttribute('title', 'Star question');
+        button.setAttribute('aria-label', 'Pin question');
+        button.setAttribute('title', 'Pin question');
         return;
     }
 
     button.classList.remove('hidden');
     button.disabled = !canStar;
-    button.innerText = currentQuestion.isStarred ? '★' : '☆';
+    button.innerHTML = QUESTION_PIN_ICON_HTML;
     button.classList.toggle('starred', !!currentQuestion.isStarred);
-    button.setAttribute('aria-label', currentQuestion.isStarred ? 'Unstar question' : 'Star question');
-    button.setAttribute('title', currentQuestion.isStarred ? 'Unstar question' : 'Star question');
+    button.setAttribute('aria-label', currentQuestion.isStarred ? 'Unpin question' : 'Pin question');
+    button.setAttribute('title', currentQuestion.isStarred ? 'Unpin question' : 'Pin question');
 }
 
 function resetPendingStudyAdvanceFlags() {
@@ -47557,9 +47762,9 @@ function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestion
         state.retentionFinished = false;
         state.masteryCheckFinished = false;
         state.emptyQuizMessage = isOnlyStarredEnabled() && state.sourceQuestions.length
-            ? 'No starred questions are available in this deck.'
+            ? 'No pinned questions are available in this deck.'
             : (isExcludeStarredEnabled() && state.sourceQuestions.length
-                ? 'All questions in this deck are currently starred and excluded.'
+                ? 'All questions in this deck are currently pinned and excluded.'
                 : 'This quiz has no questions.');
     }
 
@@ -48903,6 +49108,7 @@ async function persistQuestionStarState(question, isStarred) {
 }
 
 function applyQuestionStarStateAcrossDeck(sourceQuestionId, isStarred) {
+    if (state.auth) { state.auth.studioQuizPinnedLoadedUser = ''; state.auth.studioQuizPinnedIds = new Set(); state.auth.studioQuizPinnedGeneration = Number(state.auth.studioQuizPinnedGeneration || 0) + 1; }
     const targetId = normalizeSheetText(sourceQuestionId);
     if (!targetId) return;
 
@@ -48949,7 +49155,7 @@ function removeExcludedStarredQuestionFromMasterySession(question) {
     if (!state.questionQueue.length) {
         state.currentIndex = 0;
         state.emptyQuizMessage = state.sourceQuestions.length
-            ? 'All questions in this deck are currently starred and excluded.'
+            ? 'All questions in this deck are currently pinned and excluded.'
             : 'This quiz has no questions.';
     } else {
         const adjustedIndex = queuedIndex >= 0 && queuedIndex < previousIndex
@@ -50232,7 +50438,7 @@ function queueFlashcardLazyImageHydration(question = {}) {
         if (!updated) return;
         if (state.questionQueue[state.currentIndex] !== question) return;
         if (state.questionAnswered || isQuizFinished()) return;
-        showQuestion();
+        refreshHydratedFlashcardStudyFaces(question);
     });
 }
 
@@ -50252,6 +50458,8 @@ function getFlashcardSideData(q, side) {
             savedImageSignature: normalizeSheetText(q.definitionImageSavedSignature || ''),
             flashcardStyle: normalizeHandwrittenFlashcardStyle(q.handwrittenFlashcardStyle || {}),
             handwrittenQuizEnabled: !!q.handwrittenQuizEnabled,
+            handwritingPending: !!q.flashcardHandwritingDeferred && normalizeFlashcardContentMode(q.definitionContentMode || 'typed') === 'handwritten',
+            handwritingLoadError: !!q.flashcardHandwritingLoadError,
             labelDisplayMode: 'normal'
         };
     }
@@ -50270,6 +50478,8 @@ function getFlashcardSideData(q, side) {
         savedImageSignature: normalizeSheetText(q.termImageSavedSignature || ''),
         flashcardStyle: normalizeHandwrittenFlashcardStyle(q.handwrittenFlashcardStyle || {}),
         handwrittenQuizEnabled: !!q.handwrittenQuizEnabled,
+        handwritingPending: !!q.flashcardHandwritingDeferred && normalizeFlashcardContentMode(q.termContentMode || 'typed') === 'handwritten',
+        handwritingLoadError: !!q.flashcardHandwritingLoadError,
         labelDisplayMode: 'normal'
     };
 }
@@ -50755,16 +50965,93 @@ async function loadFlashcardHandwritingDetailByQuestionId(questionId = '') {
     return promise;
 }
 
-function queueFlashcardLazyHandwritingHydration(question = {}) {
-    if (!question?.flashcardHandwritingDeferred) return;
-    const sourceQuestionId = normalizeSheetText(question.sourceQuestionId);
-    if (!sourceQuestionId) { question.flashcardHandwritingDeferred = false; return; }
-    loadFlashcardHandwritingDetailByQuestionId(sourceQuestionId).then(detail => {
-        question.termHandwriting = normalizeHandwritingStrokes(detail?.term_handwriting || []);
-        question.definitionHandwriting = normalizeHandwritingStrokes(detail?.definition_handwriting || []);
+// Phase V: study mode is separate from the handwritten *editor* preload.
+// Reuse the existing revision-validated memory/IndexedDB/Supabase loader, but
+// hydrate the next study card while the user is reading the current one.
+// This is read-only. Do not build offscreen canvases or mutate saved strokes.
+const flashcardStudyInkPromises = new WeakMap();
+let flashcardStudyNeighborTimer = null;
+function getFlashcardStudySides(q) {
+    const frontSide = state.flashcardFrontMode === 'term'
+        ? getFlashcardSideData(q, 'term')
+        : getFlashcardSideData(q, 'definition');
+    let backSide = state.flashcardFrontMode === 'term'
+        ? getFlashcardSideData(q, 'definition')
+        : getFlashcardSideData(q, 'term');
+    if (normalizeDiagramLabels(frontSide.imageLabels || []).length) {
+        frontSide.labelDisplayMode = 'numbers';
+        if (!flashcardSideHasUserContent(backSide) && !backSide.handwritingPending) {
+            backSide = buildFlashcardGeneratedLabelAnswerSide(frontSide);
+        }
+    }
+    return { frontSide, backSide };
+}
+function refreshHydratedFlashcardStudyFaces(question) {
+    // Refresh only the two card faces: do not restart the quiz, reset grading,
+    // or flip the card back to the front while the student is reading it.
+    if (state.questionQueue[state.currentIndex] !== question || state.questionAnswered || isQuizFinished()) return;
+    const card = document.getElementById('flashcardCard');
+    const inner = card?.querySelector('.flashcard-card-inner');
+    if (!inner) return;
+    const { frontSide, backSide } = getFlashcardStudySides(question);
+    resetFlashcardImageFrameResizeObserver();
+    inner.replaceChildren(buildFlashcardFace(frontSide, 'front'), buildFlashcardFace(backSide, 'back'));
+    queueFlashcardImageOverlaySync(card);
+    observeFlashcardImageFrames(card);
+    fitFlashcardTextToFixedCard(card.closest('#flashcardContainer') || card);
+    queueDesktopFullscreenFlashcardHeightSync();
+}
+function hydrateFlashcardStudyHandwriting(question, {foreground = false} = {}) {
+    if (!question?.flashcardHandwritingDeferred) return Promise.resolve(true);
+    const id = normalizeSheetText(question.sourceQuestionId);
+    if (!id) return Promise.resolve(false);
+    if (flashcardStudyInkPromises.has(question)) return flashcardStudyInkPromises.get(question);
+    const owner = normalizeSheetText(state.auth.user?.id);
+    const quizId = normalizeSheetText(question.sourceQuizId);
+    // Preserve the study reader's existing offline/IndexedDB fallback when auth or network is unavailable.
+    if (foreground) question.flashcardHandwritingLoadError = false;
+    const promise = loadFlashcardHandwritingDetailByQuestionId(id).then(detail => {
+        if (!detail || !isFlashcardHandwritingDetailCurrent(detail, id)) throw new Error('Handwriting data was unavailable or outdated.');
+        if (normalizeSheetText(state.auth.user?.id) !== owner ||
+            normalizeSheetText(question.sourceQuizId) !== quizId ||
+            !state.questionQueue.includes(question)) return false;
+        question.termHandwriting = normalizeHandwritingStrokes(detail.term_handwriting || []);
+        question.definitionHandwriting = normalizeHandwritingStrokes(detail.definition_handwriting || []);
         question.flashcardHandwritingDeferred = false;
-        if (state.questionQueue[state.currentIndex] === question && !state.questionAnswered && !isQuizFinished()) showQuestion();
-    }).catch(error => { question.flashcardHandwritingDeferred = false; console.error('Could not lazy-load handwritten flashcard data:', error); });
+        question.flashcardHandwritingLoadError = false;
+        refreshHydratedFlashcardStudyFaces(question);
+        return true;
+    }).catch(error => {
+        console.warn('Could not prepare handwritten flashcard study content:', error);
+        if (state.questionQueue[state.currentIndex] === question &&
+            normalizeSheetText(state.auth.user?.id) === owner) {
+            question.flashcardHandwritingLoadError = true;
+            refreshHydratedFlashcardStudyFaces(question);
+        }
+        return false;
+    }).finally(() => {
+        if (flashcardStudyInkPromises.get(question) === promise) flashcardStudyInkPromises.delete(question);
+    });
+    flashcardStudyInkPromises.set(question, promise);
+    return promise;
+}
+function queueFlashcardLazyHandwritingHydration(question = {}) {
+    if (question?.flashcardHandwritingDeferred) hydrateFlashcardStudyHandwriting(question, {foreground: true});
+}
+function scheduleNextFlashcardStudyHandwritingPreload(question = {}) {
+    if (flashcardStudyNeighborTimer !== null) clearTimeout(flashcardStudyNeighborTimer);
+    flashcardStudyNeighborTimer = null;
+    if (question.type !== 'flashcard') return;
+    const index = state.questionQueue.indexOf(question);
+    const next = state.questionQueue[index + 1];
+    if (index < 0 || !next?.flashcardHandwritingDeferred || next.type !== 'flashcard') return;
+    const owner = normalizeSheetText(state.auth.user?.id);
+    flashcardStudyNeighborTimer = setTimeout(() => {
+        flashcardStudyNeighborTimer = null;
+        if (state.questionQueue[state.currentIndex] !== question || isQuizFinished() ||
+            normalizeSheetText(state.auth.user?.id) !== owner) return;
+        hydrateFlashcardStudyHandwriting(next);
+    }, 120);
 }
 
 function applyFlashcardFaceStyle(face, sideData = {}) {
@@ -50946,7 +51233,31 @@ function buildFlashcardFace(sideData, faceClass) {
     if (!flashcardSideHasUserContent(sideData)) {
         const empty = document.createElement('div');
         empty.className = 'flashcard-placeholder';
-        empty.innerText = 'No content on this side.';
+        if (sideData.handwritingPending) {
+            if (sideData.handwritingLoadError) {
+                empty.innerText = 'Handwriting could not be loaded. ';
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.className = 'flashcard-handwriting-retry';
+                retry.innerText = 'Retry';
+                retry.addEventListener('pointerdown', event => event.stopPropagation());
+                retry.addEventListener('click', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const current = state.questionQueue[state.currentIndex];
+                    if (current?.type !== 'flashcard') return;
+                    current.flashcardHandwritingLoadError = false;
+                    refreshHydratedFlashcardStudyFaces(current);
+                    hydrateFlashcardStudyHandwriting(current, {foreground: true});
+                });
+                empty.appendChild(retry);
+            } else {
+                empty.innerText = 'Loading handwriting…';
+                empty.setAttribute('role', 'status');
+            }
+        } else {
+            empty.innerText = 'No content on this side.';
+        }
         content.appendChild(empty);
     }
 
@@ -51437,7 +51748,7 @@ async function ensureFlashcardConfidentKnowStarred(question) {
 
     if (!question.isStarred) {
         if (!canPersistQuestionStarState(question)) {
-            throw new Error('This flashcard could not be starred. Reload the saved quiz and try again.');
+            throw new Error('This flashcard could not be pinned. Reload the saved quiz and try again.');
         }
         if (state.auth.starringInFlight) {
             throw new Error('The previous star change is still saving.');
@@ -51497,20 +51808,7 @@ function showFlashcard(q) {
     state.flashcardGradeFeedbackPending = false;
     resetFlashcardImageFrameResizeObserver();
 
-    const frontSide = state.flashcardFrontMode === 'term'
-        ? getFlashcardSideData(q, 'term')
-        : getFlashcardSideData(q, 'definition');
-
-    let backSide = state.flashcardFrontMode === 'term'
-        ? getFlashcardSideData(q, 'definition')
-        : getFlashcardSideData(q, 'term');
-
-    if (normalizeDiagramLabels(frontSide.imageLabels || []).length) {
-        frontSide.labelDisplayMode = 'numbers';
-        if (!flashcardSideHasUserContent(backSide)) {
-            backSide = buildFlashcardGeneratedLabelAnswerSide(frontSide);
-        }
-    }
+    const { frontSide, backSide } = getFlashcardStudySides(q);
     // Phase 22KV guardrail: only the front side uses number-only labels.
     // The flipped/back side preserves the established answer/name label text behavior,
     // and clicking those names toggles that label's draw strokes instead of flipping the card.
@@ -51586,6 +51884,7 @@ function showFlashcard(q) {
 
     queueFlashcardLazyImageHydration(q);
     queueFlashcardLazyHandwritingHydration(q);
+    scheduleNextFlashcardStudyHandwritingPreload(q);
     enableFlashcardGesture(
         card,
         () => gradeFlashcard(true, { animationDelayMs: 195 }),
@@ -57614,9 +57913,8 @@ function handleStudioEmptyStateAction(e) {
         state.auth.studioQuizFolderFilterId = '';
         state.auth.studioQuizClassFilterId = '';
         state.auth.studioQuizManageView = 'recent';
-        state.auth.studioQuizProgressFilter = 'all';
+        clearStudioQuizQuickFilters();
         state.auth.studioQuizPage = 1;
-        if (elements.studioQuizProgressFilterSelect) elements.studioQuizProgressFilterSelect.value = 'all';
         state.auth.studioClassQuickAddOpenId = '';
         if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
         if (elements.studioQuizClassFilterSelect) elements.studioQuizClassFilterSelect.value = '';
@@ -57860,7 +58158,7 @@ if (elements.studioQuizList) {
             renderQuizManagementList();
             resetStarredQuestionsForQuiz(quizId).catch(err => {
                 console.error(err);
-                setCreatorStatus('Could not reset starred questions.', 'error');
+                setCreatorStatus('Could not reset pinned questions.', 'error');
             });
             return;
         }
@@ -57871,7 +58169,7 @@ if (elements.studioQuizList) {
             renderQuizManagementList();
             switchStarredQuestionsForQuiz(quizId).catch(err => {
                 console.error(err);
-                setCreatorStatus('Could not switch starred questions.', 'error');
+                setCreatorStatus('Could not switch pinned questions.', 'error');
             });
             return;
         }
@@ -57882,7 +58180,7 @@ if (elements.studioQuizList) {
             renderQuizManagementList();
             deleteStarredQuestionsForQuiz(quizId).catch(err => {
                 console.error(err);
-                setCreatorStatus('Could not delete starred questions.', 'error');
+                setCreatorStatus('Could not delete pinned questions.', 'error');
             });
             return;
         }
@@ -58020,10 +58318,19 @@ if (elements.studioQuizFolderFilterSelect) {
     });
 }
 
-if (elements.studioQuizProgressFilterSelect) {
-    elements.studioQuizProgressFilterSelect.addEventListener('change', () => {
-        state.auth.studioQuizProgressFilter = normalizeSheetText(elements.studioQuizProgressFilterSelect.value) || 'all';
+if (elements.studioQuizQuickFilters) {
+    elements.studioQuizQuickFilters.addEventListener('click', event => {
+        const button = event.target.closest('[data-quiz-quick-filter]');
+        if (!button) return;
+        const name = button.dataset.quizQuickFilter === 'in-progress' ? 'inProgress' : button.dataset.quizQuickFilter;
+        if (!['pinned','pending','inProgress'].includes(name)) return;
+        const filters = state.auth.studioQuizQuickFilters;
+        const next = !filters[name];
+        filters[name] = next;
+        state.auth.studioQuizManageView = 'all';
         state.auth.studioQuizPage = 1;
+        if (name === 'pinned' && next) invalidateManagedQuizPinnedCache();
+        syncStudioQuizQuickFilters();
         renderQuizManagementList();
     });
 }
@@ -58034,9 +58341,8 @@ if (elements.studioQuizClearFiltersBtn) {
         state.auth.studioQuizFolderFilterId = '';
         state.auth.studioQuizClassFilterId = '';
         state.auth.studioQuizManageView = 'recent';
-        state.auth.studioQuizProgressFilter = 'all';
+        clearStudioQuizQuickFilters();
         state.auth.studioQuizPage = 1;
-        if (elements.studioQuizProgressFilterSelect) elements.studioQuizProgressFilterSelect.value = 'all';
         if (elements.studioQuizSearchInput) elements.studioQuizSearchInput.value = '';
         if (elements.studioQuizClassFilterSelect) elements.studioQuizClassFilterSelect.value = '';
         if (elements.studioQuizFolderFilterSelect) elements.studioQuizFolderFilterSelect.value = '';
@@ -58340,7 +58646,7 @@ if (elements.studioQuestionStarredOnly) {
         state.auth.studioQuestionStarredOnly = !state.auth.studioQuestionStarredOnly;
         renderStudioQuestionList();
         setCreatorStatus(
-            state.auth.studioQuestionStarredOnly ? 'Showing starred questions only.' : 'Showing all questions in this quiz.',
+            state.auth.studioQuestionStarredOnly ? 'Showing pinned questions only.' : 'Showing all questions in this quiz.',
             'success'
         );
     });

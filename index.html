@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7t_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7v_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a7t_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a7v_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -88,7 +88,7 @@ MODIFICATION RULES FOR THIS APP
             </select>
           </div>
 
-          <button id="questionStarBtn" class="question-star-btn hidden" type="button" aria-label="Star question" title="Star question">☆</button>
+          <button id="questionStarBtn" class="question-star-btn hidden" type="button" aria-label="Pin question" title="Pin question"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg></button>
         </div>
 
         <div class="bottom-controls">
@@ -510,20 +510,20 @@ MODIFICATION RULES FOR THIS APP
 
               <div class="setting-card settings-full-span" id="autoStarModeSetting">
                 <div class="setting-title-row">
-                  <label class="setting-title" for="autoStarMode">Auto-Star</label>
+                  <label class="setting-title" for="autoStarMode">Auto-Pin</label>
                   <button
                     type="button"
                     class="setting-help-btn"
                     data-help-target="autoStarModeHelp"
-                    aria-label="About Auto-Star"
+                    aria-label="About Auto-Pin"
                     aria-expanded="false"
                     aria-controls="autoStarModeHelp"
                   >?</button>
                 </div>
                 <div id="autoStarModeHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Automatically stars signed-in Supabase questions answered correctly within the selected time. Runs in the background and can be used with Timer Mode.
+                  Automatically pins signed-in Supabase questions answered correctly within the selected time. Runs in the background and can be used with Timer Mode.
                 </div>
-                <label class="toggle-switch" for="autoStarMode" aria-label="Auto-Star toggle">
+                <label class="toggle-switch" for="autoStarMode" aria-label="Auto-Pin toggle">
                   <input type="checkbox" id="autoStarMode">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
@@ -531,7 +531,7 @@ MODIFICATION RULES FOR THIS APP
                 </label>
                 <div id="autoStarDetails" class="timer-settings-details hidden">
                   <label class="timer-settings-field">
-                    <span>Auto-star if correct within</span>
+                    <span>Auto-pin if correct within</span>
                     <select id="autoStarPresetSelect">
                       <option value="5">5 seconds</option>
                       <option value="10">10 seconds</option>
@@ -549,20 +549,20 @@ MODIFICATION RULES FOR THIS APP
 
               <div class="setting-card" id="unstarOnWrongSetting">
                 <div class="setting-title-row">
-                  <label class="setting-title" for="unstarOnWrongMode">Unstar on Wrong</label>
+                  <label class="setting-title" for="unstarOnWrongMode">Unpin on Wrong</label>
                   <button
                     type="button"
                     class="setting-help-btn"
                     data-help-target="unstarOnWrongHelp"
-                    aria-label="About Unstar on Wrong"
+                    aria-label="About Unpin on Wrong"
                     aria-expanded="false"
                     aria-controls="unstarOnWrongHelp"
                   >?</button>
                 </div>
                 <div id="unstarOnWrongHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  When enabled, a starred question is unstarred if you answer it wrong. Turn off Exclude Starred so starred questions appear in the deck.
+                  When enabled, a pinned question is unpinned if you answer it wrong. Turn off Exclude Pinned so pinned questions appear in the deck.
                 </div>
-                <label class="toggle-switch" for="unstarOnWrongMode" aria-label="Unstar on Wrong toggle">
+                <label class="toggle-switch" for="unstarOnWrongMode" aria-label="Unpin on Wrong toggle">
                   <input type="checkbox" id="unstarOnWrongMode">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
@@ -572,20 +572,20 @@ MODIFICATION RULES FOR THIS APP
 
               <div class="setting-card" id="excludeStarredQuestionsSetting">
                 <div class="setting-title-row">
-                  <label class="setting-title" for="excludeStarredQuestions">Exclude Starred</label>
+                  <label class="setting-title" for="excludeStarredQuestions">Exclude Pinned</label>
                   <button
                     type="button"
                     class="setting-help-btn"
                     data-help-target="excludeStarredQuestionsHelp"
-                    aria-label="About Exclude Starred"
+                    aria-label="About Exclude Pinned"
                     aria-expanded="false"
                     aria-controls="excludeStarredQuestionsHelp"
                   >?</button>
                 </div>
                 <div id="excludeStarredQuestionsHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Hides starred questions from the active study deck without removing the saved stars.
+                  Hides pinned questions from the active study deck without removing the saved pins.
                 </div>
-                <label class="toggle-switch" for="excludeStarredQuestions" aria-label="Exclude Starred toggle">
+                <label class="toggle-switch" for="excludeStarredQuestions" aria-label="Exclude Pinned toggle">
                   <input type="checkbox" id="excludeStarredQuestions">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
@@ -595,20 +595,20 @@ MODIFICATION RULES FOR THIS APP
 
               <div class="setting-card" id="onlyStarredQuestionsSetting">
                 <div class="setting-title-row">
-                  <label class="setting-title" for="onlyStarredQuestions">Only Starred</label>
+                  <label class="setting-title" for="onlyStarredQuestions">Only Pinned</label>
                   <button
                     type="button"
                     class="setting-help-btn"
                     data-help-target="onlyStarredQuestionsHelp"
-                    aria-label="About Only Starred"
+                    aria-label="About Only Pinned"
                     aria-expanded="false"
                     aria-controls="onlyStarredQuestionsHelp"
                   >?</button>
                 </div>
                 <div id="onlyStarredQuestionsHelp" class="setting-help-tooltip hidden" role="tooltip">
-                  Shows only starred questions in the active study deck without removing saved stars.
+                  Shows only pinned questions in the active study deck without removing saved pins.
                 </div>
-                <label class="toggle-switch" for="onlyStarredQuestions" aria-label="Only Starred toggle">
+                <label class="toggle-switch" for="onlyStarredQuestions" aria-label="Only Pinned toggle">
                   <input type="checkbox" id="onlyStarredQuestions">
                   <span class="toggle-track" aria-hidden="true">
                     <span class="toggle-thumb"></span>
@@ -1004,11 +1004,18 @@ MODIFICATION RULES FOR THIS APP
               <section id="quizStudioManageSection" class="quiz-studio-section hidden" data-studio-section="manage" role="tabpanel">
                 <section class="creator-subsection quiz-studio-panel">
                   <div class="creator-subsection-title">Manage Quizzes</div>
-                  <div class="studio-manage-tabs" role="tablist" aria-label="Manage quiz organization views">
+                  <div class="studio-manage-tabs" aria-label="Manage quiz organization and study filters">
+                    <div class="studio-manage-navigation-tabs" role="tablist" aria-label="Manage quiz organization views">
                     <button type="button" class="studio-manage-tab active" data-studio-manage-view="recent" role="tab" aria-selected="true">Recent Quizzes</button>
                     <button type="button" class="studio-manage-tab" data-studio-manage-view="classes" role="tab" aria-selected="false">Classes</button>
                     <button type="button" class="studio-manage-tab" data-studio-manage-view="folders" role="tab" aria-selected="false">Folders</button>
                     <button type="button" class="studio-manage-tab" data-studio-manage-view="all" role="tab" aria-selected="false">All Quizzes</button>
+                    </div>
+                    <div id="studioQuizQuickFilters" class="studio-manage-quick-filters" role="group" aria-label="Quiz study quick filters">
+                      <button type="button" class="studio-saved-image-quick-filter" data-quiz-quick-filter="pinned" aria-pressed="false"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg> Pinned</button>
+                      <button type="button" class="studio-saved-image-quick-filter" data-quiz-quick-filter="pending" aria-pressed="false">Pending</button>
+                      <button type="button" class="studio-saved-image-quick-filter" data-quiz-quick-filter="in-progress" aria-pressed="false">In Progress</button>
+                    </div>
                   </div>
                   <div class="studio-filter-bar" aria-label="Manage quiz filters">
                     <label class="studio-filter-field">
@@ -1025,15 +1032,6 @@ MODIFICATION RULES FOR THIS APP
                       <span>Folder</span>
                       <select id="studioQuizFolderFilterSelect">
                         <option value="">All folders</option>
-                      </select>
-                    </label>
-                    <label class="studio-filter-field">
-                      <span>Study Progress</span>
-                      <select id="studioQuizProgressFilterSelect">
-                        <option value="all">All statuses</option>
-                        <option value="in-progress">In Progress</option>
-                        <option value="learning">LEARNING</option>
-                        <option value="mastered">MASTERED</option>
                       </select>
                     </label>
                     <button id="studioQuizClearFiltersBtn" type="button" class="auth-action-btn auth-secondary-btn">Clear</button>
@@ -1083,7 +1081,7 @@ MODIFICATION RULES FOR THIS APP
 
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Export Full Library</div>
-                    <div class="creator-note">Download your quiz-library metadata, questions, starred state, and media references as JSON. This does NOT include Saved Images library records or physical Supabase/R2 image files. A separate complete backup is required before cleanup.</div>
+                    <div class="creator-note">Download your quiz-library metadata, questions, pinned state, and media references as JSON. This does NOT include Saved Images library records or physical Supabase/R2 image files. A separate complete backup is required before cleanup.</div>
                     <button id="exportAllBtn" type="button" class="auth-action-btn">Export All JSON Backup</button>
                   </section>
 
@@ -1398,9 +1396,9 @@ MODIFICATION RULES FOR THIS APP
                           type="button"
                           class="studio-question-starred-filter-btn"
                           aria-pressed="false"
-                          title="Show only starred questions"
-                          aria-label="Show only starred questions"
-                        >Starred only</button>
+                          title="Show only pinned questions"
+                          aria-label="Show only pinned questions"
+                        ><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-4 1-3.5 3.5-1.2 4.5-5.3-5.3 4.5-1.2L15 7z"/><path d="m9 15-6 6"/></svg> Pinned only</button>
                         <div id="studioExamQuestionFilterWrap" class="studio-exam-question-filter-wrap hidden">
                           <button id="studioExamQuestionFilterBtn" type="button" class="studio-question-starred-filter-btn studio-exam-question-filter-btn" aria-expanded="false" aria-haspopup="true" aria-controls="studioExamQuestionFilterMenu">Filter Sections ▾</button>
                           <div id="studioExamQuestionFilterMenu" class="studio-exam-question-filter-menu hidden" role="group" aria-label="Filter questions by exam section"></div>
@@ -2726,6 +2724,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a7t_1"></script>
+  <script src="script.js?v=24a7v_1"></script>
 </body>
 </html>
