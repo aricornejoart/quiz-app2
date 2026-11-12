@@ -1259,6 +1259,15 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorPaintbrushBtn: document.getElementById('studioImageEditorPaintbrushBtn'),
         studioImageEditorPenPressurePopover: document.getElementById('studioImageEditorPenPressurePopover'),
         studioImageEditorPressureSensitivityEnabled: document.getElementById('studioImageEditorPressureSensitivityEnabled'),
+        studioImageEditorClearDrawBtn: document.getElementById('studioImageEditorClearDrawBtn'),
+        studioImageEditorPressureCurveInput: document.getElementById('studioImageEditorPressureCurveInput'),
+        studioImageEditorPressureCurveValue: document.getElementById('studioImageEditorPressureCurveValue'),
+        studioImageEditorPressureCurvePath: document.getElementById('studioImageEditorPressureCurvePath'),
+        studioImageEditorPressureCurveReset: document.getElementById('studioImageEditorPressureCurveReset'),
+        studioImageEditorPressureTestPad: document.getElementById('studioImageEditorPressureTestPad'),
+        studioImageEditorPressureTestBar: document.getElementById('studioImageEditorPressureTestBar'),
+        studioImageEditorPressureTestValue: document.getElementById('studioImageEditorPressureTestValue'),
+        studioImageEditorPressureTestWidth: document.getElementById('studioImageEditorPressureTestWidth'),
         studioImageEditorDrawSizeInput: document.getElementById('studioImageEditorDrawSizeInput'),
         studioImageEditorDrawSizeValue: document.getElementById('studioImageEditorDrawSizeValue'),
         studioImageEditorPaintTransparencyInput: document.getElementById('studioImageEditorPaintTransparencyInput'),
@@ -18555,6 +18564,15 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorPaintbrushBtn = document.getElementById('studioImageEditorPaintbrushBtn');
         elements.studioImageEditorPenPressurePopover = document.getElementById('studioImageEditorPenPressurePopover');
         elements.studioImageEditorPressureSensitivityEnabled = document.getElementById('studioImageEditorPressureSensitivityEnabled');
+        elements.studioImageEditorClearDrawBtn = document.getElementById('studioImageEditorClearDrawBtn');
+        elements.studioImageEditorPressureCurveInput = document.getElementById('studioImageEditorPressureCurveInput');
+        elements.studioImageEditorPressureCurveValue = document.getElementById('studioImageEditorPressureCurveValue');
+        elements.studioImageEditorPressureCurvePath = document.getElementById('studioImageEditorPressureCurvePath');
+        elements.studioImageEditorPressureCurveReset = document.getElementById('studioImageEditorPressureCurveReset');
+        elements.studioImageEditorPressureTestPad = document.getElementById('studioImageEditorPressureTestPad');
+        elements.studioImageEditorPressureTestBar = document.getElementById('studioImageEditorPressureTestBar');
+        elements.studioImageEditorPressureTestValue = document.getElementById('studioImageEditorPressureTestValue');
+        elements.studioImageEditorPressureTestWidth = document.getElementById('studioImageEditorPressureTestWidth');
         elements.studioImageEditorDrawSizeInput = document.getElementById('studioImageEditorDrawSizeInput');
         elements.studioImageEditorDrawSizeValue = document.getElementById('studioImageEditorDrawSizeValue');
         elements.studioImageEditorDrawSizeToggle = document.getElementById('studioImageEditorDrawSizeToggle');
@@ -18663,8 +18681,8 @@ MODIFICATION RULES FOR THIS APP
                         <div class="studio-image-editor-slider-popover studio-image-editor-color-control" data-image-editor-popover="color"><button type="button" id="studioImageEditorColorToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle studio-image-editor-color-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorColorPopover">RGB <span id="studioImageEditorCurrentColorSwatch" class="studio-image-editor-current-color-swatch" aria-hidden="true"></span></button><div id="studioImageEditorColorPopover" class="studio-image-editor-popover-panel studio-image-editor-color-popover hidden" role="dialog" aria-label="Connector and drawing colors"><label class="studio-image-editor-color-picker-row" title="Connector and drawing RGB color"><span>Color</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Connector and drawing RGB color"></label><div class="studio-image-editor-color-presets-heading">Saved colors</div><div id="studioImageEditorColorPresetList" class="studio-image-editor-color-preset-list" aria-label="Saved color presets"></div><button type="button" id="studioImageEditorAddColorPresetBtn" class="studio-image-editor-color-preset-add" aria-label="Save current color preset" title="Save current color">+</button></div></div>
                         <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">2</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness"><label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="0.25" max="24" step="0.25" value="2" aria-label="Connector thickness"></label></div></div>
                         <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
-                          <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap"><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button><div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings"><label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><input type="checkbox" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"></label><div class="studio-image-editor-pressure-hint">ON by default. Apple Pencil pressure varies new stroke thickness.</div></div></div>
-                          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button>
+                          <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap"><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button><div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings"><label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><input type="checkbox" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"></label><div class="studio-image-editor-pressure-hint">ON by default. Pressure changes width only, never opacity. Existing strokes stay unchanged.</div><div class="studio-image-editor-pressure-graph-wrap"><div class="studio-image-editor-pressure-head"><span>Pressure response curve</span><output id="studioImageEditorPressureCurveValue">Fine (1.60)</output></div><svg id="studioImageEditorPressureGraph" viewBox="0 0 270 142" role="img" aria-label="Input pressure versus output stroke width"><path d="M30 8 V116 H258" stroke="currentColor" opacity=".4" stroke-width="1" fill="none"/><path d="M30 116 L258 8" stroke="currentColor" stroke-dasharray="4 5" opacity=".3" fill="none"/><path id="studioImageEditorPressureCurvePath" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round"/><text x="144" y="138" text-anchor="middle" font-size="11" fill="currentColor">Applied pressure →</text><text x="8" y="63" font-size="10" fill="currentColor" transform="rotate(-90 8 63)">Width</text></svg><label class="studio-image-editor-pressure-range">Response <input id="studioImageEditorPressureCurveInput" type="range" min="0.55" max="3" step="0.05" value="1.6" aria-label="Pressure curve response: higher values give thinner lines for light touches"></label><button type="button" id="studioImageEditorPressureCurveReset" class="auth-action-btn auth-secondary-btn studio-image-editor-pressure-reset">Reset curve</button></div><div class="studio-image-editor-pressure-test"><strong>Live Pressure Test</strong><div id="studioImageEditorPressureTestPad" class="studio-image-editor-pressure-test-pad" role="img" aria-label="Press here with Apple Pencil or Cintiq pen to measure pressure">Touch here with your stylus</div><div class="studio-image-editor-pressure-meter"><div id="studioImageEditorPressureTestBar"></div></div><div class="studio-image-editor-pressure-readings"><output id="studioImageEditorPressureTestValue">Waiting for stylus</output><output id="studioImageEditorPressureTestWidth">—</output></div><div class="studio-image-editor-pressure-hint">The test never draws on or changes your diagram. If your browser reports fixed pressure, the curve cannot create missing hardware data.</div></div></div></div>
+                          <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-clear" id="studioImageEditorClearDrawBtn" title="Clear drawing strokes for selected label (undo available)" aria-label="Clear drawing for selected label">Clear</button>
                         </div>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size"><label class="studio-image-editor-range-control" title="Paintbrush and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Paintbrush and eraser size"></label></div></div>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="transparency"><button type="button" id="studioImageEditorPaintTransparencyToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPaintTransparencyPopover">Opacity <span id="studioImageEditorPaintTransparencyValue" class="studio-image-editor-range-value" aria-live="polite">65%</span></button><div id="studioImageEditorPaintTransparencyPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush transparency"><label class="studio-image-editor-range-control" title="Paintbrush transparency"><span>Opacity</span><input id="studioImageEditorPaintTransparencyInput" type="range" min="0" max="100" step="1" value="65" aria-label="Paintbrush transparency"></label></div></div>
@@ -21733,7 +21751,7 @@ MODIFICATION RULES FOR THIS APP
             // PointerEvent.pressure is meaningful on a Pencil. Mouse input and
             // touch continue to use the historical fixed-width brush path.
             ...(pointerType === 'pen'
-                ? { p: Number.isFinite(rawPressure) && rawPressure > 0 ? Math.max(.05, Math.min(1, rawPressure)) : .5 } : {})
+                ? { p: Number.isFinite(rawPressure) ? Math.max(.01, Math.min(1, rawPressure)) : .5 } : {})
         };
     }
 
@@ -21802,6 +21820,62 @@ MODIFICATION RULES FOR THIS APP
         catch (_) { /* Drawing remains usable when local storage is unavailable. */ }
     }
 
+    // Phase L: Pressure response only changes WIDTH. Curves are recorded per
+    // new stroke so later preference changes never reshape saved annotations.
+    const DIAGRAM_CREATOR_PRESSURE_CURVE_DEFAULT = 1.6;
+    function clampDiagramCreatorPressureCurve(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? Math.min(3, Math.max(.55, n)) : DIAGRAM_CREATOR_PRESSURE_CURVE_DEFAULT;
+    }
+
+    function getDiagramCreatorPressureCurveStorageKey() {
+        return `studyBunnyDiagramCreatorPressureCurveV1:${normalizeSheetText(state.auth.user?.id) || 'anonymous'}`;
+    }
+
+    function loadDiagramCreatorPressureCurvePreference() {
+        try { return clampDiagramCreatorPressureCurve(window.localStorage?.getItem(getDiagramCreatorPressureCurveStorageKey()) || DIAGRAM_CREATOR_PRESSURE_CURVE_DEFAULT); }
+        catch (_) { return DIAGRAM_CREATOR_PRESSURE_CURVE_DEFAULT; }
+    }
+
+    function saveDiagramCreatorPressureCurvePreference(value) {
+        try { window.localStorage?.setItem(getDiagramCreatorPressureCurveStorageKey(), String(clampDiagramCreatorPressureCurve(value))); }
+        catch (_) { /* Session calibration remains functional without storage. */ }
+    }
+
+    function getDiagramCreatorPressureWidthMultiplier(pressure, curve) {
+        const p = Math.min(1, Math.max(0, Number(pressure) || 0));
+        return .12 + 1.53 * Math.pow(p, clampDiagramCreatorPressureCurve(curve));
+    }
+
+    function refreshDiagramCreatorPressureCurveUi() {
+        const editor = state.auth.imageEditor;
+        const gamma = clampDiagramCreatorPressureCurve(editor?.drawPressureCurve);
+        if (elements.studioImageEditorPressureCurveInput) elements.studioImageEditorPressureCurveInput.value = String(gamma);
+        if (elements.studioImageEditorPressureCurveValue) {
+            elements.studioImageEditorPressureCurveValue.textContent = `${gamma > 1.8 ? 'Extra fine' : gamma > 1.1 ? 'Fine' : gamma >= .9 ? 'Linear' : 'Soft'} (${gamma.toFixed(2)})`;
+        }
+        if (elements.studioImageEditorPressureCurvePath) {
+            const points = Array.from({ length: 41 }, (_, i) => {
+                const p = i / 40;
+                const width = getDiagramCreatorPressureWidthMultiplier(p, gamma) / 1.65;
+                return `${(30 + 228 * p).toFixed(1)} ${(116 - 108 * width).toFixed(1)}`;
+            });
+            elements.studioImageEditorPressureCurvePath.setAttribute('d', `M ${points.join(' L ')}`);
+        }
+        const disabled = editor?.drawPressureSensitivityEnabled === false;
+        if (elements.studioImageEditorPressureCurveInput) elements.studioImageEditorPressureCurveInput.disabled = disabled;
+    }
+
+    function reportDiagramCreatorLivePressure(event) {
+        if (!state.auth.imageEditor?.open) return;
+        const pressure = Math.min(1, Math.max(0, Number(event?.pressure) || 0));
+        const stylus = event?.pointerType === 'pen';
+        const widthPercent = Math.round(100 * getDiagramCreatorPressureWidthMultiplier(pressure, state.auth.imageEditor.drawPressureCurve));
+        if (elements.studioImageEditorPressureTestBar) elements.studioImageEditorPressureTestBar.style.width = `${stylus ? pressure * 100 : 0}%`;
+        if (elements.studioImageEditorPressureTestValue) elements.studioImageEditorPressureTestValue.textContent = stylus ? `Pressure: ${Math.round(100 * pressure)}%` : 'Use Apple Pencil / Cintiq stylus';
+        if (elements.studioImageEditorPressureTestWidth) elements.studioImageEditorPressureTestWidth.textContent = stylus ? `Width: ${widthPercent}%` : '—';
+    }
+
     function closeDiagramCreatorPenPressurePopover() {
         const panel = elements.studioImageEditorPenPressurePopover;
         panel?.classList.add('hidden');
@@ -21815,13 +21889,14 @@ MODIFICATION RULES FOR THIS APP
     function toggleDiagramCreatorPenPressurePopover() {
         const toggle = elements.studioImageEditorPaintbrushBtn;
         const panel = elements.studioImageEditorPenPressurePopover;
-        if (!toggle || !panel || !isImageEditorLabelDrawActive()) return;
+        if (!toggle || !panel || !state.auth.imageEditor?.open || !state.auth.imageEditor?.labelsEnabled) return;
         const opening = panel.classList.contains('hidden');
         closeImageEditorSliderPopovers();
         if (!opening) return;
         if (elements.studioImageEditorPressureSensitivityEnabled) {
             elements.studioImageEditorPressureSensitivityEnabled.checked = state.auth.imageEditor?.drawPressureSensitivityEnabled !== false;
         }
+        refreshDiagramCreatorPressureCurveUi();
         // Fixed positioning avoids clipping in the iPad/mobile editor toolbar.
         panel.classList.remove('hidden');
         panel.style.position = 'fixed';
@@ -21847,14 +21922,9 @@ MODIFICATION RULES FOR THIS APP
         setImageEditorPanMode(false);
         finishImageEditorActiveStroke(null, { silent: true });
         const nextTool = normalizeImageEditorDrawTool(value);
-        const isSameActiveTool = isImageEditorLabelDrawActive()
-            && normalizeImageEditorDrawTool(editor.drawTool) === nextTool;
+        const isSameActiveTool = normalizeImageEditorDrawTool(editor.drawTool) === nextTool
+            && (isImageEditorLabelDrawActive() || (nextTool === 'paintbrush' && editor.drawPenSettingsArmed));
         if (isSameActiveTool && nextTool === 'paintbrush') {
-            if (!editor.drawPenSettingsArmed) {
-                editor.drawPenSettingsArmed = true;
-                setImageEditorStatus('Tap the Pen again to open pressure settings.');
-                return;
-            }
             toggleDiagramCreatorPenPressurePopover();
             return;
         }
@@ -22256,10 +22326,11 @@ MODIFICATION RULES FOR THIS APP
             size: Math.min(60, Math.max(2, Number(stroke?.size) || 14)),
             transparency: Math.min(1, Math.max(0, Number.isFinite(Number(stroke?.transparency)) ? Number(stroke?.transparency) : 0.65)),
             ...(stroke?.pressureSensitive === true && normalizeImageEditorDrawTool(stroke?.tool) === 'paintbrush' ? { pressureSensitive: true } : {}),
+            ...(stroke?.pressureSensitive === true && Number.isFinite(Number(stroke?.pressureCurve)) ? { pressureCurve: clampDiagramCreatorPressureCurve(stroke.pressureCurve) } : {}),
             points: (Array.isArray(stroke?.points) ? stroke.points : []).map(point => ({
                 x: Number(point?.x) || 0,
                 y: Number(point?.y) || 0,
-                ...(stroke?.pressureSensitive === true && Number.isFinite(Number(point?.p)) ? { p: Math.max(.05, Math.min(1, Number(point.p))) } : {})
+                ...(stroke?.pressureSensitive === true && Number.isFinite(Number(point?.p)) ? { p: Math.max(.01, Math.min(1, Number(point.p))) } : {})
             }))
         })).filter(stroke => stroke.points.length);
     }
@@ -22467,6 +22538,9 @@ MODIFICATION RULES FOR THIS APP
             points.push({ x: finalPoint.x, y: finalPoint.y, ...(stroke.pressureSensitive === true ? { p: finalPoint.p ?? previousPoint?.p ?? .5 } : {}) });
         }
         editor.activeDrawStroke = null;
+        if (editor.drawPreviewFrameId != null) window.cancelAnimationFrame(editor.drawPreviewFrameId);
+        editor.drawPreviewFrameId = null;
+        editor.drawPreviewBackdrop = null;
         editor.isDrawing = false;
         editor.dragStart = null;
         editor.draggingLabelIndex = null;
@@ -22474,6 +22548,7 @@ MODIFICATION RULES FOR THIS APP
         editor.drawSaveDirty = true;
         if (options.schedule !== false) scheduleImageEditorDrawingCommit({ silent: options.silent });
         renderImageEditorCanvas();
+        if (elements.studioImageEditorClearDrawBtn) elements.studioImageEditorClearDrawBtn.disabled = false;
         return true;
     }
 
@@ -22579,7 +22654,12 @@ MODIFICATION RULES FOR THIS APP
             // One filled ribbon per stroke: variable widths without a JS frame
             // loop or per-point Canvas stroke calls. Historical strokes and all
             // eraser strokes take the byte-identical constant-width path below.
-            const widths = points.map(point => size * (.35 + 1.3 * Math.max(.05, Math.min(1, Number(point.p) || .5))));
+            const widths = points.map(point => {
+                const p = Math.max(.01, Math.min(1, Number(point.p) || .01));
+                return size * (Number.isFinite(Number(stroke.pressureCurve))
+                    ? getDiagramCreatorPressureWidthMultiplier(p, stroke.pressureCurve)
+                    : (.35 + 1.3 * Math.max(.05, p))); // Backward-compatible Phase J strokes.
+            });
             if (points.length === 1) { drawImageEditorDot(ctx, points[0], widths[0]); return; }
             const left = [], right = [];
             for (let i = 0; i < points.length; i += 1) {
@@ -22736,11 +22816,90 @@ MODIFICATION RULES FOR THIS APP
         return outputCanvas;
     }
 
+    function pushImageEditorDrawingHistory() {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        // Strokes do not change baseCanvas. Use existing labelsOnly undo record
+        // rather than serializing the entire source image as PNG for each stroke.
+        editor.history.push({
+            labelsOnly: true,
+            labels: normalizeImageEditorLabels(editor.labels || []),
+            drawStrokes: cloneImageEditorDrawStrokes(editor.drawStrokes || [])
+        });
+        if (editor.history.length > 20) editor.history.shift();
+    }
+
+    function clearImageEditorSelectedLabelDrawing() {
+        const editor = state.auth.imageEditor;
+        if (!isImageEditorLabelDrawActive()) return;
+        finishImageEditorActiveStroke(null, { silent: true });
+        const index = editor.activeDrawLabelIndex;
+        const count = (editor.drawStrokes || []).filter(stroke => Number(stroke.labelIndex) === index).length;
+        if (!count) { setImageEditorStatus('There are no drawing strokes to clear for this label.'); return; }
+        if (!window.confirm(`Clear all ${count} drawing stroke${count === 1 ? '' : 's'} for this label only? You can Undo this action.`)) return;
+        pushImageEditorDrawingHistory();
+        editor.drawStrokes = editor.drawStrokes.filter(stroke => Number(stroke.labelIndex) !== index);
+        editor.drawSaveDirty = true;
+        scheduleImageEditorDrawingCommit({ silent: true });
+        renderImageEditorCanvas();
+        setImageEditorStatus(`Cleared ${count} stroke${count === 1 ? '' : 's'} for this label. Other labels are unchanged; Undo is available.`);
+    }
+
+    function scheduleImageEditorStrokePreview() {
+        const editor = state.auth.imageEditor;
+        if (!editor?.activeDrawStroke || !editor.drawPreviewBackdrop) return;
+        if (editor.drawPreviewFrameId != null) return;
+        editor.drawPreviewFrameId = window.requestAnimationFrame(() => {
+            editor.drawPreviewFrameId = null;
+            if (state.auth.imageEditor !== editor || !editor.activeDrawStroke || !editor.drawPreviewBackdrop) return;
+            const canvas = elements.studioImageEditorCanvas;
+            const ctx = canvas?.getContext('2d');
+            if (!ctx) return;
+            // Reuse pre-stroke bitmap: no existing drawings, labels, or base
+            // artwork need repainting or cloning for each Pencil sample.
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(editor.drawPreviewBackdrop, 0, 0);
+            if (normalizeImageEditorDrawTool(editor.activeDrawStroke.tool) !== 'eraser') {
+                let overlay = editor.drawPreviewStrokeCanvas;
+                if (!overlay || overlay.width !== canvas.width || overlay.height !== canvas.height) {
+                    overlay = document.createElement('canvas');
+                    overlay.width = canvas.width;
+                    overlay.height = canvas.height;
+                    editor.drawPreviewStrokeCanvas = overlay;
+                }
+                const ink = overlay.getContext('2d');
+                ink.clearRect(0, 0, overlay.width, overlay.height);
+                ink.save();
+                ink.strokeStyle = normalizeEditorHexColor(editor.activeDrawStroke.color, '#000000');
+                ink.fillStyle = ink.strokeStyle;
+                drawImageEditorStrokePath(ink, editor.activeDrawStroke);
+                ink.restore();
+                ctx.save();
+                ctx.globalAlpha = getImageEditorPaintTransparencyFromStroke(editor.activeDrawStroke);
+                ctx.drawImage(overlay, 0, 0);
+                ctx.restore();
+            } else {
+                // Eraser needs exact per-label compositing to preserve the
+                // underlying image; use original renderer until stroke end.
+                renderImageEditorCanvas();
+            }
+        });
+    }
+
     function beginImageEditorDrawStroke(point) {
         const editor = state.auth.imageEditor;
         if (!editor || !point || !isImageEditorLabelDrawActive()) return;
         const tool = normalizeImageEditorDrawTool(editor.drawTool);
-        pushImageEditorHistory();
+        pushImageEditorDrawingHistory();
+        // Snapshot completed image once before adding the new stroke.
+        if (normalizeImageEditorDrawTool(editor.drawTool) !== 'eraser') {
+            const visible = elements.studioImageEditorCanvas;
+            const snapshot = document.createElement('canvas');
+            snapshot.width = visible.width;
+            snapshot.height = visible.height;
+            snapshot.getContext('2d')?.drawImage(visible, 0, 0);
+            editor.drawPreviewBackdrop = snapshot;
+        }
         editor.drawSize = getImageEditorDrawSize();
         editor.paintTransparency = getImageEditorPaintTransparency();
         const pressureSensitive = tool === 'paintbrush' && editor.drawPressureSensitivityEnabled !== false && Number.isFinite(point.p);
@@ -22750,12 +22909,13 @@ MODIFICATION RULES FOR THIS APP
             color: getEditorArrowColor(editor.mode),
             size: editor.drawSize,
             transparency: editor.paintTransparency,
-            ...(pressureSensitive ? { pressureSensitive: true } : {}),
+            ...(pressureSensitive ? { pressureSensitive: true, pressureCurve: clampDiagramCreatorPressureCurve(editor.drawPressureCurve) } : {}),
             points: [{ x: point.x, y: point.y, ...(pressureSensitive ? { p: point.p } : {}) }]
         };
         editor.activeDrawStroke = stroke;
         editor.drawStrokes.push(stroke);
-        renderImageEditorCanvas();
+        if (tool === 'eraser') renderImageEditorCanvas();
+        else scheduleImageEditorStrokePreview();
     }
 
     function continueImageEditorDrawStroke(point) {
@@ -22766,7 +22926,8 @@ MODIFICATION RULES FOR THIS APP
         const rawPressure = Number.isFinite(point.p) ? point.p : (last?.p || .5);
         const smoothedPressure = last?.p !== undefined ? last.p * .55 + rawPressure * .45 : rawPressure;
         stroke.points.push({ x: point.x, y: point.y, ...(stroke.pressureSensitive === true ? { p: Math.round(smoothedPressure * 1000) / 1000 } : {}) });
-        renderImageEditorCanvas();
+        if (normalizeImageEditorDrawTool(stroke.tool) === 'eraser') renderImageEditorCanvas();
+        else scheduleImageEditorStrokePreview();
     }
 
     function getImageEditorBracketSide(start = null, end = null, label = null, canvas = elements.studioImageEditorCanvas) {
@@ -25276,7 +25437,11 @@ MODIFICATION RULES FOR THIS APP
         const connectorActive = isImageEditorConnectorMode(editor);
         const activeTool = normalizeImageEditorDrawTool(editor?.drawTool || 'paintbrush');
         if (elements.studioImageEditorPressureSensitivityEnabled) elements.studioImageEditorPressureSensitivityEnabled.checked = editor?.drawPressureSensitivityEnabled !== false;
-        if (!drawActive || activeTool !== 'paintbrush') closeDiagramCreatorPenPressurePopover();
+        if (elements.studioImageEditorClearDrawBtn) {
+            const index = editor?.activeDrawLabelIndex;
+            elements.studioImageEditorClearDrawBtn.disabled = !drawActive || !(editor?.drawStrokes || []).some(stroke => Number(stroke.labelIndex) === index);
+        }
+        if (!editor?.open || !editor?.labelsEnabled || activeTool !== 'paintbrush') closeDiagramCreatorPenPressurePopover();
         updateImageEditorCurrentColorSwatch(editor?.arrowColor || elements.studioImageEditorArrowColorInput?.value || '#000000');
         const drawToolbar = elements.studioImageEditorDrawToolButtons?.[0]?.closest('.studio-image-editor-draw-toolbar');
         drawToolbar?.classList.toggle('is-draw-ready', drawActive);
@@ -25286,7 +25451,9 @@ MODIFICATION RULES FOR THIS APP
             const isActive = drawActive && tool === activeTool;
             button.classList.toggle('active', isActive);
             button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-            button.disabled = !drawActive;
+            // Pen settings (including the live stylus test) are reachable
+            // before selecting Draw on a label; other tools still need a label.
+            button.disabled = !drawActive && tool !== 'paintbrush';
         });
         if (elements.studioImageEditorLineThicknessInput) {
             const thicknessValue = Math.min(24, Math.max(0.25, Number(editor?.lineThickness) || getImageEditorLineThickness()));
@@ -25671,6 +25838,7 @@ MODIFICATION RULES FOR THIS APP
 
     function renderImageEditorCanvas() {
         const editor = state.auth.imageEditor;
+        if (editor && !editor.activeDrawStroke) editor.drawPreviewBackdrop = null;
         const canvas = elements.studioImageEditorCanvas;
         const baseCanvas = editor?.baseCanvas;
         if (!canvas || !baseCanvas) return;
@@ -26086,6 +26254,59 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    // Phase M: Pen settings live in a separate idempotent binding path.
+    // The older editor initialization can mark imageEditorEventsBound before
+    // the generic controls are reached, which previously left this entire
+    // settings popup (and its live pressure controls) without click handlers.
+    function bindDiagramCreatorPenToolEvents() {
+        const overlay = elements.studioImageEditorOverlay;
+        if (!overlay || overlay.dataset.imageEditorPenToolEventsBound === 'true') return;
+        overlay.dataset.imageEditorPenToolEventsBound = 'true';
+        elements.studioImageEditorDrawToolButtons?.forEach(button => {
+            button.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (button.disabled) return;
+                toggleImageEditorDrawTool(button.dataset.imageEditorDrawTool);
+            });
+        });
+        elements.studioImageEditorPressureSensitivityEnabled?.addEventListener('change', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.drawPressureSensitivityEnabled = !!elements.studioImageEditorPressureSensitivityEnabled.checked;
+            saveDiagramCreatorPenPressurePreference(editor.drawPressureSensitivityEnabled);
+            refreshDiagramCreatorPressureCurveUi();
+        });
+        elements.studioImageEditorPressureCurveInput?.addEventListener('input', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.drawPressureCurve = clampDiagramCreatorPressureCurve(event.currentTarget.value);
+            saveDiagramCreatorPressureCurvePreference(editor.drawPressureCurve);
+            refreshDiagramCreatorPressureCurveUi();
+        });
+        elements.studioImageEditorPressureCurveReset?.addEventListener('click', () => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.drawPressureCurve = DIAGRAM_CREATOR_PRESSURE_CURVE_DEFAULT;
+            saveDiagramCreatorPressureCurvePreference(editor.drawPressureCurve);
+            refreshDiagramCreatorPressureCurveUi();
+        });
+        const pressurePad = elements.studioImageEditorPressureTestPad;
+        pressurePad?.addEventListener('pointerdown', event => {
+            event.stopPropagation();
+            event.preventDefault();
+            try { pressurePad.setPointerCapture(event.pointerId); } catch (_) { /* Browser dependent. */ }
+            reportDiagramCreatorLivePressure(event);
+        });
+        pressurePad?.addEventListener('pointermove', event => {
+            if (!pressurePad.hasPointerCapture?.(event.pointerId)) return;
+            event.stopPropagation();
+            event.preventDefault();
+            reportDiagramCreatorLivePressure(event);
+        });
+        elements.studioImageEditorClearDrawBtn?.addEventListener('click', () => clearImageEditorSelectedLabelDrawing());
+    }
+
     function bindStudioImageEditorEvents() {
         const overlay = elements.studioImageEditorOverlay;
         if (!overlay) return;
@@ -26093,6 +26314,7 @@ MODIFICATION RULES FOR THIS APP
         // The legacy static editor marks the broad image-editor guard as bound
         // before the newer Class/Folder controls are reached.
         bindImageEditorOrganizationEvents();
+        bindDiagramCreatorPenToolEvents();
         bindImageEditorZoomAndThicknessEvents();
         bindImageEditorColorPresetEvents();
         bindImageEditorLabelTransferEvents();
@@ -26789,18 +27011,6 @@ MODIFICATION RULES FOR THIS APP
             event.stopPropagation();
             toggleImageEditorSliderPopover('transparency');
         });
-        elements.studioImageEditorDrawToolButtons?.forEach(button => {
-            button.addEventListener('click', () => {
-                if (button.disabled) return;
-                toggleImageEditorDrawTool(button.dataset.imageEditorDrawTool);
-            });
-        });
-        elements.studioImageEditorPressureSensitivityEnabled?.addEventListener('change', () => {
-            const editor = state.auth.imageEditor;
-            if (!editor) return;
-            editor.drawPressureSensitivityEnabled = !!elements.studioImageEditorPressureSensitivityEnabled.checked;
-            saveDiagramCreatorPenPressurePreference(editor.drawPressureSensitivityEnabled);
-        });
         elements.studioImageEditorDrawSizeInput?.addEventListener('input', () => {
             const editor = state.auth.imageEditor;
             if (!editor) return;
@@ -27002,6 +27212,7 @@ MODIFICATION RULES FOR THIS APP
         editor.drawTool = 'paintbrush';
         editor.drawPenSettingsArmed = false;
         editor.drawPressureSensitivityEnabled = loadDiagramCreatorPenPressurePreference();
+        editor.drawPressureCurve = loadDiagramCreatorPressureCurvePreference();
         editor.drawSize = getImageEditorDrawSize();
         editor.paintTransparency = getImageEditorPaintTransparency();
         editor.activeDrawLabelIndex = null;
@@ -56819,12 +57030,8 @@ elements.studioImageEditorToolButtons?.forEach(button => {
     });
 });
 
-elements.studioImageEditorDrawToolButtons?.forEach(button => {
-    button.addEventListener('click', () => {
-        if (button.disabled) return;
-        toggleImageEditorDrawTool(button.dataset.imageEditorDrawTool);
-    });
-});
+// Diagram Creator Pen/Eraser events are bound with the dynamic editor DOM.
+// Do not register a second toolbar handler on the legacy static path.
 
 elements.studioImageEditorDrawSizeInput?.addEventListener('input', () => {
     const editor = state.auth.imageEditor;
