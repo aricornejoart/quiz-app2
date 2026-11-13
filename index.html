@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7v_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a7x_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a7v_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a7x_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1835,6 +1835,30 @@ MODIFICATION RULES FOR THIS APP
                           <label class="studio-handwritten-align-option"><span>Diagram Both Sides</span><span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenDiagramBothSides" type="checkbox" role="switch" checked aria-label="Copy a Saved Image diagram and its Half or Full setting from the front to the back"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span></label>
                           <label class="studio-handwritten-align-option"><span>Auto Align</span><span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenAutoAlign" type="checkbox" role="switch" aria-label="Automatically align front and back handwriting on flip, save, or navigation"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span></label>
                           <label class="studio-handwritten-align-option"><span>Alignment</span><select id="flashcardHandwrittenAlignTarget" aria-label="Handwriting alignment"><option value="center" selected>Center</option><option value="top">Top</option><option value="left">Left</option><option value="right">Right</option><option value="bottom">Bottom</option></select></label>
+                          <section class="studio-handwritten-mini-settings" aria-label="Floating mini toolbar settings">
+                            <strong>Floating Mini Toolbar</strong>
+                            <label class="studio-handwritten-align-option"><span>Enable mini toolbar (off by default)</span><span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenMiniEnabled" type="checkbox" role="switch" aria-label="Enable floating mini toolbar"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span></label>
+                            <label class="studio-handwritten-align-option"><span>Fixed Position (drag to place)</span><span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenMiniFixed" type="checkbox" role="switch" checked aria-label="Fix floating toolbar position"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span></label>
+                            <label class="studio-handwritten-mini-field">Toolbar opacity <output id="flashcardHandwrittenMiniOpacityValue">75%</output><input id="flashcardHandwrittenMiniOpacity" type="range" min="20" max="100" step="5" value="75"></label>
+                            <label class="studio-handwritten-mini-field">Follow Pencil distance <output id="flashcardHandwrittenMiniDistanceValue">80 px</output><input id="flashcardHandwrittenMiniDistance" type="range" min="48" max="160" step="2" value="80"></label>
+                            <div class="studio-handwritten-mini-note">Follow Pencil repositions 1 second after the last stroke. Fixed Position is on by default.</div>
+                            <button id="flashcardHandwrittenMiniEditBtn" type="button" class="auth-action-btn auth-secondary-btn" aria-expanded="false" aria-controls="flashcardHandwrittenMiniEditor">Edit Toolbar</button>
+                            <div id="flashcardHandwrittenMiniEditor" class="studio-handwritten-mini-editor hidden">
+                              <div id="flashcardHandwrittenMiniEditorItems"></div>
+                              <label>Add shortcut <select id="flashcardHandwrittenMiniAddSelect" aria-label="Choose shortcut to add"></select></label>
+                              <button id="flashcardHandwrittenMiniAddBtn" type="button" class="auth-action-btn auth-secondary-btn">Add shortcut</button>
+                              <button id="flashcardHandwrittenMiniRestoreBtn" type="button" class="auth-action-btn auth-secondary-btn">Restore toolbar layout</button>
+                              <div class="studio-handwritten-mini-note">Maximum 10 shortcuts. Use ↑ and ↓ to reorder.</div>
+                            </div>
+                          </section>
+                          <section class="studio-handwritten-mini-settings" aria-label="Grid and lines settings">
+                            <strong>Grid / Lines</strong>
+                            <label class="studio-handwritten-align-option"><span>Show grid / lines</span><span class="studio-handwritten-settings-switch"><input id="flashcardHandwrittenSettingsGridEnabled" type="checkbox" role="switch" aria-label="Show grid or lines"><span class="studio-handwritten-settings-track" aria-hidden="true"></span></span></label>
+                            <label class="studio-handwritten-mini-field">Type <select id="flashcardHandwrittenSettingsGridType"><option value="lines">Ruled lines</option><option value="graph">Graph</option><option value="dots">Dots</option></select></label>
+                            <label class="studio-handwritten-mini-field">Color <input id="flashcardHandwrittenSettingsGridColor" type="color" value="#94a3b8"></label>
+                            <label class="studio-handwritten-mini-field">Grid opacity <output id="flashcardHandwrittenSettingsGridOpacityValue">24%</output><input id="flashcardHandwrittenSettingsGridOpacity" type="range" min="0" max="100" step="1" value="24"></label>
+                            <div class="studio-handwritten-mini-note">These appearance settings apply across the quiz. Save the quiz to retain changes.</div>
+                          </section>
                         </div>
                         <div id="flashcardHandwrittenSizePopover" class="studio-handwritten-floating-popover hidden" role="dialog" aria-label="Stroke thickness">
                           <div class="studio-handwritten-popover-title"><strong id="flashcardHandwrittenSizeLabel">Pen thickness</strong><span id="flashcardHandwrittenSizeValue">1.1 mm</span></div>
@@ -1868,6 +1892,12 @@ MODIFICATION RULES FOR THIS APP
                         <div id="flashcardHandwrittenImageWrap" class="studio-handwritten-image-wrap hidden"><img id="flashcardHandwrittenImage" alt="Flashcard image"><i data-handwritten-image-handle="tl"></i><i data-handwritten-image-handle="tr"></i><i data-handwritten-image-handle="bl"></i><i data-handwritten-image-handle="br"></i></div>
                         <button id="flashcardHandwrittenImageZoomBtn" class="studio-handwritten-image-zoom" type="button" title="Zoom uploaded image" aria-label="Zoom uploaded image">⤢</button>
                         <div id="flashcardHandwrittenFullImageNote" class="studio-handwritten-full-image-note hidden">Full image side — drawing is disabled.</div>
+                      </div>
+
+                      <div id="flashcardHandwrittenMiniToolbar" class="studio-handwritten-mini-toolbar hidden" role="toolbar" aria-label="Custom handwritten shortcuts">
+                        <div id="flashcardHandwrittenMiniDragHandle" class="studio-handwritten-mini-handle" role="button" tabindex="0" aria-label="Drag floating toolbar to a fixed position" title="Drag to move">⠿</div>
+                        <div id="flashcardHandwrittenMiniActions" class="studio-handwritten-mini-actions"></div>
+                        <div id="flashcardHandwrittenMiniColors" class="studio-handwritten-mini-colors hidden" aria-label="Recent pen colors"></div>
                       </div>
 
                       <div class="studio-handwritten-navigation">
@@ -2724,6 +2754,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a7v_1"></script>
+  <script src="script.js?v=24a7x_1"></script>
 </body>
 </html>

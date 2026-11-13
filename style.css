@@ -18296,3 +18296,35 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .question-star-btn.starred svg { fill:rgba(255,212,90,.22); }
 .studio-question-list-star svg {width:15px; height:15px;}
 .studio-question-starred-filter-btn svg {width:15px; height:15px; vertical-align:-3px; margin-right:3px;}
+
+/* Phase 24A.7W: optional floating handwritten shortcuts and editable post-setup guide lines. */
+.studio-handwritten-mini-toolbar {position:fixed;top:90px;left:20px;z-index:100003;display:flex;align-items:center;gap:5px;box-sizing:border-box;width:max-content;max-width:min(92vw,740px);min-height:42px;padding:5px 8px;border:1px solid rgba(184,168,255,.55);border-radius:13px;background:rgba(31,26,49,.95);color:#fff;box-shadow:0 7px 25px rgba(0,0,0,.35);touch-action:none;user-select:none;-webkit-user-select:none;}
+.studio-handwritten-mini-toolbar.hidden {display:none!important;}
+.studio-handwritten-mini-handle {width:22px;min-width:22px;min-height:32px;display:flex;align-items:center;justify-content:center;cursor:grab;color:#cabdff;touch-action:none;border-radius:5px;font-size:19px;}
+.studio-handwritten-mini-handle.is-follow {opacity:.4;cursor:default;}
+.studio-handwritten-mini-handle:focus-visible {outline:2px solid #c2acff;}
+.studio-handwritten-mini-actions {display:flex;align-items:center;gap:4px;overflow:auto;max-width:min(78vw,660px);overscroll-behavior:contain;touch-action:pan-x;scrollbar-width:thin;}
+.studio-handwritten-mini-actions button {flex:0 0 34px;min-width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(180,160,235,.34);background:#2b2546;color:#fff;border-radius:8px;font:600 21px/1 sans-serif;cursor:pointer;touch-action:manipulation;}
+.studio-handwritten-mini-actions button.active {background:#5747a0;box-shadow:0 0 0 1px #a897ef inset;}
+.studio-handwritten-mini-actions button:focus-visible {outline:2px solid #fff;}
+.studio-handwritten-mini-colors {position:absolute;top:100%;right:2px;margin-top:5px;max-width:min(86vw,300px);display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#242039;border:1px solid #6b5a9e;border-radius:11px;padding:10px;box-shadow:0 12px 24px #0009;}
+.studio-handwritten-mini-colors.hidden {display:none!important;}
+.studio-handwritten-mini-colors button {width:30px;height:30px;min-width:30px;border-radius:50%;background:var(--mini-color);border:2px solid #ffffffb0;cursor:pointer;touch-action:manipulation;}
+.studio-handwritten-mini-colors span {font-size:.75rem;color:#eee;}
+.studio-handwritten-settings-popover {max-height:min(77dvh,660px);overflow-y:auto;overscroll-behavior:contain;width:min(350px,calc(100vw - 20px));}
+.studio-handwritten-mini-settings {margin-top:10px;border-top:1px solid rgba(167,139,250,.3);padding-top:10px;display:grid;gap:7px;}
+.studio-handwritten-mini-settings>strong {font-size:.84rem;color:#f4f1ff;}
+.studio-handwritten-mini-field {display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-size:.8rem;color:#f4f1ff;}
+.studio-handwritten-mini-field input[type="range"] {width:100%;accent-color:#a58aff;}
+.studio-handwritten-mini-field select {background:#27243e;color:#fff;border:1px solid #786a9b;border-radius:6px;padding:4px;}
+.studio-handwritten-mini-field input[type="color"] {width:48px;height:30px;background:none;border:0;}
+.studio-handwritten-mini-note {color:#bdb4d8;font-size:.7rem;line-height:1.35;}
+.studio-handwritten-mini-editor {display:grid;gap:6px;}
+.studio-handwritten-mini-editor.hidden {display:none!important;}
+.studio-handwritten-mini-editor-row {display:flex;align-items:center;gap:4px;font-size:.76rem;}
+.studio-handwritten-mini-editor-row span {flex:1;}
+.studio-handwritten-mini-editor-row button {width:28px;height:28px;border:1px solid #6e5b99;border-radius:5px;background:#292343;color:#fff;}
+.studio-handwritten-mini-editor-row button:disabled {opacity:.35;}
+.studio-handwritten-mini-editor label {display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.76rem;}
+.studio-handwritten-mini-editor select {max-width:170px;background:#27243e;color:#fff;border:1px solid #786a9b;border-radius:6px;padding:5px;}
+@media (prefers-reduced-motion:reduce){.studio-handwritten-mini-toolbar {transition:none!important;}}

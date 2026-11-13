@@ -323,6 +323,14 @@ MODIFICATION RULES FOR THIS APP
             handwrittenFlashcardPersistedEnabled: false,
             handwrittenFlashcardSetupApplied: false,
             handwrittenFlashcardStyle: { backgroundColor: '#ffffff', gridType: 'none', gridColor: '#94a3b8', gridOpacity: 0.24 },
+            handwrittenMiniEnabled: false,
+            handwrittenMiniFixed: true,
+            handwrittenMiniOpacity: 75,
+            handwrittenMiniDistance: 80,
+            handwrittenMiniButtons: ['flip','undo','redo','pen','eraser','colors'],
+            handwrittenMiniRecentColors: [],
+            handwrittenMiniLastGridType: 'lines',
+            handwrittenMiniPosition: null,
             handwrittenFlashcardSide: 'term',
             handwrittenFlashcardTool: 'pen',
             handwrittenFlashcardSelectionType: 'rectangle',
@@ -1111,6 +1119,27 @@ MODIFICATION RULES FOR THIS APP
         flashcardHandwrittenFlipBtn: document.getElementById('flashcardHandwrittenFlipBtn'),
         flashcardHandwrittenSideMode: document.getElementById('flashcardHandwrittenSideMode'),
         flashcardHandwrittenSettingsBtn: document.getElementById('flashcardHandwrittenSettingsBtn'),
+        flashcardHandwrittenMiniEnabled: document.getElementById('flashcardHandwrittenMiniEnabled'),
+        flashcardHandwrittenMiniFixed: document.getElementById('flashcardHandwrittenMiniFixed'),
+        flashcardHandwrittenMiniOpacity: document.getElementById('flashcardHandwrittenMiniOpacity'),
+        flashcardHandwrittenMiniOpacityValue: document.getElementById('flashcardHandwrittenMiniOpacityValue'),
+        flashcardHandwrittenMiniDistance: document.getElementById('flashcardHandwrittenMiniDistance'),
+        flashcardHandwrittenMiniDistanceValue: document.getElementById('flashcardHandwrittenMiniDistanceValue'),
+        flashcardHandwrittenMiniEditBtn: document.getElementById('flashcardHandwrittenMiniEditBtn'),
+        flashcardHandwrittenMiniEditor: document.getElementById('flashcardHandwrittenMiniEditor'),
+        flashcardHandwrittenMiniEditorItems: document.getElementById('flashcardHandwrittenMiniEditorItems'),
+        flashcardHandwrittenMiniAddSelect: document.getElementById('flashcardHandwrittenMiniAddSelect'),
+        flashcardHandwrittenMiniAddBtn: document.getElementById('flashcardHandwrittenMiniAddBtn'),
+        flashcardHandwrittenMiniRestoreBtn: document.getElementById('flashcardHandwrittenMiniRestoreBtn'),
+        flashcardHandwrittenMiniToolbar: document.getElementById('flashcardHandwrittenMiniToolbar'),
+        flashcardHandwrittenMiniDragHandle: document.getElementById('flashcardHandwrittenMiniDragHandle'),
+        flashcardHandwrittenMiniActions: document.getElementById('flashcardHandwrittenMiniActions'),
+        flashcardHandwrittenMiniColors: document.getElementById('flashcardHandwrittenMiniColors'),
+        flashcardHandwrittenSettingsGridEnabled: document.getElementById('flashcardHandwrittenSettingsGridEnabled'),
+        flashcardHandwrittenSettingsGridType: document.getElementById('flashcardHandwrittenSettingsGridType'),
+        flashcardHandwrittenSettingsGridColor: document.getElementById('flashcardHandwrittenSettingsGridColor'),
+        flashcardHandwrittenSettingsGridOpacity: document.getElementById('flashcardHandwrittenSettingsGridOpacity'),
+        flashcardHandwrittenSettingsGridOpacityValue: document.getElementById('flashcardHandwrittenSettingsGridOpacityValue'),
         flashcardHandwrittenSettingsPopover: document.getElementById('flashcardHandwrittenSettingsPopover'),
         flashcardHandwrittenAutoAlign: document.getElementById('flashcardHandwrittenAutoAlign'),
         flashcardHandwrittenDiagramBothSides: document.getElementById('flashcardHandwrittenDiagramBothSides'),
@@ -36091,6 +36120,203 @@ if (elements.importBackupFile) {
         state.auth.handwrittenFlashcardRedo.set(key, []);
     }
 
+    // Phase 24A.7W — Floating shortcuts are a view of the existing editor actions.
+    // No separate undo, pen, save, or navigation implementation is introduced.
+    const HANDWRITTEN_MINI_SHORTCUTS = Object.freeze({
+        flip:['Flip','↻'], undo:['Undo','↶'], redo:['Redo','↷'],
+        pen:['Pen','✎'], eraser:['Eraser','⌫'], select:['Selection','▢'],
+        save:['Save','▣'], previous:['Previous','‹'], next:['Next','›'],
+        colors:['Recent colors','●'], grid:['Grid / lines','▦'],
+        size:['Stroke thickness','━'], image:['Attach image','⊕'],
+        focus:['Fullscreen','⛶'], clear:['Clear this side','×']
+    });
+    const HANDWRITTEN_MINI_DEFAULT_BUTTONS = Object.freeze(['flip','undo','redo','pen','eraser','colors']);
+    function clampHandwrittenMiniNumber(value,fallback,min,max) {
+        const n=Number(value);
+        return Number.isFinite(n) ? Math.max(min,Math.min(max,n)) : fallback;
+    }
+    function normalizeHandwrittenMiniButtons(value) {
+        if (!Array.isArray(value)) return [...HANDWRITTEN_MINI_DEFAULT_BUTTONS];
+        return [...new Set(value.filter(key=>Object.prototype.hasOwnProperty.call(HANDWRITTEN_MINI_SHORTCUTS,key)))].slice(0,10);
+    }
+    function normalizeHandwrittenRecentColors(value) {
+        return [...new Set((Array.isArray(value)?value:[]).filter(color=>/^#[0-9a-f]{6}$/i.test(color)).map(color=>color.toLowerCase()))].slice(0,8);
+    }
+    function rememberHandwrittenRecentColor(color) {
+        const normalized=normalizeEditorHexColor(color,'#111827').toLowerCase();
+        state.auth.handwrittenMiniRecentColors=normalizeHandwrittenRecentColors([normalized,...(state.auth.handwrittenMiniRecentColors||[])]);
+        persistHandwrittenToolPrefs();
+        renderHandwrittenMiniRecentColors();
+    }
+    let handwrittenMiniFollowTimer=null;
+    let handwrittenMiniDrag=null;
+    let handwrittenMiniLastStrokePoint=null;
+    let handwrittenMiniContextKey='';
+    function cancelHandwrittenMiniFollow() {
+        if (handwrittenMiniFollowTimer!==null) {clearTimeout(handwrittenMiniFollowTimer); handwrittenMiniFollowTimer=null;}
+    }
+    function clampHandwrittenMiniPosition(x,y) {
+        const dock=elements.flashcardHandwrittenMiniToolbar;
+        const rect=dock?.getBoundingClientRect();
+        const width=rect?.width||260, height=rect?.height||45;
+        const safe=8;
+        return {x:Math.round(Math.max(safe,Math.min(window.innerWidth-width-safe,x))),y:Math.round(Math.max(safe,Math.min(window.innerHeight-height-safe,y)))};
+    }
+    function positionHandwrittenMiniToolbar(point=null) {
+        const dock=elements.flashcardHandwrittenMiniToolbar;
+        if (!dock || dock.classList.contains('hidden') || handwrittenMiniDrag || state.auth.handwrittenFlashcardPointer) return;
+        const rect=elements.flashcardHandwrittenCard?.getBoundingClientRect();
+        const width=dock.getBoundingClientRect().width||260, height=dock.getBoundingClientRect().height||45;
+        let x,y;
+        if (state.auth.handwrittenMiniFixed !== false) {
+            x=state.auth.handwrittenMiniPosition?.x ?? ((rect?.right||window.innerWidth)-width-20);
+            y=state.auth.handwrittenMiniPosition?.y ?? ((rect?.top||80)+18);
+        } else {
+            const target=point||handwrittenMiniLastStrokePoint;
+            if (target) {
+                x=target.x-width/2;
+                y=target.y-(state.auth.handwrittenMiniDistance||80)-height;
+                if (y<12) y=target.y+(state.auth.handwrittenMiniDistance||80);
+            } else {
+                x=(rect?.right||window.innerWidth)-width-20;
+                y=(rect?.top||80)+18;
+            }
+        }
+        const pos=clampHandwrittenMiniPosition(x,y);
+        dock.style.left=`${pos.x}px`;
+        dock.style.top=`${pos.y}px`;
+    }
+    function scheduleHandwrittenMiniFollow(event) {
+        cancelHandwrittenMiniFollow();
+        if (!state.auth.handwrittenMiniEnabled || state.auth.handwrittenMiniFixed !== false || event?.type==='pointercancel') return;
+        handwrittenMiniLastStrokePoint={x:event.clientX,y:event.clientY};
+        handwrittenMiniFollowTimer=window.setTimeout(()=>{
+            handwrittenMiniFollowTimer=null;
+            if (!state.auth.handwrittenFlashcardPointer && !handwrittenMiniDrag) positionHandwrittenMiniToolbar(handwrittenMiniLastStrokePoint);
+        },1000);
+    }
+    function renderHandwrittenMiniRecentColors() {
+        const el=elements.flashcardHandwrittenMiniColors;
+        if (!el) return;
+        const colors=normalizeHandwrittenRecentColors(state.auth.handwrittenMiniRecentColors);
+        el.innerHTML=colors.map(color=>`<button type="button" data-mini-color="${color}" style="--mini-color:${color}" title="Pen ${color}" aria-label="Use pen color ${color}"></button>`).join('') || '<span>No recent colors yet</span>';
+    }
+    function syncHandwrittenMiniToolbar() {
+        const dock=elements.flashcardHandwrittenMiniToolbar;
+        if (!dock) return;
+        const active=!!(state.auth.handwrittenFlashcardEnabled && state.auth.handwrittenFlashcardSetupApplied && state.auth.handwrittenMiniEnabled && getHandwrittenSideModeFromEditorState()==='handwritten' && !elements.flashcardHandwrittenWorkspace?.classList.contains('hidden'));
+        const contextKey=`${state.auth.editingQuestionId||''}:${getHandwrittenSideKey()}`;
+        if (handwrittenMiniContextKey!==contextKey) {
+            cancelHandwrittenMiniFollow();
+            handwrittenMiniLastStrokePoint=null;
+            handwrittenMiniContextKey=contextKey;
+        }
+        dock.classList.toggle('hidden',!active);
+        if (!active) {cancelHandwrittenMiniFollow();return;}
+        dock.style.opacity=String(clampHandwrittenMiniNumber(state.auth.handwrittenMiniOpacity,75,20,100)/100);
+        dock.classList.toggle('is-fixed',state.auth.handwrittenMiniFixed!==false);
+        const buttons=normalizeHandwrittenMiniButtons(state.auth.handwrittenMiniButtons);
+        const signature=buttons.join('|');
+        const actions=elements.flashcardHandwrittenMiniActions;
+        if (actions && actions.dataset.layout!==signature) {
+            actions.dataset.layout=signature;
+            actions.innerHTML=buttons.map(key=>`<button type="button" data-mini-shortcut="${key}" title="${HANDWRITTEN_MINI_SHORTCUTS[key][0]}" aria-label="${HANDWRITTEN_MINI_SHORTCUTS[key][0]}">${HANDWRITTEN_MINI_SHORTCUTS[key][1]}</button>`).join('');
+        }
+        actions?.querySelectorAll('[data-mini-shortcut]').forEach(btn=>{
+            const key=btn.dataset.miniShortcut;
+            if (key==='select') {
+                const lasso=state.auth.handwrittenFlashcardSelectionType==='lasso';
+                btn.textContent=lasso?'◌':'▢';
+                btn.title=lasso?'Lasso selection':'Rectangle selection';
+                btn.setAttribute('aria-label',btn.title);
+            }
+            btn.classList.toggle('active',(key==='pen' && state.auth.handwrittenFlashcardTool==='pen') || (key==='eraser'&&state.auth.handwrittenFlashcardTool==='eraser') || (key==='select'&&state.auth.handwrittenFlashcardTool==='select') || (key==='grid'&&normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle||{}).gridType!=='none'));
+        });
+        elements.flashcardHandwrittenMiniDragHandle?.classList.toggle('is-follow',state.auth.handwrittenMiniFixed===false);
+        positionHandwrittenMiniToolbar();
+    }
+    function syncHandwrittenMiniSettings() {
+        ensureHandwrittenToolPrefsLoaded();
+        const enabled=elements.flashcardHandwrittenMiniEnabled, fixed=elements.flashcardHandwrittenMiniFixed;
+        if (enabled) enabled.checked=!!state.auth.handwrittenMiniEnabled;
+        if (fixed) fixed.checked=state.auth.handwrittenMiniFixed!==false;
+        if (elements.flashcardHandwrittenMiniOpacity) elements.flashcardHandwrittenMiniOpacity.value=String(state.auth.handwrittenMiniOpacity);
+        if (elements.flashcardHandwrittenMiniOpacityValue) elements.flashcardHandwrittenMiniOpacityValue.textContent=`${state.auth.handwrittenMiniOpacity}%`;
+        if (elements.flashcardHandwrittenMiniDistance) elements.flashcardHandwrittenMiniDistance.value=String(state.auth.handwrittenMiniDistance);
+        if (elements.flashcardHandwrittenMiniDistanceValue) elements.flashcardHandwrittenMiniDistanceValue.textContent=`${state.auth.handwrittenMiniDistance} px`;
+        const style=normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle||{});
+        if (elements.flashcardHandwrittenSettingsGridEnabled) elements.flashcardHandwrittenSettingsGridEnabled.checked=style.gridType!=='none';
+        if (elements.flashcardHandwrittenSettingsGridType) elements.flashcardHandwrittenSettingsGridType.value=style.gridType==='none'?state.auth.handwrittenMiniLastGridType:style.gridType;
+        if (elements.flashcardHandwrittenSettingsGridColor) elements.flashcardHandwrittenSettingsGridColor.value=style.gridColor;
+        if (elements.flashcardHandwrittenSettingsGridOpacity) elements.flashcardHandwrittenSettingsGridOpacity.value=String(Math.round(style.gridOpacity*100));
+        if (elements.flashcardHandwrittenSettingsGridOpacityValue) elements.flashcardHandwrittenSettingsGridOpacityValue.textContent=`${Math.round(style.gridOpacity*100)}%`;
+        renderHandwrittenMiniEditor();
+    }
+    function renderHandwrittenMiniEditor() {
+        const items=elements.flashcardHandwrittenMiniEditorItems, select=elements.flashcardHandwrittenMiniAddSelect;
+        if (!items||!select) return;
+        const buttons=normalizeHandwrittenMiniButtons(state.auth.handwrittenMiniButtons);
+        items.innerHTML=buttons.map((key,index)=>`<div class="studio-handwritten-mini-editor-row"><span>${index+1}. ${HANDWRITTEN_MINI_SHORTCUTS[key][0]}</span><button type="button" data-mini-move="up" data-mini-index="${index}" aria-label="Move ${HANDWRITTEN_MINI_SHORTCUTS[key][0]} left" ${index===0?'disabled':''}>↑</button><button type="button" data-mini-move="down" data-mini-index="${index}" aria-label="Move ${HANDWRITTEN_MINI_SHORTCUTS[key][0]} right" ${index===buttons.length-1?'disabled':''}>↓</button><button type="button" data-mini-remove="${index}" aria-label="Remove ${HANDWRITTEN_MINI_SHORTCUTS[key][0]}">×</button></div>`).join('');
+        select.innerHTML=Object.entries(HANDWRITTEN_MINI_SHORTCUTS).filter(([key])=>!buttons.includes(key)).map(([key,[label]])=>`<option value="${key}">${label}</option>`).join('');
+        if (elements.flashcardHandwrittenMiniAddBtn) elements.flashcardHandwrittenMiniAddBtn.disabled=buttons.length>=10||!select.options.length;
+        select.disabled=buttons.length>=10||!select.options.length;
+    }
+    function updateHandwrittenMiniButtons(next) {
+        state.auth.handwrittenMiniButtons=normalizeHandwrittenMiniButtons(next);
+        persistHandwrittenToolPrefs();
+        renderHandwrittenMiniEditor();
+        syncHandwrittenMiniToolbar();
+    }
+    function updateHandwrittenQuizGrid(patch) {
+        const prev=normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle||{});
+        const next=normalizeHandwrittenFlashcardStyle({...prev,...patch});
+        if (next.gridType!=='none') state.auth.handwrittenMiniLastGridType=next.gridType;
+        if (JSON.stringify(next)===JSON.stringify(prev)) return;
+        state.auth.handwrittenFlashcardStyle=next;
+        // Grid is CSS-only: updating its appearance does not need to re-render
+        // question lists, reload card images, or redraw Apple Pencil ink.
+        const card=elements.flashcardHandwrittenCard;
+        if (card) {
+            card.style.setProperty('--hand-grid-color',next.gridColor);
+            card.style.setProperty('--hand-grid-opacity',String(next.gridOpacity));
+            card.classList.remove('grid-lines','grid-graph','grid-dots');
+            if (next.gridType!=='none') card.classList.add(`grid-${next.gridType}`);
+        }
+        syncHandwrittenFlashcardSetupControls();
+        syncHandwrittenMiniSettings();
+        syncHandwrittenMiniToolbar();
+        setStudioDirtyState(true);
+        updateStudioUnsavedChangesIndicator();
+        persistHandwrittenToolPrefs();
+    }
+    function invokeHandwrittenMiniShortcut(key) {
+        // Use the very same button/listener as the full toolbar. Avoid its special
+        // second-tap settings behavior when simply activating Pen or Selection.
+        const click=element=>{if (element&&!element.disabled)element.click();};
+        const tool=state.auth.handwrittenFlashcardTool;
+        if (key==='flip') click(elements.flashcardHandwrittenFlipBtn);
+        else if (key==='undo') click(elements.flashcardHandwrittenUndoBtn);
+        else if (key==='redo') click(elements.flashcardHandwrittenRedoBtn);
+        else if (key==='pen'&&tool!=='pen') click(elements.flashcardHandwrittenPenToolBtn);
+        else if (key==='eraser'&&tool!=='eraser') click(elements.flashcardHandwrittenWorkspace?.querySelector('.studio-handwritten-toolbar [data-handwritten-tool="eraser"]'));
+        else if (key==='select'&&tool!=='select') click(elements.flashcardHandwrittenSelectionToolBtn);
+        else if (key==='save') click(elements.flashcardHandwrittenSaveBtn);
+        else if (key==='previous') click(elements.flashcardHandwrittenPrevBtn);
+        else if (key==='next') click(elements.flashcardHandwrittenNextBtn);
+        else if (key==='size') click(elements.flashcardHandwrittenSizeBtn);
+        else if (key==='image') click(elements.flashcardHandwrittenAddImageBtn);
+        else if (key==='focus') click(elements.flashcardHandwrittenFocusBtn);
+        else if (key==='clear') click(elements.flashcardHandwrittenClearBtn);
+        else if (key==='grid') {
+            const style=normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle||{});
+            updateHandwrittenQuizGrid({gridType:style.gridType==='none'?state.auth.handwrittenMiniLastGridType:'none'});
+        } else if (key==='colors') {
+            renderHandwrittenMiniRecentColors();
+            elements.flashcardHandwrittenMiniColors?.classList.toggle('hidden');
+        }
+        syncHandwrittenMiniToolbar();
+    }
+
     function getHandwrittenToolPrefsStorageKey(userId = state.auth.user?.id) {
         const owner = normalizeSheetText(userId) || 'anonymous';
         return `${CONFIG.handwrittenToolPrefsStorageKey}:${owner}`;
@@ -36106,6 +36332,15 @@ if (elements.importBackupFile) {
         if (state.auth.handwrittenFlashcardToolPrefsUserId === owner) return;
         state.auth.handwrittenFlashcardToolPrefsUserId = owner;
         state.auth.handwrittenFlashcardDisablePressureSensitivity = true;
+        // Phase 24A.7W: keep toolbar preferences per user, never in saved ink.
+        state.auth.handwrittenMiniEnabled = false;
+        state.auth.handwrittenMiniFixed = true;
+        state.auth.handwrittenMiniOpacity = 75;
+        state.auth.handwrittenMiniDistance = 80;
+        state.auth.handwrittenMiniButtons = [...HANDWRITTEN_MINI_DEFAULT_BUTTONS];
+        state.auth.handwrittenMiniRecentColors = [];
+        state.auth.handwrittenMiniLastGridType = 'lines';
+        state.auth.handwrittenMiniPosition = null;
         try {
             const raw = window.localStorage?.getItem(getHandwrittenToolPrefsStorageKey(owner));
             const stored = raw ? JSON.parse(raw) : {};
@@ -36119,6 +36354,18 @@ if (elements.importBackupFile) {
             state.auth.handwrittenFlashcardDiagramBothSides = stored.diagramBothSides !== false;
             state.auth.handwrittenFlashcardAutoAlign = stored.autoAlign === true;
             state.auth.handwrittenFlashcardAlignTarget = normalizeHandwrittenAlignTarget(stored.alignTarget);
+            state.auth.handwrittenMiniEnabled = stored.miniEnabled === true;
+            state.auth.handwrittenMiniFixed = stored.miniFixed !== false;
+            state.auth.handwrittenMiniOpacity = clampHandwrittenMiniNumber(stored.miniOpacity,75,20,100);
+            // Upgrade the original 90px factory default to 80px without disturbing
+            // other user-selected distances. Phase W had no preference version.
+            const storedMiniDistance = clampHandwrittenMiniNumber(stored.miniDistance,80,48,160);
+            state.auth.handwrittenMiniDistance = stored.miniDistancePreferenceVersion === 2 || storedMiniDistance !== 90 ? storedMiniDistance : 80;
+            state.auth.handwrittenMiniButtons = normalizeHandwrittenMiniButtons(stored.miniButtons);
+            state.auth.handwrittenMiniRecentColors = normalizeHandwrittenRecentColors(stored.miniRecentColors);
+            state.auth.handwrittenMiniLastGridType = ['lines','graph','dots'].includes(stored.miniLastGridType) ? stored.miniLastGridType : 'lines';
+            state.auth.handwrittenMiniPosition = Number.isFinite(stored.miniPosition?.x) && Number.isFinite(stored.miniPosition?.y)
+                ? {x:stored.miniPosition.x,y:stored.miniPosition.y} : null;
             if (/^#[0-9a-f]{6}$/i.test(String(stored.penColor || ''))) {
                 state.auth.handwrittenFlashcardPenColor = normalizeEditorHexColor(stored.penColor, '#111827');
             }
@@ -36139,7 +36386,16 @@ if (elements.importBackupFile) {
                 selectionType: state.auth.handwrittenFlashcardSelectionType === 'lasso' ? 'lasso' : 'rectangle',
                 diagramBothSides: state.auth.handwrittenFlashcardDiagramBothSides !== false,
                 autoAlign: !!state.auth.handwrittenFlashcardAutoAlign,
-                alignTarget: normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget)
+                alignTarget: normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget),
+                miniEnabled: !!state.auth.handwrittenMiniEnabled,
+                miniFixed: state.auth.handwrittenMiniFixed !== false,
+                miniOpacity: state.auth.handwrittenMiniOpacity,
+                miniDistance: state.auth.handwrittenMiniDistance,
+                miniDistancePreferenceVersion: 2,
+                miniButtons: normalizeHandwrittenMiniButtons(state.auth.handwrittenMiniButtons),
+                miniRecentColors: normalizeHandwrittenRecentColors(state.auth.handwrittenMiniRecentColors),
+                miniLastGridType: state.auth.handwrittenMiniLastGridType,
+                miniPosition: state.auth.handwrittenMiniPosition
             }));
         } catch (error) {
             console.warn('Could not save handwritten Flashcard tool preferences:', error);
@@ -36271,33 +36527,12 @@ if (elements.importBackupFile) {
         popover.style.top = `${Math.round(top)}px`;
     }
 
-    let handwrittenSettingsDismissTimer = null;
-    function cancelHandwrittenSettingsDismiss() {
-        if (handwrittenSettingsDismissTimer !== null) {
-            clearTimeout(handwrittenSettingsDismissTimer);
-            handwrittenSettingsDismissTimer = null;
-        }
-    }
     function closeHandwrittenSettingsPopover() {
-        cancelHandwrittenSettingsDismiss();
+        // Keep settings open while a native macOS color picker is active.
+        // Dismiss through the Settings button, outside click, or Escape;
+        // never interpret pointerleave as intent to close this panel.
         elements.flashcardHandwrittenSettingsPopover?.classList.add('hidden');
         elements.flashcardHandwrittenSettingsBtn?.setAttribute('aria-expanded','false');
-    }
-    function scheduleHandwrittenSettingsDismiss(event) {
-        // Touch has no hover-away semantics; touch users dismiss by tapping elsewhere.
-        if (event?.pointerType === 'touch') return;
-        cancelHandwrittenSettingsDismiss();
-        handwrittenSettingsDismissTimer = setTimeout(() => {
-            handwrittenSettingsDismissTimer = null;
-            const btn = elements.flashcardHandwrittenSettingsBtn;
-            const popover = elements.flashcardHandwrittenSettingsPopover;
-        ensureHandwrittenToolPrefsLoaded();
-        if (elements.flashcardHandwrittenDiagramBothSides) elements.flashcardHandwrittenDiagramBothSides.checked = state.auth.handwrittenFlashcardDiagramBothSides !== false;
-        if (elements.flashcardHandwrittenAutoAlign) elements.flashcardHandwrittenAutoAlign.checked = !!state.auth.handwrittenFlashcardAutoAlign;
-        if (elements.flashcardHandwrittenAlignTarget) elements.flashcardHandwrittenAlignTarget.value = normalizeHandwrittenAlignTarget(state.auth.handwrittenFlashcardAlignTarget);
-            if (btn?.matches(':hover') || popover?.matches(':hover')) return;
-            closeHandwrittenSettingsPopover();
-        }, 160);
     }
     function closeHandwrittenSizePopover() {
         elements.flashcardHandwrittenSizePopover?.classList.add('hidden');
@@ -36695,6 +36930,7 @@ if (elements.importBackupFile) {
         const rawIndex = rows.findIndex(item => normalizeSheetText(item.id) === normalizeSheetText(row?.id));
         const index = rawIndex >= 0 ? rawIndex : 0;
         if (elements.flashcardHandwrittenCardNumber) elements.flashcardHandwrittenCardNumber.textContent = `Card ${rows.length ? index+1 : 1} / ${Math.max(1, rows.length)}`;
+        syncHandwrittenMiniToolbar();
         if (elements.flashcardHandwrittenMoveLeftBtn) elements.flashcardHandwrittenMoveLeftBtn.disabled = !rows.length || index <= 0;
         if (elements.flashcardHandwrittenMoveRightBtn) elements.flashcardHandwrittenMoveRightBtn.disabled = !rows.length || index >= rows.length - 1;
         if (elements.flashcardHandwrittenSideSelect) elements.flashcardHandwrittenSideSelect.checked = side === 'definition';
@@ -36839,6 +37075,7 @@ if (elements.importBackupFile) {
     }
 
     function handleHandwrittenPointerDown(event) {
+        cancelHandwrittenMiniFollow();
         if (!state.auth.handwrittenFlashcardEnabled || getHandwrittenSideModeFromEditorState() !== 'handwritten') return;
         const activeSide=getHandwrittenSideKey(), activeRow=getCurrentHandwrittenFlashcardRow();
         if (getHandwrittenSideSavedImageSignature(activeRow,activeSide) && getHandwrittenSideImageLayoutFromEditorState(activeSide)==='full') return;
@@ -36964,6 +37201,7 @@ if (elements.importBackupFile) {
             state.auth.handwrittenPencilSelectionGuardUntil = performance.now() + 900;
             clearHandwrittenDocumentSelection();
         }
+        if (event.type !== 'pointercancel' && (drag.tool === 'pen' || drag.tool === 'eraser')) scheduleHandwrittenMiniFollow(event);
         const changedInk = drag.tool === 'pen' || drag.tool === 'eraser' || (drag.tool === 'select-move' && drag.undoPushed);
         if (changedInk) {
             setStudioDirtyState(true);
@@ -59096,6 +59334,7 @@ elements.questionImage.onclick = function () {
         state.auth.handwrittenFlashcardSelectionType='rectangle';
         persistHandwrittenToolPrefs();
         syncHandwrittenSelectionControls();
+        syncHandwrittenMiniToolbar();
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
     });
     elements.flashcardHandwrittenSelectionLassoBtn?.addEventListener('click', event => {
@@ -59103,6 +59342,7 @@ elements.questionImage.onclick = function () {
         state.auth.handwrittenFlashcardSelectionType='lasso';
         persistHandwrittenToolPrefs();
         syncHandwrittenSelectionControls();
+        syncHandwrittenMiniToolbar();
         elements.flashcardHandwrittenSelectionPopover?.classList.add('hidden');
     });
     elements.flashcardHandwrittenSelectionClearBtn?.addEventListener('click', event => {
@@ -59129,6 +59369,7 @@ elements.questionImage.onclick = function () {
     });
     elements.flashcardHandwrittenBrushColor?.addEventListener('input',()=>{
         state.auth.handwrittenFlashcardPenColor=normalizeEditorHexColor(elements.flashcardHandwrittenBrushColor.value,'#111827');
+        rememberHandwrittenRecentColor(state.auth.handwrittenFlashcardPenColor);
         renderHandwrittenFlashcardColorPresets();
         refreshHandwrittenToolSizeIndicator();
         persistHandwrittenToolPrefs();
@@ -59142,6 +59383,7 @@ elements.questionImage.onclick = function () {
         if(!use)return;
         const color=normalizeEditorHexColor(use.dataset.handwrittenColor,'#111827');
         state.auth.handwrittenFlashcardPenColor=color;
+        rememberHandwrittenRecentColor(color);
         persistHandwrittenToolPrefs();
         renderHandwrittenFlashcardColorPresets();
         refreshHandwrittenToolSizeIndicator();
@@ -59153,6 +59395,7 @@ elements.questionImage.onclick = function () {
         if(mode==='edit') replaceHandwrittenSharedColorPreset(state.auth.handwrittenFlashcardEditingColorPreset,color);
         else saveImageEditorColorPreset(color);
         state.auth.handwrittenFlashcardPenColor=color;
+        rememberHandwrittenRecentColor(color);
         persistHandwrittenToolPrefs();
         closeHandwrittenFloatingPopovers();
         renderHandwrittenFlashcardColorPresets();
@@ -59167,6 +59410,106 @@ elements.questionImage.onclick = function () {
         event.preventDefault();
         clearCurrentHandwrittenFlashcardSide();
     });
+    // Phase 24A.7W: mini-toolbar controls remain optional and never replace the main toolbar.
+    elements.flashcardHandwrittenMiniEnabled?.addEventListener('change',event=>{
+        state.auth.handwrittenMiniEnabled=!!event.target.checked;
+        persistHandwrittenToolPrefs();syncHandwrittenMiniToolbar();
+    });
+    elements.flashcardHandwrittenMiniFixed?.addEventListener('change',event=>{
+        state.auth.handwrittenMiniFixed=!!event.target.checked;
+        cancelHandwrittenMiniFollow();
+        persistHandwrittenToolPrefs();syncHandwrittenMiniToolbar();
+    });
+    elements.flashcardHandwrittenMiniOpacity?.addEventListener('input',event=>{
+        state.auth.handwrittenMiniOpacity=clampHandwrittenMiniNumber(event.target.value,75,20,100);
+        if(elements.flashcardHandwrittenMiniOpacityValue) elements.flashcardHandwrittenMiniOpacityValue.textContent=`${state.auth.handwrittenMiniOpacity}%`;
+        persistHandwrittenToolPrefs();syncHandwrittenMiniToolbar();
+    });
+    elements.flashcardHandwrittenMiniDistance?.addEventListener('input',event=>{
+        state.auth.handwrittenMiniDistance=clampHandwrittenMiniNumber(event.target.value,80,48,160);
+        if(elements.flashcardHandwrittenMiniDistanceValue) elements.flashcardHandwrittenMiniDistanceValue.textContent=`${state.auth.handwrittenMiniDistance} px`;
+        persistHandwrittenToolPrefs();
+    });
+    elements.flashcardHandwrittenMiniEditBtn?.addEventListener('click',()=>{
+        const panel=elements.flashcardHandwrittenMiniEditor;
+        panel?.classList.toggle('hidden');
+        elements.flashcardHandwrittenMiniEditBtn?.setAttribute('aria-expanded',String(!panel?.classList.contains('hidden')));
+        renderHandwrittenMiniEditor();
+        // Keep the settings popup visible and reachable when the editor grows.
+        positionHandwrittenFloatingPopover(elements.flashcardHandwrittenSettingsPopover,elements.flashcardHandwrittenSettingsBtn,{forceBelow:true});
+    });
+    elements.flashcardHandwrittenMiniAddBtn?.addEventListener('click',()=>{
+        const buttons=normalizeHandwrittenMiniButtons(state.auth.handwrittenMiniButtons);
+        const key=elements.flashcardHandwrittenMiniAddSelect?.value;
+        if (buttons.length>=10||!HANDWRITTEN_MINI_SHORTCUTS[key]||buttons.includes(key))return;
+        updateHandwrittenMiniButtons([...buttons,key]);
+    });
+    elements.flashcardHandwrittenMiniRestoreBtn?.addEventListener('click',()=>updateHandwrittenMiniButtons([...HANDWRITTEN_MINI_DEFAULT_BUTTONS]));
+    elements.flashcardHandwrittenMiniEditorItems?.addEventListener('click',event=>{
+        const button=event.target.closest('button');
+        if(!button)return;
+        const buttons=normalizeHandwrittenMiniButtons(state.auth.handwrittenMiniButtons);
+        const remove=button.dataset.miniRemove;
+        if(remove!==undefined){const i=Number(remove);if(i>=0&&i<buttons.length){buttons.splice(i,1);updateHandwrittenMiniButtons(buttons);}return;}
+        const i=Number(button.dataset.miniIndex),direction=button.dataset.miniMove;
+        const j=i+(direction==='up'?-1:direction==='down'?1:0);
+        if (i<0||j<0||i>=buttons.length||j>=buttons.length||i===j)return;
+        [buttons[i],buttons[j]]=[buttons[j],buttons[i]];updateHandwrittenMiniButtons(buttons);
+    });
+    elements.flashcardHandwrittenSettingsGridEnabled?.addEventListener('change',event=>{
+        updateHandwrittenQuizGrid({gridType:event.target.checked?state.auth.handwrittenMiniLastGridType:'none'});
+    });
+    elements.flashcardHandwrittenSettingsGridType?.addEventListener('change',event=>{
+        const type=event.target.value;
+        if(!['lines','graph','dots'].includes(type))return;
+        state.auth.handwrittenMiniLastGridType=type;
+        const style=normalizeHandwrittenFlashcardStyle(state.auth.handwrittenFlashcardStyle||{});
+        if(style.gridType!=='none')updateHandwrittenQuizGrid({gridType:type});
+        else persistHandwrittenToolPrefs();
+    });
+    elements.flashcardHandwrittenSettingsGridColor?.addEventListener('input',event=>updateHandwrittenQuizGrid({gridColor:event.target.value}));
+    elements.flashcardHandwrittenSettingsGridOpacity?.addEventListener('input',event=>updateHandwrittenQuizGrid({gridOpacity:Number(event.target.value)/100}));
+    elements.flashcardHandwrittenMiniActions?.addEventListener('click',event=>{
+        const action=event.target.closest('[data-mini-shortcut]');
+        if(!action)return;
+        event.preventDefault();event.stopPropagation();
+        invokeHandwrittenMiniShortcut(action.dataset.miniShortcut);
+    });
+    elements.flashcardHandwrittenMiniColors?.addEventListener('click',event=>{
+        const button=event.target.closest('[data-mini-color]');
+        if(!button)return;
+        event.preventDefault();event.stopPropagation();
+        const color=button.dataset.miniColor;
+        if(state.auth.handwrittenFlashcardTool!=='pen')elements.flashcardHandwrittenPenToolBtn?.click();
+        state.auth.handwrittenFlashcardPenColor=color;
+        if(elements.flashcardHandwrittenBrushColor) elements.flashcardHandwrittenBrushColor.value=color;
+        rememberHandwrittenRecentColor(color);
+        renderHandwrittenFlashcardColorPresets();
+        elements.flashcardHandwrittenMiniColors?.classList.add('hidden');
+        syncHandwrittenMiniToolbar();
+    });
+    elements.flashcardHandwrittenMiniDragHandle?.addEventListener('pointerdown',event=>{
+        if (state.auth.handwrittenMiniFixed===false || event.button!==0)return;
+        event.preventDefault();event.stopPropagation();cancelHandwrittenMiniFollow();
+        const rect=elements.flashcardHandwrittenMiniToolbar.getBoundingClientRect();
+        handwrittenMiniDrag={pointerId:event.pointerId,dx:event.clientX-rect.left,dy:event.clientY-rect.top};
+        elements.flashcardHandwrittenMiniDragHandle.setPointerCapture?.(event.pointerId);
+    },{passive:false});
+    elements.flashcardHandwrittenMiniDragHandle?.addEventListener('pointermove',event=>{
+        if(!handwrittenMiniDrag||handwrittenMiniDrag.pointerId!==event.pointerId)return;
+        event.preventDefault();event.stopPropagation();
+        const pos=clampHandwrittenMiniPosition(event.clientX-handwrittenMiniDrag.dx,event.clientY-handwrittenMiniDrag.dy);
+        state.auth.handwrittenMiniPosition=pos;
+        const dock=elements.flashcardHandwrittenMiniToolbar;
+        dock.style.left=`${pos.x}px`;dock.style.top=`${pos.y}px`;
+    },{passive:false});
+    ['pointerup','pointercancel'].forEach(type=>elements.flashcardHandwrittenMiniDragHandle?.addEventListener(type,event=>{
+        if(!handwrittenMiniDrag||handwrittenMiniDrag.pointerId!==event.pointerId)return;
+        event.preventDefault();event.stopPropagation();handwrittenMiniDrag=null;
+        persistHandwrittenToolPrefs();
+        try{elements.flashcardHandwrittenMiniDragHandle.releasePointerCapture?.(event.pointerId);}catch(_){}
+    },{passive:false}));
+    window.addEventListener('resize',()=>{if(state.auth.handwrittenMiniEnabled) positionHandwrittenMiniToolbar();});
     elements.flashcardHandwrittenSettingsBtn?.addEventListener('click', event => {
         event.preventDefault();
         const popover = elements.flashcardHandwrittenSettingsPopover;
@@ -59177,14 +59520,14 @@ elements.questionImage.onclick = function () {
         if (!opening) return;
         ensureHandwrittenToolPrefsLoaded();
         if (elements.flashcardHandwrittenDiagramBothSides) elements.flashcardHandwrittenDiagramBothSides.checked = state.auth.handwrittenFlashcardDiagramBothSides !== false;
+        syncHandwrittenMiniSettings();
         popover.classList.remove('hidden');
         button.setAttribute('aria-expanded','true');
         requestAnimationFrame(() => positionHandwrittenFloatingPopover(popover, button, {forceBelow:true}));
     });
-    [elements.flashcardHandwrittenSettingsBtn, elements.flashcardHandwrittenSettingsPopover].forEach(control => {
-        control?.addEventListener('pointerenter',cancelHandwrittenSettingsDismiss);
-        control?.addEventListener('pointerleave',scheduleHandwrittenSettingsDismiss);
-    });
+    // Settings stays open on hover exit so the system color chooser remains
+    // usable on macOS. Existing outside-pointerdown, Escape and gear toggle
+    // handlers continue to dismiss it deliberately.
     elements.flashcardHandwrittenDiagramBothSides?.addEventListener('change', () => {
         state.auth.handwrittenFlashcardDiagramBothSides = !!elements.flashcardHandwrittenDiagramBothSides.checked;
         persistHandwrittenToolPrefs();
