@@ -17460,36 +17460,42 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .quiz-studio-page .studio-list-item[data-quiz-id] {
   position: relative;
 }
-.quiz-studio-page .studio-list-item[data-quiz-id].studio-list-item-has-ribbon > .studio-list-meta {
-  min-height: 90px;
-  box-sizing: border-box;
-  padding-right: 105px;
+/* Phase 24A.7Y: compact title-row badges; same exact teal/yellow palette
+   as the original diagonal quiz ribbons and Saved Images ribbons. */
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-width: 0;
 }
-.quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-title {
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-title-row > .studio-list-title {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow-wrap: anywhere;
 }
-/* Only this corner wrapper clips the diagonal; the card itself must NOT clip
-   the More menu, the Challenges panel, or the fixed Progress popover. */
-.studio-quiz-ribbon-corner {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 102px;
-  height: 102px;
-  overflow: hidden;
-  border-top-right-radius: 11px;
-  z-index: 1;
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-quiz-spaced-ribbon {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 22px;
+  padding: 3px 8px;
+  transform: none;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .45px;
+  line-height: 1;
+  white-space: nowrap;
   pointer-events: none;
+  background: #facc15;
+  color: #362606;
 }
-.studio-quiz-ribbon-corner > .studio-quiz-spaced-ribbon {
-  left: auto;
-  right: -32px;
-  top: 23px;
-  width: 145px;
-  transform: rotate(45deg);
-}
-.studio-quiz-ribbon-corner > .studio-quiz-spaced-ribbon.is-learning { background: #2dd4bf; color: #073534; }
-.studio-quiz-ribbon-corner > .studio-quiz-spaced-ribbon.is-mastered { background: #facc15; color: #362606; }
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-quiz-spaced-ribbon.is-learning { background: #2dd4bf; color: #073534; }
+.quiz-studio-page .studio-list-item[data-quiz-id] .studio-quiz-spaced-ribbon.is-mastered { background: #facc15; color: #362606; }
 /* Preserve the existing trophy badges exactly, but center their one-row group
    between Challenges (left) and Grand Trophy (right). At narrow widths the
    middle region scrolls horizontally rather than covering either heading. */

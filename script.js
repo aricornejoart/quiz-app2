@@ -29449,7 +29449,7 @@ MODIFICATION RULES FOR THIS APP
     function renderQuizSpacedRibbon(quiz) {
         const kind = getQuizSpacedRibbonKind(quiz);
         if (!kind) return '';
-        return `<span class="studio-mastered-ribbon studio-quiz-spaced-ribbon ${kind === 'mastered' ? 'is-mastered' : 'is-learning studio-learning-ribbon'}" role="img" aria-label="Spaced repetition ${kind}">${kind.toUpperCase()}</span>`;
+        return `<span class="studio-quiz-spaced-ribbon ${kind === 'mastered' ? 'is-mastered' : 'is-learning'}" role="status" aria-label="Spaced repetition ${kind}">${kind.toUpperCase()}</span>`;
     }
     function renderQuizSpacedStudyProgress(quiz) {
         const panelId = `quiz:${quiz.id}`;
@@ -29459,9 +29459,18 @@ MODIFICATION RULES FOR THIS APP
         return renderSpacedProgressStatus(getQuizSpacedStatus(quiz), panelId);
     }
     function beginQuizSpacedAttempt(visibleQuestions = []) {
-        const quizId = getActiveStudySupabaseQuizIdForShortcut();
+        // Phase 24A.7Y: identify the selected Supabase quiz, NOT an old
+        // questionQueue that can still belong to the previously studied quiz.
+        state.quizSpacedAttempt = null;
+        const descriptor = state.activeQuizDescriptor;
+        if (descriptor?.source !== DATA_SOURCES.SUPABASE) return;
+        const quizId = normalizeSheetText(descriptor.sourceQuizId || descriptor.id).replace(/^sb:/, '');
         const all = state.sourceQuestions || [];
-        if (!quizId || !all.length || !visibleQuestions.length) return;
+        if (!quizId || !all.length || !visibleQuestions.length ||
+            all.some(q => {
+                const owner = normalizeSheetText(q.sourceQuizId || '').replace(/^sb:/, '');
+                return owner && owner !== quizId;
+            })) return;
         // Still allow studying if Supabase could not verify the latest revision,
         // but never credit an unverifiable or potentially stale study attempt.
         if (state.auth.quizSpacedUnverifiedIds?.has(quizId)) {
@@ -29485,7 +29494,7 @@ MODIFICATION RULES FOR THIS APP
             contentRevision: Number(state.auth.quizSpacedContentRevisions?.get(quizId) || 0),
             signature: getQuizSpacedContentSignature(all),
             completeDeck, shuffleRequired, shuffleDisqualified: !!(shuffleRequired && !document.getElementById('shuffleAnswers')?.checked),
-            correct: new Set(), inFlight: false, finalized: false, feedback: ''
+            correct: new Set(), inFlight: false, finalized: false, saveFailed: false, feedback: ''
         };
     }
     function trackQuizSpacedOutcome(question, correct) {
@@ -29517,22 +29526,38 @@ MODIFICATION RULES FOR THIS APP
         } else return null; // Too soon to earn a second pass; no duplicate write.
         return data;
     }
+    function clearQuizSpacedCompletionFeedback() {
+        elements.questionContainer?.querySelectorAll('[data-quiz-spaced-completion]')
+            .forEach(node => node.remove());
+    }
     function renderQuizSpacedCompletionFeedback() {
         const attempt = state.quizSpacedAttempt;
         if (!elements.questionContainer) return;
-        let node = elements.questionContainer.querySelector('[data-quiz-spaced-completion]');
-        if (!attempt?.feedback || !isQuizFinished()) {
-            node?.remove(); // Silent when no new scheduled credit was earned; studying is always allowed.
+        const currentQuizId = state.activeQuizDescriptor?.source === DATA_SOURCES.SUPABASE
+            ? normalizeSheetText(state.activeQuizDescriptor.sourceQuizId || state.activeQuizDescriptor.id).replace(/^sb:/, '') : '';
+        if (!attempt?.feedback || !isQuizFinished() || currentQuizId !== attempt.quizId) {
+            clearQuizSpacedCompletionFeedback();
             return;
         }
-        if (!node) {
-            node = document.createElement('div');
-            node.className = 'quiz-spaced-review-completion';
-            node.dataset.quizSpacedCompletion = 'true';
-            node.setAttribute('role', 'status');
-            elements.questionContainer.appendChild(node);
-        }
+        // Recreate rather than leaving an old quiz's message in the question DOM.
+        clearQuizSpacedCompletionFeedback();
+        const node = document.createElement('div');
+        node.className = 'quiz-spaced-review-completion';
+        node.dataset.quizSpacedCompletion = 'true';
+        node.setAttribute('role', attempt.saveFailed ? 'alert' : 'status');
         node.textContent = attempt.feedback;
+        if (attempt.saveFailed) {
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'auth-action-btn quiz-spaced-retry-save';
+            retry.textContent = 'Retry saving progress';
+            retry.addEventListener('click', () => {
+                if (state.quizSpacedAttempt !== attempt || !isQuizFinished()) return;
+                maybeRecordQuizSpacedCompletion({retry: true});
+            });
+            node.appendChild(retry);
+        }
+        elements.questionContainer.appendChild(node);
     }
     async function persistQuizSpacedPass(attempt) {
         const quiz = state.auth.managedQuizzes.find(q => q.id === attempt.quizId);
@@ -29575,35 +29600,43 @@ MODIFICATION RULES FOR THIS APP
         }
         throw new Error('Study progress changed on another device. Restart the quiz to retry safely.');
     }
-    function maybeRecordQuizSpacedCompletion() {
+    function maybeRecordQuizSpacedCompletion(options = {}) {
         const attempt = state.quizSpacedAttempt;
-        if (!attempt || attempt.finalized || attempt.inFlight) return;
-        if (!attempt.completeDeck || attempt.shuffleDisqualified || !attempt.ids.size ||
+        if (!attempt || attempt.finalized || attempt.inFlight ||
+            (attempt.saveFailed && !options.retry)) return;
+        const selectedQuizId = state.activeQuizDescriptor?.source === DATA_SOURCES.SUPABASE
+            ? normalizeSheetText(state.activeQuizDescriptor.sourceQuizId || state.activeQuizDescriptor.id).replace(/^sb:/, '') : '';
+        if (selectedQuizId !== attempt.quizId || !attempt.completeDeck ||
+            attempt.shuffleDisqualified || !attempt.ids.size ||
             attempt.correct.size !== attempt.ids.size || isOnlyStarredEnabled() ||
             isExcludeStarredEnabled() ||
             getQuizSpacedIdsSignature(getFilteredSourceQuestions().map(q => q.sourceQuestionId || q.id)) !== attempt.idsSignature ||
             (isProgressMode() && getProgressMissedQuestions().length)) return;
         attempt.inFlight = true;
-        // Reserve this specific attempt now, even if showQuestion is invoked again.
+        attempt.saveFailed = false;
+        attempt.feedback = 'Saving study progress…';
+        if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
+        // Keep the original session UUID across retries. The existing SQL RPC
+        // deduplicates (user, quiz, session) and verifies content revision.
         persistQuizSpacedPass(attempt).then(result => {
             attempt.finalized = true;
             const progress = result.progress;
-            const completedToday = Object.entries(progress.data.stages).some(([, rec]) =>
+            const completedToday = Object.values(progress.data.stages).some(rec =>
                 rec?.secondAt && getSpacedReviewLocalDay(rec.secondAt) === progress.today);
             const master = result.data.stages.d4 && progress.mastered;
-            attempt.feedback = !result.counted ? '' :
-                completedToday && master && !progress.data.ribbonResetPending ? '🏆 MASTERED — spaced-repetition milestone earned or maintained!' :
-                completedToday && result.data.stages.d1 && !progress.data.ribbonResetPending
-                    ? '✓ LEARNING — scheduled study milestone completed (2/2)!' :
-                ''; // First successful pass stays silent; normal completion UI remains.
+            attempt.feedback = !result.counted
+                ? (options.retry ? 'Progress checked. No additional review credit was recorded.' : '')
+                : completedToday && master && !progress.data.ribbonResetPending
+                    ? '🏆 MASTERED — spaced-repetition milestone earned or maintained!'
+                    : completedToday && result.data.stages.d1 && !progress.data.ribbonResetPending
+                        ? '✓ LEARNING — scheduled study milestone completed (2/2)!'
+                        : progress.firstAt ? 'Spaced-repetition review recorded (1/2).' : '';
             if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
+            // Refresh Pending immediately: today's 2/2 must not remain due.
             renderQuizManagementList();
         }).catch(async error => {
-            attempt.finalized = true;
             if (isQuizSpacedEditConflict(error)) {
-                // Another edit revoked the previous revision while this study
-                // attempt was open. Do not credit old content or show the
-                // redundant "quiz changed" warning in the completion screen.
+                attempt.finalized = true;
                 attempt.feedback = '';
                 try { await refreshQuizSpacedStateForQuiz(attempt.quizId); }
                 catch (refreshError) { console.warn('Could not refresh quiz progress after content edit:', refreshError); }
@@ -29611,8 +29644,11 @@ MODIFICATION RULES FOR THIS APP
                 renderQuizManagementList();
                 return;
             }
+            // Do not finalize a failed save. The user can retry the SAME
+            // session, without re-taking a correctly completed quiz.
+            attempt.saveFailed = true;
             console.error('Quiz spaced-review pass was not saved:', error);
-            attempt.feedback = `Spaced-repetition progress was NOT saved: ${error.message || 'database unavailable'}`;
+            attempt.feedback = `Spaced-repetition progress could not be verified: ${error.message || 'database unavailable'}`;
             if (state.quizSpacedAttempt === attempt) renderQuizSpacedCompletionFeedback();
         }).finally(() => { attempt.inFlight = false; });
     }
@@ -31104,11 +31140,11 @@ MODIFICATION RULES FOR THIS APP
         const starOptionsOpen = actionMenuOpen && state.auth.openQuizActionSubmenu === `${quiz.id}:star`;
         const canCreateFlashcards = quiz.quizType === 'multiple_choice';
         return `
-            <div class="studio-list-item${spacedRibbon ? ' studio-list-item-has-ribbon' : ''}" data-quiz-id="${escapeHtml(quiz.id)}">
-              ${spacedRibbon ? `<div class="studio-quiz-ribbon-corner">${spacedRibbon}</div>` : ''}
+            <div class="studio-list-item" data-quiz-id="${escapeHtml(quiz.id)}">
               <div class="studio-list-meta">
                 <div class="studio-list-title-row">
                   <div class="studio-list-title">${escapeHtml(quiz.name)}</div>
+                  ${spacedRibbon}
                 </div>
                 <div class="studio-list-subtitle">${escapeHtml(classLabel)} · ${escapeHtml(folderLabel)} · ${escapeHtml(questionLabel)} · ${escapeHtml(typeLabel)}</div>
               </div>
@@ -47973,16 +48009,17 @@ function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestion
     state.emptyQuizMessage = '';
 
     if (resetSession) {
+        clearQuizSpacedCompletionFeedback();
         resetModeState();
     } else {
         resetPendingStudyAdvanceFlags();
     }
 
     state.questions = [...visibleQuestions];
-    if (resetSession) { beginQuizSpacedAttempt(visibleQuestions); beginExamPostQuizAttempt(visibleQuestions, state.sourceQuestions || []); }
     state.questionQueue = buildStudyQuestionQueue(visibleQuestions, {
         shuffle: !!document.getElementById('shuffleQuestions')?.checked && resetSession
     });
+    if (resetSession) { beginQuizSpacedAttempt(visibleQuestions); beginExamPostQuizAttempt(visibleQuestions, state.sourceQuestions || []); }
 
     if (preserveQuestionId) {
         const preservedIndex = state.questionQueue.findIndex(question => question.id === preserveQuestionId);
@@ -48010,8 +48047,9 @@ function applyFilteredQuestionsToSession({ resetSession = true, preserveQuestion
     showQuestion();
 }
 
-async function applyLoadedQuestions(newQuestions) {
+async function applyLoadedQuestions(newQuestions, expectedDescriptor = null) {
     const hydratedQuestions = await hydrateStarredQuestionState(newQuestions);
+    if (expectedDescriptor && state.activeQuizDescriptor !== expectedDescriptor) return;
     state.sourceQuestions = [...hydratedQuestions];
     applyFilteredQuestionsToSession({ resetSession: true });
 }
@@ -48069,6 +48107,7 @@ function clearActiveQuizSelection(message = 'Choose a folder and a quiz.') {
     state.questions = [];
     state.questionQueue = [];
     state.sourceQuestions = [];
+    clearQuizSpacedCompletionFeedback();
     state.activeQuizDescriptor = null;
     state.activeQuizChallenge = null;
     state.emptyQuizMessage = '';
@@ -48772,12 +48811,15 @@ async function loadSelectedQuiz(selectorValue, options = {}) {
         state.activeQuizChallenge = null;
     }
     state.activeQuizDescriptor = selectedQuiz;
+    state.quizSpacedAttempt = null;
+    clearQuizSpacedCompletionFeedback();
 
     if (selectedQuiz.source !== DATA_SOURCES.SUPABASE && selectedQuiz.source !== DATA_SOURCES.FOLDER_DECK) {
         throw new Error('Only signed-in Supabase quizzes can be studied from the app. Import Google Sheets quizzes into Supabase first.');
     }
 
     const loadedQuestions = await loadQuestionsForQuizDescriptor(selectedQuiz);
+    if (state.activeQuizDescriptor !== selectedQuiz) return; // A newer quiz was selected.
 
     if (!loadedQuestions.length) {
         throw createStudyLoadDiagnosticError(`No usable questions were loaded for "${selectedQuiz.name || 'this quiz'}". This usually means the saved question rows do not match the quiz detail table, or every row was filtered out during study-load parsing.`);
@@ -48792,7 +48834,8 @@ async function loadSelectedQuiz(selectorValue, options = {}) {
             console.warn('Study started without verified spaced-review status:', error);
         }
     }
-    await applyLoadedQuestions(loadedQuestions);
+    if (state.activeQuizDescriptor !== selectedQuiz) return;
+    await applyLoadedQuestions(loadedQuestions, selectedQuiz);
 }
 
 // ================= LOAD QUESTIONS =================
@@ -49632,6 +49675,9 @@ function renderProgressModeFinishState() {
 
 // ================= SHOW QUESTION =================
 function showQuestion() {
+    // Completion feedback belongs only to the finished attempt, never the
+    // next question, restarted deck, or another quiz.
+    clearQuizSpacedCompletionFeedback();
     if (!state.questions.length) {
         state.displayedQuestion = null;
         state.masteryDisplayedRemainingCount = null;
