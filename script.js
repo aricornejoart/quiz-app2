@@ -281,6 +281,7 @@ MODIFICATION RULES FOR THIS APP
             examSections: [],
             studioExamSectionFilterId: '',
             examLatestReports: new Map(),
+            examReportHistories: new Map(),
             quizSpacedReviews: new Map(),
             quizSpacedContentRevisions: new Map(),
             quizSpacedMigrationMissing: false,
@@ -5975,7 +5976,7 @@ MODIFICATION RULES FOR THIS APP
         const button = elements.studioExamQuestionFilterBtn;
         const menu = elements.studioExamQuestionFilterMenu;
         if (!wrap || !button || !menu) return;
-        const enabled = !!state.auth.editingQuizId && getStudioQuizMode() === 'exam';
+        const enabled = !!state.auth.editingQuizId;
         wrap.classList.toggle('hidden', !enabled);
         if (!enabled) {
             menu.classList.add('hidden');
@@ -6019,9 +6020,9 @@ MODIFICATION RULES FOR THIS APP
         return [...nums].sort((a,b) => a-b).map(n => normalizeSheetText(rows[n-1]?.id)).filter(Boolean);
     }
     function syncStudioExamSectionControls() {
-        const isExam = getStudioQuizMode() === 'exam';
-        elements.studioExamSectionsPanel?.classList.toggle('hidden', !isExam);
-        if (!isExam) return;
+        const hasSavedQuiz = !!state.auth.editingQuizId;
+        elements.studioExamSectionsPanel?.classList.toggle('hidden', !hasSavedQuiz);
+        if (!hasSavedQuiz) return;
         const sections = normalizeExamSections(state.auth.examSections);
         const select = elements.studioExamSectionSelect;
         const oldId = normalizeSheetText(select?.value);
@@ -6044,12 +6045,12 @@ MODIFICATION RULES FOR THIS APP
             elements.studioExamSectionName.placeholder = selectedId ? 'Select Create new section to enter a name' : 'English Comprehension';
         }
         if (!state.auth.editingQuizId && elements.studioExamSectionStatus) {
-            elements.studioExamSectionStatus.textContent = 'Save the new Exam first, then create sections for its saved questions.';
+            elements.studioExamSectionStatus.textContent = 'Save this quiz or flashcard deck first, then assign its sections.';
         }
     }
     async function persistStudioExamSections(sections) {
         const quizId = normalizeSheetText(state.auth.editingQuizId);
-        if (!quizId || getStudioQuizMode() !== 'exam') throw new Error('Open a saved Exam to assign sections.');
+        if (!quizId) throw new Error('Open a saved quiz or flashcard deck to assign sections.');
         const { data: row, error: readError } = await state.auth.client.from('quizzes').select('description').eq('id', quizId).maybeSingle();
         if (readError || !row) throw readError || new Error('Cannot load the exam metadata.');
         const metadata = getQuizMetadataForWrite(row.description || '');
@@ -6059,7 +6060,7 @@ MODIFICATION RULES FOR THIS APP
         state.auth.examSections = metadata.examSections;
         syncStudioExamSectionControls();
         renderStudioQuestionList();
-        setCreatorStatus('Exam section assignments saved.', 'success');
+        setCreatorStatus('Section assignments saved.', 'success');
     }
     async function applyStudioExamSectionAssignment() {
         const rows = state.auth.studioQuizQuestions || [];
@@ -8001,17 +8002,20 @@ MODIFICATION RULES FOR THIS APP
         activeSavedImageProgressPopup = null;
         activeSavedImageProgressButton = null;
     }
-    // Phase 24A.5z — post-exam diagnostics are a separate reader of answer
-    // outcomes. Never change the existing Retention/Progress/Mastery/Spaced logic.
+    // Phase 24A.8c — universal Post Quiz Report for every saved quiz and
+    // flashcard deck; retain legacy exam storage for migrations and backwards
+    // compatibility. Reporting never changes Retention/Mastery/Spaced grading.
     const EXAM_POST_REPORT_TABLE = 'user_exam_post_quiz_reports';
+    const EXAM_POST_HISTORY_TABLE = 'user_exam_post_quiz_attempts';
     function buildExamReportFromAttempt(attempt, questions) {
         if (!attempt || !questions.length) return null;
         const bad = attempt.incorrectIds;
-        const seen = new Set(questions.map(q => normalizeSheetText(q.sourceQuestionId || q.id)));
+        const seen = new Set((Array.isArray(attempt.questionIds) ? attempt.questionIds : questions.map(q => q.sourceQuestionId || q.id))
+            .map(normalizeSheetText).filter(Boolean));
         const sectionForId = new Map();
         (attempt.sections || []).forEach(section => section.questionIds.forEach(id => sectionForId.set(id, section.id)));
         const sectionItems = [...attempt.sections.map(s => ({id:s.id, name:s.name, total:0, incorrect:0, missedQuestionIds:[]})),
-            {id:'__unassigned__',name:'Unassigned Questions',total:0,incorrect:0,missedQuestionIds:[]}];
+            {id:'__unassigned__',name:attempt.quizType === 'flashcard' ? 'Unassigned Cards' : 'Unassigned Questions',total:0,incorrect:0,missedQuestionIds:[]}];
         const byId = new Map(sectionItems.map(s=>[s.id,s]));
         seen.forEach(id => {
             const section = byId.get(sectionForId.get(id)) || byId.get('__unassigned__');
@@ -8021,26 +8025,29 @@ MODIFICATION RULES FOR THIS APP
         const reported = sectionItems.filter(s=>s.total>0);
         const total = reported.reduce((sum,s)=>sum+s.total,0);
         const incorrect = reported.reduce((sum,s)=>sum+s.incorrect,0);
-        return {version:1, quizId:attempt.quizId, completedAt:new Date().toISOString(),
+        return {version:1, quizId:attempt.quizId, attemptKey:(typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `attempt-${Date.now()}-${Math.random().toString(36).slice(2)}`), completedAt:new Date().toISOString(),
             contentRevision:state.auth.quizSpacedContentRevisions?.get(attempt.quizId) ?? null,
+            mode:attempt.mode || 'Unknown', quizType:attempt.quizType || 'exam', itemLabel:attempt.quizType === 'flashcard' ? 'cards' : 'questions',
             total, incorrect, correct:total-incorrect, percent:total?Math.round((total-incorrect)*100/total):0,
             sections:reported.map(s=>({...s, correct:s.total-s.incorrect, percent:Math.round((s.total-s.incorrect)*100/s.total)}))};
     }
     function renderExamPostQuizReport(report, compact = false) {
         if (!report || !Array.isArray(report.sections)) return '';
         const weakest = report.sections.filter(s=>s.id!=='__unassigned__').sort((a,b)=>a.percent-b.percent)[0];
+        const itemLabel = report.quizType === 'flashcard' ? 'cards' : 'questions';
+        const modeLabel = normalizeSheetText(report.mode || '');
         const previousRevision = Number(report.contentRevision);
         const currentRevision = Number(state.auth.quizSpacedContentRevisions?.get(report.quizId));
         const oldVersion = report.contentRevision != null && state.auth.quizSpacedContentRevisions?.has(report.quizId)
             && Number.isFinite(previousRevision) && Number.isFinite(currentRevision) && previousRevision !== currentRevision;
         return `<section class="exam-post-quiz-report ${compact?'is-compact':''}" aria-label="Post Quiz Report">
             <h3>Post Quiz Report</h3>
-            <p class="exam-post-quiz-summary">${escapeHtml(String(report.percent))}% overall · ${escapeHtml(String(report.correct))}/${escapeHtml(String(report.total))} correct · ${escapeHtml(new Date(report.completedAt).toLocaleString())}</p>
-            ${oldVersion ? '<p class="exam-post-quiz-warning">Previous exam version — this report is a historical snapshot.</p>' : ''}
+            <p class="exam-post-quiz-summary">${escapeHtml(String(report.percent))}% overall · ${escapeHtml(String(report.correct))}/${escapeHtml(String(report.total))} correct · ${escapeHtml(new Date(report.completedAt).toLocaleString())}${modeLabel ? ` · ${escapeHtml(modeLabel)}` : ''}</p>
+            ${oldVersion ? '<p class="exam-post-quiz-warning">Previous quiz version — this report is a historical snapshot.</p>' : ''}
             ${report.sections.map(s=>`<div class="exam-post-quiz-section">
                 <div class="exam-post-quiz-section-heading"><strong>${escapeHtml(s.name)}</strong><strong>${s.percent}%</strong></div>
                 <div class="exam-post-quiz-track"><span style="width:${Math.min(100, Math.max(0, s.percent))}%"></span></div>
-                <small>${s.correct} correct · ${s.incorrect} incorrect · ${s.total} questions</small>
+                <small>${s.correct} correct · ${s.incorrect} incorrect · ${s.total} ${itemLabel}</small>
             </div>`).join('')}
             ${weakest ? `<p class="exam-post-quiz-tip">Area to review: ${escapeHtml(weakest.name)} (${weakest.percent}%).</p>` : ''}
         </section>`;
@@ -8048,31 +8055,84 @@ MODIFICATION RULES FOR THIS APP
     async function loadLatestExamPostQuizReport(quizId = '') {
         const id = normalizeSheetText(quizId);
         if (!id || !state.auth.client || !state.auth.user?.id) return null;
+        const userId = state.auth.user.id;
         const {data,error} = await state.auth.client.from(EXAM_POST_REPORT_TABLE).select('report')
             .eq('quiz_id',id).eq('user_id',state.auth.user.id).maybeSingle();
         if (error) throw error;
+        if (state.auth.user?.id !== userId) return null;
         const report = data?.report || null;
         if (report) state.auth.examLatestReports.set(id,report);
         else state.auth.examLatestReports.delete(id);
         return report;
     }
+    async function loadExamReportHistory(quizId = '') {
+        const id = normalizeSheetText(quizId);
+        if (!id || !state.auth.client || !state.auth.user?.id) return [];
+        // Paginate instead of trusting the Supabase default 1,000-row limit.
+        const userId = state.auth.user.id;
+        const reports = [];
+        for (let offset = 0; offset < 10000; offset += 400) {
+            const {data,error} = await state.auth.client.from(EXAM_POST_HISTORY_TABLE)
+                .select('attempt_key,report,completed_at').eq('quiz_id',id)
+                .eq('user_id',state.auth.user.id)
+                .order('completed_at',{ascending:true}).order('attempt_key',{ascending:true})
+                .range(offset,offset+399);
+            if (error) throw error;
+            reports.push(...(data || []).map(row => row.report).filter(Boolean));
+            if (!data || data.length < 400) break;
+        }
+        if (state.auth.user?.id !== userId) return [];
+        state.auth.examReportHistories.set(id,reports);
+        return reports;
+    }
     async function persistExamPostQuizReport(report) {
         if (!report || !state.auth.user?.id || !state.auth.client) return;
-        const {error} = await state.auth.client.from(EXAM_POST_REPORT_TABLE).upsert({
+        // Keep the established latest-report table fully backward compatible.
+        const latest = await state.auth.client.from(EXAM_POST_REPORT_TABLE).upsert({
             quiz_id:report.quizId, user_id:state.auth.user.id, report,
             completed_at:report.completedAt
         },{onConflict:'user_id,quiz_id'});
-        if (error) throw error;
+        if (latest.error) throw latest.error;
         state.auth.examLatestReports.set(report.quizId,report);
+        // Idempotent keyed history: retrying the same write cannot create
+        // duplicate graph points. A missing migration must not break reports.
+        try {
+            const history = await state.auth.client.from(EXAM_POST_HISTORY_TABLE).upsert({
+                user_id:state.auth.user.id, quiz_id:report.quizId,
+                attempt_key:report.attemptKey, completed_at:report.completedAt, report
+            },{onConflict:'user_id,quiz_id,attempt_key'});
+            if (history.error) throw history.error;
+            const previous = state.auth.examReportHistories.get(report.quizId);
+            if (Array.isArray(previous) && !previous.some(item => item.attemptKey === report.attemptKey)) {
+                previous.push(report);
+                previous.sort((a,b)=>Date.parse(a.completedAt)-Date.parse(b.completedAt));
+            }
+        } catch(error) {
+            console.warn('Exam history could not be saved; apply the Phase 24A.8a SQL migration.',error);
+        }
+    }
+    function getPostQuizReportStudyMode() {
+        if (isRetentionMode()) return 'Retention';
+        if (isRetryMode()) return 'Mastery';
+        if (isMasteryCheckMode()) return 'Mastery Check';
+        if (isProgressMode()) return 'Progress';
+        return 'Normal';
     }
     function beginExamPostQuizAttempt(visibleQuestions = [], allQuestions = []) {
         const first = visibleQuestions[0];
         const quizId = normalizeSheetText(first?.sourceQuizId);
         const allIds = new Set(allQuestions.map(q=>normalizeSheetText(q.sourceQuestionId||q.id)));
         const visibleIds = new Set(visibleQuestions.map(q=>normalizeSheetText(q.sourceQuestionId||q.id)));
-        const fullDeck = allIds.size>0 && visibleIds.size===allIds.size && [...allIds].every(id=>visibleIds.has(id));
-        state.examPostQuizAttempt = first?.examMode && quizId && fullDeck
-            ? {quizId, sections:normalizeExamSections(first.examSections),
+        const descriptor = state.activeQuizDescriptor;
+        const managedId = descriptor?.source === DATA_SOURCES.SUPABASE
+            ? normalizeSheetText(descriptor.sourceQuizId || descriptor.id).replace(/^sb:/,'') : '';
+        const fullDeck = !state.studySubsetScope && allIds.size>0 && visibleIds.size===allIds.size &&
+            [...allIds].every(id=>visibleIds.has(id)) && allQuestions.every(q =>
+                normalizeSheetText(q.sourceQuizId) === quizId);
+        const quizType = normalizeSheetText(descriptor?.quizType || (first?.type === 'flashcard' ? 'flashcard' : 'multiple_choice'));
+        state.examPostQuizAttempt = quizId && quizId === managedId && fullDeck
+            ? {quizId, quizType, mode:getPostQuizReportStudyMode(), questionIds:[...allIds],
+                sections:normalizeExamSections(first.examSections),
                 answeredIds:new Set(), incorrectIds:new Set(), finalized:false} : null;
     }
     function trackExamPostQuizOutcome(question, correct) {
@@ -8080,6 +8140,9 @@ MODIFICATION RULES FOR THIS APP
         if (!attempt || attempt.finalized || normalizeSheetText(question?.sourceQuizId)!==attempt.quizId) return;
         const id = normalizeSheetText(question.sourceQuestionId || question.id);
         if (!id) return;
+        // First graded submission wins for the report. Progress/Mastery/Retention
+        // corrections never erase a miss or turn an initially correct answer wrong.
+        if (attempt.answeredIds.has(id)) return;
         attempt.answeredIds.add(id);
         if (!correct) attempt.incorrectIds.add(id);
     }
@@ -8095,10 +8158,287 @@ MODIFICATION RULES FOR THIS APP
         // Save once, at completion; never perform Supabase writes during answer checks.
         persistExamPostQuizReport(report).catch(error => {
             console.warn('Exam report could not be saved. Apply Phase 24A.5z report-table SQL migration.',error);
-            if (panel) panel.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Report shown for this session, but could not be saved to Progress. Check the Post Quiz Report migration.</p>');
+            if (panel && isQuizFinished() && !panel.classList.contains('hidden')) panel.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Report shown for this session, but could not be saved to Progress. Check the Post Quiz Report migration.</p>');
         });
     }
 
+    // Phase 24A.8c — Universal Progress dashboard. This UI exists only within the
+    // Manage Quizzes Progress popup, never in the active question view.
+    function getExamProgressMissedIds(report) {
+        return Array.from(new Set((report?.sections || []).flatMap(section =>
+            Array.isArray(section.missedQuestionIds) ? section.missedQuestionIds : [])
+            .map(normalizeSheetText).filter(Boolean)));
+    }
+    function getExamProgressSections(report, liveSections) {
+        const live = normalizeExamSections(liveSections || []);
+        if (live.length) return live;
+        // Only currently assigned sections are studyable. Old report names
+        // may refer to a prior quiz revision and must not be used as scope.
+        return [];
+    }
+    // Phase 24A.8D: One history graph, filtered by recorded study mode only.
+    // Never change the latest Post Quiz Report when selecting a graph filter.
+    function getRecordedScoreHistoryMode(report) {
+        return normalizeSheetText(report?.mode) || 'Legacy / Unspecified';
+    }
+    function renderExamScoreHistoryGraph(history, quizId, requestedMode = 'all') {
+        const raw = (Array.isArray(history) ? history : []).filter(item =>
+            item && item.quizId === quizId && Number.isFinite(Number(item.percent)));
+        const chronological = raw.slice().sort((a,b) => Date.parse(a.completedAt)-Date.parse(b.completedAt));
+        if (!chronological.length) return '<p class="exam-post-quiz-placeholder">No full quiz or deck scores recorded yet. Complete a full study session to start tracking improvement.</p>';
+        // Build options from this quiz's real history, not hardcoded modes that
+        // the user has never studied. Include unspecified legacy records.
+        const modes = [...new Set(chronological.map(getRecordedScoreHistoryMode))];
+        const standard = ['Progress','Mastery','Mastery Check','Retention','Normal'];
+        modes.sort((a,b) => {
+            const ai=standard.indexOf(a), bi=standard.indexOf(b);
+            return ai>=0 && bi>=0 ? ai-bi : ai>=0 ? -1 : bi>=0 ? 1 : a.localeCompare(b);
+        });
+        const selectedMode = modes.includes(requestedMode) ? requestedMode : 'all';
+        // Keep the true all-mode attempt numbers even when viewing only one
+        // mode; a Progress-only view might be attempts 1, 4, and 7.
+        const items = chronological.map((item,index) => ({item,attemptNumber:index+1}))
+            .filter(entry => selectedMode==='all' || getRecordedScoreHistoryMode(entry.item)===selectedMode);
+        const first=items[0].item, latest=items[items.length-1].item;
+        const pct = item => Math.max(0,Math.min(100,Number(item.percent)||0));
+        const change = pct(latest)-pct(first);
+        const currentRevision = state.auth.quizSpacedContentRevisions?.get(quizId);
+        const revisionMismatch = items.some(({item}) => item.contentRevision != null &&
+            currentRevision != null && Number(item.contentRevision) !== Number(currentRevision));
+        const x0=45, x1=632, y0=28, y1=214;
+        const width=x1-x0, height=y1-y0;
+        const pointX = index => items.length===1 ? (x0+x1)/2 : x0+width*index/(items.length-1);
+        const pointY = item => y1-height*pct(item)/100;
+        const points = items.map(({item},i)=>`${pointX(i).toFixed(1)},${pointY(item).toFixed(1)}`).join(' ');
+        const ticks=[0,25,50,75,100].map(value=>{
+            const y=y1-height*value/100;
+            return `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" class="exam-score-grid"/><text x="${x0-10}" y="${y+4}" text-anchor="end" class="exam-score-tick">${value}%</text>`;
+        }).join('');
+        const displayDate = item => {
+            const d = new Date(item.completedAt);
+            return Number.isNaN(d.getTime()) ? 'Date unavailable' : d.toLocaleDateString();
+        };
+        const marks=items.map(({item,attemptNumber},i)=>{
+            const x=pointX(i),y=pointY(item);
+            return `<circle class="exam-score-dot" cx="${x}" cy="${y}" r="${items.length>30?3.8:5}"><title>Attempt ${attemptNumber}: ${pct(item)}% · ${escapeHtml(getRecordedScoreHistoryMode(item))} · ${escapeHtml(displayDate(item))}</title></circle>`;
+        }).join('');
+        const labels=items.map((item,i)=>i).filter(i=>items.length<=9 || i===0 || i===items.length-1 || i%Math.ceil(items.length/8)===0)
+            .map(i=>`<text x="${pointX(i).toFixed(1)}" y="${y1+24}" text-anchor="middle" class="exam-score-tick">${items[i].attemptNumber}</text>`).join('');
+        const modeSummary=items.slice(-8).map(({item,attemptNumber}) =>
+            `<span>Attempt ${attemptNumber} · ${escapeHtml(getRecordedScoreHistoryMode(item))} · ${escapeHtml(displayDate(item))} · ${pct(item)}%</span>`).join('');
+        const filters=`<div class="exam-score-mode-filter">
+            <label for="exam-score-mode-${escapeHtml(quizId)}">Study Mode</label>
+            <select id="exam-score-mode-${escapeHtml(quizId)}" data-exam-score-mode aria-label="Filter score history by study mode">
+                <option value="all" ${selectedMode==='all'?'selected':''}>All Modes</option>
+                ${modes.map(mode=>`<option value="${escapeHtml(mode)}" ${mode===selectedMode?'selected':''}>${escapeHtml(mode)}</option>`).join('')}
+            </select></div>`;
+        return `${filters}<div class="exam-score-stats">
+            <div><small>First available</small><strong>${pct(first)}%</strong></div>
+            <div><small>Latest</small><strong>${pct(latest)}%</strong></div>
+            <div><small>Improvement</small><strong>${items.length>1 ? `${change>0?'+':''}${change} pts` : '—'}</strong></div>
+        </div><div class="exam-score-chart" role="img" aria-label="${escapeHtml(selectedMode==='all'?'All modes':selectedMode)} score history from ${pct(first)} percent to ${pct(latest)} percent across ${items.length} recorded attempts">
+            <svg viewBox="0 0 665 258" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            ${ticks}<polyline class="exam-score-line" points="${points}"/>${marks}${labels}
+            <text x="${(x0+x1)/2}" y="254" text-anchor="middle" class="exam-score-tick">Original full-deck attempt numbers</text>
+            </svg></div>
+            <div class="exam-score-mode-history" aria-label="Most recent attempts in the selected mode">${modeSummary}</div>
+            <p class="exam-score-footnote">${items.length} of ${chronological.length} recorded completed full ${chronological.length===1?'attempt':'attempts'} shown · First graded response per question or card determines the score.</p>
+            ${revisionMismatch?'<p class="exam-post-quiz-warning">Scores include different quiz or deck revisions, so results may not be directly comparable.</p>':''}`;
+    }
+    function renderExamProgressReportTab(report, liveSections, quizId) {
+        if (!report) return '<p class="exam-post-quiz-placeholder">No completed Post Quiz Report yet. Complete a full quiz or flashcard deck to see your report.</p>'+
+            renderExamProgressStudyActions(null, liveSections, quizId);
+        return `${renderExamPostQuizReport(report,true)}${renderExamProgressStudyActions(report,liveSections,quizId)}`;
+    }
+    function renderExamProgressStudyActions(report, liveSections, quizId) {
+        const missed = getExamProgressMissedIds(report);
+        const sections = getExamProgressSections(report,liveSections);
+        const storedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
+        const itemLabel = (report?.quizType || storedQuiz?.quizType) === 'flashcard' ? 'Cards' : 'Questions';
+        return `<section class="exam-progress-actions" aria-label="Targeted quiz or flashcard study">
+            <h4>Targeted Study</h4><div class="exam-progress-action-grid">
+              <button type="button" data-exam-progress-action="pin-incorrect" ${missed.length?'':'disabled'}>Pin ${missed.length} Incorrect ${itemLabel}</button>
+              <button type="button" data-exam-progress-action="study-incorrect" ${missed.length?'':'disabled'}>Study Incorrect ${itemLabel}</button>
+            </div>
+            <label class="exam-progress-select-label" for="exam-progress-section-${escapeHtml(quizId)}">Study Individual Section</label>
+            <div class="exam-progress-section-controls"><select id="exam-progress-section-${escapeHtml(quizId)}" data-exam-progress-section ${sections.length?'':'disabled'}>
+            ${sections.length?sections.map(section=>`<option value="${escapeHtml(section.id)}">${escapeHtml(section.name)}${section.questionIds.length?` (${section.questionIds.length})`:''}</option>`).join(''):'<option value="">No sections assigned</option>'}
+            </select><button type="button" data-exam-progress-action="study-section" ${sections.length?'':'disabled'}>Start Section Study</button></div>
+            <small>Only Pinned / Exclude Pinned and other selected study settings are applied after the section is chosen. Focused practice cannot earn full-deck spaced-repetition credit.</small>
+            <p class="exam-progress-action-status" role="status" aria-live="polite"></p>
+          </section>`;
+    }
+    function renderExamProgressDashboard(popup, quizId, report, history, liveSections) {
+        const holder=popup?.querySelector('.exam-post-quiz-popup-slot');
+        if (!holder) return;
+        const oldSection=holder.querySelector('[data-exam-progress-section]')?.value;
+        const activeTab=holder.dataset.activeTab==='history'?'history':'report';
+        holder.innerHTML=`<div class="exam-progress-tabbar" role="tablist" aria-label="Post Quiz Report and Score History tabs">
+            <button type="button" data-exam-progress-tab="report" role="tab" aria-selected="${activeTab==='report'}">Post Quiz Report</button>
+            <button type="button" data-exam-progress-tab="history" role="tab" aria-selected="${activeTab==='history'}">Score History</button></div>
+          <div class="exam-progress-tabcontent" data-exam-progress-content="report" role="tabpanel" ${activeTab==='report'?'':'hidden'}>
+            ${renderExamProgressReportTab(report,liveSections,quizId)}</div>
+          <div class="exam-progress-tabcontent" data-exam-progress-content="history" role="tabpanel" ${activeTab==='history'?'':'hidden'}>
+            ${renderExamScoreHistoryGraph(history,quizId,holder.dataset.scoreHistoryMode || 'all')}</div>`;
+        // If the loaded history no longer contains a previously chosen mode,
+        // the dropdown falls back to All Modes. Keep its stored state in sync.
+        const modeControl=holder.querySelector('[data-exam-score-mode]');
+        if (modeControl) holder.dataset.scoreHistoryMode=modeControl.value;
+        if (oldSection) {
+            const dropdown=holder.querySelector('[data-exam-progress-section]');
+            if (dropdown && Array.from(dropdown.options).some(option=>option.value===oldSection)) dropdown.value=oldSection;
+        }
+    }
+    async function loadExamProgressSectionsForQuiz(quizId) {
+        const {data,error}=await state.auth.client.from('quizzes').select('description').eq('id',quizId).maybeSingle();
+        if (error) throw error;
+        return getExamSectionsFromDescription(data?.description || '');
+    }
+    async function getActualExamQuizQuestionIds(quizId) {
+        const {data,error}=await state.auth.client.from('questions').select('id').eq('quiz_id',quizId);
+        if (error) throw error;
+        return new Set((data||[]).map(row=>normalizeSheetText(row.id)).filter(Boolean));
+    }
+    async function pinExamReportIncorrectQuestions(quizId, report) {
+        if (!state.auth.user?.id || !state.auth.client) throw new Error('Sign in before pinning questions.');
+        if (!report || report.quizId !== quizId) throw new Error('Report does not belong to this quiz or flashcard deck.');
+        const missed=getExamProgressMissedIds(report);
+        const realIds=await getActualExamQuizQuestionIds(quizId);
+        const valid=missed.filter(id=>realIds.has(id));
+        if (!valid.length) return `No current quiz questions or cards match this report (${missed.length} historical misses).`;
+        const existing=[];
+        for (let offset=0;offset<valid.length;offset+=150) {
+            const {data,error}=await state.auth.client.from('user_question_state')
+                .select('question_id,is_starred').eq('user_id',state.auth.user.id)
+                .in('question_id',valid.slice(offset,offset+150));
+            if(error) throw error;
+            existing.push(...(data||[]));
+        }
+        const pinned=new Set(existing.filter(row=>row.is_starred).map(row=>normalizeSheetText(row.question_id)));
+        const newIds=valid.filter(id=>!pinned.has(id));
+        for(let offset=0;offset<newIds.length;offset+=150) {
+            const rows=newIds.slice(offset,offset+150).map(id=>({user_id:state.auth.user.id,question_id:id,is_starred:true}));
+            const {error}=await state.auth.client.from('user_question_state').upsert(rows,{onConflict:'user_id,question_id'});
+            if(error) throw error;
+        }
+        newIds.forEach(id=>applyQuestionStarStateAcrossDeck(id,true));
+        if(state.auth.studioQuizPinnedLoadedUser === state.auth.user.id && state.auth.studioQuizPinnedIds instanceof Set)
+            newIds.forEach(id=>state.auth.studioQuizPinnedIds.add(id));
+        // Keep the popup's Progress anchor connected. Re-rendering the Manage
+        // list here would destroy its button and dismiss the user's report.
+        syncQuestionStarButton();
+        return `${newIds.length} new pinned · ${valid.length-newIds.length} already pinned${missed.length-valid.length?` · ${missed.length-valid.length} removed questions skipped`:''}.`;
+    }
+    async function startExamFocusedStudy(quizId, ids, label) {
+        if (!state.auth.user?.id) throw new Error('Sign in to study questions.');
+        const validCurrentIds=await getActualExamQuizQuestionIds(quizId);
+        const targets=new Set((ids||[]).map(normalizeSheetText).filter(id=>validCurrentIds.has(id)));
+        if (!targets.size) throw new Error(`No current questions remain for ${label}.`);
+        const targetQuiz=await resolveManagedQuizForStudy(quizId);
+        // This loads the full source exactly as a normal Study action would.
+        // The focus scope is attached only AFTER loadSelectedQuiz clears the
+        // previous session, then inherited pin filters are applied normally.
+        await loadSelectedQuiz(targetQuiz.id);
+        if (normalizeSheetText(state.activeQuizDescriptor?.sourceQuizId) !== quizId) return;
+        state.studySubsetScope={quizId,questionIds:targets,label};
+        applyFilteredQuestionsToSession({resetSession:true});
+        if (!state.questions.length) {
+            state.studySubsetScope=null;
+            applyFilteredQuestionsToSession({resetSession:true});
+            throw new Error(isOnlyStarredEnabled()
+                ? `No pinned questions are eligible in ${label}. Turn off Only Pinned to study this section.`
+                : `No questions are eligible in ${label} with Exclude Pinned enabled.`);
+        }
+        closeSavedImageStudyProgressPopup();
+        await recordStudioQuizActivity(quizId,'studied');
+        await closeQuizStudioPage(true);
+    }
+    function mountExamProgressDashboard(popup,quizId) {
+        const holder=document.createElement('section');
+        holder.className='exam-post-quiz-popup-slot';
+        holder.dataset.activeTab='report';
+        holder.dataset.scoreHistoryMode='all';
+        popup.appendChild(holder);
+        const snapshot={report:state.auth.examLatestReports.get(quizId)||null,
+            history:state.auth.examReportHistories.get(quizId)||[],sections:[],busy:false,actionStatus:''};
+        const render=()=>{
+            if (popup.isConnected && activeSavedImageProgressPopup===popup)
+                renderExamProgressDashboard(popup,quizId,snapshot.report,snapshot.history,snapshot.sections);
+            const status=holder.querySelector('.exam-progress-action-status');
+            if(status)status.textContent=snapshot.actionStatus;
+        };
+        // Score History filter is local presentation state, not a persisted
+        // study-mode setting or a modification of the current report.
+        holder.addEventListener('change', event=>{
+            const dropdown=event.target.closest('[data-exam-score-mode]');
+            if (!dropdown) return;
+            event.stopPropagation();
+            holder.dataset.scoreHistoryMode=dropdown.value;
+            render();
+            holder.querySelector('[data-exam-score-mode]')?.focus({preventScroll:true});
+        });
+        // Do not allow a detached select during filter re-render to be
+        // interpreted as an outside click by the document's dismiss listener.
+        holder.addEventListener('click', event=>{
+            if (event.target.closest('[data-exam-score-mode]')) event.stopPropagation();
+        });
+        // The popup renders immediately, then receives independent live data.
+        // Async results are ignored once the user exits this specific popup.
+        holder.addEventListener('click', async event=>{
+            const tab=event.target.closest('[data-exam-progress-tab]');
+            if (tab) {
+                // Re-rendering detaches the clicked tab before this click reaches
+                // document. Keep its dismissal handler from treating that as an
+                // outside click, and restore keyboard focus to the new tab node.
+                event.stopPropagation();
+                holder.dataset.activeTab=tab.dataset.examProgressTab;
+                render();
+                holder.querySelector(`[data-exam-progress-tab="${holder.dataset.activeTab}"]`)?.focus({preventScroll:true});
+                return;
+            }
+            const action=event.target.closest('[data-exam-progress-action]');
+            if (!action || snapshot.busy) return;
+            const status=holder.querySelector('.exam-progress-action-status');
+            const name=action.dataset.examProgressAction;
+            let task;
+            if(name==='pin-incorrect') task=()=>pinExamReportIncorrectQuestions(quizId,snapshot.report);
+            else if(name==='study-incorrect') task=()=>startExamFocusedStudy(quizId,getExamProgressMissedIds(snapshot.report),snapshot.report?.quizType==='flashcard'?'incorrect cards':'incorrect questions');
+            else if(name==='study-section') {
+                const sectionId=holder.querySelector('[data-exam-progress-section]')?.value;
+                const chosen=getExamProgressSections(snapshot.report,snapshot.sections).find(section=>section.id===sectionId);
+                if(!chosen) return;
+                // A report can be from an old exam revision. Live metadata is
+                // authoritative for section study; never substitute stale IDs.
+                if(!snapshot.sections.length) { if(status) status.textContent='Current section metadata is unavailable.';return; }
+                task=()=>startExamFocusedStudy(quizId,chosen.questionIds,chosen.name);
+            } else return;
+            snapshot.busy=true;
+            action.disabled=true;
+            snapshot.actionStatus=name==='pin-incorrect'?'Pinning questions…':'Opening focused study…';
+            if(status) status.textContent=snapshot.actionStatus;
+            try {
+                const message=await task();
+                if (name==='pin-incorrect') {snapshot.actionStatus=message;if(holder.isConnected)render();}
+            } catch(error) {
+                snapshot.actionStatus=`Could not complete action: ${error.message||error}`;
+                if(holder.isConnected)render();
+                console.error('Exam Progress action failed:',error);
+            } finally {
+                snapshot.busy=false;
+                if(action.isConnected) action.disabled=false;
+            }
+        });
+        renderExamProgressDashboard(popup,quizId,snapshot.report,snapshot.history,snapshot.sections);
+        loadLatestExamPostQuizReport(quizId).then(report=>{snapshot.report=report;render();})
+            .catch(error=>{console.warn('Exam report load failed:',error);
+                if(holder.isConnected)holder.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Latest report unavailable. Check Exam report migration.</p>');});
+        loadExamReportHistory(quizId).then(rows=>{snapshot.history=rows;render();})
+            .catch(error=>{console.warn('Exam score history unavailable:',error);
+                if(holder.isConnected)holder.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Score history is unavailable. Apply the Phase 24A.8a SQL migration.</p>');});
+        loadExamProgressSectionsForQuiz(quizId).then(sections=>{snapshot.sections=sections;render();})
+            .catch(error=>{console.warn('Exam section metadata unavailable:',error);
+                if(holder.isConnected)holder.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Sections could not be loaded.</p>');});
+    }
     function getSpacedProgressPopupSource(panelId) {
         if (panelId.startsWith('quiz:')) {
             const quiz = state.auth.managedQuizzes.find(item => item.id === panelId.slice(5));
@@ -8108,62 +8448,55 @@ MODIFICATION RULES FOR THIS APP
         return entry ? { markup: renderSavedImageStudyProgress(entry), nextAt: getSavedImageSpacedReviewStatus(entry).nextAt } : null;
     }
     function toggleSavedImageStudyProgress(panelId, grid) {
-        const button = Array.from(grid?.querySelectorAll('[data-study-progress]') || [])
-            .find(el => el.dataset.studyProgress === panelId);
-        const source = Array.from(grid?.querySelectorAll('[data-study-progress-panel]') || [])
-            .find(el => el.dataset.studyProgressPanel === panelId);
-        if (!button || !source) return;
-        const wasOpen = button === activeSavedImageProgressButton;
+        const button=Array.from(grid?.querySelectorAll('[data-study-progress]')||[])
+            .find(el=>el.dataset.studyProgress===panelId);
+        const source=Array.from(grid?.querySelectorAll('[data-study-progress-panel]')||[])
+            .find(el=>el.dataset.studyProgressPanel===panelId);
+        if(!button||!source)return;
+        const wasOpen=button===activeSavedImageProgressButton;
         closeSavedImageStudyProgressPopup();
-        if (wasOpen) return;
-        const popup = document.createElement('div');
-        popup.className = 'studio-spaced-review-popover';
-        popup.id = 'studio-saved-image-progress-popup';
-        popup.setAttribute('role', 'dialog');
-        popup.setAttribute('aria-label', 'Study progress');
-        // Refresh the snapshot at click time so a long-open Saved Images page
-        // never shows an old 6-hour eligibility message.
-        const freshMarkup = getSpacedProgressPopupSource(panelId)?.markup || '';
-        if (freshMarkup) {
-            const template = document.createElement('template');
-            template.innerHTML = freshMarkup;
-            popup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || source.innerHTML;
-        } else {
-            popup.innerHTML = source.innerHTML;
+        if(wasOpen)return;
+        const popup=document.createElement('div');
+        popup.className='studio-spaced-review-popover';
+        popup.id='studio-saved-image-progress-popup';
+        popup.setAttribute('role','dialog');
+        popup.setAttribute('aria-label','Study progress');
+        const freshMarkup=getSpacedProgressPopupSource(panelId)?.markup||'';
+        if(freshMarkup){
+            const template=document.createElement('template');
+            template.innerHTML=freshMarkup;
+            popup.innerHTML=template.content.querySelector('[data-study-progress-panel]')?.innerHTML||source.innerHTML;
+        }else popup.innerHTML=source.innerHTML;
+        const quizId=panelId.startsWith('quiz:')?panelId.slice(5):'';
+        const quiz=quizId?state.auth.managedQuizzes.find(item=>item.id===quizId):null;
+        const isExam=!!quiz; // all managed quiz types share the same Progress dashboard
+        if(isExam){
+            popup.classList.add('is-exam-dashboard');
+            const header=document.createElement('div');
+            header.className='exam-progress-spaced-header';
+            while(popup.firstChild) header.appendChild(popup.firstChild);
+            popup.appendChild(header);
         }
-        if (panelId.startsWith('quiz:')) {
-            const quizId=panelId.slice(5);
-            const quiz=state.auth.managedQuizzes.find(item=>item.id===quizId);
-            if (normalizeSheetText(quiz?.quizType)==='exam') {
-                const existing=state.auth.examLatestReports.get(quizId);
-                const holder=document.createElement('div');
-                holder.className='exam-post-quiz-popup-slot';
-                holder.innerHTML=renderExamPostQuizReport(existing,true) || '<p class="exam-post-quiz-placeholder">Loading Post Quiz Report…</p>';
-                popup.appendChild(holder);
-                loadLatestExamPostQuizReport(quizId).then(report=>{
-                    if (popup.isConnected) {
-                        holder.innerHTML=renderExamPostQuizReport(report,true) || '<p class="exam-post-quiz-placeholder">No completed exam report yet.</p>';
-                        popup.style.top=`${Math.max(12,Math.min(popup.getBoundingClientRect().top,window.innerHeight-popup.getBoundingClientRect().height-12))}px`;
-                    }
-                }).catch(()=>{ if(popup.isConnected) holder.innerHTML='<p class="exam-post-quiz-warning">Report unavailable. Check the Phase 24A.5z SQL migration.</p>'; });
-            }
-        }
-        mountStudyProgressRulesButton(popup, panelId);
+        mountStudyProgressRulesButton(popup,panelId);
         document.body.appendChild(popup);
-        const rect = button.getBoundingClientRect();
-        const width = Math.min(320, Math.max(220, window.innerWidth - 24));
-        popup.style.width = `${width}px`;
-        const height = popup.getBoundingClientRect().height;
-        const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-        const placeAbove = window.innerHeight - rect.bottom < height + 6 && rect.top >= height + 6;
-        const desiredTop = placeAbove ? rect.top - height - 4 : rect.bottom + 4;
-        const top = Math.max(12, Math.min(desiredTop, window.innerHeight - height - 12));
-        popup.style.left = `${left}px`;
-        popup.style.top = `${top}px`;
-        activeSavedImageProgressPopup = popup;
-        activeSavedImageProgressButton = button;
-        button.setAttribute('aria-expanded', 'true');
-        button.setAttribute('aria-controls', popup.id);
+        activeSavedImageProgressPopup=popup;
+        activeSavedImageProgressButton=button;
+        if(isExam)mountExamProgressDashboard(popup,quizId);
+        const rect=button.getBoundingClientRect();
+        const width=isExam?Math.min(740,window.innerWidth-24):Math.min(320,Math.max(220,window.innerWidth-24));
+        popup.style.width=`${width}px`;
+        if(isExam){
+            popup.style.left=`${Math.max(12,(window.innerWidth-width)/2)}px`;
+            popup.style.top=`${Math.max(12,Math.min(window.innerHeight*.06,44))}px`;
+        }else{
+            const height=popup.getBoundingClientRect().height;
+            const left=Math.max(12,Math.min(rect.left,window.innerWidth-width-12));
+            const placeAbove=window.innerHeight-rect.bottom<height+6&&rect.top>=height+6;
+            popup.style.left=`${left}px`;
+            popup.style.top=`${Math.max(12,Math.min(placeAbove?rect.top-height-4:rect.bottom+4,window.innerHeight-height-12))}px`;
+        }
+        button.setAttribute('aria-expanded','true');
+        button.setAttribute('aria-controls',popup.id);
         scheduleSavedImageProgressPopupRefresh(panelId);
     }
     // Keep an already-open popup fresh at local midnight or the six-hour
@@ -8185,19 +8518,23 @@ MODIFICATION RULES FOR THIS APP
             if (!freshMarkup) { closeSavedImageStudyProgressPopup(); return; }
             const template = document.createElement('template');
             template.innerHTML = freshMarkup;
-            activeSavedImageProgressPopup.innerHTML = template.content.querySelector('[data-study-progress-panel]')?.innerHTML || '';
-            mountStudyProgressRulesButton(activeSavedImageProgressPopup, panelId);
-            if (panelId.startsWith('quiz:')) {
-                const quizId=panelId.slice(5);
-                if (normalizeSheetText(state.auth.managedQuizzes.find(q=>q.id===quizId)?.quizType)==='exam') {
-                    activeSavedImageProgressPopup.insertAdjacentHTML('beforeend',renderExamPostQuizReport(state.auth.examLatestReports.get(quizId),true) || '<p class="exam-post-quiz-placeholder">No completed exam report yet.</p>');
-                }
+            const newSpaced=template.content.querySelector('[data-study-progress-panel]');
+            const popup=activeSavedImageProgressPopup;
+            if(popup.classList.contains('is-exam-dashboard')){
+                const header=popup.querySelector('.exam-progress-spaced-header');
+                if(header && newSpaced) header.innerHTML=newSpaced.innerHTML;
+            } else if(newSpaced) {
+                popup.innerHTML=newSpaced.innerHTML;
             }
-            const rect = activeSavedImageProgressButton.getBoundingClientRect();
-            const popup = activeSavedImageProgressPopup;
-            const height = popup.getBoundingClientRect().height;
-            const placeAbove = window.innerHeight - rect.bottom < height + 6 && rect.top >= height + 6;
-            popup.style.top = `${Math.max(12, Math.min(placeAbove ? rect.top - height - 4 : rect.bottom + 4, window.innerHeight - height - 12))}px`;
+            // Never reset the selected Exam tab or section dropdown while
+            // refreshing the spaced-repetition schedule.
+            mountStudyProgressRulesButton(popup,panelId);
+            const rect=activeSavedImageProgressButton.getBoundingClientRect();
+            if(!popup.classList.contains('is-exam-dashboard')){
+                const height=popup.getBoundingClientRect().height;
+                const placeAbove=window.innerHeight-rect.bottom<height+6&&rect.top>=height+6;
+                popup.style.top=`${Math.max(12,Math.min(placeAbove?rect.top-height-4:rect.bottom+4,window.innerHeight-height-12))}px`;
+            }
             scheduleSavedImageProgressPopupRefresh(panelId);
         }, Math.max(100, refreshAt - now.getTime() + 120));
     }
@@ -8206,7 +8543,7 @@ MODIFICATION RULES FOR THIS APP
     // scrolling must never make a newly tapped popup disappear by accident.
     document.addEventListener('pointermove', event => {
         if (activeStudyProgressRulesDialog?.open) return;
-        if (!activeSavedImageProgressPopup || event.pointerType === 'touch') return;
+        if (!activeSavedImageProgressPopup || event.pointerType === 'touch' || activeSavedImageProgressPopup.classList.contains('is-exam-dashboard')) return;
         if (!activeSavedImageProgressButton?.isConnected) { closeSavedImageStudyProgressPopup(); return; }
         const inRect = (rect, padding = 9) => event.clientX >= rect.left - padding &&
             event.clientX <= rect.right + padding && event.clientY >= rect.top - padding &&
@@ -8224,7 +8561,11 @@ MODIFICATION RULES FOR THIS APP
     document.addEventListener('click', event => {
         if (activeStudyProgressRulesDialog?.open || !activeSavedImageProgressPopup) return;
         if (event.target.closest?.('[data-study-progress]')) return;
-        if (activeSavedImageProgressPopup.contains(event.target)) return;
+        // Event targets can be detached by a synchronous tab re-render while
+        // this click bubbles. Preserve the original composed event path so an
+        // internal click never masquerades as a click outside the dialog.
+        if (activeSavedImageProgressPopup.contains(event.target) ||
+            event.composedPath?.().includes(activeSavedImageProgressPopup)) return;
         closeSavedImageStudyProgressPopup();
     });
     document.addEventListener('keydown', event => {
@@ -8233,6 +8574,7 @@ MODIFICATION RULES FOR THIS APP
     window.addEventListener('resize', closeSavedImageStudyProgressPopup);
     window.addEventListener('scroll', event => {
         if (activeStudyProgressRulesDialog?.open && activeStudyProgressRulesDialog.contains(event.target)) return;
+        if (activeSavedImageProgressPopup?.contains(event.target)) return;
         closeSavedImageStudyProgressPopup();
     }, true);
     function recordSavedImageSpacedReviewPass(entry, correctKeys, now = new Date()) {
@@ -29481,7 +29823,7 @@ MODIFICATION RULES FOR THIS APP
         const expectedIds = getQuizSpacedIdsSignature(ids);
         const visibleIds = getQuizSpacedIdsSignature(visibleQuestions.map(q => q.sourceQuestionId || q.id));
         const managedQuiz = state.auth.managedQuizzes.find(q => q.id === quizId);
-        const completeDeck = !!expectedIds && expectedIds === visibleIds
+        const completeDeck = !state.studySubsetScope && !!expectedIds && expectedIds === visibleIds
             && !isOnlyStarredEnabled() && !isExcludeStarredEnabled()
             && (!managedQuiz || (managedQuiz.questionCount === all.length &&
                 getQuizSpacedIdsSignature(managedQuiz.questionIds) === expectedIds));
@@ -31829,6 +32171,7 @@ if (elements.importBackupFile) {
             state.auth.quizSpacedReviews = new Map();
             state.auth.quizSpacedContentRevisions = new Map();
             state.auth.examLatestReports = new Map();
+            state.auth.examReportHistories = new Map();
             state.auth.quizSpacedMigrationMissing = false;
             syncQuizSpacedMigrationBanner();
             state.auth.quizChallengeUnavailable = false;
@@ -35570,7 +35913,7 @@ if (elements.importBackupFile) {
         const focusModeActive = !buildUpEditActive && !buildUpFocusActive && !!focusQuestionId;
         const focusNewDraftActive = focusModeActive && focusQuestionId === STUDIO_FOCUS_NEW_QUESTION_ID;
         const starredOnlyFilter = !buildUpEditActive && !buildUpFocusActive && !!state.auth.studioQuestionStarredOnly;
-        const examSectionFilterId = isStudioExamMode() && !focusModeActive
+        const examSectionFilterId = !!state.auth.editingQuizId && !focusModeActive
             ? normalizeSheetText(state.auth.studioExamSectionFilterId) : '';
         const hasUnsavedPositionRows = displayRows.some(questionRow => questionRow.id === STUDIO_PENDING_NEW_FLASHCARD_ID || isStudioLocalFlashcardId(questionRow.id));
         const positionReorderBlockedReason = buildUpEditActive
@@ -35641,7 +35984,7 @@ if (elements.importBackupFile) {
             updateStudioQuestionNavigationUI();
             return;
         }
-        const examGrouping = isStudioExamMode() && !focusModeActive && !buildUpFocusActive && !buildUpEditActive;
+        const examGrouping = !!state.auth.editingQuizId && !focusModeActive && !buildUpFocusActive && !buildUpEditActive;
         const examSections = examGrouping ? normalizeExamSections(state.auth.examSections) : [];
         if (examGrouping && examSections.length) {
             const rank = new Map(examSections.flatMap((section, groupIndex) => section.questionIds.map(id => [id, groupIndex])));
@@ -41216,6 +41559,7 @@ if (elements.openQuizStudioBtn) {
             state.auth.quizSpacedReviews = new Map();
             state.auth.quizSpacedContentRevisions = new Map();
             state.auth.examLatestReports = new Map();
+            state.auth.examReportHistories = new Map();
             state.auth.quizSpacedMigrationMissing = false;
             syncQuizSpacedMigrationBanner();
             state.auth.quizChallengeUnavailable = false;
@@ -42707,7 +43051,7 @@ if (elements.openQuizStudioBtn) {
             }
             state.auth.editingQuizId = quizRow.id;
             state.auth.pendingInsertAfterQuestionId = null;
-            state.auth.examSections = editorMode === 'exam' ? getExamSectionsFromDescription(quizRow.description || '') : [];
+            state.auth.examSections = getExamSectionsFromDescription(quizRow.description || '');
             state.auth.studioExamSectionFilterId = '';
             state.auth.editingQuizMode = editorMode;
             state.auth.editingQuizType = editorMode === 'exam' ? 'multiple_choice' : editorMode;
@@ -44192,12 +44536,17 @@ if (elements.openQuizStudioBtn) {
         base.explanations = rawOptions.map(option => typeof option === 'object' ? normalizeSheetText(option?.explanation || option?.feedback) : '');
         let correctAnswers = rawQuestion.correctAnswers || rawQuestion.correct_answers;
         if (!Array.isArray(correctAnswers)) correctAnswers = [rawQuestion.correctAnswer ?? rawQuestion.correct ?? rawQuestion.answer].filter(value => value !== undefined && value !== null);
+        // Numeric answer TEXT is still answer text. For example, if options are
+        // ["3", "5", "4", "1", "2"], correctAnswers: ["2"] means "2" (not
+        // option #2, "5"). Only a genuine numeric JSON value without an exact
+        // option-text match retains the older 1-based index shorthand.
         correctAnswers = correctAnswers.map(value => {
-            if (Number.isInteger(Number(value)) && String(value).trim() !== '') {
-                const oneBased = Number(value);
-                if (oneBased >= 1 && oneBased <= base.options.length) return base.options[oneBased - 1];
+            const literal = normalizeSheetText(value);
+            if (base.options.includes(literal)) return literal;
+            if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= base.options.length) {
+                return base.options[value - 1];
             }
-            return normalizeSheetText(value);
+            return literal;
         }).filter(Boolean);
         base.correctAnswers = Array.from(new Set(correctAnswers));
         base.correct = base.correctAnswers[0] || '';
@@ -45978,6 +46327,9 @@ function startProgressModeRetry() {
         ? expandQuestionsWithTetherBuildUp(missedQuestions, state.questions)
         : missedQuestions;
 
+    // Old Exam Report must never linger over a Progress retry.
+    const oldReport = document.getElementById('examPostQuizCompletion');
+    if (oldReport) { oldReport.classList.add('hidden'); oldReport.replaceChildren(); }
     state.progressRetryActive = true;
     state.progressRoundOutcomeMap = new Map();
     state.progressStarActionInFlight = false;
@@ -46380,18 +46732,38 @@ function setNavButtonEnabled(button, enabled) {
     button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
 }
 
+// Mastery removes a solved question from its queue during grading, BEFORE
+// the learner presses Next. Keep the last answer and its feedback visible, but
+// let the learner enter the real completion screen (Exam report, SR credit).
+function isMasteryFinalAnswerAwaitingFinish() {
+    return isRetryMode() && state.questions.length > 0 &&
+        state.questionAnswered && state.pendingMasteryAdvance &&
+        state.questionQueue.length === 0 && !!state.displayedQuestion;
+}
+
 function updateNavigationButtons() {
     const hasQuestions = state.questions.length > 0;
+    const awaitingMasteryFinish = isMasteryFinalAnswerAwaitingFinish();
     const setNextLabel = () => {
         if (!elements.nextBtn) return;
-        const shouldSubmit = isCurrentMultipleAnswerSubmitPending();
+        elements.nextBtn.classList?.toggle('is-mastery-finish', awaitingMasteryFinish);
+        const shouldSubmit = !awaitingMasteryFinish && isCurrentMultipleAnswerSubmitPending();
         const useCompactIcons = isNarrowIPhoneViewport();
-        elements.nextBtn.innerText = shouldSubmit ? 'Submit' : (useCompactIcons ? '→' : 'Next');
-        elements.nextBtn.setAttribute('aria-label', shouldSubmit ? 'Submit answer' : 'Next');
-        elements.nextBtn.setAttribute('title', shouldSubmit ? 'Submit answer' : 'Next');
+        const label = awaitingMasteryFinish ? 'Finish Quiz' : (shouldSubmit ? 'Submit' : (useCompactIcons ? '→' : 'Next'));
+        const description = awaitingMasteryFinish ? 'Finish Quiz' : (shouldSubmit ? 'Submit answer' : 'Next');
+        elements.nextBtn.innerText = label;
+        elements.nextBtn.setAttribute('aria-label', description);
+        elements.nextBtn.setAttribute('title', description);
     };
 
     setNextLabel();
+
+    if (awaitingMasteryFinish) {
+        const available = !state.learningResourcesOverlayOpen && !state.flashcardImageZoomOpen;
+        setNavButtonEnabled(elements.prevBtn, false);
+        setNavButtonEnabled(elements.nextBtn, available);
+        return;
+    }
 
     if (!hasQuestions || state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || isQuizFinished()) {
         setNavButtonEnabled(elements.prevBtn, false);
@@ -47760,13 +48132,14 @@ async function hydrateStarredQuestionState(questions) {
 
 function getFilteredSourceQuestions() {
     const sourceQuestions = Array.isArray(state.sourceQuestions) ? state.sourceQuestions : [];
-    if (isOnlyStarredEnabled()) {
-        return sourceQuestions.filter(question => !!question.isStarred);
-    }
-    if (isExcludeStarredEnabled()) {
-        return sourceQuestions.filter(question => !question.isStarred);
-    }
-    return [...sourceQuestions];
+    const scope = state.studySubsetScope;
+    const quizId = normalizeSheetText(state.activeQuizDescriptor?.sourceQuizId || state.activeQuizDescriptor?.id || '').replace(/^sb:/,'');
+    const subset = scope && scope.quizId === quizId
+        ? sourceQuestions.filter(q => scope.questionIds.has(normalizeSheetText(q.sourceQuestionId || q.id)))
+        : sourceQuestions;
+    if (isOnlyStarredEnabled()) return subset.filter(question => !!question.isStarred);
+    if (isExcludeStarredEnabled()) return subset.filter(question => !question.isStarred);
+    return [...subset];
 }
 
 // Phase 22ND1: Mastery mutates the queue before the answered screen advances.
@@ -48456,6 +48829,10 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         }
         markLoad('question rows');
 
+        const savedSections = getExamSectionsFromDescription(quizRow?.description || '');
+        const withStudyReportContext = questions => questions.map(question => ({
+            ...question, sourceQuizId: normalizeSheetText(quizDescriptor.sourceQuizId), examSections: savedSections
+        }));
         const diagramSharing = getDiagramSharingFromDescription(quizRow?.description || '');
         const handwrittenFlashcardConfig = getHandwrittenFlashcardConfigFromDescription(quizRow?.description || '');
         const rows = questionRows || [];
@@ -48479,9 +48856,8 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
         }
 
         if (quizType === 'exam') {
-            const sections = getExamSectionsFromDescription(quizRow?.description || '');
             const questions = await buildExamQuestionsFromSupabaseRows(rows, quizDescriptor, quizName, markLoad);
-            return questions.map(q => ({...q, examSections:sections}));
+            return withStudyReportContext(questions);
         }
 
         const sharedDiagramSourceQuestionId = getDiagramSharingSourceQuestionId(diagramSharing);
@@ -48555,7 +48931,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 }
             }
             markLoad('flashcards built');
-            return questions;
+            return withStudyReportContext(questions);
         }
 
         if (quizType === 'hierarchy') {
@@ -48587,7 +48963,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 };
             }).filter(Boolean);
             if (!questions.length) throw createStudyLoadDiagnosticError(`No usable hierarchy questions were built for "${quizName}".`);
-            return resolveSupabaseMediaReferencesForStudyLoad(questions, `Hierarchy quiz "${quizName}"`);
+            return withStudyReportContext(await resolveSupabaseMediaReferencesForStudyLoad(questions, `Hierarchy quiz "${quizName}"`));
         }
 
         if (quizType === 'classify') {
@@ -48625,7 +49001,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
                 };
             }).filter(Boolean);
             if (!questions.length) throw createStudyLoadDiagnosticError(`No usable classify questions were built for "${quizName}".`);
-            return resolveSupabaseMediaReferencesForStudyLoad(questions, `Classify quiz "${quizName}"`);
+            return withStudyReportContext(await resolveSupabaseMediaReferencesForStudyLoad(questions, `Classify quiz "${quizName}"`));
         }
 
         const detailRows = await loadMultipleChoiceDetailsByQuestionIds(questionIds);
@@ -48703,7 +49079,7 @@ async function loadQuestionsFromSupabase(quizDescriptor) {
             };
         }).filter(Boolean);
         if (!questions.length) throw createStudyLoadDiagnosticError(`No usable ${quizType === 'typed_answer' ? 'typed-answer' : (quizType === 'diagrams' ? 'diagram' : 'multiple-choice')} questions were built for "${quizName}".`);
-        return resolveSupabaseMediaReferencesForStudyLoad(questions, `${quizType === 'typed_answer' ? 'Typed-answer' : (quizType === 'diagrams' ? 'Diagram' : 'Multiple-choice')} quiz "${quizName}"`);
+        return withStudyReportContext(await resolveSupabaseMediaReferencesForStudyLoad(questions, `${quizType === 'typed_answer' ? 'Typed-answer' : (quizType === 'diagrams' ? 'Diagram' : 'Multiple-choice')} quiz "${quizName}"`));
     } catch (error) {
         console.error('Failed to load Supabase quiz questions:', error);
         if (error?.studyLoadDiagnostic) throw error;
@@ -48811,6 +49187,7 @@ async function loadSelectedQuiz(selectorValue, options = {}) {
         state.activeQuizChallenge = null;
     }
     state.activeQuizDescriptor = selectedQuiz;
+    state.studySubsetScope = null; // A different quiz selection always exits focused practice.
     state.quizSpacedAttempt = null;
     clearQuizSpacedCompletionFeedback();
 
@@ -53853,7 +54230,8 @@ function resetModeState() {
     state.normalFinished = false;
     state.quizSpacedAttempt = null;
     state.examPostQuizAttempt = null;
-    document.getElementById('examPostQuizCompletion')?.classList.add('hidden');
+    const reportPanel = document.getElementById('examPostQuizCompletion');
+    if (reportPanel) { reportPanel.classList.add('hidden'); reportPanel.replaceChildren(); }
     state.questionAnswered = false;
     state.flashcardFlipped = false;
     state.currentQuestionType = '';
@@ -59935,7 +60313,7 @@ elements.questionImage.onclick = function () {
     });
     elements.studioExamSectionDelete?.addEventListener('click', async () => {
         const id = normalizeSheetText(elements.studioExamSectionSelect?.value);
-        if (!id || !window.confirm('Delete this section? Its questions will remain in the exam, unassigned.')) return;
+        if (!id || !window.confirm('Delete this section? Its questions or cards will remain in the quiz, unassigned.')) return;
         try {
             await persistStudioExamSections((state.auth.examSections || []).filter(section => section.id !== id));
             if (elements.studioExamSectionSelect) elements.studioExamSectionSelect.value = '';

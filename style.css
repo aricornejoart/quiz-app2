@@ -18334,3 +18334,102 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .studio-handwritten-mini-editor label {display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.76rem;}
 .studio-handwritten-mini-editor select {max-width:170px;background:#27243e;color:#fff;border:1px solid #786a9b;border-radius:6px;padding:5px;}
 @media (prefers-reduced-motion:reduce){.studio-handwritten-mini-toolbar {transition:none!important;}}
+
+/* 24A.7Z: keep Mastery's final Finish Quiz action readable on iPhone,
+   where normal Next/Previous icons use fixed 32–34 px buttons. */
+.nav-buttons #nextBtn.is-mastery-finish {
+  width: auto;
+  min-width: 90px;
+  padding: 0 10px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+/* Phase 24A.8a — enlarged Exam dashboard. Existing Saved Image popovers unchanged. */
+.studio-spaced-review-popover.is-exam-dashboard {
+  width:min(740px,calc(100vw - 24px)); max-height:min(86vh,860px); max-height:min(86dvh,860px);
+  overflow-y:auto; overscroll-behavior:contain; padding:18px 20px 20px;
+  border-color:var(--color-border-strong,#7c6cff);
+  background:var(--color-bg-surface,#2a2540);
+  color:var(--color-text-main,#fff);
+  border-radius:16px; box-shadow:0 28px 68px rgba(0,0,0,.67);
+}
+.exam-progress-spaced-header {
+  border:1px solid rgba(45,212,191,.35); border-radius:12px;
+  background:rgba(16,27,41,.67); padding:13px 15px 14px; margin-bottom:17px;
+}
+.is-exam-dashboard .studio-spaced-review-status { margin:0 0 11px; }
+.is-exam-dashboard .studio-spaced-review-block+.studio-spaced-review-block { margin-top:9px; }
+.is-exam-dashboard .studio-spaced-review-bar-heading { margin-bottom:5px; }
+.exam-progress-tabbar {display:flex; align-items:stretch; gap:8px; margin:0 0 15px; border-bottom:1px solid rgba(255,255,255,.18); padding-bottom:9px;}
+.exam-progress-tabbar button {
+  flex:1 1 0; min-height:39px; padding:8px 12px; background:var(--color-bg-control,#3a3360);
+  border:1px solid rgba(159,144,255,.35); color:var(--color-text-soft,#e0e0ff);
+  border-radius:9px; font:inherit; font-size:.91rem; font-weight:800; cursor:pointer;
+}
+.exam-progress-tabbar button[aria-selected="true"] {
+  border-color:var(--color-border-strong,#7c6cff); background:var(--color-bg-control-hover,#5a4bcf); color:#fff;
+}
+.exam-progress-tabcontent[hidden] {display:none!important;}
+.is-exam-dashboard .exam-post-quiz-report {font-size:1rem; background:rgba(12,12,25,.3); padding:15px 16px;}
+.is-exam-dashboard .exam-post-quiz-report h3 {font-size:1.07rem;}
+.exam-progress-actions { margin-top:17px; border:1px solid rgba(159,144,255,.36); padding:15px; border-radius:12px; background:rgba(9,11,29,.19); }
+.exam-progress-actions h4 {font-size:1rem; margin:0 0 12px;}
+.exam-progress-action-grid {display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;}
+.exam-progress-action-grid button,.exam-progress-section-controls button {
+  padding:11px 12px; border:1px solid var(--color-border-strong,#7c6cff);border-radius:9px;
+  color:#fff;background:var(--color-bg-control,#3a3360);font:inherit;font-weight:750;cursor:pointer;
+  min-height:42px;
+}
+.exam-progress-action-grid button:hover:not(:disabled),.exam-progress-section-controls button:hover:not(:disabled){background:var(--color-bg-control-hover,#5a4bcf);}
+.exam-progress-action-grid button:disabled,.exam-progress-section-controls button:disabled {opacity:.48;cursor:not-allowed;}
+.exam-progress-select-label {display:block;margin:0 0 7px;font-weight:750;font-size:.94rem;}
+.exam-progress-section-controls {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;}
+.exam-progress-section-controls select {
+  min-width:0;min-height:42px;border:1px solid var(--color-border-strong,#7c6cff);
+  border-radius:9px;padding:8px 11px;color:#fff;background:var(--color-bg-control,#3a3360);font:inherit;
+}
+.exam-progress-actions small {display:block;font-size:.79rem;line-height:1.5;color:var(--color-text-muted,#cfcfff);margin:10px 0 0;}
+.exam-progress-action-status {font-size:.84rem;line-height:1.4;color:#5eead4;margin:10px 0 0;}
+.exam-progress-action-status:empty {display:none;}
+.exam-score-stats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 14px;}
+.exam-score-stats>div {display:flex;flex-direction:column;gap:7px;padding:11px;border:1px solid rgba(159,144,255,.33);border-radius:10px;background:rgba(9,11,29,.35);}
+.exam-score-stats small {font-size:.77rem; color:var(--color-text-muted,#cfcfff);}
+.exam-score-stats strong {font-size:1.45rem;line-height:1.1;color:#fff;font-variant-numeric:tabular-nums;}
+/* Only the graph canvas is black. Other UI follows the current app theme. */
+.exam-score-chart {background:#000;color:#fff;border:1px solid var(--color-border-strong,#7c6cff);border-radius:12px;padding:12px 8px 5px;}
+.exam-score-chart svg {display:block;width:100%;max-height:310px;height:auto;overflow:visible;}
+.exam-score-grid {stroke:#30303c;stroke-width:1;}
+.exam-score-tick {fill:#d4d4e6;font-size:11px;}
+.exam-score-line {stroke:var(--color-border-soft-2,#9f90ff);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;fill:none;}
+.exam-score-dot {fill:#2dd4bf;stroke:#fff;stroke-width:1.5;}
+.exam-score-footnote {font-size:.8rem;color:var(--color-text-muted,#cfcfff);line-height:1.45;}
+.is-exam-dashboard button:focus-visible,.is-exam-dashboard select:focus-visible {outline:2px solid #facc15;outline-offset:2px;}
+@media(max-width:580px){
+  .studio-spaced-review-popover.is-exam-dashboard {padding:13px 12px 16px;border-radius:12px;max-height:90dvh;}
+  .exam-progress-action-grid,.exam-progress-section-controls {grid-template-columns:1fr;}
+  .exam-score-stats {gap:5px;}
+  .exam-score-stats>div {padding:9px 6px;}
+  .exam-score-stats strong {font-size:1.12rem;}
+  .is-exam-dashboard .exam-post-quiz-report {padding:11px;}
+}
+.exam-progress-spaced-header::before {content:"Spaced Repetition";display:block;color:#e5e7ff;font-weight:800;font-size:.89rem;margin-bottom:8px;}
+
+/* Phase 24A.8C — chronological mode labels for the shared Post Quiz Report graph.
+   Preserve the original themed line and the strictly black graph backdrop. */
+.exam-score-mode-history {display:flex;flex-wrap:wrap;align-items:center;gap:7px 9px;margin:9px 0 10px;}
+.exam-score-mode-history span {display:inline-block;padding:5px 8px;border-radius:8px;
+  background:var(--color-surface-secondary,rgba(32,28,63,.85));
+  color:var(--color-text-primary,#e9e6ff);border:1px solid var(--color-border-strong,#7c6cff);
+  font-size:.76rem;font-variant-numeric:tabular-nums;line-height:1.35;}
+@media (max-width:620px) {.exam-score-mode-history {gap:6px;}
+  .exam-score-mode-history span {font-size:.69rem;padding:4px 6px;}}
+
+/* Phase 24A.8D: study mode filter above the existing black score chart. */
+.exam-score-mode-filter {display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;}
+.exam-score-mode-filter label {font-size:.94rem;font-weight:750;white-space:nowrap;color:var(--color-text-primary,#e9e6ff);}
+.exam-score-mode-filter select {min-width:0;width:min(100%,310px);min-height:42px;padding:8px 11px;
+  border:1px solid var(--color-border-strong,#7c6cff);border-radius:9px;
+  background:var(--color-bg-control,#3a3360);color:var(--color-text-primary,#fff);font:inherit;}
+@media (max-width:480px) {.exam-score-mode-filter {align-items:stretch;flex-direction:column;gap:7px;}
+  .exam-score-mode-filter select {width:100%;}}
