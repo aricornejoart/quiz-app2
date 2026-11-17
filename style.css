@@ -13916,6 +13916,16 @@ body.review-mode-image-open {
     font-size: 0.82rem;
 }
 
+
+/* Phase 24A.8H: one-click universal JSON quiz-generation prompt. */
+.studio-json-prompt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.studio-json-prompt-actions .auth-action-btn { flex: 0 0 auto; }
+.studio-json-prompt-status { font-size: 13px; line-height: 1.4; color: var(--color-text-muted); }
+.studio-json-prompt-status.is-success { color: #bfe9c7; }
+.studio-json-prompt-status.is-error { color: #ffb3b3; }
+.studio-json-prompt-fallback { display: block; width: 100%; min-height: 120px; padding: 10px; border-radius: 8px; color: var(--color-text-main); background: var(--color-bg-panel, #151515); border: 1px solid var(--border-color, rgba(127,127,127,.35)); resize: vertical; }
+.studio-json-prompt-fallback.hidden { display: none; }
+
 .studio-json-import-preview {
     margin-top: 10px;
     padding: 12px;
@@ -18433,3 +18443,56 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   background:var(--color-bg-control,#3a3360);color:var(--color-text-primary,#fff);font:inherit;}
 @media (max-width:480px) {.exam-score-mode-filter {align-items:stretch;flex-direction:column;gap:7px;}
   .exam-score-mode-filter select {width:100%;}}
+
+
+/* Phase 24A.8E: shared completion dashboard with an always-accessible top Exit. */
+.completion-dashboard-modal {width:min(780px,100%);max-height:min(850px,calc(100dvh - 32px));gap:10px;}
+.completion-dashboard-topbar {display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:42px;}
+.completion-dashboard-exit {font-weight:750;min-height:40px;}
+.completion-dashboard-exit[hidden] {display:none!important;}
+.completion-dashboard-topbar .close-completion-challenge-btn {position:static;flex:none;}
+.completion-dashboard-tabbar {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:4px;border-radius:11px;background:var(--color-bg-control,rgba(80,68,140,.42));}
+.completion-dashboard-tabbar button {min-width:0;min-height:43px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--color-text-main,#fff);font:inherit;font-weight:800;cursor:pointer;}
+.completion-dashboard-tabbar button[aria-selected="true"] {background:var(--color-bg-control-hover,#6754bc);border-color:var(--color-border-strong,#9f90ff);box-shadow:0 1px 6px rgba(0,0,0,.2);}
+.completion-dashboard-tabbar button:focus-visible,.completion-dashboard-exit:focus-visible {outline:2px solid #facc15;outline-offset:2px;}
+.completion-dashboard-panels {min-height:0;flex:1;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain;}
+.completion-dashboard-panel[hidden] {display:none!important;}
+.completion-dashboard-panel {min-height:0;}
+.completion-dashboard-progress {min-height:0;display:flex;flex-direction:column;gap:15px;}
+.completion-dashboard-progress .exam-progress-spaced-header {padding:12px 14px;border:1px solid rgba(159,144,255,.25);border-radius:12px;}
+.completion-dashboard-progress .studio-spaced-review-info-trigger {position:relative;}
+.completion-dashboard-progress .exam-post-quiz-popup-slot {min-width:0;}
+.completion-dashboard-panels .completion-challenge-list {overflow:visible;padding-right:0;}
+.completion-dashboard-panels .exam-score-chart {background:#000;}
+@media (max-width:560px) {
+  .completion-dashboard-modal {max-height:calc(100dvh - 24px);}
+  .completion-dashboard-topbar {gap:7px;}
+  .completion-dashboard-exit {font-size:.79rem;padding:8px 10px;}
+  .completion-dashboard-progress .exam-progress-spaced-header {padding:10px;}
+  .completion-dashboard-tabbar button {min-height:44px;}
+}
+
+/* Ineligible challenges remain visible but greyed out, with reasons and disabled Start. */
+.completion-challenge-row.is-unavailable {opacity:.55;filter:grayscale(.55);}
+.completion-challenge-row.is-unavailable .completion-challenge-start-btn {cursor:not-allowed;opacity:.6;}
+
+/* Phase 24A.8F: optional named sections in native Exam JSON preview; manual controls retained. */
+.json-import-section-summary {margin:8px 0; padding:9px 11px; border-radius:8px; border:1px solid rgba(45,212,191,.35); background:rgba(45,212,191,.07); font-size:.87rem;}
+.json-import-section-summary ul {margin:5px 0 0; padding-left:20px; max-height:160px; overflow:auto;}
+.json-import-section-summary li {margin:3px 0; overflow-wrap:anywhere;}
+.studio-exam-section-actions {flex-wrap:wrap;}
+
+/* Phase 24A.8G: hierarchy uses existing Multiple Choice inline + / × controls. */
+.studio-hierarchy-migration-notice {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 174, 72, 0.42);
+  background: rgba(255, 174, 72, 0.09);
+  color: var(--color-text-main);
+}
+.studio-hierarchy-pair .studio-option-delete-btn:disabled,
+.studio-options-grid [data-hierarchy-inline-add]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

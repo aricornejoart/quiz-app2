@@ -1014,6 +1014,9 @@ MODIFICATION RULES FOR THIS APP
         importTemplateTargetFolderField: document.getElementById('importTemplateTargetFolderField'),
         importTemplateTargetFolderSelect: document.getElementById('importTemplateTargetFolderSelect'),
         importTemplateSheetBtn: document.getElementById('importTemplateSheetBtn'),
+        copyStudyBunnyJsonPromptBtn: document.getElementById('copyStudyBunnyJsonPromptBtn'),
+        copyStudyBunnyJsonPromptStatus: document.getElementById('copyStudyBunnyJsonPromptStatus'),
+        copyStudyBunnyJsonPromptFallback: document.getElementById('copyStudyBunnyJsonPromptFallback'),
         importJsonQuizFile: document.getElementById('importJsonQuizFile'),
         importJsonDestinationModeSelect: document.getElementById('importJsonDestinationModeSelect'),
         importJsonAppendQuizField: document.getElementById('importJsonAppendQuizField'),
@@ -1040,6 +1043,7 @@ MODIFICATION RULES FOR THIS APP
         studioExamSectionName: document.getElementById('studioExamSectionName'),
         studioExamSectionSelect: document.getElementById('studioExamSectionSelect'),
         studioExamSectionApply: document.getElementById('studioExamSectionApply'),
+        studioExamSectionReplace: document.getElementById('studioExamSectionReplace'),
         studioExamSectionDelete: document.getElementById('studioExamSectionDelete'),
         studioExamSectionStatus: document.getElementById('studioExamSectionStatus'),
         createQuizTypeSelect: document.getElementById('createQuizTypeSelect'),
@@ -1083,6 +1087,7 @@ MODIFICATION RULES FOR THIS APP
         sharedQuestionEditorFields: document.getElementById('sharedQuestionEditorFields'),
         multipleChoiceEditorFields: document.getElementById('multipleChoiceEditorFields'),
         hierarchyEditorFields: document.getElementById('hierarchyEditorFields'),
+        hierarchyMigrationNotice: document.getElementById('hierarchyMigrationNotice'),
         classifyEditorFields: document.getElementById('classifyEditorFields'),
         diagramEditorFields: document.getElementById('diagramEditorFields'),
         typedAnswerEditorFields: document.getElementById('typedAnswerEditorFields'),
@@ -1419,6 +1424,10 @@ MODIFICATION RULES FOR THIS APP
         completionChallengeStatus: document.getElementById('completionChallengeStatus'),
         closeCompletionChallengeBtn: document.getElementById('closeCompletionChallengeBtn'),
         completionChallengeLaterBtn: document.getElementById('completionChallengeLaterBtn'),
+        completionDashboardExitBtn: document.getElementById('completionDashboardExitBtn'),
+        completionDashboardProgressPanel: document.getElementById('completionDashboardProgressPanel'),
+        completionDashboardProgressBody: document.getElementById('completionDashboardProgressBody'),
+        completionDashboardChallengesPanel: document.getElementById('completionDashboardChallengesPanel'),
 
         questionTextEl: document.getElementById('questionText'),
         questionImage: document.getElementById('questionImage'),
@@ -6019,6 +6028,20 @@ MODIFICATION RULES FOR THIS APP
         }
         return [...nums].sort((a,b) => a-b).map(n => normalizeSheetText(rows[n-1]?.id)).filter(Boolean);
     }
+    // Display the existing stable-ID assignments in the editor as editable question ranges.
+    function formatExamSectionQuestionRanges(questionIds = [], rows = []) {
+        const chosen = new Set(questionIds);
+        const numbers = rows.map((row, index) => chosen.has(normalizeSheetText(row?.id)) ? index + 1 : 0).filter(Boolean);
+        const ranges = [];
+        for (let i = 0; i < numbers.length;) {
+            const start = numbers[i];
+            let end = start;
+            while (i + 1 < numbers.length && numbers[i + 1] === end + 1) end = numbers[++i];
+            ranges.push(start === end ? `${start}` : `${start}-${end}`);
+            i++;
+        }
+        return ranges.join(', ');
+    }
     function syncStudioExamSectionControls() {
         const hasSavedQuiz = !!state.auth.editingQuizId;
         elements.studioExamSectionsPanel?.classList.toggle('hidden', !hasSavedQuiz);
@@ -6035,17 +6058,32 @@ MODIFICATION RULES FOR THIS APP
     }
     function syncStudioExamSectionAction() {
         const selectedId = normalizeSheetText(elements.studioExamSectionSelect?.value);
+        const selected = normalizeExamSections(state.auth.examSections).find(section => section.id === selectedId);
         if (elements.studioExamSectionApply) {
             elements.studioExamSectionApply.textContent = selectedId ? 'Assign' : 'Create';
             elements.studioExamSectionApply.disabled = !state.auth.editingQuizId;
         }
+        elements.studioExamSectionReplace?.classList.toggle('hidden', !selectedId);
         elements.studioExamSectionDelete?.classList.toggle('hidden', !selectedId);
-        if (elements.studioExamSectionName) {
-            elements.studioExamSectionName.disabled = !!selectedId;
-            elements.studioExamSectionName.placeholder = selectedId ? 'Select Create new section to enter a name' : 'English Comprehension';
+        // Do not overwrite a draft rename on incidental rerenders.
+        if (state.auth.studioExamSectionEditSelectionId !== selectedId) {
+            state.auth.studioExamSectionEditSelectionId = selectedId;
+            if (elements.studioExamSectionName) elements.studioExamSectionName.value = selected?.name || '';
+            if (elements.studioExamSectionRange) elements.studioExamSectionRange.value = '';
         }
-        if (!state.auth.editingQuizId && elements.studioExamSectionStatus) {
-            elements.studioExamSectionStatus.textContent = 'Save this quiz or flashcard deck first, then assign its sections.';
+        if (elements.studioExamSectionName) {
+            elements.studioExamSectionName.disabled = false;
+            elements.studioExamSectionName.placeholder = 'English Comprehension';
+        }
+        if (elements.studioExamSectionRange) {
+            const current = selected ? formatExamSectionQuestionRanges(selected.questionIds, state.auth.studioQuizQuestions || []) : '';
+            elements.studioExamSectionRange.placeholder = current ? `Assigned: ${current}` : '1-15, 17, 22-25';
+        }
+        if (elements.studioExamSectionReplace) elements.studioExamSectionReplace.disabled = !state.auth.editingQuizId;
+        if (elements.studioExamSectionStatus) {
+            elements.studioExamSectionStatus.textContent = !state.auth.editingQuizId
+                ? 'Save this quiz or flashcard deck first, then assign its sections.'
+                : selected ? `Current range: ${formatExamSectionQuestionRanges(selected.questionIds, state.auth.studioQuizQuestions || []) || 'None'}. Assign adds questions; Replace Range sets the full range. Names can be edited.` : '';
         }
     }
     async function persistStudioExamSections(sections) {
@@ -6062,30 +6100,38 @@ MODIFICATION RULES FOR THIS APP
         renderStudioQuestionList();
         setCreatorStatus('Section assignments saved.', 'success');
     }
-    async function applyStudioExamSectionAssignment() {
+    async function applyStudioExamSectionAssignment(options = {}) {
         const rows = state.auth.studioQuizQuestions || [];
-        const questionIds = parseExamQuestionNumbers(elements.studioExamSectionRange?.value || '', rows);
+        const rangeText = normalizeSheetText(elements.studioExamSectionRange?.value);
         const current = normalizeExamSections(state.auth.examSections);
         const selectedId = normalizeSheetText(elements.studioExamSectionSelect?.value);
+        const replaceRange = options.replaceRange === true;
+        if ((!selectedId || replaceRange) && !rangeText) throw new Error('Enter question numbers or a range first.');
+        const questionIds = rangeText ? parseExamQuestionNumbers(rangeText, rows) : [];
         const name = normalizeSheetText(elements.studioExamSectionName?.value).slice(0, 90);
+        if (!name) throw new Error('Enter a section name.');
+        if (current.some(section => section.id !== selectedId && section.name.toLowerCase() === name.toLowerCase())) {
+            throw new Error('That section name already exists; choose a unique name.');
+        }
         let targetId = selectedId;
         if (!targetId) {
-            if (!name) throw new Error('Enter a new section name.');
-            if (current.some(section => section.name.toLowerCase() === name.toLowerCase())) throw new Error('That section already exists; select it from Existing Sections.');
+            if (current.length >= 80) throw new Error('At most 80 sections are supported.');
             targetId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `section_${Date.now()}`;
             current.push({id:targetId, name, questionIds:[]});
         }
         if (!current.some(section => section.id === targetId)) throw new Error('Select an existing section or create a new one.');
         const moving = new Set(questionIds);
-        const updated = current.map(section => ({...section, questionIds: section.id === targetId
-            ? [...new Set([...section.questionIds, ...questionIds])]
-            : section.questionIds.filter(id => !moving.has(id))}));
+        const updated = current.map(section => ({...section, name: section.id === targetId ? name : section.name,
+            questionIds: section.id === targetId
+                ? (replaceRange ? questionIds : [...new Set([...section.questionIds, ...questionIds])])
+                : section.questionIds.filter(id => !moving.has(id))}));
         await persistStudioExamSections(updated);
         if (elements.studioExamSectionRange) elements.studioExamSectionRange.value = '';
-        if (elements.studioExamSectionName) elements.studioExamSectionName.value = '';
+        if (elements.studioExamSectionName) elements.studioExamSectionName.value = name;
         if (elements.studioExamSectionSelect) elements.studioExamSectionSelect.value = targetId;
+        state.auth.studioExamSectionEditSelectionId = targetId;
         syncStudioExamSectionAction();
-        if (elements.studioExamSectionStatus) elements.studioExamSectionStatus.textContent = `${questionIds.length} question(s) assigned. Each question belongs to at most one section.`;
+        if (elements.studioExamSectionStatus) elements.studioExamSectionStatus.textContent = `${name} saved. ${updated.find(section => section.id === targetId)?.questionIds.length || 0} question(s) in this section.`;
     }
 
     function getQuizClassIdFromDescription(description = '') {
@@ -8353,16 +8399,26 @@ MODIFICATION RULES FOR THIS APP
         await recordStudioQuizActivity(quizId,'studied');
         await closeQuizStudioPage(true);
     }
-    function mountExamProgressDashboard(popup,quizId) {
+    function mountExamProgressDashboard(popup,quizId,options = {}) {
         const holder=document.createElement('section');
         holder.className='exam-post-quiz-popup-slot';
         holder.dataset.activeTab='report';
         holder.dataset.scoreHistoryMode='all';
         popup.appendChild(holder);
-        const snapshot={report:state.auth.examLatestReports.get(quizId)||null,
-            history:state.auth.examReportHistories.get(quizId)||[],sections:[],busy:false,actionStatus:''};
+        const liveReport = options.initialReport?.quizId===quizId ? options.initialReport : null;
+        const historical = state.auth.examReportHistories.get(quizId)||[];
+        const mergeLatest = rows => {
+            const values = [...(Array.isArray(rows)?rows:[])];
+            if (liveReport && !values.some(item=>item.attemptKey===liveReport.attemptKey)) values.push(liveReport);
+            return values.sort((a,b)=>Date.parse(a.completedAt)-Date.parse(b.completedAt));
+        };
+        const snapshot={report:liveReport||state.auth.examLatestReports.get(quizId)||null,
+            history:mergeLatest(historical),sections:[],busy:false,actionStatus:''};
         const render=()=>{
-            if (popup.isConnected && activeSavedImageProgressPopup===popup)
+            const inManagement=activeSavedImageProgressPopup===popup;
+            const inCompletion=!!options.completion && state.completionChallengePrompt.open &&
+                elements.completionChallengeOverlay?.contains(popup);
+            if (popup.isConnected && (inManagement || inCompletion))
                 renderExamProgressDashboard(popup,quizId,snapshot.report,snapshot.history,snapshot.sections);
             const status=holder.querySelector('.exam-progress-action-status');
             if(status)status.textContent=snapshot.actionStatus;
@@ -8429,10 +8485,16 @@ MODIFICATION RULES FOR THIS APP
             }
         });
         renderExamProgressDashboard(popup,quizId,snapshot.report,snapshot.history,snapshot.sections);
-        loadLatestExamPostQuizReport(quizId).then(report=>{snapshot.report=report;render();})
-            .catch(error=>{console.warn('Exam report load failed:',error);
+        loadLatestExamPostQuizReport(quizId).then(report=>{
+            // An in-flight save may not have reached Supabase when the completion
+            // dashboard opens. Never overwrite the just-finished local report
+            // with the previous completed attempt's persisted report.
+            snapshot.report=liveReport && (!report || Date.parse(liveReport.completedAt)>=Date.parse(report.completedAt))
+                ? liveReport : report;
+            render();
+        }).catch(error=>{console.warn('Exam report load failed:',error);
                 if(holder.isConnected)holder.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Latest report unavailable. Check Exam report migration.</p>');});
-        loadExamReportHistory(quizId).then(rows=>{snapshot.history=rows;render();})
+        loadExamReportHistory(quizId).then(rows=>{snapshot.history=mergeLatest(rows);render();})
             .catch(error=>{console.warn('Exam score history unavailable:',error);
                 if(holder.isConnected)holder.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Score history is unavailable. Apply the Phase 24A.8a SQL migration.</p>');});
         loadExamProgressSectionsForQuiz(quizId).then(sections=>{snapshot.sections=sections;render();})
@@ -29005,6 +29067,15 @@ MODIFICATION RULES FOR THIS APP
         if (elements.multipleChoiceEditorFields) elements.multipleChoiceEditorFields.classList.toggle('hidden', !usesMultipleChoiceOptions);
         if (elements.typedAnswerEditorFields) elements.typedAnswerEditorFields.classList.toggle('hidden', !isTypedAnswer);
         if (elements.hierarchyEditorFields) elements.hierarchyEditorFields.classList.toggle('hidden', !isHierarchy);
+        if (isHierarchy) {
+            updateHierarchyMigrationNotice();
+            if (state.auth.client && hierarchySchemaCapacity === null) {
+                void getHierarchyDatabaseItemCapacity().catch(error => {
+                    console.warn(error);
+                    updateHierarchyMigrationNotice();
+                });
+            }
+        }
         if (elements.classifyEditorFields) elements.classifyEditorFields.classList.toggle('hidden', !isClassify);
         if (elements.diagramEditorFields) {
             // Phase 22II: regular Multiple Choice question images are edited/previewed in Edit Image only.
@@ -30159,7 +30230,7 @@ MODIFICATION RULES FOR THIS APP
             const titlePrefix = unlocked ? '🏆' : '○';
             const statusText = unlocked ? 'Trophy unlocked — replay anytime.' : 'Not completed yet.';
             return `
-                <div class="completion-challenge-row${unlocked ? ' completed' : ''}${challenge.requiresBuildUp ? ' build-up' : ''}">
+                <div class="completion-challenge-row${unlocked ? ' completed' : ''}${challenge.requiresBuildUp ? ' build-up' : ''}${canStartChallenge ? '' : ' is-unavailable'}">
                   <div class="completion-challenge-row-main">
                     <div class="completion-challenge-row-title"><span>${titlePrefix}</span> ${escapeHtml(challenge.title)}</div>
                     <div class="completion-challenge-row-note">${escapeHtml(disabledReason || statusText)}</div>
@@ -30168,6 +30239,18 @@ MODIFICATION RULES FOR THIS APP
                 </div>
             `;
         }).join('');
+    }
+
+    function selectCompletionDashboardTab(tabName = 'progress') {
+        const tab = tabName==='challenges' ? 'challenges' : 'progress';
+        elements.completionChallengeOverlay?.querySelectorAll('[data-completion-dashboard-tab]').forEach(button => {
+            const selected=button.dataset.completionDashboardTab===tab;
+            button.setAttribute('aria-selected',String(selected));
+            button.tabIndex=selected?0:-1;
+        });
+        if(elements.completionDashboardProgressPanel) elements.completionDashboardProgressPanel.hidden=tab!=='progress';
+        if(elements.completionDashboardChallengesPanel) elements.completionDashboardChallengesPanel.hidden=tab!=='challenges';
+        if(elements.completionChallengeStatus && tab==='progress') setCompletionChallengeStatus('');
     }
 
     function openCompletionChallengePrompt(quiz, options = {}) {
@@ -30181,22 +30264,43 @@ MODIFICATION RULES FOR THIS APP
             elements.completionChallengeEyebrow.textContent = openedFromShortcut ? 'Challenges' : 'Quiz complete';
         }
         if (elements.completionChallengeTitle) {
-            elements.completionChallengeTitle.textContent = openedFromShortcut ? 'Choose a challenge' : 'Choose your next challenge';
+            elements.completionChallengeTitle.textContent = openedFromShortcut ? 'Choose a challenge' : 'Quiz complete';
         }
         if (elements.completionChallengeSubtitle) {
             elements.completionChallengeSubtitle.textContent = openedFromShortcut
                 ? `Start a challenge for ${quizName} without leaving Study Mode.`
-                : `You finished ${quizName}. Start a challenge now without going back to Manage Quizzes.`;
+                : `You finished ${quizName}. Check your progress or start another challenge.`;
         }
+        if (elements.completionDashboardExitBtn) elements.completionDashboardExitBtn.hidden=openedFromShortcut;
         setCompletionChallengeStatus('');
+        // Mount the SAME Progress dashboard as Manage Quizzes, with the same
+        // action handlers, tabs, graph, study-mode filter, and section selector.
         elements.completionChallengeOverlay.classList.remove('hidden');
         elements.completionChallengeOverlay.setAttribute('aria-hidden', 'false');
         state.completionChallengePrompt.open = true;
+        if(elements.completionDashboardProgressBody) {
+            const progressBody=elements.completionDashboardProgressBody;
+            progressBody.replaceChildren();
+            const source=getSpacedProgressPopupSource(`quiz:${quiz.id}`);
+            const template=document.createElement('template');
+            template.innerHTML=source?.markup||'';
+            const spaced=document.createElement('div');
+            spaced.className='exam-progress-spaced-header';
+            spaced.innerHTML=template.content.querySelector('[data-study-progress-panel]')?.innerHTML||
+                '<p>Spaced Repetition status is temporarily unavailable.</p>';
+            progressBody.appendChild(spaced);
+            mountStudyProgressRulesButton(progressBody,`quiz:${quiz.id}`);
+            const recent=state.examPostQuizAttempt?.report?.quizId===normalizeSheetText(quiz.id)
+                ? state.examPostQuizAttempt.report:null;
+            mountExamProgressDashboard(progressBody,normalizeSheetText(quiz.id),{completion:true,initialReport:recent});
+        }
+        selectCompletionDashboardTab(openedFromShortcut?'challenges':'progress');
         syncBodyScrollLock();
     }
 
     function shouldShowCompletionChallengePrompt() {
-        if (state.activeQuizChallenge?.challengeKey) return false;
+        // Completing a challenge is still a completed quiz. The dashboard must
+        // remain available even when no Build Up challenge is eligible.
         if (state.completionChallengePrompt.open) return false;
         if (!isQuizFinished()) return false;
         if (isProgressMode() && getProgressMissedQuestions().length > 0) return false;
@@ -30207,7 +30311,7 @@ MODIFICATION RULES FOR THIS APP
         const promptKey = getCompletionChallengePromptKey(quiz);
         if (!promptKey || state.completionChallengePrompt.shownForSessionKey === promptKey) return false;
 
-        return QUIZ_CHALLENGES.some(challenge => canQuizUseChallengeSettings(quiz, challenge));
+        return true;
     }
 
     function maybeOpenCompletionChallengePrompt() {
@@ -33058,12 +33162,77 @@ if (elements.importBackupFile) {
         syncCorrectOptionSelect(getStudioAllowMultipleAnswersFromDOM() ? (remappedCorrectValues.length ? remappedCorrectValues : '1') : String(Math.max(1, Math.min(nextCorrect, drafts.length))));
         setStudioDirtyState(true);
     }
+    // Phase 24A.8G: preserve legacy 10-item quizzes until the additive SQL migration is applied.
+    const HIERARCHY_ITEM_LIMIT = 30;
+    const HIERARCHY_LEGACY_ITEM_LIMIT = 10;
+    let hierarchySchemaClient = null;
+    let hierarchySchemaCapacity = null;
+    let hierarchySchemaPromise = null;
+
+    function updateHierarchyMigrationNotice() {
+        const notice = elements.hierarchyMigrationNotice;
+        if (!notice) return;
+        const ready = hierarchySchemaCapacity === HIERARCHY_ITEM_LIMIT;
+        notice.classList.toggle('hidden', ready);
+        if (!ready) notice.textContent = hierarchySchemaCapacity === HIERARCHY_LEGACY_ITEM_LIMIT
+            ? '⚠️ Supabase SQL migration pending: run SUPABASE_PHASE24A8G_HIERARCHY_30_ITEMS_MIGRATION.sql before saving 11–30 hierarchy items. Existing 2–10 item questions still work.'
+            : '⚠️ Phase 24A.8G requires a Supabase SQL migration to save 11–30 hierarchy items. See the Full ZIP migration file.';
+    }
+
+    async function getHierarchyDatabaseItemCapacity(forceRefresh = false) {
+        const client = state.auth.client;
+        if (!client) return HIERARCHY_LEGACY_ITEM_LIMIT;
+        if (hierarchySchemaClient !== client) {
+            hierarchySchemaClient = client;
+            hierarchySchemaCapacity = null;
+            hierarchySchemaPromise = null;
+        }
+        if (hierarchySchemaCapacity === HIERARCHY_ITEM_LIMIT || (!forceRefresh && hierarchySchemaCapacity !== null)) {
+            return hierarchySchemaCapacity;
+        }
+        if (!hierarchySchemaPromise) {
+            hierarchySchemaPromise = (async () => {
+                // Selecting a column with .limit(1) works even if the table is empty.
+                const { error } = await client.from('hierarchy_questions').select('item_30_text').limit(1);
+                if (error) {
+                    const code = String(error.code || '');
+                    const message = String(error.message || '');
+                    if (code === '42703' || code === 'PGRST204' || /item_30_text/i.test(message) && /not exist|not found|schema cache|column/i.test(message)) {
+                        hierarchySchemaCapacity = HIERARCHY_LEGACY_ITEM_LIMIT;
+                    } else {
+                        throw new Error(`Could not verify the Phase 24A.8G Hierarchy SQL migration: ${message || code}`);
+                    }
+                } else {
+                    hierarchySchemaCapacity = HIERARCHY_ITEM_LIMIT;
+                }
+                updateHierarchyMigrationNotice();
+                return hierarchySchemaCapacity;
+            })().finally(() => { hierarchySchemaPromise = null; });
+        }
+        return hierarchySchemaPromise;
+    }
+
+    function buildHierarchyDetailPayload(questionId, itemTexts, correctOrder, capacity) {
+        if (!Array.isArray(itemTexts) || itemTexts.length > HIERARCHY_ITEM_LIMIT) {
+            throw new Error('Hierarchy supports at most 30 items. No items were saved.');
+        }
+        if (itemTexts.length > capacity) {
+            throw new Error('⚠️ Supabase SQL migration required: run the Phase 24A.8G Hierarchy 30 Items migration before saving more than 10 items.');
+        }
+        const payload = { question_id: questionId, correct_order_json: Array.isArray(correctOrder) ? correctOrder : [] };
+        for (let index = 0; index < capacity; index += 1) {
+            payload[`item_${index + 1}_text`] = normalizeSheetText(itemTexts[index] || '');
+        }
+        return payload;
+    }
+
     function normalizeHierarchyDrafts(hierarchyDrafts = null) {
         const source = (Array.isArray(hierarchyDrafts) && hierarchyDrafts.length ? hierarchyDrafts : Array.from({ length: 4 }, (_, index) => ({ text: '', position: index + 1 })))
             .map((draft, index) => ({
                 text: normalizeSheetText(draft?.text),
                 position: Number(draft?.position || index + 1)
-            }));
+            }))
+            .slice(0, HIERARCHY_ITEM_LIMIT);
 
         while (source.length < 2) {
             source.push({ text: '', position: source.length + 1 });
@@ -33094,8 +33263,13 @@ if (elements.importBackupFile) {
         wrapper.className = 'studio-option-pair studio-hierarchy-pair';
         wrapper.dataset.hierarchyIndex = String(index + 1);
         wrapper.innerHTML = `
-            <label class="auth-field">
-              <span>Item ${index + 1}</span>
+            <label class="auth-field studio-option-text-field">
+              <span class="studio-option-label-row">
+                <span>Item ${index + 1}</span>
+                <span class="studio-option-label-actions">
+                  <button type="button" class="studio-option-delete-btn" data-hierarchy-delete aria-label="Delete Hierarchy Item ${index + 1}" title="Delete Hierarchy Item ${index + 1}">×</button>
+                </span>
+              </span>
               <input type="text" autocomplete="off" placeholder="Hierarchy item ${index + 1}" data-hierarchy-text>
             </label>
             <label class="auth-field">
@@ -33125,7 +33299,12 @@ if (elements.importBackupFile) {
         drafts.forEach((draft, index) => {
             elements.createHierarchyFieldsContainer.appendChild(createStudioHierarchyFieldRow(index, draft, drafts.length));
         });
+        const addRow = document.createElement('div');
+        addRow.className = 'studio-option-inline-add-row';
+        addRow.innerHTML = `<button type="button" class="auth-action-btn auth-secondary-btn studio-option-inline-add-btn" data-hierarchy-inline-add aria-label="Add Hierarchy Item" title="${drafts.length >= HIERARCHY_ITEM_LIMIT ? 'Maximum 30 items' : 'Add Hierarchy Item'}">+</button>`;
+        elements.createHierarchyFieldsContainer.appendChild(addRow);
         updateCreatorUI();
+        updateHierarchyMigrationNotice();
     }
 
     function getStudioHierarchyDraftsFromDOM() {
@@ -33138,26 +33317,42 @@ if (elements.importBackupFile) {
 
     function addStudioHierarchyField() {
         const drafts = getStudioHierarchyDraftsFromDOM();
-        if (drafts.length >= 10) {
-            setCreatorStatus('Hierarchy quizzes support up to 10 items.', 'error');
+        if (drafts.length >= HIERARCHY_ITEM_LIMIT) {
+            setCreatorStatus('Hierarchy quizzes support up to 30 items.', 'error');
             return;
         }
         drafts.push({ text: '', position: drafts.length + 1 });
         renderStudioHierarchyFields(drafts);
+        setStudioDirtyState(true);
+        // The inline plus lives immediately below the final item, keeping the edit position visible.
+        const rows = elements.createHierarchyFieldsContainer?.querySelectorAll('[data-hierarchy-index]') || [];
+        rows[rows.length - 1]?.querySelector('[data-hierarchy-text]')?.focus();
     }
 
-    function removeStudioHierarchyField() {
+    function removeStudioHierarchyFieldAt(itemNumber) {
         const drafts = getStudioHierarchyDraftsFromDOM();
+        const index = Number(itemNumber) - 1;
+        if (!Number.isInteger(index) || index < 0 || index >= drafts.length) return;
         if (drafts.length <= 2) {
             setCreatorStatus('Hierarchy quizzes need at least 2 items.', 'error');
             return;
         }
-        drafts.pop();
+        // Keep the relative correct order after deleting any row, not just the last one.
+        const removedPosition = drafts[index].position;
+        drafts.splice(index, 1);
+        drafts.forEach(draft => { if (draft.position > removedPosition) draft.position -= 1; });
         renderStudioHierarchyFields(drafts);
+        setStudioDirtyState(true);
+        const rows = elements.createHierarchyFieldsContainer?.querySelectorAll('[data-hierarchy-index]') || [];
+        rows[Math.min(index, rows.length - 1)]?.querySelector('[data-hierarchy-text]')?.focus();
+    }
+
+    function removeStudioHierarchyField() {
+        removeStudioHierarchyFieldAt(getStudioHierarchyDraftsFromDOM().length);
     }
 
     function getHierarchyDraftsFromDetailRow(detailRow) {
-        const itemTexts = Array.from({ length: 10 }, (_, index) => normalizeSheetText(detailRow?.[`item_${index + 1}_text`])).filter(Boolean);
+        const itemTexts = Array.from({ length: HIERARCHY_ITEM_LIMIT }, (_, index) => normalizeSheetText(detailRow?.[`item_${index + 1}_text`])).filter(Boolean);
         const correctOrder = Array.isArray(detailRow?.correct_order_json) ? detailRow.correct_order_json.map(value => Number(value)).filter(value => Number.isInteger(value) && value >= 1) : [];
         const positionMap = new Map();
         correctOrder.forEach((originalIndex, finalIndex) => {
@@ -39078,7 +39273,7 @@ if (elements.importBackupFile) {
 
         const { data, error } = await state.auth.client
             .from('hierarchy_questions')
-            .select('question_id, item_1_text, item_2_text, item_3_text, item_4_text, item_5_text, item_6_text, item_7_text, item_8_text, item_9_text, item_10_text, correct_order_json')
+            .select('*')
             .in('question_id', questionIds);
 
         if (error) throw error;
@@ -39290,9 +39485,13 @@ if (elements.importBackupFile) {
         }
 
         if (elements.createHierarchyFieldsContainer) {
-            elements.createHierarchyFieldsContainer.querySelectorAll('input, select').forEach(el => {
-                el.disabled = !creatorEnabled;
+            const count = elements.createHierarchyFieldsContainer.querySelectorAll('[data-hierarchy-index]').length;
+            elements.createHierarchyFieldsContainer.querySelectorAll('input, select, button').forEach(el => {
+                el.disabled = !creatorEnabled || (el.matches('[data-hierarchy-delete]') && count <= 2)
+                    || (el.matches('[data-hierarchy-inline-add]') && count >= HIERARCHY_ITEM_LIMIT);
             });
+            if (elements.addHierarchyItemBtn) elements.addHierarchyItemBtn.disabled = !creatorEnabled || count >= HIERARCHY_ITEM_LIMIT;
+            if (elements.removeHierarchyItemBtn) elements.removeHierarchyItemBtn.disabled = !creatorEnabled || count <= 2;
         }
 
         if (elements.createClassifyCategoriesContainer) {
@@ -39397,6 +39596,7 @@ if (elements.openQuizStudioBtn) {
 
         state.auth.editingQuizId = null;
         state.auth.examSections = [];
+        state.auth.studioExamSectionEditSelectionId = null;
         state.auth.studioExamSectionFilterId = '';
         state.auth.studioLastSavedMetadataSignature = '';
         state.auth.studioSaveFeedback = '';
@@ -41301,20 +41501,10 @@ if (elements.openQuizStudioBtn) {
     }
 
     async function insertBackupHierarchyDetail(questionId, detail = {}) {
-        const payload = {
-            question_id: questionId,
-            item_1_text: normalizeSheetText(detail.item_1_text),
-            item_2_text: normalizeSheetText(detail.item_2_text),
-            item_3_text: normalizeSheetText(detail.item_3_text),
-            item_4_text: normalizeSheetText(detail.item_4_text),
-            item_5_text: normalizeSheetText(detail.item_5_text),
-            item_6_text: normalizeSheetText(detail.item_6_text),
-            item_7_text: normalizeSheetText(detail.item_7_text),
-            item_8_text: normalizeSheetText(detail.item_8_text),
-            item_9_text: normalizeSheetText(detail.item_9_text),
-            item_10_text: normalizeSheetText(detail.item_10_text),
-            correct_order_json: Array.isArray(detail.correct_order_json) ? detail.correct_order_json : []
-        };
+        const itemTexts = Array.from({ length: HIERARCHY_ITEM_LIMIT }, (_, index) => normalizeSheetText(detail[`item_${index + 1}_text`]));
+        const lastUsed = itemTexts.reduce((last, text, index) => text ? index + 1 : last, 0);
+        const capacity = await getHierarchyDatabaseItemCapacity(lastUsed > HIERARCHY_LEGACY_ITEM_LIMIT);
+        const payload = buildHierarchyDetailPayload(questionId, itemTexts.slice(0, lastUsed), detail.correct_order_json, capacity);
         const { error } = await state.auth.client.from('hierarchy_questions').insert(payload);
         if (error) throw error;
     }
@@ -42505,6 +42695,7 @@ if (elements.openQuizStudioBtn) {
         if (!quizName) return void setCreatorStatus('Enter a quiz name first.', 'error');
         if (!prompt) return void setCreatorStatus('Enter a hierarchy prompt first.', 'error');
         if (itemTexts.length < 2) return void setCreatorStatus('Hierarchy quizzes need at least 2 filled items.', 'error');
+        if (itemTexts.length > HIERARCHY_ITEM_LIMIT) return void setCreatorStatus('Hierarchy quizzes support at most 30 items.', 'error');
         if (new Set(itemTexts).size !== itemTexts.length) return void setCreatorStatus('Hierarchy item texts must be unique.', 'error');
         const positions = hierarchyDrafts.map(draft => Number(draft.position));
         if (positions.some(position => !Number.isInteger(position) || position < 1 || position > hierarchyDrafts.length)) return void setCreatorStatus('Each hierarchy item needs a valid position.', 'error');
@@ -42513,6 +42704,8 @@ if (elements.openQuizStudioBtn) {
         const isEditingQuestion = !!state.auth.editingQuestionId;
         setCreatorStatus(!isEditingQuiz ? 'Creating hierarchy quiz...' : (isEditingQuestion ? 'Saving hierarchy changes...' : 'Adding hierarchy question to quiz...'));
         try {
+            const capacity = await getHierarchyDatabaseItemCapacity(hierarchyDrafts.length > HIERARCHY_LEGACY_ITEM_LIMIT);
+            if (hierarchyDrafts.length > capacity) throw new Error('⚠️ Supabase SQL migration required: run the Phase 24A.8G Hierarchy 30 Items migration before saving more than 10 items.');
             let quizId = state.auth.editingQuizId;
             let questionId = state.auth.editingQuestionId;
             const previousMediaRefs = questionId ? await getQuestionMediaReferences(questionId) : new Set();
@@ -42550,20 +42743,7 @@ if (elements.openQuizStudioBtn) {
                 .map((draft, index) => ({ position: Number(draft.position), originalIndex: index + 1 }))
                 .sort((a, b) => a.position - b.position)
                 .map(item => item.originalIndex);
-            const detailPayload = {
-                question_id: questionId,
-                correct_order_json: correctOrder,
-                item_1_text: filledDrafts[0]?.text || '',
-                item_2_text: filledDrafts[1]?.text || '',
-                item_3_text: filledDrafts[2]?.text || '',
-                item_4_text: filledDrafts[3]?.text || '',
-                item_5_text: filledDrafts[4]?.text || '',
-                item_6_text: filledDrafts[5]?.text || '',
-                item_7_text: filledDrafts[6]?.text || '',
-                item_8_text: filledDrafts[7]?.text || '',
-                item_9_text: filledDrafts[8]?.text || '',
-                item_10_text: filledDrafts[9]?.text || ''
-            };
+            const detailPayload = buildHierarchyDetailPayload(questionId, filledDrafts.map(draft => draft.text), correctOrder, capacity);
             const { error: detailError } = await state.auth.client.from('hierarchy_questions').upsert(detailPayload, { onConflict: 'question_id' });
             if (detailError) throw detailError;
             await deleteReplacedMediaReferences(previousMediaRefs, savedSharedMedia);
@@ -43052,6 +43232,7 @@ if (elements.openQuizStudioBtn) {
             state.auth.editingQuizId = quizRow.id;
             state.auth.pendingInsertAfterQuestionId = null;
             state.auth.examSections = getExamSectionsFromDescription(quizRow.description || '');
+            state.auth.studioExamSectionEditSelectionId = null;
             state.auth.studioExamSectionFilterId = '';
             state.auth.editingQuizMode = editorMode;
             state.auth.editingQuizType = editorMode === 'exam' ? 'multiple_choice' : editorMode;
@@ -43282,20 +43463,11 @@ if (elements.openQuizStudioBtn) {
         if (questionRow.question_type === 'hierarchy') {
             const detail = await loadHierarchyDetailByQuestionId(sourceQuestionId);
             if (!detail) throw new Error('Could not load the source hierarchy details.');
-            const { error } = await state.auth.client.from('hierarchy_questions').insert({
-                question_id: newQuestionId,
-                item_1_text: detail.item_1_text || '',
-                item_2_text: detail.item_2_text || '',
-                item_3_text: detail.item_3_text || '',
-                item_4_text: detail.item_4_text || '',
-                item_5_text: detail.item_5_text || '',
-                item_6_text: detail.item_6_text || '',
-                item_7_text: detail.item_7_text || '',
-                item_8_text: detail.item_8_text || '',
-                item_9_text: detail.item_9_text || '',
-                item_10_text: detail.item_10_text || '',
-                correct_order_json: Array.isArray(detail.correct_order_json) ? detail.correct_order_json : (detail.correct_order_json || [])
-            });
+            const itemTexts = Array.from({ length: HIERARCHY_ITEM_LIMIT }, (_, index) => normalizeSheetText(detail[`item_${index + 1}_text`]));
+            const lastUsed = itemTexts.reduce((last, text, index) => text ? index + 1 : last, 0);
+            const capacity = await getHierarchyDatabaseItemCapacity(lastUsed > HIERARCHY_LEGACY_ITEM_LIMIT);
+            const payload = buildHierarchyDetailPayload(newQuestionId, itemTexts.slice(0, lastUsed), detail.correct_order_json, capacity);
+            const { error } = await state.auth.client.from('hierarchy_questions').insert(payload);
             if (error) throw error;
             return newQuestionId;
         }
@@ -43995,6 +44167,9 @@ if (elements.openQuizStudioBtn) {
                 if (options.length < 2) {
                     throw new Error(`${rowLabel}: hierarchy questions need at least 2 items.`);
                 }
+                if (options.length > HIERARCHY_ITEM_LIMIT) {
+                    throw new Error(`${rowLabel}: hierarchy questions support at most ${HIERARCHY_ITEM_LIMIT} items.`);
+                }
                 if (order.length !== options.length) {
                     throw new Error(`${rowLabel}: hierarchy correct-order columns must include one position for each item.`);
                 }
@@ -44106,6 +44281,7 @@ if (elements.openQuizStudioBtn) {
             const { error: fallbackError } = await state.auth.client.from('multiple_choice_questions').upsert(fallbackPayload, { onConflict: 'question_id' });
             if (fallbackError) throw fallbackError;
         }
+        return questionId;
     }
 
     async function importTypedAnswerQuestionToSupabase(quizId, question, sortOrder) {
@@ -44153,6 +44329,7 @@ if (elements.openQuizStudioBtn) {
         };
         const { error: detailError } = await state.auth.client.from('multiple_choice_questions').upsert(detailPayload, { onConflict: 'question_id' });
         if (detailError) throw detailError;
+        return questionId;
     }
 
     async function importFlashcardQuestionToSupabase(quizId, question, sortOrder) {
@@ -44196,9 +44373,14 @@ if (elements.openQuizStudioBtn) {
             definition_image_url: savedFlashcardMedia.definition_image_url || ''
         }, { onConflict: 'question_id' });
         if (detailError) throwFlashcardBuildUpMigrationErrorIfNeeded(detailError);
+        return questionId;
     }
 
     async function importHierarchyQuestionToSupabase(quizId, question, sortOrder) {
+        const itemTexts = Array.isArray(question.options) ? question.options.map(value => normalizeSheetText(value)) : [];
+        if (itemTexts.length > HIERARCHY_ITEM_LIMIT) throw new Error('Hierarchy supports at most 30 items. This question was not imported.');
+        const capacity = await getHierarchyDatabaseItemCapacity(itemTexts.length > HIERARCHY_LEGACY_ITEM_LIMIT);
+        if (itemTexts.length > capacity) throw new Error('⚠️ Supabase SQL migration required before importing 11–30 hierarchy items. Run Phase 24A.8G migration first.');
         const { data, error } = await state.auth.client
             .from('questions')
             .insert({
@@ -44224,13 +44406,10 @@ if (elements.openQuizStudioBtn) {
             learning_resources_image_url: savedSharedMedia.learning_resources_image_url || ''
         }).eq('id', questionId);
         if (mediaUpdateError) throw mediaUpdateError;
-        const itemTexts = Array.isArray(question.options) ? question.options.map(value => normalizeSheetText(value)).slice(0, 10) : [];
-        const detailPayload = { question_id: questionId, correct_order_json: Array.isArray(question.correctOrder) ? question.correctOrder : [] };
-        Array.from({ length: 10 }, (_, index) => {
-            detailPayload[`item_${index + 1}_text`] = itemTexts[index] || '';
-        });
+        const detailPayload = buildHierarchyDetailPayload(questionId, itemTexts, question.correctOrder, capacity);
         const { error: detailError } = await state.auth.client.from('hierarchy_questions').upsert(detailPayload, { onConflict: 'question_id' });
         if (detailError) throw detailError;
+        return questionId;
     }
 
     async function importClassifyQuestionToSupabase(quizId, question, sortOrder) {
@@ -44282,31 +44461,50 @@ if (elements.openQuizStudioBtn) {
             classifications_json: classificationsJson
         }, { onConflict: 'question_id' });
         if (detailError) throw detailError;
+        return questionId;
+    }
+
+    async function ensureHierarchyImportCapacity(questions) {
+        const counts = (Array.isArray(questions) ? questions : [])
+            .filter(question => getQuestionTypeForImport(question) === 'hierarchy')
+            .map(question => Array.isArray(question.options) ? question.options.length : 0);
+        if (!counts.length) return;
+        const most = Math.max(...counts);
+        if (most > HIERARCHY_ITEM_LIMIT) throw new Error('Hierarchy supports at most 30 items. Import cancelled before saving questions.');
+        const capacity = await getHierarchyDatabaseItemCapacity(most > HIERARCHY_LEGACY_ITEM_LIMIT);
+        if (most > capacity) throw new Error('⚠️ Phase 24A.8G Supabase SQL migration required before importing 11–30 hierarchy items. No questions were imported.');
     }
 
     async function importGoogleSheetsQuestionsToSupabaseQuiz(quizId, questions, options = {}) {
+        await ensureHierarchyImportCapacity(questions);
         const total = questions.length;
         const startSortOrder = Number.isFinite(Number(options.startSortOrder)) ? Number(options.startSortOrder) : 0;
         const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+        // Stable returned IDs match input question positions, including mixed Exam types.
+        const insertedQuestionIds = [];
         if (onProgress) onProgress({ phase: 'questions-start', current: 0, total });
         for (let index = 0; index < total; index += 1) {
             const question = questions[index];
             const sortOrder = startSortOrder + index;
             const questionType = getQuestionTypeForImport(question);
             if (onProgress) onProgress({ phase: 'question', current: index + 1, total, questionType });
+            let insertedId;
             if (questionType === 'flashcard') {
-                await importFlashcardQuestionToSupabase(quizId, question, sortOrder);
+                insertedId = await importFlashcardQuestionToSupabase(quizId, question, sortOrder);
             } else if (questionType === 'hierarchy') {
-                await importHierarchyQuestionToSupabase(quizId, question, sortOrder);
+                insertedId = await importHierarchyQuestionToSupabase(quizId, question, sortOrder);
             } else if (questionType === 'classify') {
-                await importClassifyQuestionToSupabase(quizId, question, sortOrder);
+                insertedId = await importClassifyQuestionToSupabase(quizId, question, sortOrder);
             } else if (questionType === 'typed_answer') {
-                await importTypedAnswerQuestionToSupabase(quizId, question, sortOrder);
+                insertedId = await importTypedAnswerQuestionToSupabase(quizId, question, sortOrder);
             } else {
-                await importMultipleChoiceQuestionToSupabase(quizId, question, sortOrder);
+                insertedId = await importMultipleChoiceQuestionToSupabase(quizId, question, sortOrder);
             }
+            if (!insertedId) throw new Error(`Question ${index + 1} was saved without a question ID; section import cannot continue safely.`);
+            insertedQuestionIds.push(insertedId);
             if (onProgress) onProgress({ phase: 'question-complete', current: index + 1, total, questionType });
         }
+        return insertedQuestionIds;
     }
 
     function setImportProgressFromEvent(operationLabel, progress = {}) {
@@ -44335,6 +44533,7 @@ if (elements.openQuizStudioBtn) {
         if (onProgress) onProgress({ phase: 'reading', quizName: descriptor.name });
         const sourceQuestions = await loadQuestionsFromGoogleSheets(descriptor.sheet);
         const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'The selected Google Sheets quiz');
+        await ensureHierarchyImportCapacity(sourceQuestions);
 
         const appendToQuizId = normalizeSupabaseQuizId(options.appendToQuizId);
         if (appendToQuizId) {
@@ -44383,6 +44582,51 @@ if (elements.openQuizStudioBtn) {
         return { quizId: quizRow.id, quizName: descriptor.name, questionCount: sourceQuestions.length, quizType, folderId };
     }
 
+
+    // Phase 24A.8H: one authoritative prompt in templates/, embedded for reliable offline copy.
+    const STUDY_BUNNY_AI_JSON_QUIZ_PROMPT = "STUDY BUNNY — UNIVERSAL CHATGPT JSON QUIZ GENERATOR\nCompatible with Study Bunny native JSON quiz importer (format study_bunny_quiz, version 1; Phase 24A.8H).\n\nYOUR TASK\nYou are creating a Study Bunny import-ready quiz from study materials I upload or paste. First read the materials and my requirements carefully. If I have not yet supplied the study material, desired question count, or quiz type, ask for those details before generating. When provided, generate one complete, valid .json file, not a conversational quiz or a separate answer key.\n\nSOURCE AND QUALITY RULES\n- Use the provided source material as the primary authority; do not invent details that the material does not support. Respect my requested coverage, terminology, difficulty, question count, option count and formats.\n- Aim for accurate, unambiguous questions; include plausible distractors, distribute coverage across the headings, and avoid duplicates. Include every correct choice for Select All That Apply (SATA).\n- Do not assume you know the contents of a missing or unreadable document, image, or diagram. Ask for it or clearly tell me which information you cannot read.\n- Before exporting, independently check the factual answer to every question, especially numeric answers and ordered sequences.\n\nROOT JSON CONTRACT\nReturn a single JSON OBJECT with exactly the top-level fields needed, such as:\n{\n  \"format\": \"study_bunny_quiz\",\n  \"version\": 1,\n  \"quizType\": \"exam\",\n  \"title\": \"Descriptive title\",\n  \"sections\": [{\"name\":\"Source document section heading\",\"questions\":\"1-4\"}],\n  \"questions\": [ /* question objects as described below */ ]\n}\nUse standard JSON (double quotes, no comments, no Markdown code fences, no trailing commas, no extra text). The placeholder above is explanatory only; omit comments in the actual JSON. Provide a downloadable .json file when possible; otherwise output only the complete valid JSON for saving as a file.\n\nQUIZ TYPES AND WHAT STUDY BUNNY ACTUALLY SUPPORTS\nSet quizType to one of these exact values:\n- multiple_choice — standalone multiple-choice quiz (single-answer and SATA).\n- typed_answer — standalone typed-answer quiz.\n- hierarchy — standalone ordering quiz; 2–30 items per question.\n- classify — standalone classification quiz.\n- flashcard — standalone term/definition study deck.\n- diagrams — standalone image/diagram questions; see image restrictions below.\n- exam — mixed exam containing ONLY multiple_choice, typed_answer, hierarchy, or classify questions.\nEvery question MUST include questionType matching one of the permitted types for that quiz. Do not put flashcard or diagrams questions inside an exam. For single-type quizzes, keep questionType consistent with quizType.\n\nQUESTION FORMATS — COPY THE FIELD NAMES EXACTLY\n\nA) MULTIPLE CHOICE (questionType: multiple_choice)\n{\n  \"questionType\": \"multiple_choice\",\n  \"question\": \"What structure begins the respiratory zone?\",\n  \"options\": [\"Trachea\", \"Terminal bronchiole\", \"Respiratory bronchiole\", \"Larynx\", \"Primary bronchus\"],\n  \"correctAnswers\": [\"Respiratory bronchiole\"],\n  \"allowMultipleAnswers\": false\n}\nBy default use five distinct nonempty answer options unless I specify otherwise; the importer requires at least two. For SATA, set allowMultipleAnswers to true and put EVERY valid answer string in correctAnswers, e.g. [\"Aorta\", \"Pulmonary artery\"]. For a single-answer question, use exactly one correct answer and false. CRITICAL: correctAnswers contains exact OPTION TEXT, not letters, option numbers, or indexes. If the correct option is the literal number 2, write correctAnswers: [\"2\"] (a string) and include \"2\" in options; do NOT use numeric 2 or positional index. Compare whitespace, capitalization and punctuation exactly. Optional feedback: options may instead be objects like {\"text\":\"Trachea\",\"explanation\":\"Conducting zone\"}; correctAnswers must still contain the exact option text. Optional buildUp: use the same shared buildUp identifier for closely related questions only if requested.\n\nB) TYPED ANSWER (questionType: typed_answer)\n{\n  \"questionType\": \"typed_answer\",\n  \"question\": \"Name cranial nerve VIII.\",\n  \"acceptedAnswers\": [\"Vestibulocochlear\", \"Vestibulocochlear nerve\"],\n  \"correctExplanation\": \"Carries hearing and equilibrium information.\"\n}\nacceptedAnswers must contain at least one accurate, nonempty answer. List only true spelling variations, synonyms, or acceptable equivalent expressions; do not add wrong answers. correctExplanation is optional.\n\nC) HIERARCHY (questionType: hierarchy)\n{\n  \"questionType\": \"hierarchy\",\n  \"question\": \"Put these structures in airflow order.\",\n  \"items\": [\"Trachea\", \"External nares\", \"Primary bronchi\", \"Nasal cavity\"],\n  \"correctOrder\": [2, 4, 1, 3]\n}\nUse 2–30 UNIQUE, nonempty item texts. correctOrder MUST be a permutation of the 1-based original positions in items, with each integer 1 through N appearing exactly once. It represents the desired correct display sequence. Do not confuse the position with the text. If the items were already in correct order, correctOrder should be [1, 2, ... N]. Verify it by reading the items aloud in correctOrder sequence.\n\nD) CLASSIFY (questionType: classify)\n{\n  \"questionType\": \"classify\",\n  \"question\": \"Classify each structure by respiratory zone.\",\n  \"classifications\": [\n    {\"id\":\"conducting\",\"label\":\"Conducting zone\"},\n    {\"id\":\"respiratory\",\"label\":\"Respiratory zone\"}\n  ],\n  \"items\": [\n    {\"text\":\"Trachea\",\"correctClassificationId\":\"conducting\"},\n    {\"text\":\"Alveolus\",\"correctClassificationId\":\"respiratory\"}\n  ]\n}\nEach classification must have a unique nonempty id and meaningful label. Every item must contain nonempty text and a correctClassificationId that EXACTLY matches an existing classification id. Do not include unexplained classes or unmatched items.\n\nE) FLASHCARDS (questionType: flashcard; standalone quizType flashcard only)\n{\n  \"questionType\": \"flashcard\",\n  \"termText\": \"Alveolus\",\n  \"definitionText\": \"Air sac where pulmonary gas exchange occurs.\"\n}\nProvide substantial front and back text for every card. Flashcards are not an Exam question type. Images are optional; plain text is sufficient.\n\nF) DIAGRAMS (questionType: diagrams; standalone quizType diagrams only)\n{\n  \"questionType\": \"diagrams\",\n  \"question\": \"Identify the structure indicated on this diagram.\",\n  \"image\": \"https://example.org/a-real-accessible-diagram.png\",\n  \"options\": [\"Trachea\", \"Esophagus\", \"Larynx\", \"Bronchus\"],\n  \"correctAnswers\": [\"Trachea\"],\n  \"allowMultipleAnswers\": false\n}\nA Diagram question uses a real accessible image reference plus the multiple-choice answer fields; it is NOT an automatic image-generation instruction. Replace the example URL with a genuine, valid, accessible image you have permission to use. Never invent or leave placeholder URLs. If no usable image is supplied, ask me for an image or generate text-only questions instead and explain that image setup will be needed inside Study Bunny. For accurately positioned existing diagram labels you may supply diagramLabels objects with label, x and y percentage coordinates (0–100) ONLY when the image and verified label locations are available. Do not guess coordinates.\n\nAUTOMATIC EXAM SECTIONS FROM DOCUMENT HEADINGS\nFor quizType exam, sections help the Post Quiz Report and Study Individual Section feature work after import. Use the relevant section headings from my document as section names, exactly as written when 1–90 characters. Organize questions under the matching headings and assign ALL exam questions to exactly one section. Preferred compact syntax is a top-level sections array:\n\"sections\": [\n  {\"name\":\"Respiratory Anatomy\",\"questions\":\"1-15\"},\n  {\"name\":\"Gas Exchange\",\"questions\":\"16-30\"}\n]\nQuestion numbers are 1-based positions WITHIN THIS JSON FILE, not existing question numbers in the app. The questions property accepts a single number, ranges such as \"1-15\", comma-separated lists such as \"1-4, 8, 10-12\", or an array of numbers/ranges. No overlaps, no out-of-range numbers, no empty sections, no more than 80 named sections, and keep names at most 90 characters. For interleaved questions, you may instead put \"section\":\"Exact document heading\" on each question; never supply conflicting section assignments. For append imports, still number from 1 inside the new file. Study Bunny merges matching named sections and retains manual section editing. If the source has no clear section headings, ask me whether to create descriptive headings rather than falsely claiming invented headings are exact document titles.\n\nAPP FEATURES HANDLED AUTOMATICALLY (DO NOT INVENT FIELDS)\nStudy Bunny handles quiz storage, manual editor changes, reports, score history, challenges, section-only practice, and spaced-repetition status after import. No report, score, progress, challenge or spaced-repetition metadata is required in this JSON. There is no need to explain the app's internal database or UI to the importer. Do not invent keys for these features.\n\nFINAL VALIDATION BEFORE YOU DELIVER\n1. JSON syntax parses with strict JSON.parse; no missing quotes, comments, trailing commas, or Markdown wrappers.\n2. Root format, version, quizType, title and nonempty questions array are correct.\n3. Every questionType is allowed for its quizType; an exam includes only MC, Typed, Hierarchy or Classify.\n4. Every MC/Diagram correctAnswers entry exactly matches its option text, especially numeric text; SATA contains all and only correct choices, with allowMultipleAnswers true.\n5. Every typed question has acceptedAnswers; every flashcard has meaningful front and back text.\n6. Every Hierarchy question has 2–30 unique items and a valid exact permutation correctOrder.\n7. Every Classify item matches one of the declared classification IDs.\n8. Every Exam question is assigned to the intended document section, with non-overlapping valid 1-based question ranges.\n9. The requested question count, difficulty, section coverage and factual answers are all correct.\n10. Do not claim that nonexistent image URLs or missing diagram images are ready to import.\n\nIf I ask for a specific quiz type or a mixed Exam, follow that request. If I have not specified a type and provide material with multiple distinct sections, ask whether I want an Exam; do not silently choose an incompatible type. Now use the study material and instructions I provide to create my Study Bunny JSON file.\n";
+
+    async function copyStudyBunnyJsonQuizPrompt() {
+        const status = elements.copyStudyBunnyJsonPromptStatus;
+        const fallback = elements.copyStudyBunnyJsonPromptFallback;
+        const showStatus = (message, kind) => {
+            if (!status) return;
+            status.textContent = message;
+            status.classList.toggle('is-success', kind === 'success');
+            status.classList.toggle('is-error', kind === 'error');
+        };
+        if (fallback) fallback.classList.add('hidden');
+        try {
+            if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('Clipboard API unavailable');
+            await navigator.clipboard.writeText(STUDY_BUNNY_AI_JSON_QUIZ_PROMPT);
+            showStatus('Copied! Paste into ChatGPT with your study material.', 'success');
+            return true;
+        } catch (clipboardError) {
+            // Safari and non-HTTPS environments may require the legacy copy fallback.
+            const input = document.createElement('textarea');
+            input.value = STUDY_BUNNY_AI_JSON_QUIZ_PROMPT;
+            input.setAttribute('readonly', '');
+            input.style.position = 'fixed';
+            input.style.left = '-9999px';
+            document.body.appendChild(input);
+            input.select();
+            let copied = false;
+            try { copied = !!document.execCommand('copy'); } catch (_) { copied = false; }
+            input.remove();
+            if (copied) {
+                showStatus('Copied! Paste into ChatGPT with your study material.', 'success');
+                return true;
+            }
+            if (fallback) {
+                fallback.value = STUDY_BUNNY_AI_JSON_QUIZ_PROMPT;
+                fallback.classList.remove('hidden');
+                fallback.focus();
+                fallback.select();
+            }
+            showStatus('Automatic copy unavailable. The prompt is selected below for manual copying.', 'error');
+            return false;
+        }
+    }
 
     function normalizeJsonQuizQuestionType(value = '') {
         const key = normalizeSheetText(value).toLowerCase().replace(/[\s-]+/g, '_');
@@ -44506,6 +44750,7 @@ if (elements.openQuizStudioBtn) {
             const suppliedOrder = Array.isArray(rawQuestion.correctOrder || rawQuestion.correct_order) ? (rawQuestion.correctOrder || rawQuestion.correct_order) : [];
             base.correctOrder = suppliedOrder.length ? suppliedOrder.map(Number) : base.options.map((_, itemIndex) => itemIndex + 1);
             if (base.options.length < 2) issues.push('Hierarchy needs at least 2 items.');
+            if (base.options.length > HIERARCHY_ITEM_LIMIT) issues.push('Hierarchy exceeds the 30-item maximum.');
             if (base.correctOrder.length !== base.options.length) issues.push('Hierarchy correct order must contain one position for every item.');
             const validPositions = base.correctOrder.every(value => Number.isInteger(value) && value >= 1 && value <= base.options.length);
             if (!validPositions || new Set(base.correctOrder).size !== base.correctOrder.length) issues.push('Hierarchy correct-order positions must be unique whole numbers within the item range.');
@@ -44560,6 +44805,102 @@ if (elements.openQuizStudioBtn) {
         return base;
     }
 
+    // Phase 24A.8F: exam JSON may name sections with local question numbers/ranges
+    // or with each question's `section` field. Validate before saving any questions.
+    function parseJsonExamSectionNumbers(spec, count, name) {
+        const pieces = typeof spec === 'number' ? [spec] : (Array.isArray(spec) ? spec :
+            (typeof spec === 'string' ? spec.split(',') : []));
+        if (!pieces.length) throw new Error(`Section "${name}" needs question numbers (for example "1-15").`);
+        const numbers = new Set();
+        for (const piece of pieces) {
+            const part = String(piece).trim();
+            const match = part.match(/^(\d+)(?:\s*[-–—]\s*(\d+))?$/);
+            if (!match) throw new Error(`Section "${name}" has an invalid question range: ${part || '(blank)'}.`);
+            const first = Number(match[1]);
+            const last = match[2] ? Number(match[2]) : first;
+            if (first < 1 || last < first || last > count) throw new Error(`Section "${name}" uses questions outside 1-${count}.`);
+            for (let n = first; n <= last; n++) numbers.add(n - 1);
+        }
+        return [...numbers].sort((a,b) => a-b);
+    }
+
+    function analyzeJsonExamSections(payload, rawQuestions, quizType) {
+        const definitions = Array.isArray(payload) ? undefined : (payload?.sections ?? payload?.examSections);
+        const inlineNames = rawQuestions.map(question => normalizeSheetText(question?.section || question?.sectionName || question?.section_name));
+        const hasSections = definitions !== undefined || inlineNames.some(Boolean);
+        if (!hasSections) return [];
+        if (quizType !== 'exam') throw new Error('Section import requires "quizType": "exam".');
+        if (definitions !== undefined && !Array.isArray(definitions)) throw new Error('"sections" must be an array of named sections.');
+        const sections = [];
+        const byName = new Map();
+        const assigned = new Map();
+        function getSection(nameInput) {
+            const name = normalizeSheetText(nameInput);
+            if (!name || name.length > 90) throw new Error('Section names must be 1–90 characters.');
+            const key = name.toLowerCase();
+            if (byName.has(key)) return byName.get(key);
+            if (sections.length >= 80) throw new Error('Exam JSON can contain at most 80 sections.');
+            const section = {name, questionIndexes:[]};
+            sections.push(section);
+            byName.set(key, section);
+            return section;
+        }
+        function assign(section, indexes) {
+            for (const index of indexes) {
+                const previous = assigned.get(index);
+                if (previous && previous !== section) throw new Error(`Question ${index + 1} belongs to both "${previous.name}" and "${section.name}".`);
+                if (!previous) { assigned.set(index, section); section.questionIndexes.push(index); }
+            }
+        }
+        for (const entry of definitions || []) {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('Each "sections" entry must have a name and question numbers.');
+            const name = normalizeSheetText(entry.name || entry.title);
+            if (byName.has(name.toLowerCase())) throw new Error(`Duplicate section name: "${name}".`);
+            const section = getSection(name);
+            const list = entry.questions ?? entry.range ?? entry.questionRange ?? entry.questionNumbers;
+            assign(section, parseJsonExamSectionNumbers(list, rawQuestions.length, name));
+        }
+        inlineNames.forEach((name, index) => { if (name) assign(getSection(name), [index]); });
+        return sections.map(section => ({...section, questionIndexes:section.questionIndexes.sort((a,b)=>a-b)}));
+    }
+
+    function mergeImportedExamSectionIds(existingSections, plannedSections, insertedIds) {
+        const merged = normalizeExamSections(existingSections).map(section => ({...section, questionIds:[...section.questionIds]}));
+        for (const section of plannedSections) {
+            const ids = section.questionIndexes.map(index => insertedIds[index]);
+            if (ids.some(id => !normalizeSheetText(id))) throw new Error(`Missing saved question IDs for section "${section.name}".`);
+            let target = merged.find(existing => existing.name.toLowerCase() === section.name.toLowerCase());
+            if (!target) {
+                if (merged.length >= 80) throw new Error('This Exam already has too many sections to append new section names.');
+                target = {id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `import-section-${Date.now()}-${merged.length}`, name:section.name, questionIds:[]};
+                merged.push(target);
+            }
+            target.questionIds = [...new Set([...target.questionIds,...ids])];
+        }
+        return normalizeExamSections(merged);
+    }
+
+    async function saveImportedJsonExamSections(quizId, plannedSections, insertedIds) {
+        if (!plannedSections?.length) return [];
+        try {
+            const {data, error:readError} = await state.auth.client.from('quizzes').select('description').eq('id',quizId).maybeSingle();
+            if (readError || !data) throw readError || new Error('Exam not found.');
+            const metadata = getQuizMetadataForWrite(data.description || '');
+            const merged = mergeImportedExamSectionIds(metadata.examSections, plannedSections, insertedIds);
+            metadata.examSections = merged;
+            const {error:writeError} = await state.auth.client.from('quizzes').update({description:buildQuizDescriptionFromMetadata(metadata)}).eq('id',quizId);
+            if (writeError) throw writeError;
+            if (normalizeSheetText(state.auth.editingQuizId) === normalizeSheetText(quizId)) {
+                state.auth.examSections = merged;
+                syncStudioExamSectionControls();
+                renderStudioQuestionList();
+            }
+            return merged;
+        } catch (error) {
+            throw new Error(`Questions imported, but section assignments were NOT saved: ${error.message || error}. Open the quiz and assign the sections manually before retrying an import.`);
+        }
+    }
+
     function analyzeJsonQuizPayload(payload = {}) {
         const rawQuestions = Array.isArray(payload) ? payload : (Array.isArray(payload?.questions) ? payload.questions : []);
         if (!rawQuestions.length) throw new Error('This JSON file does not contain a non-empty questions array.');
@@ -44576,11 +44917,14 @@ if (elements.openQuizStudioBtn) {
         if (quizType === 'exam') {
             questions = rawQuestions.map((question, index) => normalizeJsonQuizQuestion(question || {}, index, 'exam'));
         }
+        const tooLongHierarchyIndex = questions.findIndex(question => question.questionType === 'hierarchy' && question.options?.length > HIERARCHY_ITEM_LIMIT);
+        if (tooLongHierarchyIndex !== -1) throw new Error(`Question ${tooLongHierarchyIndex + 1}: Hierarchy supports at most ${HIERARCHY_ITEM_LIMIT} items. No questions were imported.`);
         const counts = questions.reduce((map, question) => {
             map[question.questionType] = (map[question.questionType] || 0) + 1;
             return map;
         }, {});
         const problemQuestions = questions.map((question, index) => ({ number: index + 1, type: question.questionType, issues: question.importIssues || [] })).filter(item => item.issues.length);
+        const sections = analyzeJsonExamSections(payload, rawQuestions, quizType);
         return {
             format: Array.isArray(payload) ? '' : normalizeSheetText(payload.format),
             version: Array.isArray(payload) ? 1 : Number(payload.version || 1),
@@ -44588,7 +44932,8 @@ if (elements.openQuizStudioBtn) {
             quizType,
             questions,
             counts,
-            problemQuestions
+            problemQuestions,
+            sections
         };
     }
 
@@ -44605,7 +44950,10 @@ if (elements.openQuizStudioBtn) {
         const issuesHtml = issueCount
             ? `<details class="json-import-issues" open><summary>${issueCount} ${issueCount === 1 ? 'question needs' : 'questions need'} attention</summary><div class="json-import-issue-list">${analysis.problemQuestions.map(item => `<div><strong>Q${item.number} · ${escapeHtml(getImportQuizTypeLabel(item.type))}</strong><ul>${item.issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul></div>`).join('')}</div></details>`
             : '<div class="json-import-valid">No question issues detected.</div>';
-        elements.importJsonPreview.innerHTML = `<div><strong>${escapeHtml(getImportQuizTypeLabel(analysis.quizType))}</strong> · ${analysis.questions.length} ${analysis.questions.length === 1 ? 'question' : 'questions'}${typeSummary ? ` · ${escapeHtml(typeSummary)}` : ''}</div>${issuesHtml}`;
+        const sectionHtml = analysis.sections?.length
+            ? `<div class="json-import-section-summary"><strong>Sections (${analysis.sections.length}) — automatic assignment</strong><ul>${analysis.sections.map(section => `<li>${escapeHtml(section.name)}: ${section.questionIndexes.length} question(s) · ${escapeHtml(section.questionIndexes.map(index => index + 1).join(', '))}</li>`).join('')}</ul></div>`
+            : (analysis.quizType === 'exam' ? '<div class="creator-note">No section names supplied. Sections can still be created manually later.</div>' : '');
+        elements.importJsonPreview.innerHTML = `<div><strong>${escapeHtml(getImportQuizTypeLabel(analysis.quizType))}</strong> · ${analysis.questions.length} ${analysis.questions.length === 1 ? 'question' : 'questions'}${typeSummary ? ` · ${escapeHtml(typeSummary)}` : ''}</div>${sectionHtml}${issuesHtml}`;
         elements.importJsonPreview.classList.toggle('is-success', !issueCount);
         elements.importJsonPreview.classList.remove('is-error');
     }
@@ -44632,7 +44980,17 @@ if (elements.openQuizStudioBtn) {
             renderGoogleSheetsImportControls();
             throw new Error(`Could not parse this JSON file. ${error.message}`);
         }
-        const analysis = analyzeJsonQuizPayload(payload);
+        let analysis;
+        try { analysis = analyzeJsonQuizPayload(payload); }
+        catch (error) {
+            if (elements.importJsonPreview) {
+                elements.importJsonPreview.textContent = `JSON validation error: ${error.message}`;
+                elements.importJsonPreview.classList.add('is-error');
+                elements.importJsonPreview.classList.remove('is-success');
+            }
+            renderGoogleSheetsImportControls();
+            throw error;
+        }
         state.auth.jsonQuizImportPayload = payload;
         state.auth.jsonQuizImportAnalysis = analysis;
         if (elements.importJsonQuizNameInput && !normalizeSheetText(elements.importJsonQuizNameInput.value)) {
@@ -44696,6 +45054,7 @@ if (elements.openQuizStudioBtn) {
         if (!state.auth.client || !state.auth.user?.id) throw new Error('Sign in before importing JSON quizzes.');
         const analysis = state.auth.jsonQuizImportAnalysis;
         if (!analysis?.questions?.length) throw new Error('Choose and preview a valid JSON quiz file first.');
+        await ensureHierarchyImportCapacity(analysis.questions);
         const appendMode = isImportAppendMode(elements.importJsonDestinationModeSelect);
         let quizId = '';
         let quizName = '';
@@ -44714,6 +45073,14 @@ if (elements.openQuizStudioBtn) {
             startSortOrder = appendContext.maxSortOrder + 1;
             totalQuestionCount = appendContext.questionCount + analysis.questions.length;
             resultQuizType = appendContext.quizType === 'exam' ? 'exam' : analysis.quizType;
+            if (analysis.sections?.length) {
+                const {data:metadataRow,error:metadataError} = await state.auth.client.from('quizzes').select('description').eq('id',quizId).maybeSingle();
+                if (metadataError || !metadataRow) throw metadataError || new Error('Cannot read existing section metadata.');
+                const existing = getExamSectionsFromDescription(metadataRow.description || '');
+                const existingNames = new Set(existing.map(section => section.name.toLowerCase()));
+                const extra = analysis.sections.filter(section => !existingNames.has(section.name.toLowerCase())).length;
+                if (existing.length + extra > 80) throw new Error('Appending these sections would exceed the 80-section limit. Rename or merge sections first.');
+            }
         } else {
             quizName = normalizeSheetText(elements.importJsonQuizNameInput?.value) || analysis.title || state.auth.jsonQuizImportFileName.replace(/\.json$/i, '') || 'Imported Quiz';
             folderId = normalizeSheetText(elements.importJsonTargetFolderSelect?.value);
@@ -44732,10 +45099,14 @@ if (elements.openQuizStudioBtn) {
         }
 
         const operationLabel = appendMode ? `Adding JSON questions to ${quizName}` : `Importing ${quizName}`;
-        await importGoogleSheetsQuestionsToSupabaseQuiz(quizId, analysis.questions, {
+        const insertedQuestionIds = await importGoogleSheetsQuestionsToSupabaseQuiz(quizId, analysis.questions, {
             startSortOrder,
             onProgress: progress => setImportProgressFromEvent(operationLabel, progress)
         });
+        if (analysis.sections?.length) {
+            setCreatorProgressStatus(operationLabel, `assigning ${analysis.sections.length} section(s)`);
+            await saveImportedJsonExamSections(quizId, analysis.sections, insertedQuestionIds);
+        }
         const result = {
             quizId,
             quizName,
@@ -44750,7 +45121,7 @@ if (elements.openQuizStudioBtn) {
         await refreshQuizCatalog({ selectQuizId: `sb:${quizId}` });
         renderJsonQuizImportPreview();
         const issueCount = analysis.problemQuestions.length;
-        setCreatorStatus(`${appendMode ? 'JSON questions added' : 'JSON quiz imported'}: ${analysis.questions.length} questions${issueCount ? `; ${issueCount} ${issueCount === 1 ? 'question needs' : 'questions need'} attention and will show ! in the question list` : '; no issues detected'}.`, issueCount ? 'neutral' : 'success');
+        setCreatorStatus(`${appendMode ? 'JSON questions added' : 'JSON quiz imported'}: ${analysis.questions.length} questions${analysis.sections?.length ? `; ${analysis.sections.length} section(s) assigned automatically` : ''}${issueCount ? `; ${issueCount} ${issueCount === 1 ? 'question needs' : 'questions need'} attention and will show ! in the question list` : '; no issues detected'}.`, issueCount ? 'neutral' : 'success');
         return result;
     }
 
@@ -44903,6 +45274,7 @@ if (elements.openQuizStudioBtn) {
         if (onProgress) onProgress({ phase: 'reading', quizName: resolvedTabName });
         const sourceQuestions = await loadQuestionsFromGoogleSheetDocument(sheetId, resolvedTabName);
         const quizType = validateGoogleSheetImportQuestions(sourceQuestions, 'That Google Sheet tab');
+        await ensureHierarchyImportCapacity(sourceQuestions);
 
         const appendToQuizId = normalizeSupabaseQuizId(options.appendToQuizId);
         if (appendToQuizId) {
@@ -49397,39 +49769,21 @@ function parseQuestionsFromGoogleSheetRows(rows) {
     if (type === 'hierarchy') {
         return rows.map(r => {
             const c = r.c || [];
+            // Existing 10-item tabs remain in their original 25-column format.
+            // Expanded tabs use 30 item + 30 correct-order columns (65 total).
+            const itemCount = c.length >= 65 && c.slice(25, 65).some(cell => !!getCellValue(cell))
+                ? HIERARCHY_ITEM_LIMIT : HIERARCHY_LEGACY_ITEM_LIMIT;
             return {
                 id: `q_${state.questionIdCounter++}`,
                 question: getCellValue(c[0]),
                 type: 'hierarchy',
-                options: [
-                    getCellValue(c[2]),
-                    getCellValue(c[3]),
-                    getCellValue(c[4]),
-                    getCellValue(c[5]),
-                    getCellValue(c[6]),
-                    getCellValue(c[7]),
-                    getCellValue(c[8]),
-                    getCellValue(c[9]),
-                    getCellValue(c[10]),
-                    getCellValue(c[11])
-                ].filter(Boolean),
-                correctOrder: [
-                    getCellValue(c[12]),
-                    getCellValue(c[13]),
-                    getCellValue(c[14]),
-                    getCellValue(c[15]),
-                    getCellValue(c[16]),
-                    getCellValue(c[17]),
-                    getCellValue(c[18]),
-                    getCellValue(c[19]),
-                    getCellValue(c[20]),
-                    getCellValue(c[21])
-                ]
+                options: Array.from({ length: itemCount }, (_, index) => getCellValue(c[index + 2])).filter(Boolean),
+                correctOrder: Array.from({ length: itemCount }, (_, index) => getCellValue(c[index + 2 + itemCount]))
                     .map(n => n ? Number(n) : null)
                     .filter(n => n !== null),
-                image: getCellValue(c[22]),
-                learningResources: getCellValue(c[23]),
-                learningResourcesImage: getCellValue(c[24])
+                image: getCellValue(c[2 + itemCount * 2]),
+                learningResources: getCellValue(c[3 + itemCount * 2]),
+                learningResourcesImage: getCellValue(c[4 + itemCount * 2])
             };
         }).filter(q => q.question && q.question.toLowerCase() !== 'question');
     }
@@ -56644,6 +56998,23 @@ if (elements.removeHierarchyItemBtn) {
     });
 }
 
+if (elements.createHierarchyFieldsContainer) {
+    elements.createHierarchyFieldsContainer.addEventListener('click', event => {
+        const add = event.target.closest('[data-hierarchy-inline-add]');
+        if (add) {
+            event.preventDefault();
+            addStudioHierarchyField();
+            return;
+        }
+        const remove = event.target.closest('[data-hierarchy-delete]');
+        if (remove) {
+            event.preventDefault();
+            const row = remove.closest('[data-hierarchy-index]');
+            removeStudioHierarchyFieldAt(Number(row?.dataset.hierarchyIndex || 0));
+        }
+    });
+}
+
 if (elements.addClassifyCategoryBtn) {
     elements.addClassifyCategoryBtn.addEventListener('click', () => {
         addStudioClassifyCategoryField();
@@ -59126,6 +59497,12 @@ if (elements.importTemplateSheetBtn) {
     });
 }
 
+if (elements.copyStudyBunnyJsonPromptBtn) {
+    elements.copyStudyBunnyJsonPromptBtn.addEventListener('click', () => {
+        copyStudyBunnyJsonQuizPrompt().catch(err => { console.error(err); });
+    });
+}
+
 if (elements.importJsonQuizFile) {
     elements.importJsonQuizFile.addEventListener('change', () => {
         readAndPreviewJsonQuizFile().catch(err => {
@@ -59504,6 +59881,13 @@ document.addEventListener('keydown', e => {
 
 if (elements.completionChallengeOverlay) {
     elements.completionChallengeOverlay.addEventListener('click', event => {
+        const tabButton=event.target.closest('[data-completion-dashboard-tab]');
+        if(tabButton && elements.completionChallengeOverlay.contains(tabButton)) {
+            event.stopPropagation();
+            selectCompletionDashboardTab(tabButton.dataset.completionDashboardTab);
+            tabButton.focus({preventScroll:true});
+            return;
+        }
         const startButton = event.target.closest('[data-completion-challenge-key]');
         if (startButton && elements.completionChallengeOverlay.contains(startButton)) {
             startCompletionChallengeFromPrompt(startButton.dataset.completionChallengeKey || '');
@@ -59522,6 +59906,15 @@ if (elements.closeCompletionChallengeBtn) {
 
 if (elements.completionChallengeLaterBtn) {
     elements.completionChallengeLaterBtn.addEventListener('click', closeCompletionChallengePrompt);
+}
+
+if (elements.completionDashboardExitBtn) {
+    elements.completionDashboardExitBtn.addEventListener('click', () => {
+        // Retain quiz folders, search text and quick filters. This is real
+        // navigation back to Manage Quizzes, not merely a modal dismissal.
+        closeCompletionChallengePrompt();
+        openQuizStudioPage('manage');
+    });
 }
 
 window.addEventListener('resize', handleViewportChange);
@@ -60310,6 +60703,10 @@ elements.questionImage.onclick = function () {
     elements.studioExamSectionApply?.addEventListener('click', async () => {
         try { await applyStudioExamSectionAssignment(); }
         catch (error) { if (elements.studioExamSectionStatus) elements.studioExamSectionStatus.textContent = error.message || 'Could not assign exam questions.'; }
+    });
+    elements.studioExamSectionReplace?.addEventListener('click', async () => {
+        try { await applyStudioExamSectionAssignment({replaceRange:true}); }
+        catch (error) { if (elements.studioExamSectionStatus) elements.studioExamSectionStatus.textContent = error.message || 'Could not replace section range.'; }
     });
     elements.studioExamSectionDelete?.addEventListener('click', async () => {
         const id = normalizeSheetText(elements.studioExamSectionSelect?.value);

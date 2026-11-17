@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a8d_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a8h_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a8d_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a8h_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -1252,6 +1252,11 @@ MODIFICATION RULES FOR THIS APP
                   <section class="creator-subsection quiz-studio-panel">
                     <div class="creator-subsection-title">Import Study Bunny JSON Quiz</div>
                     <div class="creator-note">Import a Study Bunny quiz JSON file. Exam files can mix Multiple Choice, Typed Answer, Hierarchy, and Classify questions. Questions with content issues are still imported and marked with an exclamation point in the Exam question list so they can be repaired in Quiz Editor.</div>
+                    <div class="studio-json-prompt-actions">
+                      <button id="copyStudyBunnyJsonPromptBtn" type="button" class="auth-action-btn auth-secondary-btn" title="Copy all Study Bunny quiz-generation instructions for ChatGPT">Copy ChatGPT Quiz Prompt</button>
+                      <span id="copyStudyBunnyJsonPromptStatus" class="studio-json-prompt-status" role="status" aria-live="polite">Works for standalone quizzes and mixed Exams, including automatic sections.</span>
+                    </div>
+                    <textarea id="copyStudyBunnyJsonPromptFallback" class="studio-json-prompt-fallback hidden" aria-label="Select and copy these Study Bunny quiz instructions" readonly></textarea>
 
                     <label class="auth-field">
                       <span>JSON file</span>
@@ -1345,14 +1350,15 @@ MODIFICATION RULES FOR THIS APP
 
                   <div id="studioExamSectionsPanel" class="studio-exam-sections-panel hidden">
                     <div class="creator-subsection-title studio-inline-title">Sections</div>
-                    <div class="creator-note">Assign saved question or card numbers to reporting sections. This does not change study or grading options.</div>
+                    <div class="creator-note">Imported Exam JSON can assign document-titled sections automatically. You can still create, rename, assign, or replace section ranges manually here; study and grading rules do not change.</div>
                     <div class="studio-exam-section-fields">
                       <label class="auth-field"><span>Questions / Cards</span><input id="studioExamSectionRange" type="text" autocomplete="off" placeholder="1-15, 17, 22-25"></label>
-                      <label class="auth-field"><span>Create Section Name</span><input id="studioExamSectionName" type="text" maxlength="90" autocomplete="off" placeholder="English Comprehension"></label>
+                      <label class="auth-field"><span>Create / Edit Section Name</span><input id="studioExamSectionName" type="text" maxlength="90" autocomplete="off" placeholder="English Comprehension"></label>
                       <label class="auth-field"><span>Existing Sections</span><select id="studioExamSectionSelect"><option value="">Create new section</option></select></label>
                     </div>
                     <div class="studio-exam-section-actions">
                       <button type="button" id="studioExamSectionApply" class="auth-action-btn auth-primary-btn">Create</button>
+                      <button type="button" id="studioExamSectionReplace" class="auth-action-btn auth-secondary-btn hidden" title="Use the entered question range as this section's entire assignment; unassign questions omitted from the range.">Replace Range</button>
                       <button type="button" id="studioExamSectionDelete" class="auth-action-btn auth-secondary-btn hidden">Delete Section</button>
                     </div>
                     <div id="studioExamSectionStatus" class="creator-note" role="status" aria-live="polite"></div>
@@ -1651,13 +1657,14 @@ MODIFICATION RULES FOR THIS APP
 
                   <div id="hierarchyEditorFields" class="studio-editor-type-fields hidden">
                     <div class="studio-options-toolbar">
-                      <div class="creator-note studio-options-note">Add or remove hierarchy items as needed. Set the correct final position for each item.</div>
+                      <div class="creator-note studio-options-note">Up to 30 hierarchy items. Use + below the last item or × beside any item; set each item’s correct final position.</div>
                       <div class="studio-options-toolbar-actions">
                         <button id="addHierarchyItemBtn" type="button" class="auth-action-btn auth-secondary-btn">Add Item</button>
                         <button id="removeHierarchyItemBtn" type="button" class="auth-action-btn auth-secondary-btn">Remove Last Item</button>
                       </div>
                     </div>
 
+                    <div id="hierarchyMigrationNotice" class="creator-note studio-hierarchy-migration-notice" role="status">⚠️ Phase 24A.8G requires a Supabase SQL migration before saving 11–30 hierarchy items. See the Full ZIP migration file.</div>
                     <div id="createHierarchyFieldsContainer" class="studio-options-grid"></div>
                   </div>
 
@@ -2075,17 +2082,31 @@ MODIFICATION RULES FOR THIS APP
 
   </main>
 
-  <!-- Quiz Completion Challenge Prompt -->
+  <!-- Phase 24A.8E: completion dashboard reuses the existing Manage Quizzes Progress panel. -->
   <div id="completionChallengeOverlay" class="completion-challenge-overlay hidden" aria-hidden="true">
-    <div class="completion-challenge-modal" role="dialog" aria-modal="true" aria-labelledby="completionChallengeTitle">
-      <button id="closeCompletionChallengeBtn" class="close-completion-challenge-btn" type="button" aria-label="Close challenge choices">✕</button>
+    <div class="completion-challenge-modal completion-dashboard-modal" role="dialog" aria-modal="true" aria-labelledby="completionChallengeTitle">
+      <div class="completion-dashboard-topbar">
+        <button id="completionDashboardExitBtn" type="button" class="auth-action-btn auth-secondary-btn completion-dashboard-exit" title="Return to Manage Quizzes" aria-label="Exit to Manage Quizzes">Exit</button>
+        <button id="closeCompletionChallengeBtn" class="close-completion-challenge-btn" type="button" aria-label="Close completion dashboard">✕</button>
+      </div>
       <div id="completionChallengeEyebrow" class="completion-challenge-eyebrow">Quiz complete</div>
-      <div id="completionChallengeTitle" class="completion-challenge-title">Choose your next challenge</div>
-      <div id="completionChallengeSubtitle" class="completion-challenge-subtitle">Keep studying without going back to Manage Quizzes.</div>
-      <div id="completionChallengeList" class="completion-challenge-list"></div>
+      <div id="completionChallengeTitle" class="completion-challenge-title">Quiz complete</div>
+      <div id="completionChallengeSubtitle" class="completion-challenge-subtitle">Review your progress or continue with a challenge.</div>
+      <div class="completion-dashboard-tabbar" role="tablist" aria-label="Completion dashboard tabs">
+        <button type="button" data-completion-dashboard-tab="progress" role="tab" aria-selected="true">Progress</button>
+        <button type="button" data-completion-dashboard-tab="challenges" role="tab" aria-selected="false">Challenges</button>
+      </div>
+      <div class="completion-dashboard-panels">
+        <section id="completionDashboardProgressPanel" class="completion-dashboard-panel" role="tabpanel" aria-label="Progress">
+          <div id="completionDashboardProgressBody" class="completion-dashboard-progress"></div>
+        </section>
+        <section id="completionDashboardChallengesPanel" class="completion-dashboard-panel" role="tabpanel" aria-label="Challenges" hidden>
+          <div id="completionChallengeList" class="completion-challenge-list"></div>
+        </section>
+      </div>
       <div id="completionChallengeStatus" class="completion-challenge-status" aria-live="polite"></div>
       <div class="completion-challenge-actions">
-        <button id="completionChallengeLaterBtn" type="button" class="auth-action-btn auth-secondary-btn">Maybe later</button>
+        <button id="completionChallengeLaterBtn" type="button" class="auth-action-btn auth-secondary-btn">Close</button>
       </div>
     </div>
   </div>
@@ -2754,6 +2775,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a8d_1"></script>
+  <script src="script.js?v=24a8h_1"></script>
 </body>
 </html>
