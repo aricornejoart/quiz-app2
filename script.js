@@ -711,6 +711,10 @@ MODIFICATION RULES FOR THIS APP
         closeAppMenuBtn: document.getElementById('closeAppMenuBtn'),
         appMenuBackdrop: document.getElementById('appMenuBackdrop'),
         appPageMenu: document.getElementById('appPageMenu'),
+        appMenuLeaveConfirm: document.getElementById('appMenuLeaveConfirm'),
+        appMenuLeaveDestination: document.getElementById('appMenuLeaveDestination'),
+        appMenuStayBtn: document.getElementById('appMenuStayBtn'),
+        appMenuLeaveBtn: document.getElementById('appMenuLeaveBtn'),
         appAccountBtn: document.getElementById('appAccountBtn'),
         appSettingsBtn: document.getElementById('appSettingsBtn'),
         appMenuStudyModeBtn: document.getElementById('appMenuStudyModeBtn'),
@@ -1461,7 +1465,10 @@ MODIFICATION RULES FOR THIS APP
     };
 
     function mountFloatingPagesToBody() {
-        [elements.quizStudioPage, elements.authPopup, elements.settingsPopup].forEach(floatingEl => {
+        // Keep the one existing Pages drawer outside Quiz Studio, so Study Mode
+        // can open that same DOM menu even while the Studio page is hidden.
+        [elements.quizStudioPage, elements.appMenuBackdrop, elements.appPageMenu,
+            elements.appMenuLeaveConfirm, elements.authPopup, elements.settingsPopup].forEach(floatingEl => {
             if (floatingEl && floatingEl.parentElement !== document.body) {
                 document.body.appendChild(floatingEl);
             }
@@ -39957,6 +39964,14 @@ if (elements.openQuizStudioBtn) {
 
     function openAppPageMenu() {
         if (!elements.appPageMenu) return;
+        const inStudyMode = !state.auth.quizStudioOpen;
+        elements.quizStudioSectionButtons.forEach(button => {
+            const isCurrent = !inStudyMode && button.dataset.studioSectionTarget === state.auth.currentStudioSection;
+            button.classList.toggle('active', isCurrent);
+            button.setAttribute('aria-selected', isCurrent ? 'true' : 'false');
+        });
+        elements.appMenuStudyModeBtn?.classList.toggle('active', inStudyMode);
+        elements.appMenuStudyModeBtn?.setAttribute('aria-current', inStudyMode ? 'page' : 'false');
         elements.appPageMenu.classList.remove('hidden');
         elements.appPageMenu.setAttribute('aria-hidden', 'false');
         if (elements.appMenuBackdrop) {
@@ -39967,6 +39982,7 @@ if (elements.openQuizStudioBtn) {
             elements.appMenuBtn.classList.add('active');
             elements.appMenuBtn.setAttribute('aria-expanded', 'true');
         }
+        elements.studioHomeBtn?.setAttribute('aria-expanded', 'true');
     }
 
     function closeAppPageMenu() {
@@ -39982,6 +39998,32 @@ if (elements.openQuizStudioBtn) {
             elements.appMenuBtn.classList.remove('active');
             elements.appMenuBtn.setAttribute('aria-expanded', 'false');
         }
+        elements.studioHomeBtn?.setAttribute('aria-expanded', 'false');
+    }
+
+    let pendingStudyPageNavigation = null;
+
+    function closeStudyNavigationConfirmation() {
+        pendingStudyPageNavigation = null;
+        elements.appMenuLeaveConfirm?.classList.add('hidden');
+        elements.appMenuLeaveConfirm?.setAttribute('aria-hidden', 'true');
+    }
+
+    function requestStudyPageNavigation(destination, navigate) {
+        // Opening the menu never interrupts a quiz; confirmation is deferred
+        // until the learner actually chooses a destination away from Study Mode.
+        closeAppPageMenu();
+        const hasUnfinishedStudy = !state.auth.quizStudioOpen &&
+            state.questions.length > 0 && !isQuizFinished();
+        if (!hasUnfinishedStudy || !elements.appMenuLeaveConfirm) {
+            navigate();
+            return;
+        }
+        pendingStudyPageNavigation = navigate;
+        if (elements.appMenuLeaveDestination) elements.appMenuLeaveDestination.textContent = destination;
+        elements.appMenuLeaveConfirm.classList.remove('hidden');
+        elements.appMenuLeaveConfirm.setAttribute('aria-hidden', 'false');
+        elements.appMenuStayBtn?.focus({ preventScroll: true });
     }
 
     function toggleAppPageMenu() {
@@ -39993,13 +40035,16 @@ if (elements.openQuizStudioBtn) {
         }
     }
 
-    function openQuizStudioPage(sectionName = state.auth.currentStudioSection || 'folders') {
+    function openQuizStudioPage(sectionName = state.auth.currentStudioSection || 'folders', options = {}) {
         if (!elements.quizStudioPage) return;
+        closeStudyNavigationConfirmation();
         closeAuthPopup();
         elements.quizStudioPage.classList.remove('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'false');
         state.auth.quizStudioOpen = true;
-        setQuizStudioSection(sectionName, { force: true }).catch(err => {
+        setQuizStudioSection(sectionName, { force: true }).then(switched => {
+            if (switched && options.resetNewEditor) clearCreatorInputs();
+        }).catch(err => {
             console.error(err);
             setCreatorStatus('Could not open Quiz Studio section.', 'error');
         });
@@ -40024,6 +40069,7 @@ if (elements.openQuizStudioBtn) {
             }
         }
         closeAppPageMenu();
+        closeStudyNavigationConfirmation();
         elements.quizStudioPage.classList.add('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'true');
         state.auth.quizStudioOpen = false;
@@ -47323,6 +47369,7 @@ function updateViewportClasses() {
     document.body.classList.toggle('ipad-portrait-flashcard-layout', isFlashcardQuestion && isIPadPortraitFlashcardViewport());
     document.body.classList.toggle('ipad-landscape-flashcard-layout', isFlashcardQuestion && isIPadLandscapeFlashcardViewport());
     document.body.classList.toggle('active-question-multiple-choice', isMultipleChoiceStudyQuestion);
+    document.body.classList.toggle('active-question-mc-only', state.currentQuestionType === 'multiple choice');
     document.body.classList.toggle('active-question-has-image', hasStudyQuestionImage);
     document.body.classList.toggle('ipad-portrait-mc-image-top-layout', hasStudyQuestionImage && (state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams') && isIPadPortraitMultipleChoiceImageTopViewport());
     document.body.classList.toggle('phone-landscape-mc-image-right-layout', hasStudyQuestionImage && isPhoneLandscapeMultipleChoiceImageRightViewport());
@@ -50903,6 +50950,23 @@ function queueDesktopFullscreenFlashcardHeightSync() {
     });
 }
 
+let studyOptionsSafeAreaProbe = null;
+function getStudyOptionsBottomSafeAreaInset() {
+    if (!studyOptionsSafeAreaProbe) {
+        studyOptionsSafeAreaProbe = document.createElement('div');
+        studyOptionsSafeAreaProbe.setAttribute('aria-hidden', 'true');
+        studyOptionsSafeAreaProbe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)';
+        document.body.appendChild(studyOptionsSafeAreaProbe);
+    }
+    return parseFloat(window.getComputedStyle(studyOptionsSafeAreaProbe).paddingBottom) || 0;
+}
+
+function isPhoneMultipleChoiceScrollViewport() {
+    return state.currentQuestionType === 'multiple choice' &&
+        window.matchMedia('(max-width: 600px) and (orientation: portrait), (max-height: 520px) and (orientation: landscape) and (pointer: coarse)').matches &&
+        !isIPadLikeDevice();
+}
+
 function updateOptionsScrollCapacity() {
     const container = elements.optionsContainer;
     if (!container) return;
@@ -50930,15 +50994,25 @@ function updateOptionsScrollCapacity() {
     }
 
     const rect = container.getBoundingClientRect();
-    const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
-    if (!viewportHeight || !Number.isFinite(rect.top)) return;
+    const visualViewport = window.visualViewport;
+    const viewportBottom = visualViewport
+        ? visualViewport.offsetTop + visualViewport.height
+        : (window.innerHeight || document.documentElement.clientHeight || 0);
+    if (!viewportBottom || !Number.isFinite(rect.top)) return;
 
     const isFullscreen = document.body.classList.contains('fullscreen-mode');
-    const bottomReserve = isFullscreen ? 30 : 54;
-    const renderedAvailableHeight = Math.floor(viewportHeight - rect.top - bottomReserve);
+    const phoneMcViewport = isPhoneMultipleChoiceScrollViewport();
+    // Only adjust the viewport CUT-OFF. Never change option button sizes,
+    // widths, font sizes, internal padding, or option-to-option gaps.
+    const bottomReserve = phoneMcViewport
+        ? (isFullscreen ? 14 : 20) + getStudyOptionsBottomSafeAreaInset()
+        : (isFullscreen ? 30 : 54);
+    const renderedAvailableHeight = Math.floor(viewportBottom - rect.top - bottomReserve);
     const scaleY = getElementRenderedScaleY(container);
     const cssAvailableHeight = Math.floor(renderedAvailableHeight / scaleY);
-    const minimumHeight = isFullscreen ? 140 : 96;
+    // If Safari shrinks the viewport during rotation or keyboard animation,
+    // do not force a tall minimum that can exceed the visible area.
+    const minimumHeight = phoneMcViewport ? 1 : (isFullscreen ? 140 : 96);
     const safeHeight = Math.max(minimumHeight, Math.min(760, cssAvailableHeight));
     container.style.setProperty('--study-options-scroll-max-height', `${safeHeight}px`);
 }
@@ -54837,10 +54911,7 @@ if (elements.studioHomeBtn) {
             closeSettingsPopup();
         }
         closeAuthPopup();
-        openQuizStudioPage('home');
-        if (!state.auth.user?.id) {
-            setCreatorStatus('Open Account from the Home page to sign in.');
-        }
+        toggleAppPageMenu();
     });
 }
 
@@ -55047,6 +55118,12 @@ elements.quizStudioSectionButtons.forEach(button => {
     button.addEventListener('click', () => {
         const target = button.dataset.studioSectionTarget || 'home';
         const openingNewEditor = target === 'editor' && state.auth.currentStudioSection !== 'editor';
+        if (!state.auth.quizStudioOpen) {
+            requestStudyPageNavigation(button.textContent.trim() || 'Study Bunny', () => {
+                openQuizStudioPage(target, { resetNewEditor: openingNewEditor });
+            });
+            return;
+        }
         setQuizStudioSection(target).then(switched => {
             if (switched && openingNewEditor) clearCreatorInputs();
         }).catch(err => {
@@ -56747,6 +56824,25 @@ if (elements.appMenuBackdrop) {
     });
 }
 
+if (elements.appMenuStayBtn) {
+    elements.appMenuStayBtn.addEventListener('click', () => {
+        closeStudyNavigationConfirmation();
+        elements.studioHomeBtn?.focus({ preventScroll: true });
+    });
+}
+if (elements.appMenuLeaveBtn) {
+    elements.appMenuLeaveBtn.addEventListener('click', () => {
+        const navigation = pendingStudyPageNavigation;
+        closeStudyNavigationConfirmation();
+        if (typeof navigation === 'function') navigation();
+    });
+}
+if (elements.appMenuLeaveConfirm) {
+    elements.appMenuLeaveConfirm.addEventListener('click', event => {
+        if (event.target === elements.appMenuLeaveConfirm) closeStudyNavigationConfirmation();
+    });
+}
+
 if (elements.appAccountBtn) {
     elements.appAccountBtn.addEventListener('click', event => {
         event.stopPropagation();
@@ -56767,6 +56863,10 @@ if (elements.appSettingsBtn) {
 
 if (elements.appMenuStudyModeBtn) {
     elements.appMenuStudyModeBtn.addEventListener('click', () => {
+        if (!state.auth.quizStudioOpen) {
+            closeAppPageMenu();
+            return;
+        }
         closeQuizStudioPage().catch(err => {
             console.error(err);
             setCreatorStatus('Could not open Study Mode.', 'error');
@@ -59837,6 +59937,10 @@ document.addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        if (elements.appMenuLeaveConfirm && !elements.appMenuLeaveConfirm.classList.contains('hidden')) {
+            closeStudyNavigationConfirmation();
+            return;
+        }
         if (state.flashcardImageZoomOpen) {
             closeFlashcardImageOverlay();
             return;

@@ -18496,3 +18496,76 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+
+/* Phase 24A.8I — iPhone Multiple Choice scroll cutoff only.
+   Existing .optionBtn/.option-block dimensions and inter-option gap remain untouched.
+   The JS-measured available viewport height replaces legacy vh/svh caps. */
+@media screen and (max-width: 600px) and (orientation: portrait) and (pointer: coarse) {
+  body.active-question-mc-only.active-question-multiple-choice:not(.fullscreen-mode) .options,
+  body.active-question-mc-only.fullscreen-mode.active-question-multiple-choice .options {
+    max-height: var(--study-options-scroll-max-height, 70dvh);
+    margin-top: 18px; /* previous 8px + 10px between question and FIRST option only */
+  }
+}
+@media screen and (max-height: 520px) and (orientation: landscape) and (pointer: coarse) {
+  body.active-question-mc-only.active-question-multiple-choice:not(.fullscreen-mode) .options,
+  body.active-question-mc-only.fullscreen-mode.active-question-multiple-choice .options {
+    max-height: var(--study-options-scroll-max-height, 70dvh);
+  }
+  body.active-question-mc-only.phone-landscape-mc-image-right-layout .options {
+    margin-top: 16px; /* preserve landscape item dimensions and option gaps */
+  }
+}
+
+/* Phase 24A.8I — only Manage Quizzes' two metadata inputs in iPhone portrait.
+   Fix 180px flex-basis becoming the height of a vertically stacked control. */
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-controls > .studio-inline-input,
+  .quiz-studio-page .studio-list-item[data-quiz-id] .studio-list-controls > .studio-inline-select {
+    flex: 0 0 42px;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 42px;
+    min-height: 42px;
+    max-height: 42px;
+  }
+}
+
+/* Phase 24A.8I — the original Pages drawer is shared between Study Mode and
+   Quiz Studio. It is moved outside the hidden Quiz Studio page at startup. */
+.app-page-menu {
+  --color-bg-control: #2c2548;
+  --color-bg-control-hover: #3a3063;
+  --color-border-strong: #8274ff;
+  --color-text-muted: #d8d3ff;
+}
+.app-page-menu .quiz-studio-nav-btn {
+  border-radius: 12px;
+}
+.app-menu-leave-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 2550;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 8, 20, 0.78);
+  padding: max(18px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.app-menu-leave-confirm.hidden { display: none !important; }
+.app-menu-leave-card {
+  width: min(440px, 100%);
+  border: 1px solid #8274ff;
+  border-radius: 16px;
+  background: #211d34;
+  color: #f0ecff;
+  padding: 20px;
+  box-shadow: 0 18px 44px rgba(0,0,0,.48);
+}
+.app-menu-leave-card h2 { font-size: 20px; margin: 0 0 10px; }
+.app-menu-leave-card p { font-size: 14px; line-height: 1.5; margin: 0 0 18px; }
+.app-menu-leave-actions { display: flex; gap: 10px; }
+.app-menu-leave-actions button { flex: 1 1 0; min-width: 0; min-height: 42px; }

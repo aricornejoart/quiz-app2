@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a8h_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a8i_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a8h_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24a8i_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -112,7 +112,7 @@ MODIFICATION RULES FOR THIS APP
       </div>
 
       <div class="utility-controls">
-        <button id="studioHomeBtn" class="icon-btn studio-home-top-btn" type="button" aria-label="Open app home" title="Open app home">☰</button>
+        <button id="studioHomeBtn" class="icon-btn studio-home-top-btn" type="button" aria-label="Open app navigation" title="Open app navigation" aria-expanded="false" aria-controls="appPageMenu">☰</button>
         <button id="authBtn" class="icon-btn" type="button" aria-label="Account" title="Account">👤</button>
         <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
         <button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Fullscreen" title="Fullscreen">⛶</button>
@@ -714,6 +714,17 @@ MODIFICATION RULES FOR THIS APP
                 <button id="appMenuSettingsBtn" type="button" class="quiz-studio-nav-btn app-menu-secondary-btn">Study Settings</button>
               </div>
             </aside>
+
+            <div id="appMenuLeaveConfirm" class="app-menu-leave-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="appMenuLeaveTitle" aria-describedby="appMenuLeaveMessage" aria-hidden="true">
+              <div class="app-menu-leave-card">
+                <h2 id="appMenuLeaveTitle">Leave current quiz?</h2>
+                <p id="appMenuLeaveMessage">Your quiz is still in progress. Leave it and open <strong id="appMenuLeaveDestination">Manage Quizzes</strong>?</p>
+                <div class="app-menu-leave-actions">
+                  <button id="appMenuStayBtn" class="auth-action-btn auth-secondary-btn" type="button">Stay in Quiz</button>
+                  <button id="appMenuLeaveBtn" class="auth-action-btn" type="button">Leave Quiz</button>
+                </div>
+              </div>
+            </div>
 
             <div class="quiz-studio-header">
               <div class="quiz-studio-title-group">
@@ -2775,6 +2786,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a8h_1"></script>
+  <script src="script.js?v=24a8i_1"></script>
 </body>
 </html>
