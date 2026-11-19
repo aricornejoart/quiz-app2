@@ -18569,3 +18569,61 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 .app-menu-leave-card p { font-size: 14px; line-height: 1.5; margin: 0 0 18px; }
 .app-menu-leave-actions { display: flex; gap: 10px; }
 .app-menu-leave-actions button { flex: 1 1 0; min-width: 0; min-height: 42px; }
+
+
+/* Phase 24A.8J — lock only the phone's outer study page while allowing
+   the native options scroller, fixed drawers, image zoom, and pinch/pan.
+   Never set global touch-action:none or touchmove preventDefault. */
+@media screen and (max-width: 600px) and (orientation: portrait) and (pointer: coarse),
+       screen and (max-height: 520px) and (orientation: landscape) and (pointer: coarse) {
+  html:has(body.phone-mc-page-scroll-locked) {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior-y: none;
+  }
+  body.phone-mc-page-scroll-locked {
+    box-sizing: border-box;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden !important;
+    overscroll-behavior-y: none;
+  }
+  body.phone-mc-page-scroll-locked .options {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    /* Leave touch-action at auto so image pinch gestures are not constrained. */
+  }
+}
+
+/* Phase 24A.8J — Study Mode hamburger is on the right; keep the default
+   Quiz Studio Pages drawer anchored at left, on ALL screen sizes. */
+.app-page-menu.app-page-menu--from-study {
+  left: auto;
+  right: 0;
+  border-right: 0;
+  border-left: 1px solid rgba(190,180,255,.16);
+  box-shadow: -18px 0 34px rgba(0,0,0,.42);
+}
+
+/* Phase 24A.8J — direct section study. Historical scores remain visible;
+   each Study button targets current, valid section metadata only. */
+.exam-post-quiz-section-heading {align-items:center;}
+.exam-post-quiz-section-name {min-width:0;flex:1;overflow-wrap:anywhere;}
+.exam-post-quiz-section-controls {display:flex;align-items:center;gap:10px;flex:0 0 auto;}
+.exam-report-study-btn {
+  flex:0 0 auto;min-width:57px;min-height:34px;padding:6px 9px;
+  border:1px solid var(--color-border-strong,#7c6cff);
+  border-radius:8px;background:var(--color-bg-control,#3a3360);
+  color:var(--color-text-main,#fff);font:inherit;font-size:.83em;font-weight:750;
+  cursor:pointer;touch-action:manipulation;
+}
+.exam-report-study-btn:hover:not(:disabled) {background:var(--color-bg-control-hover,#5a4bcf);}
+.exam-report-study-btn:disabled {opacity:.4;cursor:not-allowed;}
+.exam-report-study-btn:focus-visible {outline:2px solid #facc15;outline-offset:2px;}
+.exam-section-study-without-report {margin:12px 0;}
+.exam-available-study-row {margin:10px 0;}
+
+.exam-post-quiz-section-controls {flex:1 1 auto;min-width:0;justify-content:flex-start;}
+.exam-post-quiz-section-score {flex:0 0 auto;}

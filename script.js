@@ -8084,24 +8084,30 @@ MODIFICATION RULES FOR THIS APP
             total, incorrect, correct:total-incorrect, percent:total?Math.round((total-incorrect)*100/total):0,
             sections:reported.map(s=>({...s, correct:s.total-s.incorrect, percent:Math.round((s.total-s.incorrect)*100/s.total)}))};
     }
-    function renderExamPostQuizReport(report, compact = false) {
+    function renderExamPostQuizReport(report, compact = false, liveSections = []) {
         if (!report || !Array.isArray(report.sections)) return '';
         const weakest = report.sections.filter(s=>s.id!=='__unassigned__').sort((a,b)=>a.percent-b.percent)[0];
         const itemLabel = report.quizType === 'flashcard' ? 'cards' : 'questions';
         const modeLabel = normalizeSheetText(report.mode || '');
         const previousRevision = Number(report.contentRevision);
         const currentRevision = Number(state.auth.quizSpacedContentRevisions?.get(report.quizId));
+        const currentSections = normalizeExamSections(liveSections);
         const oldVersion = report.contentRevision != null && state.auth.quizSpacedContentRevisions?.has(report.quizId)
             && Number.isFinite(previousRevision) && Number.isFinite(currentRevision) && previousRevision !== currentRevision;
         return `<section class="exam-post-quiz-report ${compact?'is-compact':''}" aria-label="Post Quiz Report">
             <h3>Post Quiz Report</h3>
             <p class="exam-post-quiz-summary">${escapeHtml(String(report.percent))}% overall · ${escapeHtml(String(report.correct))}/${escapeHtml(String(report.total))} correct · ${escapeHtml(new Date(report.completedAt).toLocaleString())}${modeLabel ? ` · ${escapeHtml(modeLabel)}` : ''}</p>
             ${oldVersion ? '<p class="exam-post-quiz-warning">Previous quiz version — this report is a historical snapshot.</p>' : ''}
-            ${report.sections.map(s=>`<div class="exam-post-quiz-section">
-                <div class="exam-post-quiz-section-heading"><strong>${escapeHtml(s.name)}</strong><strong>${s.percent}%</strong></div>
+            ${report.sections.map(s=>{
+                // The historical score/name stay intact. Study always targets
+                // CURRENT quiz metadata, never obsolete report question IDs.
+                const live = currentSections.find(section=>section.id===s.id) ||
+                    currentSections.find(section=>section.name.toLowerCase()===normalizeSheetText(s.name).toLowerCase());
+                return `<div class="exam-post-quiz-section">
+                <div class="exam-post-quiz-section-heading"><div class="exam-post-quiz-section-controls"><strong class="exam-post-quiz-section-name">${escapeHtml(s.name)}</strong><button type="button" class="exam-report-study-btn" data-exam-progress-action="study-section" data-exam-report-study-section="${live?escapeHtml(live.id):''}" title="${live?`Study ${escapeHtml(live.name)}`:'Current section unavailable'}" ${live?.questionIds?.length?'':'disabled'}>Study</button></div><strong class="exam-post-quiz-section-score">${s.percent}%</strong></div>
                 <div class="exam-post-quiz-track"><span style="width:${Math.min(100, Math.max(0, s.percent))}%"></span></div>
                 <small>${s.correct} correct · ${s.incorrect} incorrect · ${s.total} ${itemLabel}</small>
-            </div>`).join('')}
+            </div>`;}).join('')}
             ${weakest ? `<p class="exam-post-quiz-tip">Area to review: ${escapeHtml(weakest.name)} (${weakest.percent}%).</p>` : ''}
         </section>`;
     }
@@ -8207,13 +8213,37 @@ MODIFICATION RULES FOR THIS APP
         if (!report) return;
         attempt.report = report;
         const panel = document.getElementById('examPostQuizCompletion');
-        if (panel) { panel.innerHTML = renderExamPostQuizReport(report); panel.classList.remove('hidden'); }
+        if (panel) { panel.innerHTML = renderExamPostQuizReport(report,false,attempt.sections); panel.classList.remove('hidden'); }
         // Save once, at completion; never perform Supabase writes during answer checks.
         persistExamPostQuizReport(report).catch(error => {
             console.warn('Exam report could not be saved. Apply Phase 24A.5z report-table SQL migration.',error);
             if (panel && isQuizFinished() && !panel.classList.contains('hidden')) panel.insertAdjacentHTML('beforeend','<p class="exam-post-quiz-warning">Report shown for this session, but could not be saved to Progress. Check the Post Quiz Report migration.</p>');
         });
     }
+
+    // Completion's visible Post Quiz Report uses the same section actions as
+    // Progress, but is outside the Progress-popup delegation tree.
+    document.getElementById('examPostQuizCompletion')?.addEventListener('click', async event => {
+        const action=event.target.closest('[data-exam-report-study-section]');
+        if (!action || action.disabled || action.dataset.examStudyBusy==='true') return;
+        const quizId=normalizeSheetText(state.examPostQuizAttempt?.quizId);
+        if (!quizId || !isQuizFinished()) return;
+        const panel=document.getElementById('examPostQuizCompletion');
+        const sectionId=action.dataset.examReportStudySection;
+        action.disabled=true;
+        action.dataset.examStudyBusy='true';
+        try {
+            await studyCurrentExamSectionById(quizId,sectionId);
+        } catch(error) {
+            const info=panel.querySelector('.exam-report-study-status') || document.createElement('p');
+            info.className='exam-report-study-status exam-post-quiz-warning';
+            info.setAttribute('role','status');
+            info.textContent=`Could not study section: ${error.message||error}`;
+            if(!info.isConnected) panel.appendChild(info);
+        } finally {
+            if(action.isConnected) { action.disabled=false; delete action.dataset.examStudyBusy; }
+        }
+    });
 
     // Phase 24A.8c — Universal Progress dashboard. This UI exists only within the
     // Manage Quizzes Progress popup, never in the active question view.
@@ -8298,14 +8328,20 @@ MODIFICATION RULES FOR THIS APP
             <p class="exam-score-footnote">${items.length} of ${chronological.length} recorded completed full ${chronological.length===1?'attempt':'attempts'} shown · First graded response per question or card determines the score.</p>
             ${revisionMismatch?'<p class="exam-post-quiz-warning">Scores include different quiz or deck revisions, so results may not be directly comparable.</p>':''}`;
     }
+    function renderLiveSectionStudyRows(liveSections) {
+        const sections = normalizeExamSections(liveSections);
+        if (!sections.length) return '<p class="exam-post-quiz-placeholder">No sections assigned yet. Create sections in the quiz editor to study them individually.</p>';
+        return `<section class="exam-post-quiz-report exam-section-study-without-report" aria-label="Current quiz sections"><h3>Study Sections</h3>
+            ${sections.map(s=>`<div class="exam-post-quiz-section-heading exam-available-study-row"><strong class="exam-post-quiz-section-name">${escapeHtml(s.name)}</strong>
+              <button type="button" class="exam-report-study-btn" data-exam-progress-action="study-section" data-exam-report-study-section="${escapeHtml(s.id)}" ${s.questionIds.length?'':'disabled'}>Study</button></div>`).join('')}</section>`;
+    }
     function renderExamProgressReportTab(report, liveSections, quizId) {
         if (!report) return '<p class="exam-post-quiz-placeholder">No completed Post Quiz Report yet. Complete a full quiz or flashcard deck to see your report.</p>'+
-            renderExamProgressStudyActions(null, liveSections, quizId);
-        return `${renderExamPostQuizReport(report,true)}${renderExamProgressStudyActions(report,liveSections,quizId)}`;
+            renderLiveSectionStudyRows(liveSections)+renderExamProgressStudyActions(null,liveSections,quizId);
+        return `${renderExamPostQuizReport(report,true,liveSections)}${renderExamProgressStudyActions(report,liveSections,quizId)}`;
     }
     function renderExamProgressStudyActions(report, liveSections, quizId) {
         const missed = getExamProgressMissedIds(report);
-        const sections = getExamProgressSections(report,liveSections);
         const storedQuiz = state.auth.managedQuizzes.find(quiz => quiz.id === quizId);
         const itemLabel = (report?.quizType || storedQuiz?.quizType) === 'flashcard' ? 'Cards' : 'Questions';
         return `<section class="exam-progress-actions" aria-label="Targeted quiz or flashcard study">
@@ -8313,18 +8349,13 @@ MODIFICATION RULES FOR THIS APP
               <button type="button" data-exam-progress-action="pin-incorrect" ${missed.length?'':'disabled'}>Pin ${missed.length} Incorrect ${itemLabel}</button>
               <button type="button" data-exam-progress-action="study-incorrect" ${missed.length?'':'disabled'}>Study Incorrect ${itemLabel}</button>
             </div>
-            <label class="exam-progress-select-label" for="exam-progress-section-${escapeHtml(quizId)}">Study Individual Section</label>
-            <div class="exam-progress-section-controls"><select id="exam-progress-section-${escapeHtml(quizId)}" data-exam-progress-section ${sections.length?'':'disabled'}>
-            ${sections.length?sections.map(section=>`<option value="${escapeHtml(section.id)}">${escapeHtml(section.name)}${section.questionIds.length?` (${section.questionIds.length})`:''}</option>`).join(''):'<option value="">No sections assigned</option>'}
-            </select><button type="button" data-exam-progress-action="study-section" ${sections.length?'':'disabled'}>Start Section Study</button></div>
-            <small>Only Pinned / Exclude Pinned and other selected study settings are applied after the section is chosen. Focused practice cannot earn full-deck spaced-repetition credit.</small>
+            <small>Use the Study button beside a section in the report to start section-only practice. Only Pinned / Exclude Pinned and other selected study settings apply. Focused practice cannot earn full-deck spaced-repetition credit.</small>
             <p class="exam-progress-action-status" role="status" aria-live="polite"></p>
           </section>`;
     }
     function renderExamProgressDashboard(popup, quizId, report, history, liveSections) {
         const holder=popup?.querySelector('.exam-post-quiz-popup-slot');
         if (!holder) return;
-        const oldSection=holder.querySelector('[data-exam-progress-section]')?.value;
         const activeTab=holder.dataset.activeTab==='history'?'history':'report';
         holder.innerHTML=`<div class="exam-progress-tabbar" role="tablist" aria-label="Post Quiz Report and Score History tabs">
             <button type="button" data-exam-progress-tab="report" role="tab" aria-selected="${activeTab==='report'}">Post Quiz Report</button>
@@ -8337,10 +8368,6 @@ MODIFICATION RULES FOR THIS APP
         // the dropdown falls back to All Modes. Keep its stored state in sync.
         const modeControl=holder.querySelector('[data-exam-score-mode]');
         if (modeControl) holder.dataset.scoreHistoryMode=modeControl.value;
-        if (oldSection) {
-            const dropdown=holder.querySelector('[data-exam-progress-section]');
-            if (dropdown && Array.from(dropdown.options).some(option=>option.value===oldSection)) dropdown.value=oldSection;
-        }
     }
     async function loadExamProgressSectionsForQuiz(quizId) {
         const {data,error}=await state.auth.client.from('quizzes').select('description').eq('id',quizId).maybeSingle();
@@ -8381,6 +8408,13 @@ MODIFICATION RULES FOR THIS APP
         // list here would destroy its button and dismiss the user's report.
         syncQuestionStarButton();
         return `${newIds.length} new pinned · ${valid.length-newIds.length} already pinned${missed.length-valid.length?` · ${missed.length-valid.length} removed questions skipped`:''}.`;
+    }
+    async function studyCurrentExamSectionById(quizId, sectionId) {
+        if (!sectionId) throw new Error('No current section is assigned to this report row.');
+        const liveSections = await loadExamProgressSectionsForQuiz(quizId);
+        const live = liveSections.find(section=>section.id===sectionId);
+        if (!live?.questionIds?.length) throw new Error('This section was changed, removed, or emptied. Reopen Progress for updated sections.');
+        await startExamFocusedStudy(quizId,live.questionIds,live.name);
     }
     async function startExamFocusedStudy(quizId, ids, label) {
         if (!state.auth.user?.id) throw new Error('Sign in to study questions.');
@@ -8467,13 +8501,12 @@ MODIFICATION RULES FOR THIS APP
             if(name==='pin-incorrect') task=()=>pinExamReportIncorrectQuestions(quizId,snapshot.report);
             else if(name==='study-incorrect') task=()=>startExamFocusedStudy(quizId,getExamProgressMissedIds(snapshot.report),snapshot.report?.quizType==='flashcard'?'incorrect cards':'incorrect questions');
             else if(name==='study-section') {
-                const sectionId=holder.querySelector('[data-exam-progress-section]')?.value;
-                const chosen=getExamProgressSections(snapshot.report,snapshot.sections).find(section=>section.id===sectionId);
-                if(!chosen) return;
-                // A report can be from an old exam revision. Live metadata is
-                // authoritative for section study; never substitute stale IDs.
-                if(!snapshot.sections.length) { if(status) status.textContent='Current section metadata is unavailable.';return; }
-                task=()=>startExamFocusedStudy(quizId,chosen.questionIds,chosen.name);
+                const sectionId=action.dataset.examReportStudySection;
+                if(!sectionId || !snapshot.sections.some(section=>section.id===sectionId)) {
+                    if(status) status.textContent='Current section metadata is unavailable. Reopen Progress to refresh.';
+                    return;
+                }
+                task=()=>studyCurrentExamSectionById(quizId,sectionId);
             } else return;
             snapshot.busy=true;
             action.disabled=true;
@@ -39972,6 +40005,9 @@ if (elements.openQuizStudioBtn) {
         });
         elements.appMenuStudyModeBtn?.classList.toggle('active', inStudyMode);
         elements.appMenuStudyModeBtn?.setAttribute('aria-current', inStudyMode ? 'page' : 'false');
+        // Study Mode's hamburger is on the right; the Quiz Studio hamburger
+        // stays on the left. Reuse one drawer without changing main-app navigation.
+        elements.appPageMenu.classList.toggle('app-page-menu--from-study', inStudyMode);
         elements.appPageMenu.classList.remove('hidden');
         elements.appPageMenu.setAttribute('aria-hidden', 'false');
         if (elements.appMenuBackdrop) {
@@ -39987,6 +40023,7 @@ if (elements.openQuizStudioBtn) {
 
     function closeAppPageMenu() {
         if (elements.appPageMenu) {
+            elements.appPageMenu.classList.remove('app-page-menu--from-study');
             elements.appPageMenu.classList.add('hidden');
             elements.appPageMenu.setAttribute('aria-hidden', 'true');
         }
@@ -40042,6 +40079,7 @@ if (elements.openQuizStudioBtn) {
         elements.quizStudioPage.classList.remove('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'false');
         state.auth.quizStudioOpen = true;
+        updateViewportClasses(); // release phone answer-only scroll lock when leaving Study Mode
         setQuizStudioSection(sectionName, { force: true }).then(switched => {
             if (switched && options.resetNewEditor) clearCreatorInputs();
         }).catch(err => {
@@ -40073,6 +40111,7 @@ if (elements.openQuizStudioBtn) {
         elements.quizStudioPage.classList.add('hidden');
         elements.quizStudioPage.setAttribute('aria-hidden', 'true');
         state.auth.quizStudioOpen = false;
+        updateViewportClasses();
         syncBodyScrollLock();
         return true;
     }
@@ -47236,7 +47275,9 @@ function updateSettingsAvailability() {
 }
 
 function syncBodyScrollLock() {
-    document.body.style.overflow = (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.completionChallengePrompt.open || state.auth?.quizStudioOpen) ? 'hidden' : '';
+    // Scrolling within answers and fixed overlays stays native. Lock only the
+    // page itself during phone MC/Diagram sessions, never touch/pinch gestures.
+    document.body.style.overflow = (state.learningResourcesOverlayOpen || state.flashcardImageZoomOpen || state.completionChallengePrompt.open || state.auth?.quizStudioOpen || document.body.classList.contains('phone-mc-page-scroll-locked')) ? 'hidden' : '';
 }
 
 function isNarrowIPhoneViewport() {
@@ -47376,6 +47417,17 @@ function updateViewportClasses() {
     document.body.classList.toggle('active-question-flashcard', isFlashcardQuestion);
     document.body.classList.toggle('active-question-classify', state.currentQuestionType === 'classify');
     document.body.classList.toggle('active-question-typed-answer', state.currentQuestionType === 'typed answer');
+    const phoneMCPageLock = !state.auth.quizStudioOpen && state.questions.length > 0 &&
+        (state.currentQuestionType === 'multiple choice' || state.currentQuestionType === 'diagrams') &&
+        !isIPadLikeDevice() && window.matchMedia('(max-width: 600px) and (orientation: portrait) and (pointer: coarse), (max-height: 520px) and (orientation: landscape) and (pointer: coarse)').matches;
+    const wasPhoneMCPageLocked = document.body.classList.contains('phone-mc-page-scroll-locked');
+    if (phoneMCPageLock && !wasPhoneMCPageLocked && !state.flashcardImageZoomOpen) {
+        // Position the main viewport once on entering a locked question; do
+        // not touch scrollTop on the option list when questions change.
+        window.scrollTo(0, 0);
+    }
+    document.body.classList.toggle('phone-mc-page-scroll-locked', phoneMCPageLock);
+    syncBodyScrollLock();
     syncMultipleChoiceSplitLayoutMount();
     queuePhoneLandscapeMultipleChoiceImageStageSync();
     queueOptionsScrollIndicatorUpdate();
