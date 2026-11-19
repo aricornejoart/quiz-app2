@@ -46,7 +46,7 @@ MODIFICATION RULES FOR THIS APP
     };
   </script>
 
-  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24a8k_1" onload="this.dataset.loaded='true'">
+  <link id="studyBunnyMainStylesheet" rel="stylesheet" href="style.css?v=24b3_1" onload="this.dataset.loaded='true'">
   <script>
     (() => {
       let retryCount = 0;
@@ -59,7 +59,7 @@ MODIFICATION RULES FOR THIS APP
         retryCount += 1;
         const replacement = current.cloneNode(false);
         replacement.dataset.loaded = '';
-        replacement.href = `style.css?v=24a8k_1-retry-${retryCount}-${Date.now()}`;
+        replacement.href = `style.css?v=24b3_1-retry-${retryCount}-${Date.now()}`;
         replacement.onload = () => { replacement.dataset.loaded = 'true'; };
         replacement.onerror = () => window.setTimeout(ensureStylesheet, 700);
         current.replaceWith(replacement);
@@ -2294,6 +2294,26 @@ MODIFICATION RULES FOR THIS APP
           <span class="review-mode-toggle-track" aria-hidden="true"></span>
         </span>
       </label>
+      <div class="review-mode-fade-option-settings">
+        <label class="review-mode-switch-row">
+          <span>Color Fade <small>(selected label only; replaces static drawings)</small></span>
+          <span class="review-mode-toggle-control"><input id="reviewModeColorFadeToggle" type="checkbox" role="switch" aria-label="Enable Color Fade"><span class="review-mode-toggle-track" aria-hidden="true"></span></span>
+        </label>
+        <div class="review-mode-fade-option-sliders">
+          <label for="reviewModeColorFadeDuration">Fade Duration <output id="reviewModeColorFadeDurationValue">3.0s</output></label>
+          <input id="reviewModeColorFadeDuration" type="range" min="0.5" max="10" step="0.5" value="3" aria-label="Color Fade duration in seconds">
+          <label for="reviewModeColorFadeCycle">Cycle Reset <output id="reviewModeColorFadeCycleValue">5.0s</output></label>
+          <input id="reviewModeColorFadeCycle" type="range" min="1" max="15" step="0.5" value="5" aria-label="Color Fade cycle reset in seconds">
+        </div>
+      </div>
+      <div class="review-mode-drawing-rgb-options" aria-label="Review drawing session color">
+        <label for="reviewModeDrawingColor">Drawing RGB <small>(this session only; saved colors unchanged)</small></label>
+        <div class="review-mode-drawing-rgb-controls">
+          <input id="reviewModeDrawingColor" type="color" value="#ffffff" aria-label="Change drawing RGB color temporarily">
+          <output id="reviewModeDrawingColorValue" for="reviewModeDrawingColor">Original colors</output>
+          <button id="reviewModeDrawingColorResetBtn" type="button">Restore original colors</button>
+        </div>
+      </div>
       <label class="review-mode-switch-row">
         <span>Disable label names on click</span>
         <span class="review-mode-toggle-control">
@@ -2400,7 +2420,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="reviewModeKeyboardShortcutsPanel" class="review-mode-keyboard-shortcuts-panel hidden" aria-hidden="true">
         <div><span>Increase Label Size (5%)</span><kbd>+</kbd></div>
         <div><span>Decrease Label Size (5%)</span><kbd>−</kbd></div>
-        <div><span>Show/hide color</span><kbd>D</kbd></div>
+        <div><span>Toggle static drawing</span><kbd>D</kbd></div>
         <div><span>Show/hide connector lines</span><kbd>C</kbd></div>
         <div><span>Show/hide all</span><kbd>A</kbd></div>
         <div><span>Show/hide shortcut controls</span><kbd>H</kbd></div>
@@ -2547,6 +2567,7 @@ MODIFICATION RULES FOR THIS APP
       <div id="reviewModeImageStage" class="review-mode-image-stage">
         <img id="reviewModeImage" class="review-mode-image" alt="Saved diagram review">
         <canvas id="reviewModeDrawCanvas" class="review-mode-draw-canvas" aria-hidden="true"></canvas>
+        <canvas id="reviewModeFadeCanvas" class="review-mode-fade-canvas hidden" aria-hidden="true"></canvas>
         <div id="reviewModeReflection" class="review-mode-reflection hidden" aria-hidden="true"><div class="review-mode-reflection-track"><div class="review-mode-reflection-shape"><div class="review-mode-reflection-beam"></div></div></div></div>
         <svg id="reviewModeVisualAidLayer" class="review-mode-visual-aid-layer hidden" aria-hidden="true" focusable="false"></svg>
         <svg id="reviewModeConnectorLayer" class="review-mode-connector-layer" aria-hidden="true" focusable="false"></svg>
@@ -2561,11 +2582,28 @@ MODIFICATION RULES FOR THIS APP
           <button id="reviewModeShortcutLabelDownBtn" type="button" aria-label="Decrease label size">−</button>
           <button id="reviewModeShortcutSmallLabelsBtn" type="button" aria-label="Set label size to 160%" title="Set label size to 160%" aria-pressed="false">Big Labels</button>
           <button id="reviewModeShortcutMovementBtn" type="button" aria-pressed="false" aria-label="Move Labels" title="Toggle 250 ms hold-to-move">Move<br>Labels</button>
-          <button id="reviewModeShortcutColorBtn" type="button">Color On</button>
+          <button id="reviewModeShortcutColorBtn" type="button" aria-expanded="false" aria-controls="reviewModeEffectsPanel" title="Show drawing and connector effects">Effects</button>
           <button id="reviewModeShortcutLinesBtn" type="button">Lines On</button>
           <button id="reviewModeShortcutAllBtn" type="button" aria-pressed="false">Show All</button>
           <button id="reviewModeShortcutNextBtn" type="button" aria-label="Mark current Mini Quiz question correct and go to the next question">Next</button>
           <button id="reviewModeShortcutFocusBtn" type="button" aria-pressed="false">Focus</button>
+        </div>
+      </div>
+      <div id="reviewModeEffectsPanel" class="review-mode-effects-panel hidden" role="group" aria-label="Review Mode effects" aria-hidden="true">
+        <div class="review-mode-effects-title">Effects <button id="reviewModeEffectsCloseBtn" type="button" aria-label="Close Effects">✕</button></div>
+        <label class="review-mode-effects-row">Reflection<span class="review-mode-toggle-control"><input id="reviewModeEffectsReflection" type="checkbox" role="switch" aria-label="Reflection"><span class="review-mode-toggle-track" aria-hidden="true"></span></span></label>
+        <label class="review-mode-effects-row">Light Glow<span class="review-mode-toggle-control"><input id="reviewModeEffectsGlow" type="checkbox" role="switch" aria-label="Light Glow"><span class="review-mode-toggle-track" aria-hidden="true"></span></span></label>
+        <label class="review-mode-effects-row">Sonar<span class="review-mode-toggle-control"><input id="reviewModeEffectsSonar" type="checkbox" role="switch" aria-label="Sonar"><span class="review-mode-toggle-track" aria-hidden="true"></span></span></label>
+        <div class="review-mode-effects-divider">Saved drawing display</div>
+        <label class="review-mode-effects-row">Drawing<span class="review-mode-toggle-control"><input id="reviewModeEffectsDrawing" type="checkbox" role="switch" aria-label="Show static drawing"><span class="review-mode-toggle-track" aria-hidden="true"></span></span></label>
+        <label class="review-mode-effects-row">Color Fade<span class="review-mode-toggle-control"><input id="reviewModeEffectsFade" type="checkbox" role="switch" aria-label="Animate current label drawing fade"><span class="review-mode-toggle-track" aria-hidden="true"></span></span></label>
+        <div class="review-mode-effects-rgb" aria-label="Temporary drawing RGB color">
+          <label for="reviewModeEffectsDrawingColor">Drawing RGB <small>(session only)</small></label>
+          <div class="review-mode-effects-rgb-controls">
+            <input id="reviewModeEffectsDrawingColor" type="color" value="#ffffff" aria-label="Change drawing color for this session only">
+            <output id="reviewModeEffectsDrawingColorValue" for="reviewModeEffectsDrawingColor">Original colors</output>
+            <button id="reviewModeEffectsDrawingColorResetBtn" type="button" aria-label="Restore original saved drawing colors">Original</button>
+          </div>
         </div>
       </div>
       <div id="reviewModeVisualAidBar" class="review-mode-visual-aid-bar hidden" data-edge="bottom" aria-hidden="true" aria-label="Visual Aid animation controls">
@@ -2612,10 +2650,12 @@ MODIFICATION RULES FOR THIS APP
           </div>
           <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
             <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap">
-              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button>
+              <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for brush settings)" aria-label="Pen; tap again for brush settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button>
               <div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings">
                 <label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label>
                 <div class="studio-image-editor-pressure-hint">ON by default. Pressure changes width only, never opacity. Existing strokes stay unchanged.</div>
+                <button type="button" id="studioImageEditorPressureSettingsToggle" class="studio-diagram-brush-disclosure" aria-expanded="false" aria-controls="studioImageEditorPressureAdvanced"><span>Pressure Settings</span><span aria-hidden="true">▸</span></button>
+                <div id="studioImageEditorPressureAdvanced" class="studio-diagram-brush-advanced hidden">
                 <div class="studio-image-editor-pressure-graph-wrap">
                   <div class="studio-image-editor-pressure-head"><span>Pressure response curve</span><output id="studioImageEditorPressureCurveValue">Fine (1.60)</output></div>
                   <svg id="studioImageEditorPressureGraph" viewBox="0 0 270 142" role="img" aria-label="Input pressure versus output stroke width">
@@ -2634,6 +2674,18 @@ MODIFICATION RULES FOR THIS APP
                   <div class="studio-image-editor-pressure-meter"><div id="studioImageEditorPressureTestBar"></div></div>
                   <div class="studio-image-editor-pressure-readings"><output id="studioImageEditorPressureTestValue">Waiting for stylus</output><output id="studioImageEditorPressureTestWidth">—</output></div>
                   <div class="studio-image-editor-pressure-hint">The test never draws on or changes your diagram. If your browser reports fixed pressure, the curve cannot create missing hardware data.</div>
+                </div>
+                </div>
+                <div class="studio-diagram-brush-divider"></div>
+                <label class="studio-image-editor-pressure-row"><span>Lazy Mouse</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorLazyMouseEnabled" aria-label="Enable Lazy Mouse for label drawing"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label>
+                <div id="studioImageEditorLazyMouseControls" class="studio-diagram-brush-options hidden">
+                  <label>Lazy Distance <input id="studioImageEditorLazyDistance" type="range" min="4" max="120" step="1" value="36" aria-label="Lazy Mouse distance"><output id="studioImageEditorLazyDistanceValue">36</output></label>
+                  <label>Lazy Step <input id="studioImageEditorLazyStep" type="range" min="1" max="20" step="1" value="3" aria-label="Lazy Mouse step"><output id="studioImageEditorLazyStepValue">3</output></label>
+                </div>
+                <div class="studio-diagram-brush-divider"></div>
+                <label class="studio-image-editor-pressure-row"><span>Stroke Smoothing</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorSmoothingEnabled" aria-label="Enable stroke smoothing"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label>
+                <div id="studioImageEditorSmoothingControls" class="studio-diagram-brush-options hidden">
+                  <label>Smoothing Strength <input id="studioImageEditorSmoothingStrength" type="range" min="5" max="100" step="5" value="25" aria-label="Stroke smoothing strength"><output id="studioImageEditorSmoothingStrengthValue">25%</output></label>
                 </div>
               </div>
             </div>
@@ -2786,6 +2838,6 @@ MODIFICATION RULES FOR THIS APP
     </div>
   </div>
 
-  <script src="script.js?v=24a8k_1"></script>
+  <script src="script.js?v=24b3_1"></script>
 </body>
 </html>

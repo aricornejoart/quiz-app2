@@ -478,6 +478,9 @@ MODIFICATION RULES FOR THIS APP
                 pinSelectedLabelIndex: -1,
                 allowLabelMovement: false,
                 showDrawData: false,
+                colorFadeEnabled: false,
+                colorFadeDuration: 3,
+                colorFadeCycle: 5,
                 reflectionSweepEnabled: true,
                 showConnectors: true,
                 showConnectorContrast: true,
@@ -598,6 +601,13 @@ MODIFICATION RULES FOR THIS APP
                 drawTool: 'paintbrush',
                 drawPressureSensitivityEnabled: true,
                 drawPenSettingsArmed: false,
+                labelLazyMouseEnabled: false,
+                labelLazyDistance: 36,
+                labelLazyStep: 3,
+                labelLazyTip: null,
+                labelLazyRaw: null,
+                labelSmoothingEnabled: false,
+                labelSmoothingStrength: 25,
                 drawSize: 14,
                 paintTransparency: 0.65,
                 activeDrawLabelIndex: null,
@@ -867,6 +877,25 @@ MODIFICATION RULES FOR THIS APP
         reviewModeImage: document.getElementById('reviewModeImage'),
         reviewModeDrawCanvas: document.getElementById('reviewModeDrawCanvas'),
         reviewModeReflection: document.getElementById('reviewModeReflection'),
+        reviewModeFadeCanvas: document.getElementById('reviewModeFadeCanvas'),
+        reviewModeEffectsPanel: document.getElementById('reviewModeEffectsPanel'),
+        reviewModeEffectsCloseBtn: document.getElementById('reviewModeEffectsCloseBtn'),
+        reviewModeEffectsReflection: document.getElementById('reviewModeEffectsReflection'),
+        reviewModeEffectsGlow: document.getElementById('reviewModeEffectsGlow'),
+        reviewModeEffectsSonar: document.getElementById('reviewModeEffectsSonar'),
+        reviewModeEffectsDrawing: document.getElementById('reviewModeEffectsDrawing'),
+        reviewModeEffectsFade: document.getElementById('reviewModeEffectsFade'),
+        reviewModeEffectsDrawingColor: document.getElementById('reviewModeEffectsDrawingColor'),
+        reviewModeEffectsDrawingColorValue: document.getElementById('reviewModeEffectsDrawingColorValue'),
+        reviewModeEffectsDrawingColorResetBtn: document.getElementById('reviewModeEffectsDrawingColorResetBtn'),
+        reviewModeDrawingColor: document.getElementById('reviewModeDrawingColor'),
+        reviewModeDrawingColorValue: document.getElementById('reviewModeDrawingColorValue'),
+        reviewModeDrawingColorResetBtn: document.getElementById('reviewModeDrawingColorResetBtn'),
+        reviewModeColorFadeToggle: document.getElementById('reviewModeColorFadeToggle'),
+        reviewModeColorFadeDuration: document.getElementById('reviewModeColorFadeDuration'),
+        reviewModeColorFadeDurationValue: document.getElementById('reviewModeColorFadeDurationValue'),
+        reviewModeColorFadeCycle: document.getElementById('reviewModeColorFadeCycle'),
+        reviewModeColorFadeCycleValue: document.getElementById('reviewModeColorFadeCycleValue'),
         reviewModeConnectorLayer: document.getElementById('reviewModeConnectorLayer'),
         reviewModeLabelLayer: document.getElementById('reviewModeLabelLayer'),
         reviewModeVisualAidLabelLayer: document.getElementById('reviewModeVisualAidLabelLayer'),
@@ -1304,6 +1333,18 @@ MODIFICATION RULES FOR THIS APP
         studioImageEditorPaintbrushBtn: document.getElementById('studioImageEditorPaintbrushBtn'),
         studioImageEditorPenPressurePopover: document.getElementById('studioImageEditorPenPressurePopover'),
         studioImageEditorPressureSensitivityEnabled: document.getElementById('studioImageEditorPressureSensitivityEnabled'),
+        studioImageEditorPressureSettingsToggle: document.getElementById('studioImageEditorPressureSettingsToggle'),
+        studioImageEditorPressureAdvanced: document.getElementById('studioImageEditorPressureAdvanced'),
+        studioImageEditorLazyMouseEnabled: document.getElementById('studioImageEditorLazyMouseEnabled'),
+        studioImageEditorLazyMouseControls: document.getElementById('studioImageEditorLazyMouseControls'),
+        studioImageEditorLazyDistance: document.getElementById('studioImageEditorLazyDistance'),
+        studioImageEditorLazyDistanceValue: document.getElementById('studioImageEditorLazyDistanceValue'),
+        studioImageEditorLazyStep: document.getElementById('studioImageEditorLazyStep'),
+        studioImageEditorLazyStepValue: document.getElementById('studioImageEditorLazyStepValue'),
+        studioImageEditorSmoothingEnabled: document.getElementById('studioImageEditorSmoothingEnabled'),
+        studioImageEditorSmoothingControls: document.getElementById('studioImageEditorSmoothingControls'),
+        studioImageEditorSmoothingStrength: document.getElementById('studioImageEditorSmoothingStrength'),
+        studioImageEditorSmoothingStrengthValue: document.getElementById('studioImageEditorSmoothingStrengthValue'),
         studioImageEditorClearDrawBtn: document.getElementById('studioImageEditorClearDrawBtn'),
         studioImageEditorPressureCurveInput: document.getElementById('studioImageEditorPressureCurveInput'),
         studioImageEditorPressureCurveValue: document.getElementById('studioImageEditorPressureCurveValue'),
@@ -12532,6 +12573,11 @@ MODIFICATION RULES FOR THIS APP
                 metadataPanelOpen: currentEditor.metadataPanelOpen === true,
                 labelInfoPanelOpen: currentEditor.labelInfoPanelOpen === true,
                 drawTool: currentEditor.drawTool,
+                labelLazyMouseEnabled: currentEditor.labelLazyMouseEnabled,
+                labelLazyDistance: currentEditor.labelLazyDistance,
+                labelLazyStep: currentEditor.labelLazyStep,
+                labelSmoothingEnabled: currentEditor.labelSmoothingEnabled,
+                labelSmoothingStrength: currentEditor.labelSmoothingStrength,
                 visualAidLazyDragEnabled: currentEditor.visualAidLazyDragEnabled === true,
                 visualAidLazyDistance: currentEditor.visualAidLazyDistance,
                 visualAidLazyStep: currentEditor.visualAidLazyStep
@@ -12568,6 +12614,11 @@ MODIFICATION RULES FOR THIS APP
                 nextEditor.drawTool = ['paintbrush', 'eraser'].includes(normalizeSheetText(editorPreferences.drawTool))
                     ? normalizeSheetText(editorPreferences.drawTool)
                     : 'paintbrush';
+                nextEditor.labelLazyMouseEnabled = editorPreferences.labelLazyMouseEnabled === true;
+                nextEditor.labelLazyDistance = Math.min(120, Math.max(4, Number(editorPreferences.labelLazyDistance) || 36));
+                nextEditor.labelLazyStep = Math.min(20, Math.max(1, Number(editorPreferences.labelLazyStep) || 3));
+                nextEditor.labelSmoothingEnabled = editorPreferences.labelSmoothingEnabled === true;
+                nextEditor.labelSmoothingStrength = clampDiagramCreatorSmoothingStrength(editorPreferences.labelSmoothingStrength);
                 nextEditor.visualAidLazyDragEnabled = editorPreferences.visualAidLazyDragEnabled === true;
                 nextEditor.visualAidLazyDistance = Math.min(120, Math.max(4, Number(editorPreferences.visualAidLazyDistance) || 36));
                 nextEditor.visualAidLazyStep = Math.min(20, Math.max(1, Number(editorPreferences.visualAidLazyStep) || 3));
@@ -13300,6 +13351,9 @@ MODIFICATION RULES FOR THIS APP
             showLabelNumbers: false,
             reflectionSweepEnabled: true,
             showDrawData: false,
+            colorFadeEnabled: false,
+            colorFadeDuration: 3,
+            colorFadeCycle: 5,
             disableLabelNamesOnClick: false,
             includeLabelDescriptions: true,
             showConnectors: true,
@@ -13328,6 +13382,40 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    // Separate Mini Quiz effects from ordinary Review preferences; first-time Mini Quiz defaults
+    // to Sonar + Color Fade, and neither existing Review preferences nor custom Mini Quiz choices
+    // should be overwritten by entering/exiting a quiz.
+    const REVIEW_MODE_MINI_EFFECT_FIELDS = ['reflectionSweepEnabled', 'connectorGlowRegular', 'connectorGlowBracket',
+        'connectorSonarEnabled', 'showDrawData', 'colorFadeEnabled', 'colorFadeDuration', 'colorFadeCycle'];
+    const REVIEW_MODE_MINI_EFFECTS_PREFIX = 'studyBunnyMiniEffects24B2:';
+    function normalizeReviewModeFadeSeconds(value, fallback, min, max) {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number * 2) / 2)) : fallback;
+    }
+    function getReviewModeMiniEffectDefaults() {
+        return { reflectionSweepEnabled: false, connectorGlowRegular: false, connectorGlowBracket: false,
+            connectorSonarEnabled: true, showDrawData: false, colorFadeEnabled: true,
+            colorFadeDuration: 3, colorFadeCycle: 5 };
+    }
+    function getReviewModeMiniEffectKey() {
+        const owner = normalizeSheetText(state.auth.user?.id || '');
+        return owner ? `${REVIEW_MODE_MINI_EFFECTS_PREFIX}${encodeURIComponent(owner)}` : '';
+    }
+    function readReviewModeMiniEffectPreferences() {
+        const defaults = getReviewModeMiniEffectDefaults();
+        const key = getReviewModeMiniEffectKey();
+        let source = {};
+        try { source = JSON.parse(window.localStorage?.getItem(key) || 'null')?.effects || {}; } catch (_) {}
+        const full = sanitizeReviewModePreferences({ ...getReviewModePreferenceDefaults(), ...defaults, ...source });
+        return Object.fromEntries(REVIEW_MODE_MINI_EFFECT_FIELDS.map(field => [field, full[field]]));
+    }
+    function saveReviewModeMiniEffectPreferences(review) {
+        const key = getReviewModeMiniEffectKey();
+        if (!key) return;
+        const effects = Object.fromEntries(REVIEW_MODE_MINI_EFFECT_FIELDS.map(field => [field, review[field]]));
+        try { window.localStorage?.setItem(key, JSON.stringify({ version: 1, effects })); } catch (_) {}
+    }
+
     function getReviewModePreferenceStorageKey() {
         const owner = normalizeSheetText(state.auth.user?.id || '');
         return owner ? `${REVIEW_MODE_PREFERENCES_STORAGE_PREFIX}${encodeURIComponent(owner)}` : '';
@@ -13349,6 +13437,10 @@ MODIFICATION RULES FOR THIS APP
             }
         }
         if (Number.isFinite(source.connectorGlowSpeed)) prefs.connectorGlowSpeed = getReviewModeGlowSpeedMultiplier(source.connectorGlowSpeed);
+        if (Number.isFinite(source.colorFadeDuration)) prefs.colorFadeDuration = normalizeReviewModeFadeSeconds(source.colorFadeDuration, 3, 0.5, 10);
+        if (Number.isFinite(source.colorFadeCycle)) prefs.colorFadeCycle = normalizeReviewModeFadeSeconds(source.colorFadeCycle, 5, 1, 15);
+        prefs.colorFadeCycle = Math.max(prefs.colorFadeDuration, prefs.colorFadeCycle);
+        if (prefs.showDrawData && prefs.colorFadeEnabled) prefs.colorFadeEnabled = false;
         for (const name of ['normalFocusZoom', 'detailFocusZoom']) {
             if (Number.isFinite(source[name])) prefs[name] = Math.max(100, Math.min(700, Math.round(source[name] / 25) * 25));
         }
@@ -13387,6 +13479,10 @@ MODIFICATION RULES FOR THIS APP
         const defaults = getReviewModePreferenceDefaults();
         const snapshot = {};
         for (const field of Object.keys(defaults)) snapshot[field] = review[field];
+        if (review.miniQuiz.active && review.miniQuizEffectRestore) {
+            saveReviewModeMiniEffectPreferences(review);
+            Object.assign(snapshot, review.miniQuizEffectRestore);
+        }
         try {
             window.localStorage?.setItem(key, JSON.stringify({ version: 1, preferences: sanitizeReviewModePreferences(snapshot) }));
         } catch (_) { /* UI continues normally with storage disabled or full. */ }
@@ -13435,6 +13531,14 @@ MODIFICATION RULES FOR THIS APP
         review.allowLabelMovement = review.allowLabelMovement === true;
         review.showLabelNumbers = review.showLabelNumbers === true;
         review.showDrawData = review.showDrawData === true;
+        review.colorFadeEnabled = review.colorFadeEnabled === true;
+        review.colorFadeDuration = normalizeReviewModeFadeSeconds(review.colorFadeDuration, 3, 0.5, 10);
+        review.colorFadeCycle = Math.max(review.colorFadeDuration, normalizeReviewModeFadeSeconds(review.colorFadeCycle, 5, 1, 15));
+        if (review.showDrawData && review.colorFadeEnabled) review.colorFadeEnabled = false;
+        review.effectsMenuOpen = review.effectsMenuOpen === true;
+        // Never persisted; only valid during the current Review/Mini Quiz overlay session.
+        review.drawingSessionColor = /^#[0-9a-fA-F]{6}$/.test(review.drawingSessionColor || '')
+            ? normalizeEditorHexColor(review.drawingSessionColor, '#ffffff') : '';
         review.reflectionSweepEnabled = review.reflectionSweepEnabled !== false;
         review.showConnectors = review.showConnectors !== false;
         review.showConnectorContrast = review.showConnectorContrast !== false;
@@ -13963,10 +14067,11 @@ MODIFICATION RULES FOR THIS APP
         elements.reviewModeShortcutGrip?.classList.toggle('hidden', !dockShown);
         elements.reviewModeShortcutShowBtn?.classList.add('hidden');
         if (elements.reviewModeShortcutColorBtn) {
-            elements.reviewModeShortcutColorBtn.textContent = review.showDrawData ? 'Color On' : 'Color Off';
-            elements.reviewModeShortcutColorBtn.classList.toggle('is-active', review.showDrawData);
-            elements.reviewModeShortcutColorBtn.setAttribute('aria-pressed', review.showDrawData ? 'true' : 'false');
+            elements.reviewModeShortcutColorBtn.textContent = 'Effects';
+            elements.reviewModeShortcutColorBtn.classList.toggle('is-active', review.effectsMenuOpen);
+            elements.reviewModeShortcutColorBtn.setAttribute('aria-expanded', review.effectsMenuOpen ? 'true' : 'false');
         }
+        syncReviewModeEffectsMenu();
         if (elements.reviewModeShortcutLinesBtn) {
             elements.reviewModeShortcutLinesBtn.textContent = review.showConnectors ? 'Lines On' : 'Lines Off';
             elements.reviewModeShortcutLinesBtn.classList.toggle('is-active', review.showConnectors);
@@ -14004,6 +14109,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.reviewModeShowShortcutDockToggle) elements.reviewModeShowShortcutDockToggle.checked = review.shortcutDockVisible;
         window.requestAnimationFrame(() => {
             applyReviewModeShortcutDockPosition();
+            positionReviewModeEffectsMenu();
             scheduleReviewModeTouchLabelFit();
         });
     }
@@ -14011,17 +14117,123 @@ MODIFICATION RULES FOR THIS APP
     function setReviewModeShortcutDockVisible(visible) {
         const review = getReviewModeState();
         review.shortcutDockVisible = !!visible;
+        if (!visible) setReviewModeEffectsMenuOpen(false);
         syncReviewModeShortcutDock();
         saveReviewModePreferences();
     }
 
-    function toggleReviewModeColor() {
+    function positionReviewModeEffectsMenu() {
+        const panel = elements.reviewModeEffectsPanel;
+        const viewport = elements.reviewModeImageViewport;
+        const trigger = elements.reviewModeShortcutColorBtn;
+        if (!panel || !viewport || !trigger || panel.classList.contains('hidden')) return;
+        const frame = viewport.getBoundingClientRect();
+        const button = trigger.getBoundingClientRect();
+        // Independent of the dock's scrolling container: on a narrow iPhone this
+        // panel can remain visible even when the dock is dragged to a screen edge.
+        const width = panel.offsetWidth;
+        const height = panel.offsetHeight;
+        const margin = 8;
+        const rightSide = button.right + width + margin < frame.right;
+        const x = rightSide ? button.right - frame.left + 5 : button.left - frame.left - width - 5;
+        const y = button.top - frame.top - Math.min(35, height / 4);
+        panel.style.left = `${Math.max(margin, Math.min(frame.width - width - margin, x))}px`;
+        panel.style.top = `${Math.max(margin, Math.min(frame.height - height - margin, y))}px`;
+    }
+
+    function setReviewModeEffectsMenuOpen(open) {
         const review = getReviewModeState();
-        review.showDrawData = !review.showDrawData;
-        renderReviewModeDrawData();
+        review.effectsMenuOpen = !!open && review.overlayOpen && review.shortcutDockVisible;
+        const panel = elements.reviewModeEffectsPanel;
+        panel?.classList.toggle('hidden', !review.effectsMenuOpen);
+        panel?.setAttribute('aria-hidden', review.effectsMenuOpen ? 'false' : 'true');
+        elements.reviewModeShortcutColorBtn?.setAttribute('aria-expanded', review.effectsMenuOpen ? 'true' : 'false');
+        if (review.effectsMenuOpen) window.requestAnimationFrame(positionReviewModeEffectsMenu);
+    }
+
+    function syncReviewModeEffectsMenu() {
+        const review = getReviewModeState();
+        const controls = [
+            ['reviewModeEffectsReflection', review.reflectionSweepEnabled],
+            ['reviewModeEffectsGlow', review.connectorGlowRegular || review.connectorGlowBracket],
+            ['reviewModeEffectsSonar', review.connectorSonarEnabled],
+            ['reviewModeEffectsDrawing', review.showDrawData],
+            ['reviewModeEffectsFade', review.colorFadeEnabled]
+        ];
+        controls.forEach(([id, checked]) => { if (elements[id]) elements[id].checked = !!checked; });
+        const settings = [['reviewModeColorFadeDuration', review.colorFadeDuration],
+            ['reviewModeColorFadeCycle', review.colorFadeCycle]];
+        settings.forEach(([id, value]) => {
+            if (!elements[id]) return;
+            elements[id].value = String(value);
+            elements[`${id}Value`] && (elements[`${id}Value`].textContent = `${value.toFixed(1)}s`);
+        });
+        for (const id of ['reviewModeColorFadeDuration']) {
+            if (elements[id]) elements[id].max = String(review.colorFadeCycle);
+        }
+        for (const id of ['reviewModeColorFadeCycle']) {
+            if (elements[id]) elements[id].min = String(review.colorFadeDuration);
+        }
+        if (elements.reviewModeColorFadeToggle) elements.reviewModeColorFadeToggle.checked = review.colorFadeEnabled;
+        // RGB is temporary and never included in persisted Review/Mini Quiz preferences.
+        const rgb = review.drawingSessionColor || '#ffffff';
+        for (const id of ['reviewModeEffectsDrawingColor', 'reviewModeDrawingColor']) {
+            if (elements[id] && elements[id].value !== rgb) elements[id].value = rgb;
+            const output = elements[`${id}Value`];
+            if (output) output.textContent = review.drawingSessionColor ? rgb.toUpperCase() : 'Original colors';
+            const reset = elements[`${id}ResetBtn`];
+            if (reset) reset.disabled = !review.drawingSessionColor;
+        }
+        if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
+    }
+
+    function setReviewModeEffect(field, enabled) {
+        const review = getReviewModeState();
+        if (field === 'drawing') {
+            review.showDrawData = !!enabled;
+            if (enabled) review.colorFadeEnabled = false;
+        } else if (field === 'fade') {
+            review.colorFadeEnabled = !!enabled;
+            if (enabled) review.showDrawData = false;
+        } else if (field === 'glow') {
+            review.connectorGlowRegular = !!enabled;
+            review.connectorGlowBracket = !!enabled;
+        } else if (field === 'sonar') {
+            review.connectorSonarEnabled = !!enabled;
+        } else if (field === 'reflection') {
+            review.reflectionSweepEnabled = !!enabled;
+        }
+        if (['drawing', 'fade', 'reflection'].includes(field)) renderReviewModeDrawData({ skipVisualAidRefresh: true });
+        if (['sonar', 'glow'].includes(field)) renderReviewModeConnectors();
         syncReviewModeControls();
         saveReviewModePreferences();
     }
+
+    function setReviewModeSessionDrawingColor(value = '') {
+        const review = getReviewModeState();
+        if (!review.overlayOpen) return;
+        review.drawingSessionColor = /^#[0-9a-fA-F]{6}$/.test(value)
+            ? normalizeEditorHexColor(value, '#ffffff') : '';
+        renderReviewModeDrawData({ skipVisualAidRefresh: true });
+        syncReviewModeEffectsMenu();
+        // Deliberately NO saveReviewModePreferences / Mini effect persistence / stroke write.
+    }
+
+    function setReviewModeFadeTiming(field, value) {
+        const review = getReviewModeState();
+        const seconds = field === 'colorFadeDuration'
+            ? normalizeReviewModeFadeSeconds(value, 3, 0.5, 10)
+            : normalizeReviewModeFadeSeconds(value, 5, 1, 15);
+        review[field] = seconds;
+        if (review.colorFadeDuration > review.colorFadeCycle) {
+            if (field === 'colorFadeDuration') review.colorFadeCycle = seconds;
+            else review.colorFadeDuration = seconds;
+        }
+        renderReviewModeFade();
+        syncReviewModeEffectsMenu();
+        saveReviewModePreferences();
+    }
+
 
     function toggleReviewModeLines() {
         const review = getReviewModeState();
@@ -14035,6 +14247,7 @@ MODIFICATION RULES FOR THIS APP
         const review = getReviewModeState();
         const hideAll = isReviewModeAllInformationShown(review);
         review.showDrawData = !hideAll;
+        if (!hideAll) review.colorFadeEnabled = false;
         review.showConnectors = !hideAll;
         if (!review.miniQuiz.active) {
             review.showAllNames = !hideAll;
@@ -14605,6 +14818,7 @@ MODIFICATION RULES FOR THIS APP
         if (elements.reviewModeVisualAidLabelLayer) { elements.reviewModeVisualAidLabelLayer.innerHTML = ''; elements.reviewModeVisualAidLabelLayer.setAttribute('aria-hidden','true'); }
         if (elements.reviewModeConnectorLayer) elements.reviewModeConnectorLayer.innerHTML = '';
         clearReviewModeReflection();
+        clearReviewModeFadeCanvas();
         if (elements.reviewModeVisualAidLayer) elements.reviewModeVisualAidLayer.innerHTML = '';
         if (elements.reviewModeDrawCanvas) {
             const ctx = elements.reviewModeDrawCanvas.getContext('2d');
@@ -14844,6 +15058,7 @@ MODIFICATION RULES FOR THIS APP
     function setReviewModeOptionsOpen(open) {
         const review = getReviewModeState();
         review.optionsOpen = !!open;
+        if (review.optionsOpen) setReviewModeEffectsMenuOpen(false);
         elements.reviewModeOptionsPanel?.classList.toggle('hidden', !review.optionsOpen);
         elements.reviewModeOptionsPanel?.setAttribute('aria-hidden', review.optionsOpen ? 'false' : 'true');
         if (elements.reviewModeOptionsBtn) {
@@ -15557,7 +15772,12 @@ MODIFICATION RULES FOR THIS APP
         const indexes = targets.map((_, index) => index);
         const quizQueue = review.randomizeMiniQuiz ? shuffleReviewModeMiniQuizIndexes(indexes) : indexes;
         const enteringMiniQuiz = !review.miniQuiz?.active;
-        if (enteringMiniQuiz) review.miniQuizFocusRestore = review.focusMode === true;
+        if (enteringMiniQuiz) {
+            review.miniQuizFocusRestore = review.focusMode === true;
+            review.miniQuizEffectRestore = Object.fromEntries(REVIEW_MODE_MINI_EFFECT_FIELDS.map(field => [field, review[field]]));
+            Object.assign(review, readReviewModeMiniEffectPreferences());
+        }
+        setReviewModeEffectsMenuOpen(false);
         review.miniQuizScope = quizScope;
         review.miniQuiz = normalizeReviewModeMiniQuizState({
             active: true,
@@ -15719,6 +15939,11 @@ MODIFICATION RULES FOR THIS APP
         const review = getReviewModeState();
         const restoreFocus = review.miniQuizFocusRestore;
         review.miniQuizFocusRestore = null;
+        if (review.miniQuizEffectRestore) {
+            Object.assign(review, review.miniQuizEffectRestore);
+            review.miniQuizEffectRestore = null;
+        }
+        setReviewModeEffectsMenuOpen(false);
         // Keep the student's chosen scope when ending a quiz; new review sessions default to all angles.
         review.miniQuiz = normalizeReviewModeMiniQuizState({ active: false, complete: false, mode: review.miniQuizMode, scope: review.miniQuizScope, targets: [] }, review.miniQuizMode);
         if (typeof restoreFocus === 'boolean' && restoreFocus !== review.focusMode) {
@@ -17704,6 +17929,89 @@ MODIFICATION RULES FOR THIS APP
         renderReviewModeReflection(entry, angle, dims.width, dims.height);
     }
 
+    // Phase 24B.2: draw active label onto its own canvas exactly ONCE per target.
+    // The opacity timeline runs in the compositor (Web Animations), not JS redraws.
+    // An eraser in the selected label still masks only that label's own strokes.
+    function getReviewModeDisplayStroke(stroke, drawingColor) {
+        // Recolor only a freshly cloned render object. Saved label strokes, pressure,
+        // highlighter alpha, and eraser compositing remain untouched.
+        return { ...stroke, visible: true, ...(drawingColor && normalizeImageEditorDrawTool(stroke.tool) !== 'eraser'
+            ? { color: drawingColor } : {}) };
+    }
+
+    let reviewModeFadeAnimation = null;
+    let reviewModeFadeTimingKey = '';
+    function clearReviewModeFadeCanvas() {
+        if (reviewModeFadeAnimation) { reviewModeFadeAnimation.cancel(); reviewModeFadeAnimation = null; }
+        reviewModeFadeTimingKey = '';
+        const canvas = elements.reviewModeFadeCanvas;
+        if (!canvas) return;
+        canvas.classList.add('hidden');
+        canvas.style.opacity = '1';
+        delete canvas.dataset.reviewFadeKey;
+    }
+    function getReviewModeFadeSelectedIndex(review) {
+        if (review.miniQuiz.active) {
+            return review.miniQuiz.complete ? -1 : getReviewModeMiniQuizActiveLabelIndex(review);
+        }
+        if (review.showAllNames || !review.revealedLabels.size) return -1;
+        if (review.revealedLabels.has(review.focusLabelIndex)) return review.focusLabelIndex;
+        return [...review.revealedLabels].pop() ?? -1;
+    }
+    function renderReviewModeFade() {
+        const canvas = elements.reviewModeFadeCanvas;
+        const img = elements.reviewModeImage;
+        if (!canvas || !img) return;
+        const review = getReviewModeState();
+        const entry = getActiveReviewModeEntry();
+        const angle = getActiveReviewModeAngle(entry);
+        const miniActive = review.miniQuiz.active;
+        const index = getReviewModeFadeSelectedIndex(review);
+        if (!review.overlayOpen || !review.colorFadeEnabled || review.showDrawData ||
+            !isReviewModeActiveAngleOverlayReady() || !angle || index < 0 ||
+            (review.visualAidOnly && review.showVisualAid && !miniActive) ||
+            (!miniActive && review.pinnedLabelsOnly && !getReviewModePinnedIndexSet(entry, review.activeAngleIndex).has(index))) {
+            clearReviewModeFadeCanvas(); return;
+        }
+        const raw = Array.isArray(angle.drawStrokes) ? angle.drawStrokes : [];
+        if (!raw.some(stroke => Math.max(0, Number(stroke?.labelIndex) || 0) === index &&
+            normalizeImageEditorDrawTool(stroke?.tool) !== 'eraser' && stroke?.points?.length && Number(stroke.transparency) !== 0)) {
+            clearReviewModeFadeCanvas(); return;
+        }
+        const { width, height } = getImageEditorStrokeOverlayDimensions(img.naturalWidth, img.naturalHeight);
+        const imageKey = [review.activeEntryId, review.activeAngleIndex, index, width, height,
+            img.currentSrc || img.src || '', review.drawingSessionColor || 'original'].join('::');
+        const repaint = canvas.dataset.reviewFadeKey !== imageKey || canvas.width !== width || canvas.height !== height;
+        if (repaint) {
+            if (reviewModeFadeAnimation) { reviewModeFadeAnimation.cancel(); reviewModeFadeAnimation = null; }
+            if (canvas.width !== width) canvas.width = width;
+            if (canvas.height !== height) canvas.height = height;
+            const context = canvas.getContext('2d');
+            if (!context) { clearReviewModeFadeCanvas(); return; }
+            context.clearRect(0, 0, width, height);
+            cloneImageEditorDrawStrokes(raw)
+                .filter(stroke => Math.max(0, Number(stroke.labelIndex) || 0) === index)
+                .forEach(stroke => renderImageEditorStroke(context,
+                    getReviewModeDisplayStroke(stroke, review.drawingSessionColor)));
+            canvas.dataset.reviewFadeKey = imageKey;
+            reviewModeFadeTimingKey = '';
+        }
+        canvas.classList.remove('hidden');
+        const timingKey = `${review.colorFadeDuration}:${review.colorFadeCycle}`;
+        if (reviewModeFadeTimingKey !== timingKey || !reviewModeFadeAnimation) {
+            if (reviewModeFadeAnimation) reviewModeFadeAnimation.cancel();
+            canvas.style.opacity = '1';
+            const duration = Math.max(0.5, review.colorFadeDuration);
+            const cycle = Math.max(duration, review.colorFadeCycle);
+            const offset = Math.min(1, duration / cycle);
+            reviewModeFadeAnimation = typeof canvas.animate === 'function'
+                ? canvas.animate([{ opacity: 1, offset: 0 }, { opacity: 0, offset }, { opacity: 0, offset: 1 }],
+                    { duration: cycle * 1000, iterations: Infinity, easing: 'linear', fill: 'none' })
+                : null;
+            reviewModeFadeTimingKey = timingKey;
+        }
+    }
+
     function renderReviewModeDrawData({ skipVisualAidRefresh = false } = {}) {
         const entry = getActiveReviewModeEntry();
         const angle = getActiveReviewModeAngle(entry);
@@ -17716,6 +18024,7 @@ MODIFICATION RULES FOR THIS APP
         if (canvas.height !== height) canvas.height = height;
         const review = getReviewModeState();
         renderReviewModeReflection(entry, angle, width, height);
+        renderReviewModeFade();
         // Canvas changes are expensive at full image resolution. When no label
         // drawings are requested, an already-clear canvas needs no repaint.
         if (!review.showDrawData && canvas.dataset.reviewEmptyDraw === 'true' && !resized) return;
@@ -17741,7 +18050,8 @@ MODIFICATION RULES FOR THIS APP
         if (!visibleIndexes.size) return;
         cloneImageEditorDrawStrokes(angle.drawStrokes || [])
             .filter(stroke => visibleIndexes.has(Math.max(0, Number(stroke.labelIndex) || 0)))
-            .forEach(stroke => renderImageEditorStroke(ctx, { ...stroke, visible: true }));
+            .forEach(stroke => renderImageEditorStroke(ctx,
+                getReviewModeDisplayStroke(stroke, review.drawingSessionColor)));
         // renderReviewModeLabels has already refreshed this SVG once.
         if (!skipVisualAidRefresh) renderReviewModeVisualAids();
     }
@@ -18143,6 +18453,7 @@ MODIFICATION RULES FOR THIS APP
             elements.reviewModeLabelNumberToggle.disabled = false;
         }
         if (elements.reviewModeShowDrawDataToggle) elements.reviewModeShowDrawDataToggle.checked = review.showDrawData;
+        syncReviewModeEffectsMenu();
         if (elements.reviewModeReflectionSweepToggle) elements.reviewModeReflectionSweepToggle.checked = review.reflectionSweepEnabled;
         if (elements.reviewModeDisableNamesOnClickToggle) {
             elements.reviewModeDisableNamesOnClickToggle.checked = review.disableLabelNamesOnClick;
@@ -18249,7 +18560,10 @@ MODIFICATION RULES FOR THIS APP
         review.activeEntryId = entry.id;
         review.activeAngleIndex = 0;
         review.overlayOpen = true;
+        review.drawingSessionColor = ''; // RGB tint must never carry into the next session.
         review.optionsOpen = false;
+        review.effectsMenuOpen = false;
+        review.miniQuizEffectRestore = null;
         review.connectorSonarHoverIndex = -1;
         review.connectorSonarTouchIndex = -1;
         if (reviewModeSonarTouchTimeoutId) window.clearTimeout(reviewModeSonarTouchTimeoutId);
@@ -18332,7 +18646,10 @@ MODIFICATION RULES FOR THIS APP
         review.activeEntryId = '';
         review.activeAngleIndex = 0;
         review.overlayOpen = false;
+        review.drawingSessionColor = '';
         review.optionsOpen = false;
+        setReviewModeEffectsMenuOpen(false);
+        review.miniQuizEffectRestore = null;
         clearReviewModePortraitZoomBadge({ resetTracking: true });
         review.connectorSonarHoverIndex = -1;
         review.connectorSonarTouchIndex = -1;
@@ -19160,6 +19477,18 @@ MODIFICATION RULES FOR THIS APP
         elements.studioImageEditorPaintbrushBtn = document.getElementById('studioImageEditorPaintbrushBtn');
         elements.studioImageEditorPenPressurePopover = document.getElementById('studioImageEditorPenPressurePopover');
         elements.studioImageEditorPressureSensitivityEnabled = document.getElementById('studioImageEditorPressureSensitivityEnabled');
+        elements.studioImageEditorPressureSettingsToggle = document.getElementById('studioImageEditorPressureSettingsToggle');
+        elements.studioImageEditorPressureAdvanced = document.getElementById('studioImageEditorPressureAdvanced');
+        elements.studioImageEditorLazyMouseEnabled = document.getElementById('studioImageEditorLazyMouseEnabled');
+        elements.studioImageEditorLazyMouseControls = document.getElementById('studioImageEditorLazyMouseControls');
+        elements.studioImageEditorLazyDistance = document.getElementById('studioImageEditorLazyDistance');
+        elements.studioImageEditorLazyDistanceValue = document.getElementById('studioImageEditorLazyDistanceValue');
+        elements.studioImageEditorLazyStep = document.getElementById('studioImageEditorLazyStep');
+        elements.studioImageEditorLazyStepValue = document.getElementById('studioImageEditorLazyStepValue');
+        elements.studioImageEditorSmoothingEnabled = document.getElementById('studioImageEditorSmoothingEnabled');
+        elements.studioImageEditorSmoothingControls = document.getElementById('studioImageEditorSmoothingControls');
+        elements.studioImageEditorSmoothingStrength = document.getElementById('studioImageEditorSmoothingStrength');
+        elements.studioImageEditorSmoothingStrengthValue = document.getElementById('studioImageEditorSmoothingStrengthValue');
         elements.studioImageEditorClearDrawBtn = document.getElementById('studioImageEditorClearDrawBtn');
         elements.studioImageEditorPressureCurveInput = document.getElementById('studioImageEditorPressureCurveInput');
         elements.studioImageEditorPressureCurveValue = document.getElementById('studioImageEditorPressureCurveValue');
@@ -19277,7 +19606,7 @@ MODIFICATION RULES FOR THIS APP
                         <div class="studio-image-editor-slider-popover studio-image-editor-color-control" data-image-editor-popover="color"><button type="button" id="studioImageEditorColorToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle studio-image-editor-color-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorColorPopover">RGB <span id="studioImageEditorCurrentColorSwatch" class="studio-image-editor-current-color-swatch" aria-hidden="true"></span></button><div id="studioImageEditorColorPopover" class="studio-image-editor-popover-panel studio-image-editor-color-popover hidden" role="dialog" aria-label="Connector and drawing colors"><label class="studio-image-editor-color-picker-row" title="Connector and drawing RGB color"><span>Color</span><input id="studioImageEditorArrowColorInput" type="color" value="#000000" aria-label="Connector and drawing RGB color"></label><div class="studio-image-editor-color-presets-heading">Saved colors</div><div id="studioImageEditorColorPresetList" class="studio-image-editor-color-preset-list" aria-label="Saved color presets"></div><button type="button" id="studioImageEditorAddColorPresetBtn" class="studio-image-editor-color-preset-add" aria-label="Save current color preset" title="Save current color">+</button></div></div>
                         <div class="studio-image-editor-slider-popover studio-image-editor-thickness-control" data-image-editor-popover="thickness"><button type="button" id="studioImageEditorLineThicknessToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorLineThicknessPopover">Thickness <span id="studioImageEditorLineThicknessValue" class="studio-image-editor-range-value" aria-live="polite">2</span></button><div id="studioImageEditorLineThicknessPopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Connector thickness"><label class="studio-image-editor-range-control" title="Connector thickness"><span>Thickness</span><input id="studioImageEditorLineThicknessInput" type="range" min="0.25" max="24" step="0.25" value="2" aria-label="Connector thickness"></label></div></div>
                         <div class="studio-image-editor-draw-toolbar" aria-label="Draw tools">
-                          <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap"><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for pressure settings)" aria-label="Pen; tap again for pressure settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button><div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings"><label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label><div class="studio-image-editor-pressure-hint">ON by default. Pressure changes width only, never opacity. Existing strokes stay unchanged.</div><div class="studio-image-editor-pressure-graph-wrap"><div class="studio-image-editor-pressure-head"><span>Pressure response curve</span><output id="studioImageEditorPressureCurveValue">Fine (1.60)</output></div><svg id="studioImageEditorPressureGraph" viewBox="0 0 270 142" role="img" aria-label="Input pressure versus output stroke width"><path d="M30 8 V116 H258" stroke="currentColor" opacity=".4" stroke-width="1" fill="none"/><path d="M30 116 L258 8" stroke="currentColor" stroke-dasharray="4 5" opacity=".3" fill="none"/><path id="studioImageEditorPressureCurvePath" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round"/><text x="144" y="138" text-anchor="middle" font-size="11" fill="currentColor">Applied pressure →</text><text x="8" y="63" font-size="10" fill="currentColor" transform="rotate(-90 8 63)">Width</text></svg><label class="studio-image-editor-pressure-range">Response <input id="studioImageEditorPressureCurveInput" type="range" min="0.55" max="3" step="0.05" value="1.6" aria-label="Pressure curve response: higher values give thinner lines for light touches"></label><button type="button" id="studioImageEditorPressureCurveReset" class="auth-action-btn auth-secondary-btn studio-image-editor-pressure-reset">Reset curve</button></div><div class="studio-image-editor-pressure-test"><strong>Live Pressure Test</strong><div id="studioImageEditorPressureTestPad" class="studio-image-editor-pressure-test-pad" role="img" aria-label="Press here with Apple Pencil or Cintiq pen to measure pressure">Touch here with your stylus</div><div class="studio-image-editor-pressure-meter"><div id="studioImageEditorPressureTestBar"></div></div><div class="studio-image-editor-pressure-readings"><output id="studioImageEditorPressureTestValue">Waiting for stylus</output><output id="studioImageEditorPressureTestWidth">—</output></div><div class="studio-image-editor-pressure-hint">The test never draws on or changes your diagram. If your browser reports fixed pressure, the curve cannot create missing hardware data.</div></div></div></div>
+                          <div class="studio-image-editor-slider-popover" id="studioImageEditorPenSettingsWrap"><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool active" data-image-editor-draw-tool="paintbrush" id="studioImageEditorPaintbrushBtn" title="Pen (tap again for brush settings)" aria-label="Pen; tap again for brush settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorPenPressurePopover">🖌️</button><div id="studioImageEditorPenPressurePopover" class="studio-image-editor-popover-panel studio-image-editor-pen-pressure-popover hidden" role="dialog" aria-label="Diagram Creator pen settings"> <label class="studio-image-editor-pressure-row"><span>Pressure Sensitivity</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorPressureSensitivityEnabled" checked aria-label="Enable pen pressure sensitivity"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label> <div class="studio-image-editor-pressure-hint">ON by default. Pressure changes width only, never opacity. Existing strokes stay unchanged.</div> <button type="button" id="studioImageEditorPressureSettingsToggle" class="studio-diagram-brush-disclosure" aria-expanded="false" aria-controls="studioImageEditorPressureAdvanced"><span>Pressure Settings</span><span aria-hidden="true">▸</span></button> <div id="studioImageEditorPressureAdvanced" class="studio-diagram-brush-advanced hidden"> <div class="studio-image-editor-pressure-graph-wrap"> <div class="studio-image-editor-pressure-head"><span>Pressure response curve</span><output id="studioImageEditorPressureCurveValue">Fine (1.60)</output></div> <svg id="studioImageEditorPressureGraph" viewBox="0 0 270 142" role="img" aria-label="Input pressure versus output stroke width"> <path d="M30 8 V116 H258" stroke="currentColor" opacity=".4" stroke-width="1" fill="none"/> <path d="M30 116 L258 8" stroke="currentColor" stroke-dasharray="4 5" opacity=".3" fill="none"/> <path id="studioImageEditorPressureCurvePath" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round"/> <text x="144" y="138" text-anchor="middle" font-size="11" fill="currentColor">Applied pressure →</text> <text x="8" y="63" font-size="10" fill="currentColor" transform="rotate(-90 8 63)">Width</text> </svg> <label class="studio-image-editor-pressure-range">Response <input id="studioImageEditorPressureCurveInput" type="range" min="0.55" max="3" step="0.05" value="1.6" aria-label="Pressure curve response: higher values give thinner lines for light touches"></label> <button type="button" id="studioImageEditorPressureCurveReset" class="auth-action-btn auth-secondary-btn studio-image-editor-pressure-reset">Reset curve</button> </div> <div class="studio-image-editor-pressure-test"> <strong>Live Pressure Test</strong> <div id="studioImageEditorPressureTestPad" class="studio-image-editor-pressure-test-pad" role="img" aria-label="Press here with Apple Pencil or Cintiq pen to measure pressure">Touch here with your stylus</div> <div class="studio-image-editor-pressure-meter"><div id="studioImageEditorPressureTestBar"></div></div> <div class="studio-image-editor-pressure-readings"><output id="studioImageEditorPressureTestValue">Waiting for stylus</output><output id="studioImageEditorPressureTestWidth">—</output></div> <div class="studio-image-editor-pressure-hint">The test never draws on or changes your diagram. If your browser reports fixed pressure, the curve cannot create missing hardware data.</div> </div> </div> <div class="studio-diagram-brush-divider"></div> <label class="studio-image-editor-pressure-row"><span>Lazy Mouse</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorLazyMouseEnabled" aria-label="Enable Lazy Mouse for label drawing"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label> <div id="studioImageEditorLazyMouseControls" class="studio-diagram-brush-options hidden"> <label>Lazy Distance <input id="studioImageEditorLazyDistance" type="range" min="4" max="120" step="1" value="36" aria-label="Lazy Mouse distance"><output id="studioImageEditorLazyDistanceValue">36</output></label> <label>Lazy Step <input id="studioImageEditorLazyStep" type="range" min="1" max="20" step="1" value="3" aria-label="Lazy Mouse step"><output id="studioImageEditorLazyStepValue">3</output></label> </div> <div class="studio-diagram-brush-divider"></div> <label class="studio-image-editor-pressure-row"><span>Stroke Smoothing</span><span class="studio-image-editor-pressure-switch"><input type="checkbox" role="switch" id="studioImageEditorSmoothingEnabled" aria-label="Enable stroke smoothing"><span class="studio-image-editor-pressure-switch-track" aria-hidden="true"></span></span></label> <div id="studioImageEditorSmoothingControls" class="studio-diagram-brush-options hidden"> <label>Smoothing Strength <input id="studioImageEditorSmoothingStrength" type="range" min="5" max="100" step="5" value="25" aria-label="Stroke smoothing strength"><output id="studioImageEditorSmoothingStrengthValue">25%</output></label> </div> </div></div>
                           <button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-tool" data-image-editor-draw-tool="eraser" id="studioImageEditorEraserBtn" title="Eraser tool" aria-label="Eraser tool">🧽</button><button type="button" class="auth-action-btn auth-secondary-btn studio-image-draw-clear" id="studioImageEditorClearDrawBtn" title="Clear drawing strokes for selected label (undo available)" aria-label="Clear drawing for selected label">Clear</button>
                         </div>
                         <div class="studio-image-editor-slider-popover" data-image-editor-popover="size"><button type="button" id="studioImageEditorDrawSizeToggle" class="auth-action-btn auth-secondary-btn studio-image-editor-popover-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="studioImageEditorDrawSizePopover">Size <span id="studioImageEditorDrawSizeValue" class="studio-image-editor-range-value" aria-live="polite">14</span></button><div id="studioImageEditorDrawSizePopover" class="studio-image-editor-popover-panel hidden" role="dialog" aria-label="Paintbrush and eraser size"><label class="studio-image-editor-range-control" title="Paintbrush and eraser size"><span>Size</span><input id="studioImageEditorDrawSizeInput" type="range" min="2" max="60" value="14" aria-label="Paintbrush and eraser size"></label></div></div>
@@ -21625,6 +21954,13 @@ MODIFICATION RULES FOR THIS APP
             drawTool: 'paintbrush',
             drawPressureSensitivityEnabled: true,
             drawPenSettingsArmed: false,
+            labelLazyMouseEnabled: false,
+            labelLazyDistance: 36,
+            labelLazyStep: 3,
+            labelLazyTip: null,
+            labelLazyRaw: null,
+            labelSmoothingEnabled: false,
+            labelSmoothingStrength: 25,
             drawSize: 14,
             paintTransparency: 0.65,
             activeDrawLabelIndex: null,
@@ -22418,6 +22754,74 @@ MODIFICATION RULES FOR THIS APP
         catch (_) { /* Drawing remains usable when local storage is unavailable. */ }
     }
 
+    // Phase 24B.1: brush controls are account-scoped device preferences only.
+    // OFF means the existing drawing pipeline is byte-for-byte unchanged.
+    function getDiagramCreatorBrushStorageKey() {
+        return `studyBunnyDiagramCreatorBrush24B1:${normalizeSheetText(state.auth.user?.id) || 'anonymous'}`;
+    }
+
+    function clampDiagramCreatorSmoothingStrength(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? Math.min(100, Math.max(5, Math.round(n / 5) * 5)) : 25;
+    }
+
+    function loadDiagramCreatorBrushPreferences() {
+        try {
+            const item = JSON.parse(window.localStorage?.getItem(getDiagramCreatorBrushStorageKey()) || '{}');
+            return {
+                labelLazyMouseEnabled: item.lazyMouse === true,
+                labelLazyDistance: Math.min(120, Math.max(4, Number(item.lazyDistance) || 36)),
+                labelLazyStep: Math.min(20, Math.max(1, Number(item.lazyStep) || 3)),
+                labelSmoothingEnabled: item.smoothing === true,
+                labelSmoothingStrength: clampDiagramCreatorSmoothingStrength(item.smoothingStrength ?? 25)
+            };
+        } catch (_) {
+            return { labelLazyMouseEnabled:false, labelLazyDistance:36, labelLazyStep:3, labelSmoothingEnabled:false, labelSmoothingStrength:25 };
+        }
+    }
+
+    function saveDiagramCreatorBrushPreferences() {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        try {
+            window.localStorage?.setItem(getDiagramCreatorBrushStorageKey(), JSON.stringify({
+                lazyMouse: editor.labelLazyMouseEnabled === true,
+                lazyDistance: editor.labelLazyDistance,
+                lazyStep: editor.labelLazyStep,
+                smoothing: editor.labelSmoothingEnabled === true,
+                smoothingStrength: editor.labelSmoothingStrength
+            }));
+        } catch (_) { /* Session brush controls still work without storage. */ }
+    }
+
+    function refreshDiagramCreatorBrushSettingsUi() {
+        const editor = state.auth.imageEditor;
+        if (!editor) return;
+        if (elements.studioImageEditorLazyMouseEnabled) elements.studioImageEditorLazyMouseEnabled.checked = editor.labelLazyMouseEnabled === true;
+        if (elements.studioImageEditorLazyMouseControls) elements.studioImageEditorLazyMouseControls.classList.toggle('hidden', editor.labelLazyMouseEnabled !== true);
+        if (elements.studioImageEditorLazyDistance) elements.studioImageEditorLazyDistance.value = String(editor.labelLazyDistance || 36);
+        if (elements.studioImageEditorLazyDistanceValue) elements.studioImageEditorLazyDistanceValue.textContent = String(editor.labelLazyDistance || 36);
+        if (elements.studioImageEditorLazyStep) elements.studioImageEditorLazyStep.value = String(editor.labelLazyStep || 3);
+        if (elements.studioImageEditorLazyStepValue) elements.studioImageEditorLazyStepValue.textContent = String(editor.labelLazyStep || 3);
+        if (elements.studioImageEditorSmoothingEnabled) elements.studioImageEditorSmoothingEnabled.checked = editor.labelSmoothingEnabled === true;
+        if (elements.studioImageEditorSmoothingControls) elements.studioImageEditorSmoothingControls.classList.toggle('hidden', editor.labelSmoothingEnabled !== true);
+        if (elements.studioImageEditorSmoothingStrength) elements.studioImageEditorSmoothingStrength.value = String(editor.labelSmoothingStrength || 25);
+        if (elements.studioImageEditorSmoothingStrengthValue) elements.studioImageEditorSmoothingStrengthValue.textContent = `${editor.labelSmoothingStrength || 25}%`;
+    }
+
+    function positionDiagramCreatorBrushPopover() {
+        const toggle = elements.studioImageEditorPaintbrushBtn;
+        const panel = elements.studioImageEditorPenPressurePopover;
+        if (!toggle || !panel || panel.classList.contains('hidden')) return;
+        const rect = toggle.getBoundingClientRect();
+        const margin = 8;
+        const width = Math.min(panel.getBoundingClientRect().width || 300, window.innerWidth - 2 * margin);
+        const height = Math.min(panel.getBoundingClientRect().height || 95, window.innerHeight - 2 * margin);
+        panel.style.left = `${Math.round(Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin)))}px`;
+        const below = rect.bottom + 6;
+        panel.style.top = `${Math.round(below + height + margin > window.innerHeight ? Math.max(margin, rect.top - height - 6) : below)}px`;
+    }
+
     // Phase L: Pressure response only changes WIDTH. Curves are recorded per
     // new stroke so later preference changes never reshape saved annotations.
     const DIAGRAM_CREATOR_PRESSURE_CURVE_DEFAULT = 1.6;
@@ -22477,6 +22881,8 @@ MODIFICATION RULES FOR THIS APP
     function closeDiagramCreatorPenPressurePopover() {
         const panel = elements.studioImageEditorPenPressurePopover;
         panel?.classList.add('hidden');
+        elements.studioImageEditorPressureAdvanced?.classList.add('hidden');
+        elements.studioImageEditorPressureSettingsToggle?.setAttribute('aria-expanded', 'false');
         panel?.style.removeProperty('position');
         panel?.style.removeProperty('left');
         panel?.style.removeProperty('top');
@@ -22495,17 +22901,12 @@ MODIFICATION RULES FOR THIS APP
             elements.studioImageEditorPressureSensitivityEnabled.checked = state.auth.imageEditor?.drawPressureSensitivityEnabled !== false;
         }
         refreshDiagramCreatorPressureCurveUi();
+        refreshDiagramCreatorBrushSettingsUi();
         // Fixed positioning avoids clipping in the iPad/mobile editor toolbar.
         panel.classList.remove('hidden');
         panel.style.position = 'fixed';
         panel.style.zIndex = '2147483000';
-        const rect = toggle.getBoundingClientRect();
-        const width = panel.getBoundingClientRect().width || 230;
-        const height = panel.getBoundingClientRect().height || 95;
-        const margin = 8;
-        panel.style.left = `${Math.round(Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin)))}px`;
-        const below = rect.bottom + 6;
-        panel.style.top = `${Math.round(below + height + margin > window.innerHeight ? Math.max(margin, rect.top - height - 6) : below)}px`;
+        positionDiagramCreatorBrushPopover();
         toggle.setAttribute('aria-expanded', 'true');
     }
 
@@ -22925,6 +23326,8 @@ MODIFICATION RULES FOR THIS APP
             transparency: Math.min(1, Math.max(0, Number.isFinite(Number(stroke?.transparency)) ? Number(stroke?.transparency) : 0.65)),
             ...(stroke?.pressureSensitive === true && normalizeImageEditorDrawTool(stroke?.tool) === 'paintbrush' ? { pressureSensitive: true } : {}),
             ...(stroke?.pressureSensitive === true && Number.isFinite(Number(stroke?.pressureCurve)) ? { pressureCurve: clampDiagramCreatorPressureCurve(stroke.pressureCurve) } : {}),
+            ...(normalizeImageEditorDrawTool(stroke?.tool) === 'paintbrush' && Number.isFinite(Number(stroke?.smoothingStrength)) && Number(stroke.smoothingStrength) > 0
+                ? { smoothingStrength: clampDiagramCreatorSmoothingStrength(stroke.smoothingStrength) } : {}),
             points: (Array.isArray(stroke?.points) ? stroke.points : []).map(point => ({
                 x: Number(point?.x) || 0,
                 y: Number(point?.y) || 0,
@@ -23132,9 +23535,17 @@ MODIFICATION RULES FOR THIS APP
         const finalPoint = canUseFinalPoint ? getImageEditorCanvasPoint(event) : null;
         const points = Array.isArray(stroke.points) ? stroke.points : (stroke.points = []);
         const previousPoint = points[points.length - 1];
-        if (finalPoint && (!previousPoint || Math.hypot(finalPoint.x - previousPoint.x, finalPoint.y - previousPoint.y) >= 0.5)) {
+        if (stroke.tool === 'paintbrush' && editor.labelLazyMouseEnabled === true) {
+            if (finalPoint) advanceImageEditorLabelLazyStroke(finalPoint, stroke);
+            const tip = editor.labelLazyTip;
+            const last = points[points.length - 1];
+            if (tip && last && Math.hypot(tip.x - last.x, tip.y - last.y) > .01) {
+                points.push({ x: tip.x, y: tip.y, ...(stroke.pressureSensitive === true ? { p: finalPoint?.p ?? last.p ?? .5 } : {}) });
+            }
+        } else if (finalPoint && (!previousPoint || Math.hypot(finalPoint.x - previousPoint.x, finalPoint.y - previousPoint.y) >= 0.5)) {
             points.push({ x: finalPoint.x, y: finalPoint.y, ...(stroke.pressureSensitive === true ? { p: finalPoint.p ?? previousPoint?.p ?? .5 } : {}) });
         }
+        resetImageEditorLabelLazyBrush(editor);
         editor.activeDrawStroke = null;
         releaseImageEditorDrawingPreviewCaches(editor);
         editor.isDrawing = false;
@@ -23239,8 +23650,34 @@ MODIFICATION RULES FOR THIS APP
         ctx.fill();
     }
 
+    // Phase 24B.1: preview and saved replay use exactly the same bounded,
+    // corner-preserving smoothing. Original points remain the source of truth;
+    // stroke endpoints, dots, sharp turns and pressure metadata are preserved.
+    function getDiagramCreatorSmoothedStrokePoints(stroke) {
+        const original = Array.isArray(stroke?.points) ? stroke.points : [];
+        const strength = Number(stroke?.smoothingStrength);
+        if (stroke?.tool !== 'paintbrush' || !Number.isFinite(strength) || strength <= 0 || original.length < 4) return original;
+        const factor = Math.min(.9, Math.max(0, strength / 100 * .9));
+        return original.map((point, i) => {
+            if (i === 0 || i === original.length - 1) return point;
+            const prev = original[i - 1], next = original[i + 1];
+            const ax = point.x - prev.x, ay = point.y - prev.y;
+            const bx = next.x - point.x, by = next.y - point.y;
+            const a = Math.hypot(ax, ay), b = Math.hypot(bx, by);
+            if (a < .01 || b < .01 || (ax * bx + ay * by) / (a * b) < .15) return point;
+            const p0 = original[Math.max(0, i - 2)], p4 = original[Math.min(original.length - 1, i + 2)];
+            const targetX = (p0.x + 4 * prev.x + 6 * point.x + 4 * next.x + p4.x) / 16;
+            const targetY = (p0.y + 4 * prev.y + 6 * point.y + 4 * next.y + p4.y) / 16;
+            // Never shift a point farther than a fraction of its local spacing.
+            const dx = (targetX - point.x) * factor, dy = (targetY - point.y) * factor;
+            const cap = Math.min(a, b) * .3;
+            const scale = Math.min(1, cap / (Math.hypot(dx, dy) || 1));
+            return { ...point, x: point.x + dx * scale, y: point.y + dy * scale };
+        });
+    }
+
     function drawImageEditorStrokePath(ctx, stroke, mode = 'stroke') {
-        const points = Array.isArray(stroke?.points) ? stroke.points : [];
+        const points = getDiagramCreatorSmoothedStrokePoints(stroke);
         if (!points.length) return;
         const size = Math.min(60, Math.max(2, Number(stroke?.size) || 14));
         ctx.lineCap = 'round';
@@ -23545,6 +23982,66 @@ MODIFICATION RULES FOR THIS APP
         });
     }
 
+    function resetImageEditorLabelLazyBrush(editor = state.auth.imageEditor) {
+        if (!editor) return;
+        editor.labelLazyTip = null;
+        editor.labelLazyRaw = null;
+    }
+
+    function updateImageEditorLabelLazyGuide() {
+        const editor = state.auth.imageEditor;
+        const canvas = elements.studioImageEditorCanvas;
+        const svg = elements.studioImageEditorConnectorLayer;
+        if (!editor?.activeDrawStroke || editor.activeDrawStroke.tool !== 'paintbrush'
+            || editor.labelLazyMouseEnabled !== true || !editor.labelLazyTip || !editor.labelLazyRaw || !canvas || !svg) return;
+        // Connector SVG already follows the transformed canvas, including iPad zoom.
+        // Add an independent non-interactive guide without rebuilding connectors.
+        svg.setAttribute('viewBox', `0 0 ${Math.max(1, canvas.width)} ${Math.max(1, canvas.height)}`);
+        svg.setAttribute('preserveAspectRatio', 'none');
+        let guide = svg.querySelector('[data-diagram-label-lazy-guide]');
+        if (!guide) {
+            svg.insertAdjacentHTML('beforeend', '<g data-diagram-label-lazy-guide class="studio-visual-aid-lazy-guide" aria-hidden="true"><line/><circle class="is-tip" r="4.5"/><circle class="is-pointer" r="3"/></g>');
+            guide = svg.querySelector('[data-diagram-label-lazy-guide]');
+        }
+        const { labelLazyTip: tip, labelLazyRaw: raw } = editor;
+        const line = guide.querySelector('line');
+        line.setAttribute('x1', String(tip.x)); line.setAttribute('y1', String(tip.y));
+        line.setAttribute('x2', String(raw.x)); line.setAttribute('y2', String(raw.y));
+        const tipCircle = guide.querySelector('.is-tip');
+        tipCircle.setAttribute('cx', String(tip.x)); tipCircle.setAttribute('cy', String(tip.y));
+        const rawCircle = guide.querySelector('.is-pointer');
+        rawCircle.setAttribute('cx', String(raw.x)); rawCircle.setAttribute('cy', String(raw.y));
+        svg.classList.remove('hidden');
+    }
+
+    function advanceImageEditorLabelLazyStroke(point, stroke) {
+        const editor = state.auth.imageEditor;
+        const canvas = elements.studioImageEditorCanvas;
+        if (!editor || !canvas || !stroke) return;
+        const rect = canvas.getBoundingClientRect();
+        const sx = Math.max(1, rect.width) / Math.max(1, canvas.width);
+        const sy = Math.max(1, rect.height) / Math.max(1, canvas.height);
+        const toScreen = p => ({ x: p.x * sx, y: p.y * sy });
+        const fromScreen = p => ({ x: Math.max(0, Math.min(canvas.width, p.x / sx)), y: Math.max(0, Math.min(canvas.height, p.y / sy)) });
+        const raw = { x: point.x, y: point.y };
+        editor.labelLazyRaw = raw;
+        const last = stroke.points[stroke.points.length - 1];
+        const tip = editor.labelLazyTip || last || raw;
+        const result = advanceImageEditorLazyBrush(raw, tip, last || tip, toScreen, fromScreen,
+            Math.min(120, Math.max(4, Number(editor.labelLazyDistance) || 36)),
+            Math.min(20, Math.max(1, Number(editor.labelLazyStep) || 3)));
+        editor.labelLazyTip = result.tip;
+        // Interpolate stylus pressure along the generated stamps. No pressure
+        // property is added to non-Pencil strokes.
+        const priorPressure = Number(last?.p ?? point.p ?? .5);
+        const nextPressure = Number(point.p ?? priorPressure);
+        result.stamps.forEach((stamp, i) => stroke.points.push({
+            x: stamp.x, y: stamp.y,
+            ...(stroke.pressureSensitive ? { p: Math.max(.01, Math.min(1, Math.round((priorPressure + ((nextPressure - priorPressure) * ((i + 1) / result.stamps.length))) * 1000) / 1000)) } : {})
+        }));
+        updateImageEditorLabelLazyGuide();
+    }
+
     function beginImageEditorDrawStroke(point) {
         const editor = state.auth.imageEditor;
         if (!editor || !point || !isImageEditorLabelDrawActive()) return;
@@ -23575,9 +24072,17 @@ MODIFICATION RULES FOR THIS APP
             size: editor.drawSize,
             transparency: editor.paintTransparency,
             ...(pressureSensitive ? { pressureSensitive: true, pressureCurve: clampDiagramCreatorPressureCurve(editor.drawPressureCurve) } : {}),
+            ...(tool === 'paintbrush' && editor.labelSmoothingEnabled === true
+                ? { smoothingStrength: clampDiagramCreatorSmoothingStrength(editor.labelSmoothingStrength) } : {}),
             points: [{ x: point.x, y: point.y, ...(pressureSensitive ? { p: point.p } : {}) }]
         };
         editor.activeDrawStroke = stroke;
+        resetImageEditorLabelLazyBrush(editor);
+        if (tool === 'paintbrush' && editor.labelLazyMouseEnabled === true) {
+            editor.labelLazyTip = { x: point.x, y: point.y };
+            editor.labelLazyRaw = { x: point.x, y: point.y };
+            updateImageEditorLabelLazyGuide();
+        }
         editor.drawStrokes.push(stroke);
         if (tool === 'eraser' && !editor.drawEraserPreview) renderImageEditorCanvas();
         else scheduleImageEditorStrokePreview();
@@ -23587,6 +24092,11 @@ MODIFICATION RULES FOR THIS APP
         const editor = state.auth.imageEditor;
         const stroke = editor?.activeDrawStroke;
         if (!stroke || !point) return;
+        if (stroke.tool === 'paintbrush' && editor.labelLazyMouseEnabled === true) {
+            advanceImageEditorLabelLazyStroke(point, stroke);
+            scheduleImageEditorStrokePreview();
+            return;
+        }
         const last = stroke.points[stroke.points.length - 1];
         const rawPressure = Number.isFinite(point.p) ? point.p : (last?.p || .5);
         const smoothedPressure = last?.p !== undefined ? last.p * .55 + rawPressure * .45 : rawPressure;
@@ -25561,6 +26071,32 @@ MODIFICATION RULES FOR THIS APP
         };
     }
 
+    // Phase 24B.1: Visual Aid and label drawing share one Lazy Drag movement
+    // implementation (radius dead-zone, elastic tip, fixed-step stamps).
+    function advanceImageEditorLazyBrush(raw, tip, lastStamp, toScreen, fromScreen, radius, step) {
+        const tipScreen = toScreen(tip);
+        const rawScreen = toScreen(raw);
+        const dx = rawScreen.x - tipScreen.x;
+        const dy = rawScreen.y - tipScreen.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance <= radius + .001) return { tip, stamps: [] };
+        const nextTipScreen = { x: rawScreen.x - ((dx / distance) * radius), y: rawScreen.y - ((dy / distance) * radius) };
+        const nextTip = fromScreen(nextTipScreen);
+        const lastStampScreen = toScreen(lastStamp);
+        const sx = nextTipScreen.x - lastStampScreen.x;
+        const sy = nextTipScreen.y - lastStampScreen.y;
+        const segmentDistance = Math.hypot(sx, sy);
+        if (segmentDistance < step) return { tip: nextTip, stamps: [] };
+        const stampCount = Math.max(1, Math.floor(segmentDistance / step));
+        const stamps = [];
+        for (let index = 1; index <= stampCount; index += 1) {
+            const travel = Math.min(segmentDistance, index * step);
+            const ratio = segmentDistance > 0 ? travel / segmentDistance : 1;
+            stamps.push(fromScreen({ x: lastStampScreen.x + (sx * ratio), y: lastStampScreen.y + (sy * ratio) }));
+        }
+        return { tip: nextTip, stamps };
+    }
+
     function updateImageEditorVisualAidLazyBrush(normalized = {}) {
         const editor = state.auth.imageEditor;
         const draft = Array.isArray(editor?.activeVisualAidDraftPath) ? editor.activeVisualAidDraftPath : null;
@@ -25575,28 +26111,12 @@ MODIFICATION RULES FOR THIS APP
         const radius = Math.min(120, Math.max(4, Number(editor.visualAidLazyDistance) || 36));
         const step = Math.min(20, Math.max(1, Number(editor.visualAidLazyStep) || 3));
         const currentTip = normalizeDiagramVisualAidPathPoint(editor.visualAidLazyBrushPoint || draft[draft.length - 1] || raw);
-        const tipScreen = getImageEditorVisualAidLazyScreenPoint(currentTip);
-        const rawScreen = getImageEditorVisualAidLazyScreenPoint(raw);
-        const dx = rawScreen.x - tipScreen.x;
-        const dy = rawScreen.y - tipScreen.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance <= radius + 0.001) return false;
-        const nextTipScreen = { x: rawScreen.x - ((dx / distance) * radius), y: rawScreen.y - ((dy / distance) * radius) };
-        const nextTip = getImageEditorVisualAidLazyNormalizedPoint(nextTipScreen);
-        editor.visualAidLazyBrushPoint = nextTip;
         const lastStamp = normalizeDiagramVisualAidPathPoint(draft[draft.length - 1] || currentTip);
-        const lastStampScreen = getImageEditorVisualAidLazyScreenPoint(lastStamp);
-        const sx = nextTipScreen.x - lastStampScreen.x;
-        const sy = nextTipScreen.y - lastStampScreen.y;
-        const segmentDistance = Math.hypot(sx, sy);
-        if (segmentDistance < step) return false;
-        const stampCount = Math.max(1, Math.floor(segmentDistance / step));
-        for (let index = 1; index <= stampCount; index += 1) {
-            const travel = Math.min(segmentDistance, index * step);
-            const ratio = segmentDistance > 0 ? travel / segmentDistance : 1;
-            draft.push(getImageEditorVisualAidLazyNormalizedPoint({ x: lastStampScreen.x + (sx * ratio), y: lastStampScreen.y + (sy * ratio) }));
-        }
-        return true;
+        const result = advanceImageEditorLazyBrush(raw, currentTip, lastStamp,
+            getImageEditorVisualAidLazyScreenPoint, getImageEditorVisualAidLazyNormalizedPoint, radius, step);
+        editor.visualAidLazyBrushPoint = result.tip;
+        draft.push(...result.stamps);
+        return result.stamps.length > 0;
     }
 
     function renderImageEditorVisualAidLazyGuide(svg) {
@@ -26102,6 +26622,7 @@ MODIFICATION RULES FOR THIS APP
         const connectorActive = isImageEditorConnectorMode(editor);
         const activeTool = normalizeImageEditorDrawTool(editor?.drawTool || 'paintbrush');
         if (elements.studioImageEditorPressureSensitivityEnabled) elements.studioImageEditorPressureSensitivityEnabled.checked = editor?.drawPressureSensitivityEnabled !== false;
+        refreshDiagramCreatorBrushSettingsUi();
         if (elements.studioImageEditorClearDrawBtn) {
             const index = editor?.activeDrawLabelIndex;
             elements.studioImageEditorClearDrawBtn.disabled = !drawActive || !(editor?.drawStrokes || []).some(stroke => Number(stroke.labelIndex) === index);
@@ -26947,6 +27468,47 @@ MODIFICATION RULES FOR THIS APP
                 if (button.disabled) return;
                 toggleImageEditorDrawTool(button.dataset.imageEditorDrawTool);
             });
+        });
+        elements.studioImageEditorPressureSettingsToggle?.addEventListener('click', event => {
+            event.preventDefault();
+            const advanced = elements.studioImageEditorPressureAdvanced;
+            const open = advanced?.classList.contains('hidden');
+            advanced?.classList.toggle('hidden', !open);
+            event.currentTarget.setAttribute('aria-expanded', open ? 'true' : 'false');
+            positionDiagramCreatorBrushPopover();
+        });
+        elements.studioImageEditorLazyMouseEnabled?.addEventListener('change', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.labelLazyMouseEnabled = event.currentTarget.checked;
+            saveDiagramCreatorBrushPreferences();
+            refreshDiagramCreatorBrushSettingsUi();
+            positionDiagramCreatorBrushPopover();
+        });
+        elements.studioImageEditorLazyDistance?.addEventListener('input', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.labelLazyDistance = Math.min(120, Math.max(4, Number(event.currentTarget.value) || 36));
+            saveDiagramCreatorBrushPreferences(); refreshDiagramCreatorBrushSettingsUi();
+        });
+        elements.studioImageEditorLazyStep?.addEventListener('input', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.labelLazyStep = Math.min(20, Math.max(1, Number(event.currentTarget.value) || 3));
+            saveDiagramCreatorBrushPreferences(); refreshDiagramCreatorBrushSettingsUi();
+        });
+        elements.studioImageEditorSmoothingEnabled?.addEventListener('change', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.labelSmoothingEnabled = event.currentTarget.checked;
+            saveDiagramCreatorBrushPreferences(); refreshDiagramCreatorBrushSettingsUi();
+            positionDiagramCreatorBrushPopover();
+        });
+        elements.studioImageEditorSmoothingStrength?.addEventListener('input', event => {
+            const editor = state.auth.imageEditor;
+            if (!editor) return;
+            editor.labelSmoothingStrength = clampDiagramCreatorSmoothingStrength(event.currentTarget.value);
+            saveDiagramCreatorBrushPreferences(); refreshDiagramCreatorBrushSettingsUi();
         });
         elements.studioImageEditorPressureSensitivityEnabled?.addEventListener('change', () => {
             const editor = state.auth.imageEditor;
@@ -27891,6 +28453,8 @@ MODIFICATION RULES FOR THIS APP
         editor.drawPenSettingsArmed = false;
         editor.drawPressureSensitivityEnabled = loadDiagramCreatorPenPressurePreference();
         editor.drawPressureCurve = loadDiagramCreatorPressureCurvePreference();
+        Object.assign(editor, loadDiagramCreatorBrushPreferences());
+        resetImageEditorLabelLazyBrush(editor);
         editor.drawSize = getImageEditorDrawSize();
         editor.paintTransparency = getImageEditorPaintTransparency();
         editor.activeDrawLabelIndex = null;
@@ -55849,7 +56413,7 @@ function endReviewModeGesturePointer(event, { cancelled = false } = {}) {
 if (elements.reviewModeImageViewport) {
     elements.reviewModeImageViewport.addEventListener('pointerdown', event => {
         if (event.button != null && event.button !== 0) return;
-        if (event.target.closest('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar, .review-mode-shortcut-dock, .review-mode-visual-aid-bar')) return;
+        if (event.target.closest('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar, .review-mode-shortcut-dock, .review-mode-effects-panel, .review-mode-visual-aid-bar')) return;
         const pointer = { pointerId: event.pointerId, pointerType: event.pointerType || 'mouse', x: event.clientX, y: event.clientY };
         reviewModeGesturePointers.set(event.pointerId, pointer);
 
@@ -55963,7 +56527,7 @@ if (elements.reviewModeImageViewport) {
         }
         if (event.altKey || event.shiftKey || event.deltaMode !== 0
             || review.zoomScale <= REVIEW_MODE_MIN_ZOOM + 0.01) return;
-        if (event.target?.closest?.('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar, .review-mode-shortcut-dock, .review-mode-visual-aid-bar, button, input, textarea, select, [contenteditable="true"]')) return;
+        if (event.target?.closest?.('.review-mode-mini-answer, .review-mode-angle-navigation, .review-mode-options-panel, .review-mode-toolbar, .review-mode-shortcut-dock, .review-mode-effects-panel, .review-mode-visual-aid-bar, button, input, textarea, select, [contenteditable="true"]')) return;
         const dx = Number(event.deltaX) || 0;
         const dy = Number(event.deltaY) || 0;
         if (!dx && !dy) return;
@@ -56183,11 +56747,11 @@ if (elements.reviewModeResetDefaultsBtn) {
 }
 if (elements.reviewModeOptionsPanel) {
     elements.reviewModeOptionsPanel.addEventListener('change', event => {
-        if (event.target?.matches('input, select')) saveReviewModePreferences();
+        if (event.target?.id !== 'reviewModeDrawingColor' && event.target?.matches('input, select')) saveReviewModePreferences();
     });
     // Colors and sliders visibly update on input; save their last selected value.
     elements.reviewModeOptionsPanel.addEventListener('input', event => {
-        if (event.target?.matches('input[type="color"], input[type="range"]')) saveReviewModePreferences();
+        if (event.target?.id !== 'reviewModeDrawingColor' && event.target?.matches('input[type="color"], input[type="range"]')) saveReviewModePreferences();
     });
 }
 
@@ -56343,18 +56907,14 @@ if (elements.reviewModeLabelNumberToggle) {
 if (elements.reviewModeReflectionSweepToggle) {
     elements.reviewModeReflectionSweepToggle.addEventListener('change', () => {
         const review = getReviewModeState();
-        review.reflectionSweepEnabled = elements.reviewModeReflectionSweepToggle.checked;
-        renderReviewModeDrawData({ skipVisualAidRefresh: true });
-        syncReviewModeControls();
+        setReviewModeEffect('reflection', elements.reviewModeReflectionSweepToggle.checked);
     });
 }
 
 if (elements.reviewModeShowDrawDataToggle) {
     elements.reviewModeShowDrawDataToggle.addEventListener('change', () => {
         const review = getReviewModeState();
-        review.showDrawData = elements.reviewModeShowDrawDataToggle.checked;
-        renderReviewModeDrawData();
-        syncReviewModeControls();
+        setReviewModeEffect('drawing', elements.reviewModeShowDrawDataToggle.checked);
     });
 }
 
@@ -56663,8 +57223,42 @@ if (elements.reviewModeShortcutMovementBtn) {
         setReviewModeAllowLabelMovement(!getReviewModeState().allowLabelMovement));
 }
 if (elements.reviewModeShortcutColorBtn) {
-    elements.reviewModeShortcutColorBtn.addEventListener('click', toggleReviewModeColor);
+    elements.reviewModeShortcutColorBtn.addEventListener('click', () => {
+        const review = getReviewModeState();
+        setReviewModeEffectsMenuOpen(!review.effectsMenuOpen);
+        syncReviewModeShortcutDock();
+    });
 }
+if (elements.reviewModeEffectsCloseBtn) elements.reviewModeEffectsCloseBtn.addEventListener('click', () => setReviewModeEffectsMenuOpen(false));
+for (const [id, field] of [
+    ['reviewModeEffectsReflection', 'reflection'], ['reviewModeEffectsGlow', 'glow'],
+    ['reviewModeEffectsSonar', 'sonar'], ['reviewModeEffectsDrawing', 'drawing'],
+    ['reviewModeEffectsFade', 'fade'], ['reviewModeColorFadeToggle', 'fade']
+]) {
+    elements[id]?.addEventListener('change', () => setReviewModeEffect(field, elements[id].checked));
+}
+for (const [id, field] of [
+    ['reviewModeColorFadeDuration', 'colorFadeDuration'],
+    ['reviewModeColorFadeCycle', 'colorFadeCycle']
+]) {
+    elements[id]?.addEventListener('input', () => setReviewModeFadeTiming(field, elements[id].value));
+}
+for (const id of ['reviewModeEffectsDrawingColor', 'reviewModeDrawingColor']) {
+    elements[id]?.addEventListener('input', () => setReviewModeSessionDrawingColor(elements[id].value));
+}
+for (const id of ['reviewModeEffectsDrawingColorResetBtn', 'reviewModeDrawingColorResetBtn']) {
+    elements[id]?.addEventListener('click', () => setReviewModeSessionDrawingColor(''));
+}
+// Closing the floating popover never changes quiz state or the selected label.
+document.addEventListener('pointerdown', event => {
+    if (!getReviewModeState().effectsMenuOpen) return;
+    if (elements.reviewModeEffectsPanel?.contains(event.target) || elements.reviewModeShortcutColorBtn?.contains(event.target)) return;
+    setReviewModeEffectsMenuOpen(false);
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && getReviewModeState().effectsMenuOpen) setReviewModeEffectsMenuOpen(false);
+});
+
 if (elements.reviewModeShortcutLinesBtn) {
     elements.reviewModeShortcutLinesBtn.addEventListener('click', toggleReviewModeLines);
 }
@@ -56859,6 +57453,7 @@ if (elements.reviewModeLabelLayer) {
             renderReviewModeLabels();
             syncReviewModeControls();
         }
+        renderReviewModeFade();
         syncReviewModePinButton();
     });
 }
@@ -56904,7 +57499,7 @@ document.addEventListener('keydown', event => {
         nudgeReviewModeLabelSize(-1);
     } else if (lowerKey === 'd') {
         event.preventDefault();
-        toggleReviewModeColor();
+        setReviewModeEffect('drawing', !review.showDrawData);
     } else if (lowerKey === 'c') {
         event.preventDefault();
         toggleReviewModeLines();
