@@ -18627,3 +18627,33 @@ body.narrow-iphone-layout.active-question-flashcard .flashcard-container {
 
 .exam-post-quiz-section-controls {flex:1 1 auto;min-width:0;justify-content:flex-start;}
 .exam-post-quiz-section-score {flex:0 0 auto;}
+
+/* Phase 24A.8K — the installed iPhone Home Screen app has a separate iOS
+   viewport/rubber-band behavior from browser Safari. Lock the ROOT box, not
+   the option buttons; touch delegation in script.js prevents root gesture pan.
+   Only applied with the dedicated standalone runtime class. */
+html:has(body.ios-standalone-mc-viewport-guard) {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  overscroll-behavior: none;
+}
+body.ios-standalone-mc-viewport-guard {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  overscroll-behavior: none;
+}
+body.ios-standalone-mc-viewport-guard .options {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}

@@ -47274,6 +47274,80 @@ function updateSettingsAvailability() {
     syncQuestionStarButton();
 }
 
+// Phase 24A.8K — iOS Home Screen web apps can pan the visual/root viewport in
+// both axes even when html/body overflow is hidden. Keep Safari browser's
+// already-correct behavior unchanged; guard only standalone phone MC/Diagrams.
+function isIOSStandaloneStudyApp() {
+    const ua = navigator.userAgent || '';
+    const iphone = /iPhone|iPod/i.test(ua);
+    const standalone = navigator.standalone === true ||
+        window.matchMedia('(display-mode: standalone)').matches;
+    return iphone && standalone;
+}
+
+let standaloneStudyTouch = null;
+
+function hasOpenStandaloneStudyOverlay() {
+    if (state.flashcardImageZoomOpen || state.learningResourcesOverlayOpen || state.completionChallengePrompt.open) return true;
+    // Some dialogs are children of hidden panels rather than .hidden themselves.
+    // Check actual layout visibility so those dormant dialogs cannot disable the guard.
+    return Array.from(document.querySelectorAll(
+        '.app-page-menu:not(.hidden), .app-menu-leave-confirm:not(.hidden), ' +
+        '#settingsPopup:not(.hidden), #authPopup:not(.hidden), ' +
+        '[role="dialog"][aria-modal="true"]:not(.hidden)'
+    )).some(dialog => dialog.getClientRects().length > 0);
+}
+
+function handleStandaloneStudyTouchStart(event) {
+    standaloneStudyTouch = null;
+    if (!document.body.classList.contains('ios-standalone-mc-viewport-guard') || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    standaloneStudyTouch = {
+        x: touch.clientX,
+        y: touch.clientY,
+        lastY: touch.clientY,
+        options: target?.closest('.options') || null,
+        image: !!target?.closest('.image-container, .flashcard-image-overlay, .diagram-study-image-wrap')
+    };
+}
+
+function handleStandaloneStudyTouchMove(event) {
+    if (!document.body.classList.contains('ios-standalone-mc-viewport-guard')) return;
+    // Never capture pinch/multitouch or existing image panning/zooming.
+    if (event.touches.length !== 1 || event.changedTouches.length !== 1 || hasOpenStandaloneStudyOverlay()) return;
+    if (!standaloneStudyTouch) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - standaloneStudyTouch.x;
+    const dy = touch.clientY - standaloneStudyTouch.y;
+    const stepY = touch.clientY - standaloneStudyTouch.lastY;
+    standaloneStudyTouch.lastY = touch.clientY;
+    if (standaloneStudyTouch.image) return;
+    // Ignore tiny tap jitter so buttons remain reliable on a real touchscreen.
+    if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+    const scroller = standaloneStudyTouch.options;
+    if (scroller && scroller.isConnected) {
+        // Vertical swipes scroll options natively. Sideways swipes and swipes
+        // past either end must not chain into the installed app's root viewport.
+        const sideways = Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5;
+        const atTop = scroller.scrollTop <= 1;
+        const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+        const cannotScroll = scroller.scrollHeight <= scroller.clientHeight + 1;
+        if (sideways || cannotScroll || (atTop && stepY > 0) || (atBottom && stepY < 0)) {
+            if (event.cancelable) event.preventDefault();
+        }
+        return;
+    }
+    // Question, header, and empty background are fixed in both axes. This is
+    // intentionally not a global touch-action:none so images keep pinch/pan.
+    if (event.cancelable) event.preventDefault();
+}
+
+document.addEventListener('touchstart', handleStandaloneStudyTouchStart, { passive: true, capture: true });
+document.addEventListener('touchmove', handleStandaloneStudyTouchMove, { passive: false, capture: true });
+document.addEventListener('touchend', () => { standaloneStudyTouch = null; }, { passive: true, capture: true });
+document.addEventListener('touchcancel', () => { standaloneStudyTouch = null; }, { passive: true, capture: true });
+
 function syncBodyScrollLock() {
     // Scrolling within answers and fixed overlays stays native. Lock only the
     // page itself during phone MC/Diagram sessions, never touch/pinch gestures.
@@ -47427,6 +47501,8 @@ function updateViewportClasses() {
         window.scrollTo(0, 0);
     }
     document.body.classList.toggle('phone-mc-page-scroll-locked', phoneMCPageLock);
+    document.body.classList.toggle('ios-standalone-mc-viewport-guard', phoneMCPageLock && isIOSStandaloneStudyApp());
+    if (!phoneMCPageLock) standaloneStudyTouch = null;
     syncBodyScrollLock();
     syncMultipleChoiceSplitLayoutMount();
     queuePhoneLandscapeMultipleChoiceImageStageSync();
