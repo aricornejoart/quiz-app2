@@ -27461,6 +27461,20 @@ MODIFICATION RULES FOR THIS APP
         const overlay = elements.studioImageEditorOverlay;
         if (!overlay || overlay.dataset.imageEditorPenToolEventsBound === 'true') return;
         overlay.dataset.imageEditorPenToolEventsBound = 'true';
+        // Phase 24B.4: dismiss brush settings on outside pointer/tap without
+        // swallowing the same canvas gesture. Keep the Paintbrush button exempt
+        // so its existing second-tap open/close behavior is unchanged.
+        const dismissBrushSettingsOnOutside = event => {
+            const panel = elements.studioImageEditorPenPressurePopover;
+            if (!state.auth.imageEditor?.open || !panel || panel.classList.contains('hidden')) return;
+            const target = event.target;
+            if (!(target instanceof Node) || panel.contains(target)
+                || elements.studioImageEditorPaintbrushBtn?.contains(target)) return;
+            closeDiagramCreatorPenPressurePopover();
+        };
+        document.addEventListener('pointerdown', dismissBrushSettingsOnOutside, true);
+        // Keyboard/assistive click activation does not necessarily send pointerdown.
+        document.addEventListener('click', dismissBrushSettingsOnOutside, true);
         elements.studioImageEditorDrawToolButtons?.forEach(button => {
             button.addEventListener('click', event => {
                 event.preventDefault();
